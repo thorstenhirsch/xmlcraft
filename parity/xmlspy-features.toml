@@ -1,0 +1,2012 @@
+# XmlCraft parity checklist vs Altova XMLSpy (the desktop editing feature set). Maintained by hand.
+# Validated and reported by `cargo xtask parity`. Schema: see the [schema] table.
+# Status rules: `shipped` = usable today with at least one cited test; `partial` = part exists (notes say what is
+# missing); `planned` = not started; `na` = out of scope (notes name the alternative, if any). `na` entries are excluded
+# from every percentage.
+# Tiers: P0 = needed for the 0.1.0 MVP; P1 = important, soon after; P2 = valuable; P3 = long tail.
+# `commands` lists registry ids from crates/engine/src/commands.rs only; `tools` lists crates/automation/src/tools.rs names.
+# `evidence` lists `path.rs::test_fn` entries that must exist. Milestones are those of docs/roadmap.md (M0-M9, or none).
+[schema]
+version = 1
+statuses = ["planned", "partial", "shipped", "na"]
+tiers = ["P0", "P1", "P2", "P3", "N/A"]
+areas = { A = "editor", B = "views", C = "dtd", D = "xsd", E = "validation", F = "generators", G = "catalogs", H = "query", I = "json", J = "project", K = "app" }
+
+
+# ==================================================================================================
+# A. editor
+# ==================================================================================================
+
+[[feature]]
+id = "editor.syntax-highlighting"
+title = "Syntax colouring for XML, XSD, DTD and entity files"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Light and dark token palettes; two tiers: synchronous lexer for visible lines, CST refinements from the worker."
+
+[[feature]]
+id = "editor.line-numbers-gutter"
+title = "Line numbers, current-line highlight and gutter"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.undo-redo"
+title = "Undo and redo with grouping"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Transaction log with time and kind grouping and a memory cap."
+
+[[feature]]
+id = "editor.clipboard"
+title = "Cut, copy and paste"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.multi-cursor"
+title = "Multiple cursors (click, next occurrence)"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.column-selection"
+title = "Column (rectangular) selection"
+area = "A"
+tier = "P1"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.find-replace"
+title = "Find and replace with regex, case, whole word and in-selection"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.find-in-files"
+title = "Find and replace across files and folders"
+area = "A"
+tier = "P1"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.code-folding"
+title = "Folding of elements, comments, CDATA and DOCTYPE; fold all and to level"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.bookmarks"
+title = "Bookmarks"
+area = "A"
+tier = "P2"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.matching-tags"
+title = "Matching tag highlight and jump"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.auto-close-tags"
+title = "Auto-close tags on > and complete end tags on </"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.auto-indent"
+title = "Smart indentation on Enter"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Splits <a>|</a> onto indented lines."
+
+[[feature]]
+id = "editor.auto-pairing"
+title = "Auto-pair quotes and brackets"
+area = "A"
+tier = "P1"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.tag-rename-sync"
+title = "Rename start and end tag together"
+area = "A"
+tier = "P1"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.comment-toggle"
+title = "Toggle comment on selection"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.expand-selection"
+title = "Expand and shrink selection by syntax node"
+area = "A"
+tier = "P2"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.soft-wrap"
+title = "Soft wrap"
+area = "A"
+tier = "P1"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.show-whitespace"
+title = "Show whitespace and indentation guides"
+area = "A"
+tier = "P2"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.go-to-line"
+title = "Go to line"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.pretty-print"
+title = "Pretty-print as minimal edits"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Respects xml:space and mixed content; never rewrites the document."
+
+[[feature]]
+id = "editor.minify"
+title = "Strip insignificant whitespace"
+area = "A"
+tier = "P1"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.encodings-bom"
+title = "Open and save UTF-8, UTF-16 and legacy encodings, with BOM handling"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Reload as and convert to another encoding."
+
+[[feature]]
+id = "editor.line-endings"
+title = "Detect, show and convert line endings"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.byte-faithful-save"
+title = "Saving an unedited file writes identical bytes"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "The text-is-the-model rule (CLAUDE.md)."
+
+[[feature]]
+id = "editor.large-files"
+title = "Open and edit files of 100 MB and more"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Large-file mode above 32 MB: streaming outline and validation, no syntax tree."
+
+[[feature]]
+id = "editor.ime"
+title = "Input method editor support"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Depends on the vendored winit IME fixes."
+
+[[feature]]
+id = "editor.completion-document"
+title = "Completion of names that occur in the document"
+area = "A"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.completion-schema"
+title = "Schema-aware completion of elements, attributes and values"
+area = "A"
+tier = "P0"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "DTD-driven at M2, XSD-driven at M3."
+
+[[feature]]
+id = "editor.completion-values"
+title = "Completion of enumerations, booleans and IDREFs in attribute values"
+area = "A"
+tier = "P0"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.hover-info"
+title = "Hover documentation, types and diagnostics"
+area = "A"
+tier = "P1"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.snippets"
+title = "Snippets and templates"
+area = "A"
+tier = "P2"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.zoom"
+title = "Zoom the editor font"
+area = "A"
+tier = "P2"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.recent-files"
+title = "Recent files"
+area = "A"
+tier = "P1"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.autosave-recovery"
+title = "Crash recovery of unsaved work"
+area = "A"
+tier = "P1"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.external-change"
+title = "Detect external changes and offer a reload"
+area = "A"
+tier = "P1"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.drag-drop-open"
+title = "Open files by drag and drop"
+area = "A"
+tier = "P1"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "editor.spell-check"
+title = "Spell checking of text and attribute values"
+area = "A"
+tier = "P3"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+
+# ==================================================================================================
+# B. views
+# ==================================================================================================
+
+[[feature]]
+id = "view.text"
+title = "Text view"
+area = "B"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "view.outline"
+title = "Outline of the element tree with filter"
+area = "B"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "view.entry-helpers"
+title = "Entry Helpers: allowed elements, attributes and entities at the cursor"
+area = "B"
+tier = "P0"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Mandatory items marked, used items greyed, double-click inserts (with mandatory content when enabled)."
+
+[[feature]]
+id = "view.info-window"
+title = "Info pane: declaration, type, facets and documentation of the node at the cursor"
+area = "B"
+tier = "P1"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "view.messages"
+title = "Messages pane with clickable diagnostics grouped by file"
+area = "B"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "view.tabs"
+title = "Multiple documents as tabs"
+area = "B"
+tier = "P0"
+milestone = "M0"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "view.status-bar"
+title = "Status bar: position, encoding, line ending, indentation, schema, validity"
+area = "B"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "view.command-palette"
+title = "Command palette (find tools and commands)"
+area = "B"
+tier = "P1"
+milestone = "M0"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "view.themes"
+title = "Light, dark and system themes"
+area = "B"
+tier = "P1"
+milestone = "M0"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "view.docking"
+title = "Dockable and floating panels"
+area = "B"
+tier = "P2"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "craft-ui docking."
+
+[[feature]]
+id = "view.split-editor"
+title = "Split editor and side-by-side documents"
+area = "B"
+tier = "P2"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "view.grid"
+title = "Grid view: tree-table editing of XML and JSON"
+area = "B"
+tier = "P2"
+milestone = "M7"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "view.schema-design"
+title = "Graphical XSD editor (content model diagrams)"
+area = "B"
+tier = "P2"
+milestone = "M7"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "view.browser-preview"
+title = "Browser preview of HTML and transformation output"
+area = "B"
+tier = "P3"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+
+# ==================================================================================================
+# C. dtd
+# ==================================================================================================
+
+[[feature]]
+id = "dtd.parse"
+title = "Parse internal and external DTD subsets"
+area = "C"
+tier = "P0"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "dtd.parameter-entities"
+title = "Parameter entities, internal and external"
+area = "C"
+tier = "P0"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "dtd.conditional-sections"
+title = "INCLUDE and IGNORE conditional sections"
+area = "C"
+tier = "P1"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "dtd.content-models"
+title = "EMPTY, ANY, mixed and children content models"
+area = "C"
+tier = "P0"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Compiled to the shared grammar automaton."
+
+[[feature]]
+id = "dtd.attlist"
+title = "ATTLIST declarations: all attribute types and defaults"
+area = "C"
+tier = "P0"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "dtd.general-entities"
+title = "General entities with expansion limits"
+area = "C"
+tier = "P0"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Caps against entity-expansion attacks."
+
+[[feature]]
+id = "dtd.notations"
+title = "NOTATION and unparsed entities"
+area = "C"
+tier = "P2"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "dtd.determinism-warning"
+title = "Warn about non-deterministic content models"
+area = "C"
+tier = "P2"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "dtd.editing-support"
+title = "Editing support for DTD, ENT and MOD files"
+area = "C"
+tier = "P1"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "dtd.convert-xsd"
+title = "Convert between DTD and XSD"
+area = "C"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+
+# ==================================================================================================
+# D. xsd
+# ==================================================================================================
+
+[[feature]]
+id = "xsd.read-1-0"
+title = "Read XSD 1.0 schema documents"
+area = "D"
+tier = "P0"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xsd.simple-types"
+title = "Simple types: all 44 built-ins, facets, list and union"
+area = "D"
+tier = "P0"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xsd.complex-types"
+title = "Complex types: simple and complex content, extension and restriction"
+area = "D"
+tier = "P0"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xsd.groups"
+title = "Model groups, named groups and attribute groups"
+area = "D"
+tier = "P0"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xsd.wildcards"
+title = "xs:any and xs:anyAttribute with strict, lax and skip processing"
+area = "D"
+tier = "P0"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xsd.substitution-groups"
+title = "Substitution groups, abstract types, block and final"
+area = "D"
+tier = "P1"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xsd.identity-constraints"
+title = "key, keyref and unique"
+area = "D"
+tier = "P1"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "The XPath subset the specification defines."
+
+[[feature]]
+id = "xsd.include-import-redefine"
+title = "include (incl. chameleon), import and redefine"
+area = "D"
+tier = "P0"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xsd.upa-check"
+title = "Unique Particle Attribution check"
+area = "D"
+tier = "P1"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xsd.component-constraints"
+title = "Schema Component Constraints incl. particle restriction"
+area = "D"
+tier = "P1"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Approximations are listed in docs/gaps.md."
+
+[[feature]]
+id = "xsd.regex-patterns"
+title = "XSD regular expressions"
+area = "D"
+tier = "P0"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Translated to the regex crate."
+
+[[feature]]
+id = "xsd.date-time-types"
+title = "Date and time types incl. out-of-range years and timezones"
+area = "D"
+tier = "P0"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Through chrono; 400-year cycle shift."
+
+[[feature]]
+id = "xsd.authoring-completion"
+title = "Completion and documentation while editing XSD files"
+area = "D"
+tier = "P1"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Driven by the bundled XMLSchema.xsd."
+
+[[feature]]
+id = "xsd.go-to-definition"
+title = "Go to definition for ref, type, base and substitution heads"
+area = "D"
+tier = "P1"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xsd.version-1-1"
+title = "XSD 1.1: assertions, alternatives, openContent, override"
+area = "D"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xsd.refactoring"
+title = "Rename and refactor schema components"
+area = "D"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xsd.documentation-output"
+title = "Generate schema documentation (HTML)"
+area = "D"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xsd.flatten"
+title = "Flatten a multi-file schema into one"
+area = "D"
+tier = "P3"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+
+# ==================================================================================================
+# E. validation
+# ==================================================================================================
+
+[[feature]]
+id = "validate.well-formed"
+title = "Well-formedness check (F7)"
+area = "E"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "XML 1.0 5th edition."
+
+[[feature]]
+id = "validate.namespaces"
+title = "Namespace well-formedness"
+area = "E"
+tier = "P0"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "validate.dtd"
+title = "Validate against a DTD (F8)"
+area = "E"
+tier = "P0"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "validate.xsd"
+title = "Validate against an XSD (F8)"
+area = "E"
+tier = "P0"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Spec codes (cvc-*), byte-precise spans."
+
+[[feature]]
+id = "validate.xsd-self-check"
+title = "Check that a schema is itself valid"
+area = "E"
+tier = "P0"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "validate.schema-association"
+title = "Associate a schema: xsi:schemaLocation, DOCTYPE or assignment"
+area = "E"
+tier = "P0"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Assign Schema dialog writes minimal edits."
+
+[[feature]]
+id = "validate.on-edit"
+title = "Validate while typing"
+area = "E"
+tier = "P1"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Debounced, off-thread; on demand above 10 MB."
+
+[[feature]]
+id = "validate.error-positions"
+title = "Squiggles, next and previous error, jump from Messages"
+area = "E"
+tier = "P0"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "validate.def-links"
+title = "Jump from an error to the schema declaration"
+area = "E"
+tier = "P1"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "validate.quick-fixes"
+title = "Quick fixes for common validation errors"
+area = "E"
+tier = "P1"
+milestone = "M3"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "validate.entity-limits"
+title = "Entity expansion and resource limits"
+area = "E"
+tier = "P0"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Never-crash rule; regression tests for billion-laughs and quadratic blowup."
+
+[[feature]]
+id = "validate.streaming-large"
+title = "Streaming validation of very large files"
+area = "E"
+tier = "P1"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "validate.multiple-files"
+title = "Validate many files or a folder"
+area = "E"
+tier = "P1"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "validate.schematron"
+title = "Schematron validation"
+area = "E"
+tier = "P3"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+
+# ==================================================================================================
+# F. generators
+# ==================================================================================================
+
+[[feature]]
+id = "generate.schema-xsd"
+title = "Generate an XSD from XML documents"
+area = "F"
+tier = "P0"
+milestone = "M4"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Three layouts; one schema per namespace."
+
+[[feature]]
+id = "generate.schema-dtd"
+title = "Generate a DTD from XML documents"
+area = "F"
+tier = "P0"
+milestone = "M4"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "generate.schema-options"
+title = "Generation options: type detection, enumeration threshold, occurrences"
+area = "F"
+tier = "P0"
+milestone = "M4"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "generate.schema-multi-file"
+title = "Infer one schema from several documents"
+area = "F"
+tier = "P1"
+milestone = "M4"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "generate.sample-xsd"
+title = "Generate sample XML from an XSD"
+area = "F"
+tier = "P0"
+milestone = "M4"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "The sample must validate."
+
+[[feature]]
+id = "generate.sample-dtd"
+title = "Generate sample XML from a DTD"
+area = "F"
+tier = "P0"
+milestone = "M4"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "generate.sample-options"
+title = "Sample options: root, optional parts, repeats, recursion depth, values"
+area = "F"
+tier = "P0"
+milestone = "M4"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "generate.sample-pattern-values"
+title = "Values that satisfy pattern and range facets"
+area = "F"
+tier = "P1"
+milestone = "M4"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "generate.json-schema"
+title = "Infer a JSON Schema from JSON or YAML"
+area = "F"
+tier = "P1"
+milestone = "M5"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "generate.sample-json"
+title = "Generate sample JSON or YAML from a JSON Schema"
+area = "F"
+tier = "P1"
+milestone = "M5"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "generate.convert-xml-json"
+title = "Convert between XML and JSON"
+area = "F"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "generate.convert-xsd-json-schema"
+title = "Convert between XSD and JSON Schema"
+area = "F"
+tier = "P3"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+
+# ==================================================================================================
+# G. catalogs
+# ==================================================================================================
+
+[[feature]]
+id = "catalog.oasis-catalogs"
+title = "OASIS XML Catalogs 1.1 resolution"
+area = "G"
+tier = "P0"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "system, public, uri, rewrite*, delegate*, nextCatalog, prefer."
+
+[[feature]]
+id = "catalog.bundled-schemas"
+title = "Bundled standard schemas that validate offline"
+area = "G"
+tier = "P0"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Core W3C and OASIS set at M2; the full ~150-file set at M4."
+
+[[feature]]
+id = "catalog.disk-cache"
+title = "Cache of downloaded schemas with revalidation"
+area = "G"
+tier = "P0"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "catalog.auto-download"
+title = "Download referenced schemas automatically"
+area = "G"
+tier = "P0"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Catalog first; http(s) only; size, time and count limits."
+
+[[feature]]
+id = "catalog.offline-mode"
+title = "Offline mode"
+area = "G"
+tier = "P0"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "catalog.user-catalogs"
+title = "User catalogs"
+area = "G"
+tier = "P1"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "catalog.resolution-trail"
+title = "Show how each schema was resolved"
+area = "G"
+tier = "P1"
+milestone = "M2"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "catalog.schema-browser"
+title = "Browse bundled schemas and assign one"
+area = "G"
+tier = "P1"
+milestone = "M4"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "catalog.schemastore"
+title = "SchemaStore catalog for JSON and YAML"
+area = "G"
+tier = "P1"
+milestone = "M5"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "catalog.xinclude"
+title = "XInclude processing"
+area = "G"
+tier = "P2"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+
+# ==================================================================================================
+# H. query
+# ==================================================================================================
+
+[[feature]]
+id = "query.xpath-evaluator"
+title = "XPath evaluator window"
+area = "H"
+tier = "P1"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Through xee-xpath (XPath 3.1)."
+
+[[feature]]
+id = "query.xpath-copy"
+title = "Copy the XPath of a node"
+area = "H"
+tier = "P2"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "query.xpath-completion"
+title = "XPath completion"
+area = "H"
+tier = "P2"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "query.xslt-transform"
+title = "Run XSLT transformations"
+area = "H"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "query.xslt-debugger"
+title = "XSLT debugger and profiler"
+area = "H"
+tier = "P3"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "query.xquery"
+title = "XQuery editing and execution"
+area = "H"
+tier = "P3"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+
+# ==================================================================================================
+# I. json
+# ==================================================================================================
+
+[[feature]]
+id = "json.editor"
+title = "JSON editing with colouring, folding and formatting"
+area = "I"
+tier = "P1"
+milestone = "M5"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "json.jsonc"
+title = "JSON with comments (JSONC)"
+area = "I"
+tier = "P2"
+milestone = "M5"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "json.schema-validate"
+title = "Validate JSON against JSON Schema (drafts 4 to 2020-12)"
+area = "I"
+tier = "P1"
+milestone = "M5"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "json.yaml-editor"
+title = "YAML editing with colouring and folding"
+area = "I"
+tier = "P1"
+milestone = "M5"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "json.yaml-validate"
+title = "Validate YAML against JSON Schema"
+area = "I"
+tier = "P1"
+milestone = "M5"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "YAML has no schema language of its own."
+
+[[feature]]
+id = "json.completion"
+title = "Schema-driven completion and hover for JSON and YAML"
+area = "I"
+tier = "P1"
+milestone = "M5"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "json.lines"
+title = "JSON Lines"
+area = "I"
+tier = "P3"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "json.openapi"
+title = "OpenAPI editing and validation"
+area = "I"
+tier = "P3"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "json.bson-avro"
+title = "BSON and Avro"
+area = "I"
+tier = "P3"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+
+# ==================================================================================================
+# J. project
+# ==================================================================================================
+
+[[feature]]
+id = "project.window"
+title = "Project window"
+area = "J"
+tier = "P2"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "project.new-from-template"
+title = "New file from templates"
+area = "J"
+tier = "P1"
+milestone = "M4"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "project.diff-files"
+title = "Compare two files"
+area = "J"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "project.diff-directories"
+title = "Compare two folders"
+area = "J"
+tier = "P3"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "project.git"
+title = "Source control integration"
+area = "J"
+tier = "P3"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "project.find-in-schemas"
+title = "Find in schemas"
+area = "J"
+tier = "P3"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+
+# ==================================================================================================
+# K. app
+# ==================================================================================================
+
+[[feature]]
+id = "app.desktop-shell"
+title = "Desktop shell with the PdfCraft look: tab strip, mode bar, panes"
+area = "K"
+tier = "P0"
+milestone = "M0"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "app.settings"
+title = "Persistent settings"
+area = "K"
+tier = "P0"
+milestone = "M0"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "app.single-instance"
+title = "Single instance and open-file requests"
+area = "K"
+tier = "P1"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "app.file-associations"
+title = "File associations for XML, XSD, DTD and related types"
+area = "K"
+tier = "P1"
+milestone = "M0"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Open-with on Windows, UTIs on macOS, MIME types on Linux."
+
+[[feature]]
+id = "app.cli"
+title = "Command-line tool"
+area = "K"
+tier = "P0"
+milestone = "M0"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "app.automation-tools"
+title = "Headless automation tools for every feature"
+area = "K"
+tier = "P0"
+milestone = "M0"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "AGENTS.md section 3."
+
+[[feature]]
+id = "app.mcp-server"
+title = "Opt-in MCP server"
+area = "K"
+tier = "P1"
+milestone = "M0"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "app.control-channel"
+title = "Opt-in UI control channel"
+area = "K"
+tier = "P1"
+milestone = "M0"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "app.accessibility"
+title = "Screen-reader and keyboard accessibility"
+area = "K"
+tier = "P1"
+milestone = "M1"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "AccessKit text node for the editor."
+
+[[feature]]
+id = "app.keyboard-shortcuts"
+title = "Customisable keyboard shortcuts"
+area = "K"
+tier = "P2"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "craft-keymap."
+
+[[feature]]
+id = "app.about-credits"
+title = "About window with contributors"
+area = "K"
+tier = "P1"
+milestone = "M4"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "app.six-targets"
+title = "Releases for Windows x64 and arm64, macOS universal, Linux x64 and arm64"
+area = "K"
+tier = "P0"
+milestone = "M0"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "app.update-check"
+title = "Update check on request"
+area = "K"
+tier = "P2"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "craft-update."
+
+[[feature]]
+id = "app.localization"
+title = "Translated interface"
+area = "K"
+tier = "P3"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "app.web-build"
+title = "Browser build"
+area = "K"
+tier = "P3"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "scope.com-api"
+title = "COM and ActiveX automation API (Windows only)"
+area = "K"
+tier = "N/A"
+milestone = "none"
+status = "na"
+commands = []
+tools = []
+evidence = []
+notes = "Replaced by the cross-platform CLI, automation tools and MCP."
+
+[[feature]]
+id = "scope.ide-plugins"
+title = "Visual Studio and Eclipse plug-ins"
+area = "K"
+tier = "N/A"
+milestone = "none"
+status = "na"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "scope.raptorxml"
+title = "RaptorXML Server hand-off"
+area = "K"
+tier = "N/A"
+milestone = "none"
+status = "na"
+commands = []
+tools = []
+evidence = []
+notes = "Commercial server product."
+
+[[feature]]
+id = "scope.ai-addon"
+title = "Altova AI add-on"
+area = "K"
+tier = "N/A"
+milestone = "none"
+status = "na"
+commands = []
+tools = []
+evidence = []
+notes = "Subscription cloud service."
+
+[[feature]]
+id = "scope.databases"
+title = "Database connectors and schema import"
+area = "K"
+tier = "N/A"
+milestone = "none"
+status = "na"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "scope.xbrl"
+title = "XBRL taxonomy and instance tooling"
+area = "K"
+tier = "N/A"
+milestone = "none"
+status = "na"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "scope.authentic-view"
+title = "Authentic view (forms editing from StyleVision SPS designs)"
+area = "K"
+tier = "N/A"
+milestone = "none"
+status = "na"
+commands = []
+tools = []
+evidence = []
+notes = "Needs a proprietary design format."
+
+[[feature]]
+id = "scope.web-services"
+title = "WSDL editor, SOAP client and debugger"
+area = "K"
+tier = "N/A"
+milestone = "none"
+status = "na"
+commands = []
+tools = []
+evidence = []
+notes = "WSDL and SOAP schemas are still bundled for validation."
+
+[[feature]]
+id = "scope.code-generation"
+title = "Java, C# and C++ code generation from schemas"
+area = "K"
+tier = "N/A"
+milestone = "none"
+status = "na"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "scope.archive-views"
+title = "Archive, OOXML and EPUB views"
+area = "K"
+tier = "N/A"
+milestone = "none"
+status = "na"
+commands = []
+tools = []
+evidence = []
+notes = ""
