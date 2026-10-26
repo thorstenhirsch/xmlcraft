@@ -1,9 +1,8 @@
 [workspace]
 resolver = "3"
-# Widened to "crates/*" and "apps/*" (and default-members to the two apps) as those directories gain members.
-members = ["xtask"]
+members = ["crates/*", "apps/*", "xtask"]
 exclude = ["vendor"]
-default-members = ["xtask"]
+default-members = ["crates/*", "apps/xmlcraft", "xtask"]
 
 [workspace.package]
 version = "0.0.1"
@@ -21,6 +20,9 @@ craft-quit = { git = "https://github.com/storytold/craft-libs", version = "0.1.0
 craft-atomic = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "ea4c823abb46fa9d21361604ed1c6d21c54e9ca8" }
 craft-settings = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "ea4c823abb46fa9d21361604ed1c6d21c54e9ca8" }
 craft-window = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "ea4c823abb46fa9d21361604ed1c6d21c54e9ca8" }
+
+# internal
+xmlcraft-ui-egui = { path = "crates/ui-egui", version = "0.0.1" }
 
 # foundation
 thiserror = "2"
@@ -64,3 +66,8 @@ incremental = false
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+# Vendored, patched third-party crates (see vendor/README.md). Each patch is meant to go upstream.
+[patch.crates-io]
+winit = { path = "vendor/winit" }
+egui-wgpu = { path = "vendor/egui-wgpu" }

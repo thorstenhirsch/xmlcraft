@@ -38,7 +38,14 @@ allow-git = ["https://github.com/storytold/craft-libs"]
 [advisories]
 yanked = "warn"
 # Add an entry here only with a reason and the condition under which to revisit it.
-ignore = []
+ignore = [
+    # zvariant, zbus_names and zvariant_derive are unmaintained (no vulnerability, and no fixed release to move to). They reach the
+    # tree as the D-Bus stack behind `accesskit_unix` -> `atspi`, which is Linux accessibility only (eframe -> egui-winit ->
+    # accesskit_winit). Revisit when the accesskit/zbus chain moves to a maintained successor.
+    { id = "RUSTSEC-2026-0370", reason = "zvariant unmaintained; Linux a11y stack via accesskit_unix" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names unmaintained; Linux a11y stack via accesskit_unix" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive unmaintained; Linux a11y stack via accesskit_unix" },
+]
 
 # egui's default UI fonts (Ubuntu-Light, Hack, emoji-icon-font): font licences on the AGENTS.md
 # §1.2 allowlist, attributed in ATTRIBUTION.toml as dependency-bundled assets.

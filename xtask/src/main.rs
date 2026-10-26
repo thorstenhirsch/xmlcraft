@@ -8,6 +8,7 @@ mod assets;
 mod gates;
 mod layers;
 mod parity;
+mod vendor;
 mod version;
 
 type Command = fn(&[String]) -> anyhow::Result<()>;

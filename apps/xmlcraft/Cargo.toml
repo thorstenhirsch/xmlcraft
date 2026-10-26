@@ -1,0 +1,27 @@
+[package]
+name = "xmlcraft"
+description = "XmlCraft desktop app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-ui-egui = { workspace = true }
+# wgpu draws; OpenGL (glow) is the fallback when wgpu can't start on an old or unusual GPU or driver, and can be chosen with
+# XMLCRAFT_RENDERER=gl.
+eframe = { workspace = true, features = ["default_fonts", "wgpu", "glow", "accesskit", "wayland", "x11", "persistence", "links"] }
+egui = { workspace = true }
+# Records from every crate go to standard error (src/logging.rs).
+log = { workspace = true }
+# The log timestamp goes through chrono (no hand-rolled calendar code).
+chrono = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# ⌘Q asks about unsaved changes like the close button: an app menu whose Quit asks the window to close instead of winit's, which
+# ends the process without asking.
+craft-quit = { workspace = true, features = ["menu"] }

@@ -4,7 +4,7 @@
 
 Every asset XmlCraft includes, bundles or uses to build its published material, with its author, source and licence. The policy is in [AGENTS.md](AGENTS.md) §1. The machine-readable list, with the SHA-256 of every asset but the translation catalogs, is [ATTRIBUTION.toml](ATTRIBUTION.toml). Licence texts are kept beside the assets and summarised in [NOTICE](NOTICE).
 
-## In this repository (59)
+## In this repository (63)
 
 | Asset | Title | Author | Licence | Source | Used for |
 |---|---|---|---|---|---|
@@ -67,8 +67,16 @@ Every asset XmlCraft includes, bundles or uses to build its published material, 
 | `assets/app-icon/hicolor/256x256/apps/io.github.thorstenhirsch.xmlcraft.png` | XmlCraft app icon, 256 px | XmlCraft contributors (original geometric mark composed with AI assistance at the project owner's direction) | MIT OR Apache-2.0 | Contributor-original (see assets/app-icon/README.md) | Linux hicolor theme icon (packaging/linux desktop entry); 256 px is also the runtime window icon |
 | `assets/app-icon/hicolor/512x512/apps/io.github.thorstenhirsch.xmlcraft.png` | XmlCraft app icon, 512 px | XmlCraft contributors (original geometric mark composed with AI assistance at the project owner's direction) | MIT OR Apache-2.0 | Contributor-original (see assets/app-icon/README.md) | Linux hicolor theme icon (packaging/linux desktop entry); 256 px is also the runtime window icon |
 | `assets/app-icon/hicolor/scalable/apps/io.github.thorstenhirsch.xmlcraft.svg` | XmlCraft app icon (scalable) | XmlCraft contributors (original geometric mark composed with AI assistance at the project owner's direction) | MIT OR Apache-2.0 | Contributor-original (see assets/app-icon/README.md) | Linux hicolor scalable icon (packaging/linux desktop entry) |
+| `assets/icons/square.svg` | Lucide icon "square" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/square.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
+| `assets/icons/monitor.svg` | Lucide icon "monitor" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/monitor.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
+| `assets/icons/list-tree.svg` | Lucide icon "list-tree" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/list-tree.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
+| `assets/icons/panel-bottom.svg` | Lucide icon "panel-bottom" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/panel-bottom.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 
-## Compiled in through dependencies (0)
+## Compiled in through dependencies (4)
 
 | Crate | File | Title | Author | Licence | Source | Used for |
 |---|---|---|---|---|---|---|
+| `epaint_default_fonts` 0.36.2 | `fonts/Ubuntu-Light.ttf` | Ubuntu Light | Canonical Ltd. / Dalton Maag | Ubuntu-font-1.0 | https://design.ubuntu.com/font | egui fallback fonts (eframe feature default_fonts) |
+| `epaint_default_fonts` 0.36.2 | `fonts/Hack-Regular.ttf` | Hack Regular | Source Foundry Authors (derived from Bitstream Vera / DejaVu) | MIT AND Bitstream-Vera | https://github.com/source-foundry/Hack | egui fallback fonts (eframe feature default_fonts) |
+| `epaint_default_fonts` 0.36.2 | `fonts/NotoEmoji-Regular.ttf` | Noto Emoji (monochrome) | Google Inc. | OFL-1.1 | https://github.com/googlefonts/noto-emoji | egui fallback fonts (eframe feature default_fonts) |
+| `epaint_default_fonts` 0.36.2 | `fonts/emoji-icon-font.ttf` | emoji-icon-font | John Slegers | MIT | https://github.com/jslegers/emoji-icon-font | egui fallback fonts (eframe feature default_fonts) |

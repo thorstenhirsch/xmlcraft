@@ -24,3 +24,8 @@ dependencies change.
 
 Bundled schemas (schemas/, added in milestone M4) are redistributed unmodified under the licence of
 their publisher; each file is listed with its source and licence in ATTRIBUTION.md.
+
+Vendored (vendor/, patched; see vendor/README.md):
+- winit 0.30.13 — Apache-2.0, Copyright the winit contributors (LICENSE kept in vendor/winit). Carries the input-method, DPI and
+  title-bar patches listed in vendor/README.md.
+- egui-wgpu 0.36.2 — MIT OR Apache-2.0, Copyright the egui contributors (LICENSE-APACHE, LICENSE-MIT kept in vendor/egui-wgpu).

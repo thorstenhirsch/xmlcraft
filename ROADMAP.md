@@ -23,7 +23,8 @@ XmlCraft is a clean-room, open-source XML editor in the spirit of Altova XMLSpy,
 
 ## Progress log
 
+- 2026-10-27: M0.6 + M0.7 app shell: vendored `winit` and `egui-wgpu` (PdfCraft's patches, with a test that the build really resolves them), `xmlcraft-ui-egui` (PdfCraft's theme tokens, fonts, icons, tab strip, mode bar, panes and rail with Outline, Entry Helpers and Messages, status bar, home card, persisted preferences) and the `xmlcraft` app (renderer fallback, panic hook, logger). A headless `shot` example renders the real shell; `tests/shell.rs` drives it.
 - 2026-10-27: M0.5 parity: `cargo xtask parity` and `parity/xmlspy-features.toml` (162 features across 11 areas, all `planned` except 10 out-of-scope `na`), with consistency, evidence and registry checks and tests.
-- 2026-10-27: M0.4 assets: `cargo xtask assets` (policy check against `ATTRIBUTION.toml`, separate schema licence allowlist, Altova rule, generated `ATTRIBUTION.md`), Inter and JetBrains Mono, a 38-icon Lucide starter set (hash-verified against PdfCraft's attribution), and an original placeholder app icon with `packaging/icons.sh`.
+- 2026-10-27: M0.4 assets: `cargo xtask assets` (policy check against `ATTRIBUTION.toml`, separate schema licence allowlist, Altova rule, generated `ATTRIBUTION.md`), Inter and JetBrains Mono, a 46-icon Lucide starter set (hash-verified against PdfCraft's attribution), and an original placeholder app icon with `packaging/icons.sh`.
 - 2026-10-27: M0.3 xtask gates: `version`, `layers` (layer table, sideways edges, standalone rules, with tests), `wasm`, `test`, `deny` and `ci` (fmt, clippy, test, layers, wasm, deny; green). `datatypes` moved to L1 because it builds on the L0 `pattern` crate.
 - 2026-10-27: M0.1 repository skeleton (licences, lint and format configs, NOTICE, README, stub xtask). M0.2 policies (`CLAUDE.md`, `AGENTS.md`, PR template, progress docs).
