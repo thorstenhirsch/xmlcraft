@@ -1,0 +1,12 @@
+*~
+plan/
+/target
+/dist
+/log
+.DS_Store
+# Downloaded conformance suites (xmlconf, xsdtests, JSON-Schema-Test-Suite, yaml-test-suite); never commit them.
+/conformance
+# Pinned real-world XML corpus fetched by `cargo xtask corpus`.
+/corpus
+/fuzz-out
+/bench-out

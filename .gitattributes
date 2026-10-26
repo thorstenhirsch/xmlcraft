@@ -1,0 +1,14 @@
+# Every checkout is byte-identical to the repository: no line-ending conversion, ever.
+# Windows checkouts default to core.autocrlf=true, which would rewrite bundled schemas and assets
+# whose SHA-256 ATTRIBUTION.toml and schemas/manifest.toml record (cargo xtask assets, cargo xtask schemas),
+# and test fixtures whose exact bytes (BOMs, line endings, encodings) are the point of the test.
+* -text
+
+# Not text at all: no textual diffs or merges either.
+*.p12 binary
+*.ttf binary
+*.otf binary
+*.icns binary
+*.ico binary
+*.png binary
+*.zst binary
