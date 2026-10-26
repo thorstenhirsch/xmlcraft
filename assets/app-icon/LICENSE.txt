@@ -1,0 +1,13 @@
+XmlCraft app icon (xmlcraft.svg and every file derived from it in this directory:
+xmlcraft-1024.png, xmlcraft.icns, xmlcraft.ico, hicolor/).
+
+Original artwork made for this project: a geometric mark (a rounded tile, angle brackets and a small
+tree of three nodes) composed with AI assistance at the project owner's direction. It contains no
+third-party material. Licensed like the rest of XmlCraft, under either of
+
+  * Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+  * MIT license (https://opensource.org/licenses/MIT)
+
+at your option.
+
+Regenerate the derived files with packaging/icons.sh.

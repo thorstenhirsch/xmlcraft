@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>XmlCraft app icon</title>
+  <defs>
+    <linearGradient id="field" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4B8BF5"/>
+      <stop offset="1" stop-color="#1B63E0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#field)"/>
+  <g fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round">
+    <!-- the angle brackets of a tag -->
+    <path d="M190 150 L95 256 L190 362" stroke-width="36"/>
+    <path d="M322 150 L417 256 L322 362" stroke-width="36"/>
+    <!-- a document tree: one parent element with two children -->
+    <path d="M256 186 L226 326 M256 186 L286 326" stroke-width="14"/>
+  </g>
+  <g fill="#FFFFFF">
+    <circle cx="256" cy="186" r="22"/>
+    <circle cx="226" cy="326" r="22"/>
+    <circle cx="286" cy="326" r="22"/>
+  </g>
+</svg>

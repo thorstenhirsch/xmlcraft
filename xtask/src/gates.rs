@@ -138,7 +138,7 @@ pub fn deny(_: &[String]) -> anyhow::Result<()> {
 }
 
 /// The full gate, in order, stopping at the first failure. Steps are added here as the commands behind them land (the CLI
-/// without default features, i18n-report, assets, schemas, parity and the conformance ratchet).
+/// without default features, i18n-report, schemas, parity and the conformance ratchet).
 pub fn ci(_: &[String]) -> anyhow::Result<()> {
     type Step = (&'static str, Box<dyn Fn() -> anyhow::Result<()>>);
     let steps: Vec<Step> = vec![
@@ -147,6 +147,7 @@ pub fn ci(_: &[String]) -> anyhow::Result<()> {
         ("test", Box::new(|| test(&[]))),
         ("layers", Box::new(|| layers(&[]))),
         ("wasm", Box::new(|| wasm(&[]))),
+        ("assets", Box::new(|| crate::assets::run(&[]))),
         ("deny", Box::new(|| deny(&[]))),
     ];
     for (i, (name, f)) in steps.iter().enumerate() {

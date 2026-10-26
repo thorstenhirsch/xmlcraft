@@ -22,5 +22,6 @@ Nothing is measured yet. Conformance numbers (W3C xmlconf and xsdtests) start wi
 
 ## Progress log
 
+- 2026-10-27: M0.4 assets: `cargo xtask assets` (policy check against `ATTRIBUTION.toml`, separate schema licence allowlist, Altova rule, generated `ATTRIBUTION.md`), Inter and JetBrains Mono, a 38-icon Lucide starter set (hash-verified against PdfCraft's attribution), and an original placeholder app icon with `packaging/icons.sh`.
 - 2026-10-27: M0.3 xtask gates: `version`, `layers` (layer table, sideways edges, standalone rules, with tests), `wasm`, `test`, `deny` and `ci` (fmt, clippy, test, layers, wasm, deny; green). `datatypes` moved to L1 because it builds on the L0 `pattern` crate.
 - 2026-10-27: M0.1 repository skeleton (licences, lint and format configs, NOTICE, README, stub xtask). M0.2 policies (`CLAUDE.md`, `AGENTS.md`, PR template, progress docs).

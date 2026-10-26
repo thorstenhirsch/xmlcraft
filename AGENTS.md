@@ -44,7 +44,7 @@ Anything else is forbidden, including assets whose licence you cannot prove from
 
 ### 1.3 Every asset is attributed
 
-- **`ATTRIBUTION.toml`** (repo root) is the single source of truth. It has **one entry per asset file**, whether committed, vendored, fetched at build time or bundled through a Cargo dependency. Each entry records:
+- **`ATTRIBUTION.toml`** (repo root) is the single source of truth. It has **one entry per asset file**, whether committed, vendored or bundled through a Cargo dependency. Each entry records:
   - path or URL, title, author;
   - source (URL, with version or commit);
   - SPDX licence, and the licence file in the repo;
@@ -58,7 +58,8 @@ Anything else is forbidden, including assets whose licence you cannot prove from
   - an entry's hash is missing or does not match (translation catalogs carry none);
   - a licence is not on the allowlist;
   - a licence file is missing;
-  - an image, icon or font names Altova as author or source.
+  - an icon, image, font, schema or data file names Altova or XMLSpy as author, source or title;
+  - a bundled schema's licence is not on the closed schema allowlist (§1.6).
 
 ### 1.4 Fonts
 
