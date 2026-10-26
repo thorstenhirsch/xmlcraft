@@ -3,16 +3,20 @@
 //! The egui shell of XmlCraft: the window chrome, panes and theme, with the look of PdfCraft.
 
 mod chrome;
+mod commands;
 mod home;
 mod i18n;
 mod icon_data;
 mod icons;
 mod motion;
+mod palette;
 mod side_panels;
 pub mod theme;
 mod widgets;
 
 use serde::{Deserialize, Serialize};
+
+use xmlcraft_engine::Session;
 
 use crate::side_panels::{RightPanel, SidePanels};
 use crate::theme::{ThemeKind, ThemePreference};
@@ -35,11 +39,6 @@ pub enum Mode {
 pub struct TabInfo {
     pub name: String,
     pub dirty: bool,
-}
-
-/// `Ctrl+K` (⌘K on macOS) for the key `key`, as it reads in this platform's menus.
-pub fn primary_shortcut(key: &str) -> String {
-    if cfg!(target_os = "macos") { format!("⌘{key}") } else { format!("Ctrl+{key}") }
 }
 
 /// What is saved between runs. Anything missing or malformed falls back to its default.
@@ -84,6 +83,15 @@ pub struct XmlCraftApp {
     pub right: Option<RightPanel>,
     pub bottom_open: bool,
     pub palette_open: bool,
+    pub palette_query: String,
+    palette_last_query: String,
+    palette_selected: usize,
+    /// The open documents and the commands that act on them.
+    pub session: Session,
+    /// Commands for the window that a command asked for; sent on the next frame.
+    viewport_commands: Vec<egui::ViewportCommand>,
+    /// What the status bar says instead of "Ready": the last command's trouble, if any.
+    pub status: String,
     /// On macOS the tab strip is the title bar.
     pub integrated_titlebar: bool,
     side_panels: SidePanels,
@@ -109,6 +117,12 @@ impl XmlCraftApp {
             right: prefs.right,
             bottom_open: prefs.bottom_open,
             palette_open: false,
+            palette_query: String::new(),
+            palette_last_query: String::new(),
+            palette_selected: 0,
+            session: Session::new(),
+            viewport_commands: Vec::new(),
+            status: String::new(),
             integrated_titlebar: cfg!(target_os = "macos"),
             side_panels: prefs.side_panels,
             applied: None,
@@ -155,6 +169,10 @@ impl XmlCraftApp {
 impl eframe::App for XmlCraftApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.sync_theme(ctx);
+        self.handle_shortcuts(ctx);
+        for command in self.viewport_commands.drain(..) {
+            ctx.send_viewport_cmd(command);
+        }
         // Last, so it sees any `CancelClose` above: on macOS a close quits through `terminate:` (the Touch Bar crash).
         craft_quit::on_close_request(ctx);
     }
@@ -166,6 +184,7 @@ impl eframe::App for XmlCraftApp {
         // The status bar is outermost at the bottom, the messages panel sits above it.
         chrome::status_bar(self, ui);
         side_panels::show(self, ui);
+        palette::show(self, ui.ctx());
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.pasteboard)).show(ui, |ui| {
             if self.active.is_none() {
                 home::show(ui);
@@ -262,11 +281,5 @@ mod tests {
         app.close_tab(usize::MAX);
         assert_eq!(app.tabs.len(), 1);
         assert_eq!(XmlCraftApp::with_prefs(Prefs::default()).tabs.len(), 0);
-    }
-
-    #[test]
-    fn the_shortcut_reads_like_the_platform() {
-        let s = primary_shortcut("K");
-        if cfg!(target_os = "macos") { assert_eq!(s, "⌘K") } else { assert_eq!(s, "Ctrl+K") }
     }
 }

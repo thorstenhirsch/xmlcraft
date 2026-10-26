@@ -116,6 +116,13 @@ mod tests {
     }
 
     #[test]
+    fn every_command_icon_exists() {
+        for c in xmlcraft_engine::commands::COMMANDS {
+            assert!(exists(c.icon), "missing icon {} ({})", c.icon, c.id);
+        }
+    }
+
+    #[test]
     fn the_icons_the_shell_uses_exist() {
         for name in [
             "house",

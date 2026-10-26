@@ -11,6 +11,7 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+xmlcraft-engine = { workspace = true }
 craft-ui = { workspace = true }
 # macOS: a window close quits through `terminate:` (the Touch Bar crash); elsewhere a no-op.
 craft-quit = { workspace = true, features = ["egui"] }

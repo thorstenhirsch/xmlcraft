@@ -23,6 +23,7 @@ XmlCraft is a clean-room, open-source XML editor in the spirit of Altova XMLSpy,
 
 ## Progress log
 
+- 2026-10-27: M0.8 engine and commands: `xmlcraft-engine` with the command registry (ids, labels, menus, shortcuts, kinds, when-enabled), a session and the panic guard; the app runs every command through one guarded `execute`, handles registry shortcuts, builds its Menu from the registry, and has the ⌘K palette.
 - 2026-10-27: M0.6 + M0.7 app shell: vendored `winit` and `egui-wgpu` (PdfCraft's patches, with a test that the build really resolves them), `xmlcraft-ui-egui` (PdfCraft's theme tokens, fonts, icons, tab strip, mode bar, panes and rail with Outline, Entry Helpers and Messages, status bar, home card, persisted preferences) and the `xmlcraft` app (renderer fallback, panic hook, logger). A headless `shot` example renders the real shell; `tests/shell.rs` drives it.
 - 2026-10-27: M0.5 parity: `cargo xtask parity` and `parity/xmlspy-features.toml` (162 features across 11 areas, all `planned` except 10 out-of-scope `na`), with consistency, evidence and registry checks and tests.
 - 2026-10-27: M0.4 assets: `cargo xtask assets` (policy check against `ATTRIBUTION.toml`, separate schema licence allowlist, Altova rule, generated `ATTRIBUTION.md`), Inter and JetBrains Mono, a 46-icon Lucide starter set (hash-verified against PdfCraft's attribution), and an original placeholder app icon with `packaging/icons.sh`.

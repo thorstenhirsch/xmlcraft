@@ -83,7 +83,11 @@ pub fn tab_strip(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                     let tip = format!("{}: {label}", tl!("Display theme"));
                     // A click cycles System, Light, Dark.
                     if icons::button(ui, icon, button, false, &tip).clicked() {
-                        app.theme_preference = app.theme_preference.next();
+                        app.execute(match app.theme_preference.next() {
+                            ThemePreference::System => "view.theme.system",
+                            ThemePreference::Light => "view.theme.light",
+                            ThemePreference::Dark => "view.theme.dark",
+                        });
                     }
                 });
             });
@@ -171,8 +175,9 @@ pub fn mode_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     ui.add_space(8.0);
-                    if widgets::search_box(ui, tl!("Find tools and commands"), &crate::primary_shortcut("K"), 260.0).clicked() {
-                        app.palette_open = true;
+                    let shortcut = crate::commands::command_shortcut_label(ui.ctx(), "view.palette");
+                    if widgets::search_box(ui, tl!("Find tools and commands"), &shortcut, 260.0).clicked() {
+                        app.execute("view.palette");
                     }
                 });
             });
@@ -183,38 +188,11 @@ fn main_menu(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
     let resp = widgets::ghost_button(ui, "panel-left", tl!("Menu"));
     egui::Popup::menu(&resp).show(|ui| {
         ui.set_min_width(230.0);
-        ui.menu_button(tl!("View"), |ui| {
-            if ui.add(widgets::checkbox(&mut app.left_open, tl!("Outline"))).clicked() {
-                ui.close();
+        // Straight from the command registry; a menu with no commands yet is not shown.
+        for menu in xmlcraft_engine::commands::MENUS {
+            if xmlcraft_engine::commands::in_menu(menu).next().is_some() {
+                ui.menu_button(crate::i18n::t(menu), |ui| crate::commands::registry_menu(app, ui, menu));
             }
-            let mut messages = app.bottom_open;
-            if ui.add(widgets::checkbox(&mut messages, tl!("Messages"))).clicked() {
-                app.bottom_open = messages;
-                ui.close();
-            }
-            let mut helpers = app.right.is_some();
-            if ui.add(widgets::checkbox(&mut helpers, tl!("Entry Helpers"))).clicked() {
-                app.right = helpers.then_some(crate::side_panels::RightPanel::EntryHelpers);
-                ui.close();
-            }
-            ui.separator();
-            ui.menu_button(tl!("Display theme"), |ui| {
-                for (preference, label) in [
-                    (ThemePreference::System, tl!("Use system setting")),
-                    (ThemePreference::Light, tl!("Light")),
-                    (ThemePreference::Dark, tl!("Dark")),
-                ] {
-                    if ui.add(widgets::radio(app.theme_preference == preference, label)).clicked() {
-                        app.theme_preference = preference;
-                        ui.close();
-                    }
-                }
-            });
-        });
-        ui.separator();
-        if ui.button(tl!("Quit")).clicked() {
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-            ui.close();
         }
     });
 }
@@ -227,12 +205,13 @@ pub fn status_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
         .show(ui, |ui| {
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing.x = 14.0;
-                ui.label(egui::RichText::new(tl!("Ready")).font(theme::regular(11.5)).color(t.text_muted));
+                let status = if app.status.is_empty() { tl!("Ready") } else { app.status.as_str() };
+                ui.label(egui::RichText::new(status).font(theme::regular(11.5)).color(t.text_muted));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
                     ui.label(egui::RichText::new(format!("{} {}", crate::APP_NAME, crate::VERSION)).font(theme::regular(11.5)).color(t.text_faint));
                     if !app.bottom_open && widgets::ghost_button_sized(ui, "panel-bottom", tl!("Messages"), 22.0).clicked() {
-                        app.bottom_open = true;
+                        app.execute("view.messages");
                     }
                 });
             });
