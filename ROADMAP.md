@@ -22,4 +22,5 @@ Nothing is measured yet. Conformance numbers (W3C xmlconf and xsdtests) start wi
 
 ## Progress log
 
+- 2026-10-27: M0.3 xtask gates: `version`, `layers` (layer table, sideways edges, standalone rules, with tests), `wasm`, `test`, `deny` and `ci` (fmt, clippy, test, layers, wasm, deny; green). `datatypes` moved to L1 because it builds on the L0 `pattern` crate.
 - 2026-10-27: M0.1 repository skeleton (licences, lint and format configs, NOTICE, README, stub xtask). M0.2 policies (`CLAUDE.md`, `AGENTS.md`, PR template, progress docs).

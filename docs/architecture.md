@@ -19,8 +19,8 @@ One Cargo workspace (edition 2024, Rust ≥ 1.95, `MIT OR Apache-2.0`): library 
 
 | Layer | Crates | Role |
 |---|---|---|
-| L0 foundation | `text`, `pattern`, `datatypes`, `schemas` | Rope buffer, positions, encodings and undo log; XSD regular expressions; the 44 XSD built-in types and facets; the embedded bundle of standard schemas |
-| L1 syntax | `syntax` | Restartable lexer, lossless error-tolerant CST, streaming reader, well-formedness, namespaces, the shared `Diagnostic` type |
+| L0 foundation | `text`, `pattern`, `schemas` | Rope buffer, positions, encodings and undo log; XSD regular expressions; the embedded bundle of standard schemas |
+| L1 syntax and datatypes | `syntax`, `datatypes` | Restartable lexer, lossless error-tolerant CST, streaming reader, well-formedness, namespaces, the shared `Diagnostic` type (on `text`); the 44 XSD built-in types and facets (on `pattern`) |
 | L2 core model | `grammar`, `catalog` | **The one schema model both DTD and XSD compile into** (declarations, content-model automata, identity constraints, documentation, origin spans); OASIS XML Catalogs |
 | L3 core services | `dtd`, `xsd`, `resolve`, `json` (M5) | Schema readers that compile to `grammar`; the resolution chain (open documents → catalogs → local files → cache → network) behind traits; JSON/YAML syntax and JSON Schema |
 | L4 features | `validate`, `infer`, `sample`, `format`, `complete` | Validation; schema inference; sample generation; formatting as minimal edits; completion, Entry Helpers and quick fixes |
