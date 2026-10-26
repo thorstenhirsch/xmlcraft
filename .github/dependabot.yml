@@ -1,0 +1,31 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    groups:
+      cargo-dependencies:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps)"
+    # The vendored crates and the pinned craft-libs revision move by hand (vendor/README.md, Cargo.toml).
+    ignore:
+      - dependency-name: "winit"
+      - dependency-name: "egui-wgpu"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci(deps)"

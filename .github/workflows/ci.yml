@@ -1,0 +1,135 @@
+name: CI
+
+# Quality gates for every push to main and every pull request: `cargo xtask ci` (fmt, clippy, tests, layering, wasm, assets,
+# parity, dependency policy). Pull requests run on Linux; pushes to main, and pull requests labelled `full-ci`, also run on
+# Windows and macOS. Nightly fuzzing and the conformance suites are in their own workflows.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    # `labeled` so that adding `full-ci` to an open PR starts a run with Windows and macOS in it.
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+# The token is only used to check out the code: no job writes to the repository.
+permissions:
+  contents: read
+
+# A newer push to a PR branch cancels its older run; every push to main runs to the end. Adding any label but `full-ci` gets a
+# group of its own, so it neither runs the gate nor cancels a run.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Git dependencies must come from the shared storytold/craft-libs repository, pinned by revision, and nothing may replace or
+  # patch a source behind the lock file's back.
+  git-sources:
+    if: github.event.action != 'labeled' || github.event.label.name == 'full-ci'
+    name: Git dependencies come from storytold
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Git dependencies come from storytold
+        run: |
+          set -euo pipefail
+          test -f Cargo.lock || { echo "Cargo.lock is missing"; exit 1; }
+          # Source replacement, patches and path overrides in cargo config never show up in Cargo.lock. Parsed rather than
+          # grepped: TOML has many spellings of one key. Cargo still reads the legacy .cargo/config.
+          python3 - <<'PY'
+          import os, sys, tomllib
+          for path in (".cargo/config", ".cargo/config.toml"):
+              if not os.path.exists(path):
+                  continue
+              config = tomllib.load(open(path, "rb"))
+              replaced = [name for name, source in config.get("source", {}).items()
+                          if isinstance(source, dict) and "replace-with" in source]
+              if replaced or "patch" in config or "paths" in config:
+                  print(f"{path} replaces, patches or overrides a source")
+                  sys.exit(1)
+          PY
+          # Fails when Cargo.lock is out of date with the manifests.
+          cargo metadata --locked --format-version 1 > /dev/null
+          python3 - <<'PY'
+          import sys, tomllib
+          lock = tomllib.load(open("Cargo.lock", "rb"))
+          bad = sorted({p["source"] for p in lock.get("package", [])
+                        if p.get("source", "").startswith("git+")
+                        and not p["source"].startswith("git+https://github.com/storytold/")})
+          if bad:
+              print("Git dependencies outside github.com/storytold:", *bad, sep="\n")
+              sys.exit(1)
+          PY
+
+  gate:
+    if: github.event.action != 'labeled' || github.event.label.name == 'full-ci'
+    name: gate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      # A failing leg must not cancel the others and hide their failures.
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON((github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && '["ubuntu-24.04","windows-latest","macos-15"]' || '["ubuntu-24.04"]') }}
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      CARGO_NET_RETRY: 10
+      RUST_BACKTRACE: 1
+      # Dependencies carry no debug info and our own crates only line tables (the repository's dev profile): keep it so.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      # The oracle tests (xmllint) must run in CI, not skip.
+      XMLCRAFT_ORACLES_REQUIRED: ${{ runner.os == 'Linux' && '1' || '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Nothing waits on it: the space is free before the build needs it.
+      - name: Free disk space
+        if: runner.os == 'Linux'
+        run: |
+          nohup sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL </dev/null >/dev/null 2>&1 &
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev libxml2-utils
+
+      - name: Install Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal --no-self-update --component clippy --component rustfmt --target wasm32-unknown-unknown
+          rustup default stable
+          rustc --version
+
+      - name: Install cargo tools
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-nextest@0.9.150,cargo-deny@0.20.2
+
+      # Only the default branch writes, so PR caches never evict its entry; a failing gate still saves. rust-cache hashes only the
+      # members' manifests, so the root Cargo.toml goes in the key or a profile change in a virtual root keeps restoring the old
+      # cache.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          prefix-key: v1-rust
+          key: ${{ hashFiles('Cargo.toml') }}
+          save-if: ${{ github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch }}
+          cache-on-failure: true
+
+      - name: Gate
+        shell: bash
+        run: cargo xtask ci
+
+      # A gate that changed Cargo.lock ran against a lockfile that is not the one in the repository.
+      - name: Lockfile unchanged
+        shell: bash
+        run: git diff --exit-code -- Cargo.lock
