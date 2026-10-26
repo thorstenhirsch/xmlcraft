@@ -81,8 +81,6 @@ jobs:
       RUST_BACKTRACE: 1
       # Dependencies carry no debug info and our own crates only line tables (the repository's dev profile): keep it so.
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
-      # The oracle tests (xmllint) must run in CI, not skip.
-      XMLCRAFT_ORACLES_REQUIRED: ${{ runner.os == 'Linux' && '1' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -101,6 +99,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev libxml2-utils
+
+      # The oracle tests (xmllint) must run on Linux, not skip. (`runner` is not available in a job-level `env`.)
+      - name: Require the oracles
+        if: runner.os == 'Linux'
+        run: echo "XMLCRAFT_ORACLES_REQUIRED=1" >> "$GITHUB_ENV"
 
       - name: Install Rust
         shell: bash
