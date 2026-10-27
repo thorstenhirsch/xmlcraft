@@ -177,31 +177,38 @@ impl Editor {
     /// end of `first`. Returns whether anything was folded: not when the lines are not all in the text, there is nothing to hide, or this
     /// is a fold already.
     pub fn fold_lines(&mut self, first: usize, last: usize) -> bool {
-        if first >= last || last >= self.buffer.line_count() {
+        self.fold_many(&[(first, last)])
+    }
+
+    /// [`Editor::fold_lines`] for many (first line, last line) pairs at once: the folds are put in order and the map is made once, so
+    /// folding everything in a text with tens of thousands of ranges is not tens of thousands of times the work of folding one.
+    pub fn fold_many(&mut self, ranges: &[(usize, usize)]) -> bool {
+        let line_count = self.buffer.line_count();
+        let mut known: std::collections::HashSet<(usize, usize)> = self.folds.iter().map(|f| (f.hidden.start, f.hidden.end)).collect();
+        let mut added: Vec<Fold> = Vec::new();
+        for &(first, last) in ranges {
+            if first >= last || last >= line_count {
+                continue;
+            }
+            let (Some(start), Some(end)) = (self.buffer.line_range(first).map(|r| r.end), self.buffer.line_range(last).map(|r| r.end)) else {
+                continue;
+            };
+            if !known.insert((start, end)) {
+                continue;
+            }
+            let mut fold = Fold { hidden: start..end, tail: 0 };
+            fold.tail = zone_of_fold(&self.buffer, &fold).1 - end;
+            added.push(fold);
+        }
+        if added.is_empty() {
             return false;
         }
-        let (Some(start), Some(end)) = (self.buffer.line_range(first).map(|r| r.end), self.buffer.line_range(last).map(|r| r.end)) else {
-            return false;
-        };
-        let mut fold = Fold { hidden: start..end, tail: 0 };
-        fold.tail = zone_of_fold(&self.buffer, &fold).1 - end;
-        if self.folds.iter().any(|f| f.hidden == fold.hidden) {
-            return false;
-        }
-        let zone_end = end + fold.tail;
-        let at = self.folds.partition_point(|f| (f.hidden.start, f.hidden.end) < (start, end));
-        self.folds.insert(at, fold);
+        self.folds.extend(added);
+        self.folds.sort_by_key(|f| (f.hidden.start, f.hidden.end));
         self.rebuild_fold_map();
         // What was in the hidden lines goes to the end of the line that stands for them.
-        let hidden = |offset: usize| start < offset && offset <= zone_end;
-        let moved: Vec<Caret> = self
-            .carets
-            .iter()
-            .map(|c| {
-                let (anchor, head) = (if hidden(c.sel.anchor) { start } else { c.sel.anchor }, if hidden(c.sel.head) { start } else { c.sel.head });
-                Caret::new(anchor, head)
-            })
-            .collect();
+        let out = |offset: usize| self.fold_map.zone_of(offset).map_or(offset, |(start, _)| start);
+        let moved: Vec<Caret> = self.carets.iter().map(|c| Caret::new(out(c.sel.anchor), out(c.sel.head))).collect();
         self.set_carets_raw(moved, self.primary);
         true
     }
@@ -542,6 +549,24 @@ mod tests {
         assert_eq!(e.folds()[0].tail, 0);
         e.apply_edits(&[Edit::insert(4, "X")]);
         assert_eq!(e.folds().len(), 1, "the start of line 2 is after the fold");
+    }
+
+    #[test]
+    fn many_folds_are_made_in_one_go() {
+        // Review: one rebuild of the map per fold made folding everything in a big text take quadratic time.
+        let text = (0..60_000).map(|i| format!("l{i}")).collect::<Vec<_>>().join("\n");
+        let mut e = Editor::new(&text);
+        let ranges: Vec<(usize, usize)> = (0..20_000).map(|i| (3 * i, 3 * i + 2)).collect();
+        let started = std::time::Instant::now();
+        assert!(e.fold_many(&ranges));
+        assert!(started.elapsed() < std::time::Duration::from_secs(5), "took {:?}", started.elapsed());
+        assert_eq!((e.folds().len(), e.visible_rows()), (20_000, 60_000 - 40_000));
+        assert!(!e.fold_many(&ranges), "folded already: nothing changed");
+        // Some that are not there, backwards, and past the text are skipped; the good ones are made.
+        let mut e = Editor::new("a\nb\nc\nd\ne");
+        assert!(e.fold_many(&[(3, 3), (9, 12), (0, 1), (2, 4)]));
+        assert_eq!(e.folds().len(), 2);
+        assert_eq!((e.is_line_hidden(1), e.is_line_hidden(3), e.is_line_hidden(4)), (true, true, true));
     }
 
     #[test]

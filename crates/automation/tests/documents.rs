@@ -431,6 +431,11 @@ fn what_can_be_folded_is_listed_and_folding_it_hides_lines() {
     let wide = format!("<r>\n{}</r>", "<i>\n x\n</i>\n".repeat(50_010));
     let capped = ok(&mut a, "xml_folds", json!({ "text": wide }));
     assert_eq!((capped["count"].as_u64(), capped["truncated"].as_bool()), (Some(50_000), Some(true)), "the list says it is not all of it");
+    // Opening everything needs no analysis: it works on a text that is too large to have one, where folding says why it cannot.
+    let huge = ok(&mut a, "doc_new", json!({ "text": "x\n".repeat(17_000_000) }))["id"].as_u64().expect("id");
+    assert_eq!(ok(&mut a, "doc_fold", json!({ "id": huge, "action": "unfold_all" }))["changed"], false);
+    assert!(err(&mut a, "doc_fold", json!({ "id": huge, "action": "fold_all" })).contains("too large"));
+    ok(&mut a, "doc_close", json!({ "id": huge, "discard": true }));
     // Bad arguments say what is wrong.
     assert!(err(&mut a, "doc_fold", json!({ "id": id, "action": "fold", "line": 2 })).contains("go together"));
     assert!(err(&mut a, "doc_fold", json!({ "id": id, "action": "level" })).contains("level is missing"));
