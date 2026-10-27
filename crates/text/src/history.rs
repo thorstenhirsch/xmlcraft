@@ -123,6 +123,7 @@ impl History {
         self.undo.clear();
         self.redo.clear();
         self.bytes = 0;
+        self.dropped = 0;
         self.closed = true;
     }
 
@@ -133,7 +134,9 @@ impl History {
         if forward.is_empty() {
             return;
         }
-        self.redo.clear();
+        for undone in self.redo.drain(..) {
+            self.bytes = self.bytes.saturating_sub(undone.bytes());
+        }
         let merge = kind.merges()
             && !self.closed
             && self.undo.last().is_some_and(|last| last.kind == kind && last.after == before && (time - last.time).abs() <= MERGE_WINDOW);
@@ -167,17 +170,27 @@ impl History {
         self.dropped = self.dropped.saturating_add(dropped);
     }
 
+    /// Apply `edits` and check that what they replaced is what `expected` says it should be (the edits that would put it back). If the
+    /// text is not as the history remembers, nothing changes and the answer is [`TextError::HistoryMismatch`].
+    fn apply_checked(&self, buffer: &mut Buffer, edits: &[Edit], expected: &[Edit]) -> Result<(), TextError> {
+        let backup = buffer.clone();
+        let replaced = buffer.apply_all(edits)?;
+        if replaced != expected {
+            *buffer = backup;
+            return Err(TextError::HistoryMismatch);
+        }
+        Ok(())
+    }
+
     /// Undo the last change; returns the selections from before it.
     pub fn undo(&mut self, buffer: &mut Buffer) -> Result<Option<Vec<Selection>>, TextError> {
         let Some(entry) = self.undo.pop() else { return Ok(None) };
         self.bytes = self.bytes.saturating_sub(entry.bytes());
-        match buffer.apply_all(&entry.inverse) {
-            Ok(_) => {}
-            Err(e) => {
-                // The text no longer matches this history (it was changed behind its back): the history is useless from here.
-                self.clear();
-                return Err(e);
-            }
+        // Undoing replaces what the change wrote with what it replaced, so what comes back out must be exactly what it wrote.
+        if let Err(e) = self.apply_checked(buffer, &entry.inverse, &entry.forward) {
+            // The text no longer matches this history (it was changed behind its back): the history is useless from here.
+            self.clear();
+            return Err(e);
         }
         let before = entry.before.clone();
         self.bytes = self.bytes.saturating_add(entry.bytes());
@@ -190,12 +203,9 @@ impl History {
     pub fn redo(&mut self, buffer: &mut Buffer) -> Result<Option<Vec<Selection>>, TextError> {
         let Some(entry) = self.redo.pop() else { return Ok(None) };
         self.bytes = self.bytes.saturating_sub(entry.bytes());
-        match buffer.apply_all(&entry.forward) {
-            Ok(_) => {}
-            Err(e) => {
-                self.clear();
-                return Err(e);
-            }
+        if let Err(e) = self.apply_checked(buffer, &entry.forward, &entry.inverse) {
+            self.clear();
+            return Err(e);
         }
         let after = entry.after.clone();
         self.bytes = self.bytes.saturating_add(entry.bytes());
@@ -302,6 +312,12 @@ mod tests {
         }
         assert!(h.undo_len() < 50 && h.undo_len() >= 1, "{}", h.undo_len());
         assert_eq!(h.dropped_steps() + h.undo_len(), 50);
+        h.clear();
+        assert_eq!(h.dropped_steps(), 0, "a cleared history has dropped nothing");
+        for i in 0..50 {
+            let end = buf.len();
+            do_edit(&mut buf, &mut h, vec![Edit::insert(end, "x".repeat(100))], 0, 0, EditKind::Other, f64::from(i));
+        }
         assert!(h.bytes <= 2_000 + 400, "{}", h.bytes);
         // One huge edit is kept, even though it alone is over the limit.
         let big = Edit::insert(buf.len(), "y".repeat(10_000));
@@ -319,6 +335,47 @@ mod tests {
         assert!(h.undo(&mut buf).is_err());
         assert!(!h.can_undo() && !h.can_redo(), "the history is dropped");
         assert_eq!(h.undo(&mut buf).expect("nothing to do"), None);
+    }
+
+    #[test]
+    fn an_edit_of_the_same_length_behind_the_histories_back_is_noticed() {
+        let mut buf = Buffer::from_text("abc");
+        let mut h = History::new();
+        do_edit(&mut buf, &mut h, vec![Edit::replace(0..1, "X")], 0, 1, EditKind::Other, 0.0);
+        // Same length, so the ranges still fit: only the content tells.
+        buf.apply(&Edit::replace(0..1, "Y")).expect("valid");
+        assert_eq!(h.undo(&mut buf), Err(TextError::HistoryMismatch));
+        assert!(buf.eq_str("Ybc"), "the text is as the other edit left it");
+        assert!(!h.can_undo() && !h.can_redo(), "the history is dropped");
+        // The same on the way back.
+        let mut buf = Buffer::from_text("abc");
+        let mut h = History::new();
+        do_edit(&mut buf, &mut h, vec![Edit::replace(0..1, "X")], 0, 1, EditKind::Other, 0.0);
+        h.undo(&mut buf).expect("ok");
+        buf.apply(&Edit::replace(0..1, "Z")).expect("valid");
+        assert_eq!(h.redo(&mut buf), Err(TextError::HistoryMismatch));
+        assert!(buf.eq_str("Zbc"));
+    }
+
+    #[test]
+    fn the_byte_count_follows_every_entry_through_undo_new_edits_and_clearing() {
+        let total = |h: &History| h.undo.iter().chain(&h.redo).map(Entry::bytes).sum::<usize>();
+        let mut buf = Buffer::from_text("");
+        let mut h = History::new();
+        for i in 0..5 {
+            let end = buf.len();
+            do_edit(&mut buf, &mut h, vec![Edit::insert(end, "xyz")], 0, 0, EditKind::Other, f64::from(i));
+        }
+        h.undo(&mut buf).expect("ok");
+        h.undo(&mut buf).expect("ok");
+        assert_eq!(h.bytes, total(&h));
+        // A new change ends the redo stack, and its bytes stop counting.
+        let end = buf.len();
+        do_edit(&mut buf, &mut h, vec![Edit::insert(end, "q")], 0, 0, EditKind::Other, 9.0);
+        assert!(!h.can_redo());
+        assert_eq!(h.bytes, total(&h));
+        h.clear();
+        assert_eq!((h.bytes, h.dropped_steps()), (0, 0));
     }
 
     #[test]

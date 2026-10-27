@@ -74,14 +74,47 @@ proptest! {
         }
     }
 
+    /// With every change its own step, undo walks back through exactly the texts there were, in reverse, and redo forward again.
     #[test]
-    fn undo_and_redo_walk_through_every_text(
+    fn undo_and_redo_walk_through_exactly_the_texts_there_were(
+        initial in "[a-zé日\n ]{0,40}",
+        steps in proptest::collection::vec(raw(), 1..20),
+    ) {
+        let mut buf = Buffer::from_text(&initial);
+        let mut history = History::with_limit(1 << 30);
+        let mut states = vec![initial.clone()];
+        let mut model = initial;
+        for (i, r) in steps.iter().enumerate() {
+            let edit = to_edit(&model, r);
+            let caret = edit.range.start;
+            let inverse = buf.apply_all(std::slice::from_ref(&edit)).expect("valid");
+            model.replace_range(edit.range.clone(), &edit.text);
+            let after = caret + edit.text.len();
+            history.record(vec![edit], inverse, vec![Selection::caret(caret)], vec![Selection::caret(after)], EditKind::Other, i as f64);
+            states.push(model.clone());
+        }
+        for expected in states.iter().rev().skip(1) {
+            prop_assert!(history.undo(&mut buf).expect("consistent").is_some());
+            prop_assert_eq!(&buf.text(), expected);
+        }
+        prop_assert!(!history.can_undo());
+        for expected in states.iter().skip(1) {
+            prop_assert!(history.redo(&mut buf).expect("consistent").is_some());
+            prop_assert_eq!(&buf.text(), expected);
+        }
+        prop_assert!(!history.can_redo());
+    }
+
+    /// With typing and deleting merged into runs, undo still only ever visits texts there were, in reverse order, and ends at the start;
+    /// redo comes back to the end through texts there were, in order.
+    #[test]
+    fn merged_runs_undo_and_redo_through_texts_in_order(
         initial in "[a-zé日\n ]{0,40}",
         steps in proptest::collection::vec((raw(), 0u8..3), 1..20),
     ) {
         let mut buf = Buffer::from_text(&initial);
         let mut history = History::with_limit(1 << 30);
-        let mut texts = vec![initial.clone()];
+        let mut states = vec![initial.clone()];
         let mut model = initial;
         let mut time = 0.0;
         for (r, kind) in &steps {
@@ -93,24 +126,27 @@ proptest! {
             let after = caret + edit.text.len();
             history.record(vec![edit], inverse, vec![Selection::caret(caret)], vec![Selection::caret(after)], kind, time);
             time += 0.1;
-            if texts.last() != Some(&model) {
-                texts.push(model.clone());
-            }
+            states.push(model.clone());
         }
         let end_text = buf.text();
-        // Undo all the way: the buffer ends at the initial text, passing only through texts that existed.
-        let mut seen = vec![buf.text()];
+        // Going back: each text seen is a state from somewhere earlier than the one before it.
+        let mut at = states.len() - 1;
         while history.can_undo() {
             prop_assert!(history.undo(&mut buf).expect("consistent").is_some());
-            seen.push(buf.text());
+            let now = buf.text();
+            let found = states[..at].iter().rposition(|s| *s == now);
+            prop_assert!(found.is_some(), "undo produced a text that never existed before this point: {:?}", now);
+            at = found.unwrap_or(0);
         }
-        prop_assert_eq!(&buf.text(), &texts[0]);
-        for t in &seen {
-            prop_assert!(texts.contains(t), "undo produced a text that never existed: {:?}", t);
-        }
-        // Redo all the way: back at the end.
+        prop_assert_eq!(&buf.text(), &states[0]);
+        // Coming forward: each text seen is a state from somewhere later.
+        let mut at = 0;
         while history.can_redo() {
             prop_assert!(history.redo(&mut buf).expect("consistent").is_some());
+            let now = buf.text();
+            let found = states.iter().skip(at + 1).position(|s| *s == now);
+            prop_assert!(found.is_some(), "redo produced a text that never existed after this point: {:?}", now);
+            at += 1 + found.unwrap_or(0);
         }
         prop_assert_eq!(buf.text(), end_text);
     }

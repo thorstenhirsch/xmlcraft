@@ -138,7 +138,7 @@ pub fn deny(_: &[String]) -> anyhow::Result<()> {
 }
 
 /// The full gate, in order, stopping at the first failure. Steps are added here as the commands behind them land (the CLI
-/// without default features, i18n-report, schemas and the conformance ratchet).
+/// without default features, i18n-report and schemas).
 pub fn ci(_: &[String]) -> anyhow::Result<()> {
     type Step = (&'static str, Box<dyn Fn() -> anyhow::Result<()>>);
     let steps: Vec<Step> = vec![

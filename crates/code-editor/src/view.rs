@@ -1,6 +1,7 @@
 //! The widget: drawing, scrolling and input.
 
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -9,7 +10,7 @@ use egui::{
     WidgetInfo, WidgetType, pos2, vec2,
 };
 use xmlcraft_editor::Editor;
-use xmlcraft_editor::motion::snap_to_cluster;
+use xmlcraft_editor::motion::{display_column, snap_to_cluster};
 use xmlcraft_text::Buffer;
 
 use crate::colors::EditorColors;
@@ -35,7 +36,10 @@ struct Preedit {
 struct CacheKey {
     version: u64,
     highlight: u64,
+    /// The font's family (hashed) and size, and the width of its glyphs: a layout from another font is not this one's.
+    family: u64,
     font_size: u32,
+    glyph_width: u32,
     tab_width: usize,
     color: Color32,
 }
@@ -86,6 +90,8 @@ pub struct ViewState {
     pub highlight_version: u64,
     /// The editor's version when the styler was last told about changes.
     styled_version: u64,
+    /// The styler must be told the whole text changed (set by [`Self::reset`], cleared when a styler is next drawn with).
+    restyle_all: bool,
 }
 
 impl ViewState {
@@ -93,8 +99,9 @@ impl ViewState {
         Self::default()
     }
 
-    /// Forget everything about the text (after loading another file).
+    /// Forget everything about the text (after loading another file). A styler hears that the text changed from its first line.
     pub fn reset(&mut self) {
+        self.restyle_all = true;
         self.cache.clear();
         self.max_columns = 0;
         self.max_columns_known_for = None;
@@ -114,6 +121,11 @@ impl ViewState {
     /// How many lines were laid out in the last frame: the lines on screen, not the lines in the document.
     pub fn laid_out_lines(&self) -> usize {
         self.cache.len()
+    }
+
+    /// How many characters were laid out in the last frame, over all the lines: a window on a long line, not the whole line.
+    pub fn laid_out_characters(&self) -> usize {
+        self.cache.values().map(|cached| cached.layout.chars()).sum()
     }
 
     /// Whether an input method is composing text at the caret.
@@ -208,12 +220,15 @@ impl<'a> CodeEditor<'a> {
         }
 
         // The styler hears about edits before anything is drawn, so no frame shows colours of the text as it was.
-        if let Some(styler) = styler.as_mut()
-            && let Some(first_line) = editor.first_changed_line_since(view.styled_version)
-        {
-            styler.text_changed(first_line);
+        // `styled_version` moves only when there is a styler to tell: one attached again after some frames without hears of every edit.
+        if let Some(styler) = styler.as_mut() {
+            let from_edits = editor.first_changed_line_since(view.styled_version);
+            let from_reset = std::mem::take(&mut view.restyle_all).then_some(0);
+            if let Some(first_line) = from_edits.into_iter().chain(from_reset).min() {
+                styler.text_changed(first_line);
+            }
+            view.styled_version = editor.version();
         }
-        view.styled_version = editor.version();
 
         // --- geometry ---
         let line_count = editor.buffer().line_count();
@@ -313,9 +328,10 @@ impl<'a> CodeEditor<'a> {
             // Solid for half a second after the last key or click, then blinking.
             let blink_on = !blink || (((now - view.last_input).max(0.0) * 2.0) as u64).is_multiple_of(2);
             let mut primary_rect: Option<Rect> = None;
+            let primary_index = editor.primary_index();
             for (index, caret) in carets.iter().enumerate() {
                 let line = editor.buffer().line_of(caret.head());
-                let is_primary = index == carets.len().saturating_sub(1).min(editor_primary(editor, &carets));
+                let is_primary = index == primary_index;
                 let Some((_, layout)) = layouts.iter().find(|(l, _)| *l == line) else { continue };
                 let line_start = editor.buffer().line_start(line).unwrap_or(0);
                 let x = text_x + layout.x_of_byte(caret.head().saturating_sub(line_start));
@@ -382,26 +398,27 @@ impl<'a> CodeEditor<'a> {
     }
 }
 
-/// Index of the primary caret among `carets` (the editor keeps the carets sorted and the primary is one of them).
-fn editor_primary(editor: &Editor, carets: &[xmlcraft_editor::Caret]) -> usize {
-    let primary = editor.primary();
-    carets.iter().position(|c| c.sel == primary.sel).unwrap_or(carets.len().saturating_sub(1))
-}
-
 fn gutter_width(line_count: usize, column_w: f32) -> f32 {
     let digits = line_count.max(1).to_string().len().max(3);
     digits as f32 * column_w + GUTTER_PADDING * 2.0
 }
 
-/// Make sure the horizontal scroll range covers the widest line. The first time (and after a reset) every line is looked at; after
-/// that only the lines in the editor's carets and the version are cheap to follow, so the range only grows.
+/// Up to this size the first look at a document measures every line in display columns; past it a line counts its bytes, which is
+/// the same for text without tabs and larger for wide characters (large-file mode, M1.15, replaces the estimate).
+const EXACT_COLUMNS_UP_TO: usize = 8 * 1024 * 1024;
+
+/// Make sure the horizontal scroll range covers the widest line, in display columns (a tab is up to `tab_width` of them). The first
+/// time (and after a reset) every line is looked at; after that only the lines in the editor's carets and the version are cheap to
+/// follow, so the range only grows.
 fn update_max_columns(editor: &Editor, view: &mut ViewState) {
     let buffer = editor.buffer();
+    let tab = editor.settings().tab_width;
     if view.max_columns_known_for.is_none() && buffer.len() <= 32 * 1024 * 1024 {
+        let exact = buffer.len() <= EXACT_COLUMNS_UP_TO;
         let mut widest = 0;
         for line in 0..buffer.line_count() {
             if let Some(range) = buffer.line_range(line) {
-                widest = widest.max(range.len());
+                widest = widest.max(if exact { display_column(buffer, range.end, tab) } else { range.len() });
             }
         }
         view.max_columns = view.max_columns.max(widest);
@@ -410,7 +427,7 @@ fn update_max_columns(editor: &Editor, view: &mut ViewState) {
         // Lines the carets are on may have grown.
         for caret in editor.carets() {
             if let Some(range) = buffer.line_range(buffer.line_of(caret.head())) {
-                view.max_columns = view.max_columns.max(range.len());
+                view.max_columns = view.max_columns.max(display_column(buffer, range.end, tab));
             }
         }
         view.max_columns_known_for = Some(editor.version());
@@ -445,7 +462,13 @@ fn layout_line(view: &mut ViewState, buffer: &Buffer, line: usize, frame: &Frame
     let key = CacheKey {
         version: frame.version,
         highlight: view.highlight_version,
+        family: {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            frame.font.family.hash(&mut hasher);
+            hasher.finish()
+        },
         font_size: frame.font.size.to_bits(),
+        glyph_width: frame.column_w.to_bits(),
         tab_width: frame.tab_width,
         color: frame.colors.text,
     };
@@ -625,5 +648,71 @@ fn draw_preedit(painter: &egui::Painter, preedit: &Preedit, caret: Rect, font: &
     underline(0, total, 1.0);
     if let Some(active) = &preedit.active {
         underline(active.start.min(total), active.end.min(total), 2.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_scroll_range_counts_display_columns_not_bytes() {
+        // Forty tabs are forty bytes and a hundred and sixty columns; forty wide characters are a hundred and twenty bytes and eighty columns.
+        let mut view = ViewState::new();
+        // The caret is on the first line, so the first look at the document is what has to measure the others.
+        let editor = Editor::new(&format!("x\n{}\n{}", "\t".repeat(40), "日".repeat(40)));
+        update_max_columns(&editor, &mut view);
+        assert_eq!(view.max_columns, 160);
+    }
+
+    #[test]
+    fn a_layout_made_for_another_font_is_not_reused() {
+        let ctx = egui::Context::default();
+        let buffer = Buffer::from_text("hello");
+        let colors = EditorColors::light();
+        let mut view = ViewState::new();
+        let mut same = None;
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let painter = ui.painter().clone();
+            let mut layout_with = |font: &FontId, column_w: f32| {
+                let frame = Frame {
+                    painter: &painter,
+                    font,
+                    colors: &colors,
+                    column_w,
+                    tab_width: 4,
+                    scroll_x: 0.0,
+                    version: 0,
+                    styler: std::cell::RefCell::new(None),
+                };
+                layout_line(&mut view, &buffer, 0, &frame)
+            };
+            let mono = FontId::monospace(13.0);
+            let first = layout_with(&mono, 8.0);
+            let again = layout_with(&mono, 8.0);
+            let other_family = layout_with(&FontId::proportional(13.0), 8.0);
+            let back = layout_with(&mono, 8.0);
+            let other_width = layout_with(&mono, 9.0);
+            same = Some((
+                Arc::ptr_eq(&first, &again),
+                Arc::ptr_eq(&again, &other_family),
+                Arc::ptr_eq(&back, &other_family),
+                Arc::ptr_eq(&back, &other_width),
+            ));
+        });
+        output.textures_delta.clear();
+        assert_eq!(same, Some((true, false, false, false)), "same font reused; another family or glyph width laid out again");
+    }
+
+    #[test]
+    fn the_range_follows_a_caret_line_that_grows() {
+        let mut view = ViewState::new();
+        let mut editor = Editor::new("ab");
+        update_max_columns(&editor, &mut view);
+        assert_eq!(view.max_columns, 2);
+        editor.set_selection(2, 2);
+        editor.type_text("\t\t\t");
+        update_max_columns(&editor, &mut view);
+        assert_eq!(view.max_columns, 12, "the tabs go to columns 4, 8 and 12");
     }
 }

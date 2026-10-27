@@ -12,7 +12,9 @@
 //! - [`highlight_line`] and [`Highlighter`] colour a line at a time, resuming from the lexer's mode at the line's start.
 //! - [`parse`] builds a lossless, error-tolerant syntax tree (`rowan`) whose text is exactly the input, and the [`Diagnostic`]s for
 //!   everything that is not well-formed XML 1.0 or not valid under Namespaces in XML 1.0. Whatever the input, it gives a tree and never
-//!   fails: broken markup is recovered from, and what was recovered is reported.
+//!   fails: broken markup is recovered from, and what was recovered is reported. [`Limits`] bounds the cost: a text over
+//!   [`Limits::max_bytes`] gets an empty tree and one [`Code::TooLarge`] diagnostic, and diagnostics past [`Limits::max_diagnostics`] are
+//!   dropped after one note saying so.
 //!
 //! The lexer reports no errors itself: a construct that is not well-formed becomes a token of an error kind ([`TokenKind::BareLt`],
 //! [`TokenKind::BareAmp`], [`TokenKind::Error`]) or lacks its closing token (an unterminated comment has no
@@ -31,5 +33,5 @@ pub use diagnostic::{Code, Diagnostic, Severity};
 pub use highlight::{HighlightClass, Highlighter, Span, highlight_line};
 pub use kinds::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken, XmlLanguage};
 pub use lexer::{Checkpoint, Lexer, Mode, Quote, Return, Token, TokenKind};
-pub use ns::{NsScope, XML_NAMESPACE, XMLNS_NAMESPACE, split_qname};
+pub use ns::{NsScope, XML_NAMESPACE, XMLNS_NAMESPACE, is_ncname, split_qname};
 pub use parser::{Limits, Parse, parse, parse_with};

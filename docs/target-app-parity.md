@@ -21,7 +21,7 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 ## How this is measured
 
 - **Feature breadth** is arithmetic over `parity/xmlspy-features.toml`: each feature has a tier (P0–P3), a status (`planned`, `partial`, `shipped`, `na`) and, for `shipped`, evidence that names a passing test. `cargo xtask parity` rejects claims whose commands, tools or tests do not exist.
-- **Conformance** is the pass rate of the W3C and OASIS suites, pinned by commit and fetched by `cargo xtask conformance`. The ratchet lists every known failure in `xtask/baselines/`; the table here is regenerated from it, never edited by hand.
+- **Conformance** is the pass rate of the W3C and OASIS suites, pinned by commit and fetched by `cargo xtask conformance`. The ratchet lists every known failure in `xtask/baselines/`; the pass-rate tables here are copied from the command's output whenever the baseline changes (the valid and invalid totals cannot be derived from the baseline, which lists failures only).
 - **"Shipped" means exists and tested**, not "as good as XMLSpy".
 
 ## W3C XML conformance (xmlconf, 23 September 2013)

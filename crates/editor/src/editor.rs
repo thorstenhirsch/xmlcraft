@@ -98,8 +98,10 @@ impl Default for Editor {
 }
 
 impl Editor {
+    /// An editor on `text` with the default settings, except that new line breaks use the text's dominant line ending.
     pub fn new(text: &str) -> Self {
-        Self::with_settings(text, Settings::default())
+        let defaults = Settings::default();
+        Self::with_settings(text, Settings { eol: line_ending_of(text, defaults.eol), ..defaults })
     }
 
     pub fn with_settings(text: &str, settings: Settings) -> Self {
@@ -148,8 +150,22 @@ impl Editor {
         self.carets.get(self.primary).or_else(|| self.carets.last()).copied().unwrap_or(Caret::at(0))
     }
 
+    /// Where the primary caret is in [`Editor::carets`]: always a valid index.
+    pub fn primary_index(&self) -> usize {
+        self.primary.min(self.carets.len().saturating_sub(1))
+    }
+
     pub fn selections(&self) -> Vec<Selection> {
         self.carets.iter().map(|c| c.sel).collect()
+    }
+
+    /// The selections with the primary caret's last, which is how [`Editor::set_selections`] reads them: undo and redo give back the
+    /// primary caret that an edit had, not the last one in the text.
+    fn selections_for_history(&self) -> Vec<Selection> {
+        let primary = self.primary_index();
+        let mut out: Vec<Selection> = self.carets.iter().enumerate().filter(|(i, _)| *i != primary).map(|(_, c)| c.sel).collect();
+        out.extend(self.carets.get(primary).map(|c| c.sel));
+        out
     }
 
     pub fn has_selection(&self) -> bool {
@@ -199,8 +215,10 @@ impl Editor {
         self.history.break_group();
     }
 
-    /// Replace the whole text (loading a file): history is cleared and the caret goes to the start.
+    /// Replace the whole text (loading a file): history is cleared and the caret goes to the start. New line breaks use the text's
+    /// dominant line ending (the current one when the text has no line break).
     pub fn load(&mut self, text: &str) {
+        self.settings.eol = line_ending_of(text, self.settings.eol);
         self.buffer = Buffer::from_text(text);
         self.history.clear();
         self.carets = vec![Caret::at(0)];
@@ -216,9 +234,10 @@ impl Editor {
         Selection { anchor: clamp(&self.buffer, sel.anchor), head: clamp(&self.buffer, sel.head) }
     }
 
-    fn set_carets_raw(&mut self, carets: Vec<Caret>, primary_head: usize) {
+    /// Make `carets` the carets; `primary` is the index in the list of the primary one.
+    fn set_carets_raw(&mut self, carets: Vec<Caret>, primary: usize) {
         let carets: Vec<Caret> = carets.into_iter().map(|c| Caret { sel: self.sanitized(c.sel), goal: c.goal }).collect();
-        let (carets, primary) = normalize(carets, clamp(&self.buffer, primary_head));
+        let (carets, primary) = normalize(carets, primary);
         if carets.is_empty() {
             self.carets = vec![Caret::at(0)];
             self.primary = 0;
@@ -231,12 +250,11 @@ impl Editor {
 
     /// One selection, nothing else.
     pub fn set_selection(&mut self, anchor: usize, head: usize) {
-        self.set_carets_raw(vec![Caret::new(anchor, head)], head);
+        self.set_carets_raw(vec![Caret::new(anchor, head)], 0);
     }
 
     pub fn set_selections(&mut self, selections: &[Selection]) {
-        let head = selections.last().map_or(0, |s| s.head);
-        self.set_carets_raw(selections.iter().map(|s| Caret { sel: *s, goal: None }).collect(), head);
+        self.set_carets_raw(selections.iter().map(|s| Caret { sel: *s, goal: None }).collect(), selections.len().saturating_sub(1));
     }
 
     pub fn select_all(&mut self) {
@@ -248,7 +266,8 @@ impl Editor {
         let at = clamp(&self.buffer, offset);
         let mut carets = if add { self.carets.clone() } else { Vec::new() };
         carets.push(Caret::at(at));
-        self.set_carets_raw(carets, at);
+        let primary = carets.len().saturating_sub(1);
+        self.set_carets_raw(carets, primary);
     }
 
     /// A drag or a shift-click: the primary caret's head goes to `offset`, its anchor stays.
@@ -258,7 +277,7 @@ impl Editor {
         if let Some(caret) = carets.get_mut(self.primary) {
             *caret = Caret::new(caret.sel.anchor, at);
         }
-        self.set_carets_raw(carets, at);
+        self.set_carets_raw(carets, self.primary);
     }
 
     /// A double click: the word at `offset`.
@@ -277,19 +296,19 @@ impl Editor {
     fn select_range(&mut self, range: Range<usize>, add: bool) {
         let mut carets = if add { self.carets.clone() } else { Vec::new() };
         carets.push(Caret::new(range.start, range.end));
-        self.set_carets_raw(carets, range.end);
+        let primary = carets.len().saturating_sub(1);
+        self.set_carets_raw(carets, primary);
     }
 
     /// Escape: back to the primary caret alone, keeping its selection.
     pub fn keep_primary_only(&mut self) {
         let primary = self.primary();
-        self.set_carets_raw(vec![primary], primary.head());
+        self.set_carets_raw(vec![primary], 0);
     }
 
     pub fn move_carets(&mut self, motion: Motion, extend: bool) {
         let carets: Vec<Caret> = self.carets.iter().map(|c| self.moved(*c, motion, extend)).collect();
-        let head = carets.get(self.primary).map_or(0, Caret::head);
-        self.set_carets_raw(carets, head);
+        self.set_carets_raw(carets, self.primary);
     }
 
     fn moved(&self, caret: Caret, motion: Motion, extend: bool) -> Caret {
@@ -335,18 +354,18 @@ impl Editor {
     /// Apply `edits` (ascending, not overlapping) as one undoable step and set the carets; `carets` are in the text after the edits.
     /// Returns whether the text changed.
     fn commit(&mut self, edits: Vec<Edit>, carets: Vec<Caret>, kind: EditKind) -> bool {
-        let head = carets.get(self.primary.min(carets.len().saturating_sub(1))).map_or(0, Caret::head);
+        let primary = self.primary.min(carets.len().saturating_sub(1));
         if edits.is_empty() || edits.iter().all(|e| e.range.is_empty() && e.text.is_empty()) {
-            self.set_carets_raw(carets, head);
+            self.set_carets_raw(carets, primary);
             return false;
         }
-        let before = self.selections();
+        let before = self.selections_for_history();
         let first_changed = edits.iter().map(|e| e.range.start).min().unwrap_or(0);
         // Last first: the offsets of the edits that come earlier in the text stay valid while the later ones are applied.
         let ordered: Vec<Edit> = edits.into_iter().rev().collect();
         let Ok(inverse) = self.buffer.apply_all(&ordered) else { return false };
-        self.set_carets_raw(carets, head);
-        let after = self.selections();
+        self.set_carets_raw(carets, primary);
+        let after = self.selections_for_history();
         self.history.record(ordered, inverse, before, after, kind, self.time);
         self.version += 1;
         // The text before the first edit is unchanged, so that offset is on the same line as before.
@@ -659,6 +678,12 @@ impl Editor {
     }
 }
 
+/// The dominant line ending of `text`, or `fallback` when it has no line break.
+fn line_ending_of(text: &str, fallback: Eol) -> Eol {
+    let counts = eol::LineEndings::count(text);
+    if counts.total() == 0 { fallback } else { counts.dominant() }
+}
+
 /// Merge edits that overlap (only deletions can: a word deletion by one caret may reach into the range another deletes). The input
 /// need not be sorted; the output is ascending and disjoint.
 fn coalesce(mut edits: Vec<Edit>) -> Vec<Edit> {
@@ -688,6 +713,47 @@ mod tests {
 
     fn at(e: &Editor) -> (String, Vec<(usize, usize)>) {
         (e.text(), e.carets().iter().map(|c| (c.sel.anchor, c.sel.head)).collect())
+    }
+
+    #[test]
+    fn undo_and_redo_give_back_the_primary_caret() {
+        let mut e = Editor::new("one two three");
+        e.set_selection(0, 0);
+        e.place_caret(8, true);
+        e.place_caret(4, true); // the middle one is the primary
+        assert_eq!((e.carets().len(), e.primary_index(), e.primary().head()), (3, 1, 4));
+        e.type_text("-");
+        assert_eq!(e.text(), "-one -two -three");
+        e.undo();
+        assert_eq!(e.text(), "one two three");
+        assert_eq!((e.carets().len(), e.primary_index(), e.primary().head()), (3, 1, 4), "the middle caret again");
+        e.redo();
+        assert_eq!((e.text().as_str(), e.primary_index(), e.primary().head()), ("-one -two -three", 1, 6), "and after redo");
+    }
+
+    #[test]
+    fn new_lines_use_the_line_ending_of_the_text() {
+        let mut e = Editor::new("a\r\nb\r\nc");
+        e.set_selection(1, 1);
+        e.insert_newline();
+        assert_eq!(e.text(), "a\r\n\r\nb\r\nc", "a CRLF document gets CRLF");
+        let mut e = Editor::new("a\nb");
+        e.set_selection(1, 1);
+        e.insert_newline();
+        assert_eq!(e.text(), "a\n\nb");
+        // Pasted text is converted to it, and loading another document switches to its ending.
+        let mut e = Editor::new("x\r\ny");
+        e.set_selection(0, 0);
+        e.paste("1\n2");
+        assert_eq!(e.text(), "1\r\n2x\r\ny");
+        e.load("p\nq");
+        e.set_selection(1, 1);
+        e.insert_newline();
+        assert_eq!(e.text(), "p\n\nq");
+        e.load("no break");
+        e.set_selection(2, 2);
+        e.insert_newline();
+        assert_eq!(e.text(), "no\n break", "no line break keeps the current ending");
     }
 
     #[test]
