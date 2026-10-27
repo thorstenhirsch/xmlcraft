@@ -234,6 +234,29 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             handler: xml_wellformed,
         },
         ToolDef {
+            name: "xml_matching_tag",
+            title: "Find the matching tag",
+            description: "The other tag of the element a position is in or next to, in an open document (`id`), a file (`path`) or text: give a position as `line` and \
+                          `column` (from 1) or as a byte `offset`. Returns the tag and its name, the other tag and its name, and where the caret would go \
+                          (`jump_to`); `match` is null where the position is in no tag, or the tag has no other (an empty-element tag, an element that is not \
+                          closed).",
+            input_schema: {
+                let mut properties = source_properties();
+                if let Some(map) = properties.as_object_mut() {
+                    map.insert("line".into(), json!({ "type": "integer", "minimum": 1 }));
+                    map.insert("column".into(), json!({ "type": "integer", "minimum": 1 }));
+                    map.insert(
+                        "offset".into(),
+                        json!({ "type": "integer", "minimum": 0, "description": "A byte offset of the text, instead of line and column" }),
+                    );
+                }
+                object(properties, &[])
+            },
+            read_only: true,
+            destructive: false,
+            handler: xml_matching_tag,
+        },
+        ToolDef {
             name: "xml_outline",
             title: "Outline of the elements",
             description: "The element tree of an open document (`id`), a file (`path`) or text: each element with its depth, name, a hint from its id, name or key \
@@ -624,6 +647,34 @@ fn xml_wellformed(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         "truncated": analysis.diagnostics.len() > MAX_PROBLEMS,
         "lossy": source.lossy,
     }))
+}
+
+fn range_json(buffer: &Buffer, range: &std::ops::Range<usize>) -> Value {
+    let (line, column) = position_json(buffer, range.start);
+    let (end_line, end_column) = position_json(buffer, range.end);
+    json!({ "line": line, "column": column, "end_line": end_line, "end_column": end_column, "start": range.start, "end": range.end })
+}
+
+fn xml_matching_tag(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let source = source(a, args)?;
+    let buffer = Buffer::from_text(&source.text);
+    let offset = match args.get("offset").and_then(Value::as_u64) {
+        Some(offset) => usize::try_from(offset).ok().filter(|o| *o <= source.text.len() && source.text.is_char_boundary(*o)).ok_or_else(|| {
+            ToolError::InvalidArgs(format!("offset: not a position in the text ({} bytes, on a character boundary)", source.text.len()))
+        })?,
+        None => offset_from(&buffer, args.get("line").and_then(Value::as_u64), args.get("column").and_then(Value::as_u64), "position")?,
+    };
+    let analysis = analysis_of(&source)?;
+    let found = analysis.matching_tag(offset).map(|m| {
+        json!({
+            "tag": range_json(&buffer, &m.tag),
+            "name": range_json(&buffer, &m.name),
+            "partner": range_json(&buffer, &m.partner),
+            "partner_name": range_json(&buffer, &m.partner_name),
+            "jump_to": range_json(&buffer, &(m.jump_target(offset)..m.jump_target(offset))),
+        })
+    });
+    json_result(json!({ "match": found, "lossy": source.lossy }))
 }
 
 fn xml_outline(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {

@@ -151,6 +151,7 @@ impl XmlCraftApp {
             }
         }
         self.report_check();
+        self.finish_tag_jump();
     }
 
     /// If a check (F7) is waiting and the analysis of the text it asked about has arrived (or a later one), say what it found.
@@ -169,6 +170,63 @@ impl XmlCraftApp {
             None => fmt(tl!("{name}: {count} errors"), &[("name", &name), ("count", &analysis.error_count().to_string())]),
         };
         self.check_pending = None;
+    }
+
+    /// The names of the two tags of the element the single caret of `doc` is in or next to, if the analysis is about the text as it is now
+    /// (one about older text would put them in the wrong place).
+    fn matching_tag_names(view: &DocView, editor: &xmlcraft_editor::Editor) -> Option<[std::ops::Range<usize>; 2]> {
+        let analysis = view.analysis.as_ref().filter(|a| a.version == editor.version() && a.skipped.is_none())?;
+        let caret = editor.primary();
+        if editor.carets().len() != 1 || !caret.is_empty() {
+            return None;
+        }
+        analysis.matching_tag(caret.head()).map(|m| [m.name, m.partner_name])
+    }
+
+    /// Go to the other tag of the element the caret is in or next to (⇧⌘\). When the text has changed since the last analysis the jump
+    /// waits for the new one; it is dropped if the text changes again meanwhile.
+    pub(crate) fn go_to_matching_tag(&mut self) {
+        let kind = self.applied.unwrap_or(ThemeKind::Light);
+        let Some(doc) = self.session.active_document() else { return };
+        let (id, version) = (doc.id(), doc.editor().version());
+        let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
+        if view.requested != Some(version) {
+            view.requested = Some(version);
+            self.analyzer.submit(id, version, doc.editor().buffer());
+        }
+        self.tag_jump_pending = Some((id, version));
+        self.finish_tag_jump();
+    }
+
+    /// Make the jump that was waiting for an analysis, if the analysis of its text is here.
+    fn finish_tag_jump(&mut self) {
+        let Some((id, version)) = self.tag_jump_pending else { return };
+        let Some(doc) = self.session.position_of(id).and_then(|i| self.session.document(i)) else {
+            self.tag_jump_pending = None; // closed meanwhile
+            return;
+        };
+        if doc.editor().version() != version {
+            self.tag_jump_pending = None; // the text changed: the caret is not where it was asked in
+            return;
+        }
+        let Some(analysis) = self.views.get(&id).and_then(|v| v.analysis.as_ref()).filter(|a| a.version == version) else { return };
+        self.tag_jump_pending = None;
+        let head = doc.editor().primary().head();
+        let name = doc.name().to_owned();
+        if analysis.skipped.is_some() {
+            self.status = fmt(tl!("{name} is too large to look for matching tags in"), &[("name", &name)]);
+        } else if let Some(found) = analysis.matching_tag(head) {
+            let at = found.jump_target(head);
+            self.jump_to(at..at);
+        } else {
+            self.status = tl!("No matching tag here").to_owned();
+        }
+    }
+
+    /// The names of the two tags the editor of the document being shown highlights now (the caret is in or next to one of them).
+    pub fn highlighted_tag_names(&self) -> Option<[std::ops::Range<usize>; 2]> {
+        let id = self.session.active_document()?.id();
+        self.views.get(&id)?.styler.tag_match().cloned()
     }
 
     /// The analysis of the document being shown, if there is one.
@@ -276,6 +334,7 @@ impl XmlCraftApp {
         let matches = self.find.shown_matches(id, version);
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
         view.styler.set_matches(matches);
+        view.styler.set_tag_match(Self::matching_tag_names(view, doc.editor()));
         let salt = egui::Id::new(("xmlcraft-editor", id));
         if focus {
             let widget = ui.make_persistent_id(salt);

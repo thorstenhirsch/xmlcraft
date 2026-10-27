@@ -125,6 +125,7 @@ impl XmlCraftApp {
                     self.dialog = Some(crate::dialog::Dialog::GoToLine);
                 }
             }
+            "edit.go_to_matching_tag" => self.go_to_matching_tag(),
             "edit.find" => self.open_find(false),
             "edit.replace" => self.open_find(true),
             "edit.find_next" => self.find_step(xmlcraft_editor::find::Direction::NEXT),
