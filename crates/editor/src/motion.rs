@@ -64,6 +64,17 @@ pub fn prev_grapheme(buf: &Buffer, offset: usize) -> usize {
     }
 }
 
+/// `offset` moved back to the start of the character cluster it is inside (itself, when it already is on a boundary). A click lands
+/// anywhere, including between a letter and its accent; the caret must not.
+pub fn snap_to_cluster(buf: &Buffer, offset: usize) -> usize {
+    let offset = clamp(buf, offset);
+    let next = next_grapheme(buf, offset);
+    if next <= offset {
+        return offset; // at the end of the text
+    }
+    prev_grapheme(buf, next).min(offset)
+}
+
 /// What kind of character this is, for moving and selecting by word. Letters, digits and the characters of XML names (`_ - . :`) make
 /// words, so double-clicking `xs:element` selects all of it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -228,6 +239,21 @@ mod tests {
         }
         back.reverse();
         assert_eq!(back, offsets);
+    }
+
+    #[test]
+    fn snapping_goes_to_the_start_of_the_cluster() {
+        let buf = b("ae\u{301}x\u{1F468}\u{200D}\u{1F469}");
+        assert_eq!(snap_to_cluster(&buf, 0), 0);
+        assert_eq!(snap_to_cluster(&buf, 1), 1);
+        assert_eq!(snap_to_cluster(&buf, 2), 1, "between the letter and its accent");
+        assert_eq!(snap_to_cluster(&buf, 4), 4, "already on a boundary");
+        assert_eq!(snap_to_cluster(&buf, 5), 5);
+        assert_eq!(snap_to_cluster(&buf, 9), 5, "inside the joined emoji");
+        assert_eq!(snap_to_cluster(&buf, buf.len()), buf.len(), "the end of the text stays the end");
+        assert_eq!(snap_to_cluster(&buf, 999), buf.len());
+        assert_eq!(snap_to_cluster(&b(""), 0), 0);
+        assert_eq!(snap_to_cluster(&b("a\r\nb"), 2), 1, "inside a CRLF");
     }
 
     #[test]

@@ -438,6 +438,29 @@ impl Editor {
         })
     }
 
+    /// Delete `before` characters before and `after` characters after each caret (or selection): an input method asks for this when it
+    /// replaces the text around the caret.
+    pub fn delete_surrounding(&mut self, before: usize, after: usize) -> bool {
+        self.replace_at_carets(EditKind::Other, |this, c| {
+            let buf = &this.buffer;
+            let mut from = c.start();
+            for _ in 0..before.min(buf.len()) {
+                if from == 0 {
+                    break;
+                }
+                from = buf.prev_char(from);
+            }
+            let mut to = c.end();
+            for _ in 0..after.min(buf.len()) {
+                if to >= buf.len() {
+                    break;
+                }
+                to = buf.next_char(to);
+            }
+            (from < to).then(|| Edit::delete(from..to))
+        })
+    }
+
     // --- indentation ---------------------------------------------------------------------------------------------------------
 
     fn indent_unit(&self) -> String {
@@ -739,6 +762,18 @@ mod tests {
         e.set_selections(&[Selection::caret(0), Selection::caret(1)]);
         e.delete_word_forward();
         assert_eq!(at(&e), (" bb".to_owned(), vec![(0, 0)]));
+    }
+
+    #[test]
+    fn deleting_around_the_caret_for_an_input_method() {
+        let mut e = ed("abcdef", 3);
+        e.delete_surrounding(2, 1);
+        assert_eq!(at(&e), ("aef".to_owned(), vec![(1, 1)]));
+        let mut e = ed("日本語", 3);
+        e.delete_surrounding(99, 99);
+        assert_eq!(e.text(), "", "past the ends: stops at them");
+        let mut e = ed("ab", 1);
+        assert!(!e.delete_surrounding(0, 0));
     }
 
     #[test]

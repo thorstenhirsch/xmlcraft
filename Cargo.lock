@@ -4646,6 +4646,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-code-editor"
+version = "0.0.1"
+dependencies = [
+ "egui",
+ "egui_kittest",
+ "image",
+ "xmlcraft-editor",
+ "xmlcraft-text",
+]
+
+[[package]]
 name = "xmlcraft-editor"
 version = "0.0.1"
 dependencies = [

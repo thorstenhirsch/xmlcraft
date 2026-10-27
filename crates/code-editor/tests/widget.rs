@@ -1,0 +1,213 @@
+//! The editor widget under egui_kittest: typing, keys, the mouse, the clipboard, input methods, and that only what is on screen is
+//! laid out.
+
+use egui::{Event, Id, ImeEvent, Key, Modifiers, PointerButton};
+use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable;
+use xmlcraft_code_editor::{CodeEditor, EditorColors, ViewState};
+use xmlcraft_editor::Editor;
+
+struct App {
+    editor: Editor,
+    view: ViewState,
+    read_only: bool,
+}
+
+fn harness(text: &str) -> Harness<'static, App> {
+    let app = App { editor: Editor::new(text), view: ViewState::new(), read_only: false };
+    let mut h = Harness::builder().with_size(egui::vec2(640.0, 360.0)).build_ui_state(
+        |ui, app: &mut App| {
+            CodeEditor::new(Id::new("editor"), &mut app.editor, &mut app.view, EditorColors::light()).blink(false).read_only(app.read_only).show(ui);
+        },
+        app,
+    );
+    h.run_steps(3);
+    h.get_by_label("XML editor").focus();
+    h.run_steps(3);
+    h
+}
+
+fn text(h: &Harness<'_, App>) -> String {
+    h.state().editor.text()
+}
+
+fn carets(h: &Harness<'_, App>) -> Vec<(usize, usize)> {
+    h.state().editor.carets().iter().map(|c| (c.sel.anchor, c.sel.head)).collect()
+}
+
+#[test]
+fn typing_inserts_text_at_the_caret() {
+    let mut h = harness("");
+    h.get_by_label("XML editor").type_text("<a>");
+    h.run_steps(2);
+    assert_eq!(text(&h), "<a>");
+    assert_eq!(carets(&h), vec![(3, 3)]);
+    h.key_press(Key::Enter);
+    h.run_steps(2);
+    h.get_by_label("XML editor").type_text("x");
+    h.run_steps(2);
+    assert_eq!(text(&h), "<a>\nx");
+    h.key_press(Key::Backspace);
+    h.key_press(Key::Backspace);
+    h.run_steps(2);
+    assert_eq!(text(&h), "<a>");
+}
+
+#[test]
+fn keys_move_select_and_delete() {
+    let mut h = harness("one two\nthree");
+    h.key_press(Key::ArrowRight);
+    h.key_press(Key::ArrowRight);
+    h.run_steps(2);
+    assert_eq!(carets(&h), vec![(2, 2)]);
+    h.key_press_modifiers(Modifiers::SHIFT, Key::End);
+    h.run_steps(2);
+    assert_eq!(carets(&h), vec![(2, 7)]);
+    h.key_press(Key::Delete);
+    h.run_steps(2);
+    assert_eq!(text(&h), "on\nthree");
+    h.key_press(Key::ArrowDown);
+    h.run_steps(2);
+    assert_eq!(carets(&h), vec![(5, 5)], "Down keeps the column");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.run_steps(2);
+    assert_eq!(carets(&h), vec![(0, 8)]);
+}
+
+#[test]
+fn undo_and_redo_through_the_keyboard() {
+    let mut h = harness("");
+    h.get_by_label("XML editor").type_text("abc");
+    h.run_steps(2);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run_steps(2);
+    assert_eq!(text(&h), "");
+    h.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
+    h.run_steps(2);
+    assert_eq!(text(&h), "abc");
+}
+
+#[test]
+fn clicking_places_the_caret_and_double_clicking_selects_a_word() {
+    let mut h = harness("alpha beta\ngamma");
+    let g = h.state().view.geometry().expect("drawn");
+    // Between `be` and `ta` on the first line: column 8.
+    let at = g.point(0, 8) + egui::vec2(0.0, g.row_height / 2.0);
+    h.hover_at(at);
+    h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(3);
+    assert_eq!(carets(&h), vec![(8, 8)]);
+    // A click on the second line, far to the right of its text: the end of the line.
+    let at = g.point(1, 40) + egui::vec2(0.0, g.row_height / 2.0);
+    h.hover_at(at);
+    h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(3);
+    assert_eq!(carets(&h), vec![(16, 16)]);
+}
+
+#[test]
+fn dragging_selects() {
+    let mut h = harness("alpha beta");
+    let g = h.state().view.geometry().expect("drawn");
+    let y = g.row_height / 2.0;
+    let from = g.point(0, 2) + egui::vec2(0.0, y);
+    let to = g.point(0, 7) + egui::vec2(0.0, y);
+    h.hover_at(from);
+    h.event(Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run_steps(2);
+    h.hover_at(to);
+    h.run_steps(2);
+    h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(2);
+    assert_eq!(carets(&h), vec![(2, 7)]);
+}
+
+#[test]
+fn copy_cut_and_paste_events() {
+    let mut h = harness("hello world");
+    h.state_mut().editor.set_selection(0, 5);
+    h.run_steps(2);
+    h.event(Event::Copy);
+    h.run_steps(2);
+    assert_eq!(text(&h), "hello world");
+    h.event(Event::Cut);
+    h.run_steps(2);
+    assert_eq!(text(&h), " world");
+    h.event(Event::Paste("Goodbye".to_owned()));
+    h.run_steps(2);
+    assert_eq!(text(&h), "Goodbye world");
+    assert_eq!(carets(&h), vec![(7, 7)]);
+}
+
+#[test]
+fn an_input_method_composes_without_touching_the_document_until_it_commits() {
+    let mut h = harness("ab");
+    h.state_mut().editor.set_selection(1, 1);
+    h.run_steps(2);
+    h.event(Event::Ime(ImeEvent::Preedit { text: "にほ".to_owned(), active_range_chars: Some(0..1) }));
+    h.run_steps(2);
+    assert!(h.state().view.is_composing());
+    assert_eq!(text(&h), "ab", "the composition is not in the text yet");
+    h.event(Event::Ime(ImeEvent::Commit("日本".to_owned())));
+    h.run_steps(2);
+    assert!(!h.state().view.is_composing());
+    assert_eq!(text(&h), "a日本b");
+    assert_eq!(carets(&h), vec![(7, 7)]);
+    // Ending a composition with nothing clears it.
+    h.event(Event::Ime(ImeEvent::Preedit { text: "x".to_owned(), active_range_chars: None }));
+    h.run_steps(2);
+    assert!(h.state().view.is_composing());
+    h.event(Event::Ime(ImeEvent::Preedit { text: String::new(), active_range_chars: None }));
+    h.run_steps(2);
+    assert!(!h.state().view.is_composing());
+}
+
+#[test]
+fn a_read_only_editor_moves_and_selects_but_does_not_change() {
+    let mut h = harness("abc");
+    h.state_mut().read_only = true;
+    h.run_steps(2);
+    h.get_by_label("XML editor").type_text("x");
+    h.key_press(Key::Backspace);
+    h.event(Event::Paste("y".to_owned()));
+    h.key_press(Key::ArrowRight);
+    h.run_steps(2);
+    assert_eq!(text(&h), "abc");
+    assert_eq!(carets(&h), vec![(1, 1)]);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.run_steps(2);
+    assert_eq!(carets(&h), vec![(0, 3)]);
+}
+
+#[test]
+fn only_the_lines_on_screen_are_laid_out() {
+    let text = (0..200_000).map(|i| format!("<line n=\"{i}\"/>")).collect::<Vec<_>>().join("\n");
+    let mut h = harness(&text);
+    h.run_steps(3);
+    let laid_out = h.state().view.laid_out_lines();
+    assert!(laid_out > 5 && laid_out < 60, "{laid_out} lines laid out for a 640x360 view");
+    // Jump to the end: the caret is scrolled into view and the view lays out lines near the end.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::End);
+    h.run_steps(8);
+    assert!(h.state().view.laid_out_lines() < 60);
+    let g = h.state().view.geometry().expect("drawn");
+    assert!(g.origin.y < -1_000_000.0, "scrolled far down: {:?}", g.origin);
+}
+
+#[test]
+fn a_very_long_line_is_laid_out_in_a_window() {
+    let line = "<x a=\"1\"/>".repeat(100_000); // a megabyte on one line
+    let mut h = harness(&line);
+    let started = std::time::Instant::now();
+    h.run_steps(5);
+    assert!(started.elapsed() < std::time::Duration::from_secs(10), "took {:?}", started.elapsed());
+    assert_eq!(h.state().view.laid_out_lines(), 1);
+    // The caret can still be moved and the text edited at both ends.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::End);
+    h.run_steps(3);
+    h.get_by_label("XML editor").type_text("!");
+    h.run_steps(3);
+    assert!(text(&h).ends_with("/>!"));
+}

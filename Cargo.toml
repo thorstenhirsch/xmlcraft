@@ -25,6 +25,7 @@ craft-window = { git = "https://github.com/storytold/craft-libs", version = "0.1
 xmlcraft-text = { path = "crates/text", version = "0.0.1" }
 xmlcraft-syntax = { path = "crates/syntax", version = "0.0.1" }
 xmlcraft-editor = { path = "crates/editor", version = "0.0.1" }
+xmlcraft-code-editor = { path = "crates/code-editor", version = "0.0.1" }
 xmlcraft-engine = { path = "crates/engine", version = "0.0.1" }
 xmlcraft-automation = { path = "crates/automation", version = "0.0.1" }
 xmlcraft-ui-egui = { path = "crates/ui-egui", version = "0.0.1" }
