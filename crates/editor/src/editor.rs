@@ -150,6 +150,12 @@ impl Editor {
         self.carets.get(self.primary).or_else(|| self.carets.last()).copied().unwrap_or(Caret::at(0))
     }
 
+    /// Names the text as it is now: it changes with every change and comes back with undo and redo, so a document can tell that undoing
+    /// has returned it to what was saved. (Loading a text gives a state no earlier one has.)
+    pub fn state_id(&self) -> u64 {
+        self.history.state()
+    }
+
     /// Where the primary caret is in [`Editor::carets`]: always a valid index.
     pub fn primary_index(&self) -> usize {
         self.primary.min(self.carets.len().saturating_sub(1))
