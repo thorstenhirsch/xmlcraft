@@ -134,8 +134,8 @@
       <Component Id="XmlcraftNotice">
         <File Id="XmlcraftNoticeFile" Source="$(var.BinDir)\NOTICE" KeyPath="yes" />
       </Component>
-      <!-- One file per component: Windows Installer only generates a component's GUID automatically (Guid="*") for a single
-           unversioned file. -->
+      <!-- One file per component: with an automatic GUID (Guid="*") WiX accepts several files in a component only when a versioned
+           file is the key path and the others are unversioned. These three licence texts are unversioned, so each gets its own. -->
       <Component Id="XmlcraftInterLicense">
         <File Id="XmlcraftInterLicenseFile" Source="$(var.BinDir)\OFL-Inter.txt" KeyPath="yes" />
       </Component>

@@ -6,12 +6,14 @@ on:
   pull_request:
     paths:
       - ".github/workflows/**"
+      - ".github/actionlint.yaml"
       - "packaging/**"
       - "assets/app-icon/**"
   push:
     branches: [main]
     paths:
       - ".github/workflows/**"
+      - ".github/actionlint.yaml"
       - "packaging/**"
       - "assets/app-icon/**"
   workflow_dispatch:
