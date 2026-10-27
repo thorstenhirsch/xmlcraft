@@ -1,6 +1,6 @@
 # Developing XmlCraft
 
-> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** initial
+> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** `cargo xtask bench`
 
 Working instructions for agents and contributors are in `AGENTS.md` and `CLAUDE.md`. This page collects practical build notes.
 
@@ -47,8 +47,9 @@ Scope builds to the crates you touched; a full `--workspace` build is CI's job.
 
 - `xmllint` (libxml2-utils) is a black-box oracle for `cargo xtask oracle` and some tests. It is optional locally: tests that need it skip with a notice unless `XMLCRAFT_ORACLES_REQUIRED=1` is set (CI sets it on Linux).
 - The W3C and OASIS conformance suites are fetched by `cargo xtask conformance --fetch` into the gitignored `conformance/` directory.
-- `cargo xtask bench` measures the editor's performance targets on synthetic documents (it re-runs itself in release mode; `--list`, `--only NAME`, `--json`). It fails when a scenario is over its budget in `xtask/baselines/bench.toml`; a budget above its target is a known shortfall in `docs/gaps.md` and is only ever lowered. It is not part of `xtask ci` (timings on shared runners are noise).
+- `cargo xtask bench` measures the editor's performance targets on synthetic documents (it re-runs itself in release mode; `--list`, `--only NAME`, `--json`, `--no-release`; with `--json` the table goes to standard error and standard output is the JSON). It fails when a scenario is over its budget in `xtask/baselines/bench.toml`; a budget above its target is a known shortfall in `docs/gaps.md` and is only ever lowered. It is not part of `xtask ci` (timings on shared runners are noise).
 
 ## Revision history
 
 - 2026-10-27: created.
+- 2026-10-27: `cargo xtask bench` described under external tools.

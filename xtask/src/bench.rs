@@ -46,6 +46,16 @@ const SCENARIOS: &[(&str, &str, Scenario)] = &[
 
 /// A document of about `bytes` bytes: a root with rows of elements, attributes and text, some comments, over many lines.
 fn document(bytes: usize) -> String {
+    rows(bytes, true)
+}
+
+/// The same rows without their indentation: a document that needs pretty-printing, built to the size asked for.
+fn document_without_indentation(bytes: usize) -> String {
+    rows(bytes, false)
+}
+
+fn rows(bytes: usize, indented: bool) -> String {
+    let (one, two) = if indented { ("  ", "    ") } else { ("", "") };
     let mut text = String::with_capacity(bytes + 256);
     text.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<table>\n");
     let mut i = 0usize;
@@ -53,21 +63,16 @@ fn document(bytes: usize) -> String {
         use std::fmt::Write;
         let _ = write!(
             text,
-            "  <row id=\"{i}\" kind=\"{}\">\n    <name>item {i}</name>\n    <note>a note about item {i} &amp; more</note>\n  </row>\n",
+            "{one}<row id=\"{i}\" kind=\"{}\">\n{two}<name>item {i}</name>\n{two}<note>a note about item {i} &amp; more</note>\n{one}</row>\n",
             i % 7
         );
         if i.is_multiple_of(50) {
-            let _ = writeln!(text, "  <!-- block {} -->", i / 50);
+            let _ = writeln!(text, "{one}<!-- block {} -->", i / 50);
         }
         i += 1;
     }
     text.push_str("</table>\n");
     text
-}
-
-/// The same rows without their indentation: a document that needs pretty-printing.
-fn document_without_indentation(bytes: usize) -> String {
-    document(bytes).lines().map(str::trim_start).collect::<Vec<_>>().join("\n")
 }
 
 /// A pseudo-random number generator (an LCG): the same numbers on every machine.
@@ -169,8 +174,11 @@ fn reparse(bytes: usize, runs: usize) -> Result<Measured> {
     let mut last = None;
     let median = median_of(runs, || {
         let started = Instant::now();
-        last = Some(xmlcraft_engine::analysis::analyze(&text, 1));
-        started.elapsed()
+        let analysis = xmlcraft_engine::analysis::analyze(&text, 1);
+        let elapsed = started.elapsed();
+        // The result it replaces is dropped here, outside the time taken.
+        last = Some(analysis);
+        elapsed
     });
     let analysis = last.context("the analysis ran")?;
     Ok(Measured { millis: median, what: "median", note: format!("{} outline items, {} fold ranges", analysis.outline.len(), analysis.folds.len()) })
@@ -186,11 +194,15 @@ fn reparse_10mb() -> Result<Measured> {
 
 fn format_1mb() -> Result<Measured> {
     let text = document_without_indentation(1024 * 1024);
-    let mut edits = 0;
+    let options = xmlcraft_format::FormatOptions::default();
+    // The same input every time: if it formats once it formats in every run, and a failure is reported, not timed as nothing.
+    let edits = xmlcraft_format::pretty_print(&text, &options).map_err(|e| anyhow::anyhow!("formatting the document failed: {e}"))?.len();
     let median = median_of(5, || {
         let started = Instant::now();
-        edits = xmlcraft_format::pretty_print(&text, &xmlcraft_format::FormatOptions::default()).map_or(0, |e| e.len());
-        started.elapsed()
+        let result = xmlcraft_format::pretty_print(&text, &options);
+        let elapsed = started.elapsed();
+        drop(result);
+        elapsed
     });
     Ok(Measured { millis: median, what: "median", note: format!("{edits} edits") })
 }
@@ -201,8 +213,10 @@ fn find_all_10mb() -> Result<Measured> {
     let mut found = 0;
     let median = median_of(3, || {
         let started = Instant::now();
-        found = matcher.find_all(&text, 0..text.len(), xmlcraft_editor::find::MAX_MATCHES).0.len();
-        started.elapsed()
+        let result = matcher.find_all(&text, 0..text.len(), xmlcraft_editor::find::MAX_MATCHES);
+        let elapsed = started.elapsed();
+        found = result.0.len();
+        elapsed
     });
     Ok(Measured { millis: median, what: "median", note: format!("{found} matches") })
 }
@@ -221,6 +235,19 @@ fn table_of(name: &str) -> Result<BTreeMap<String, f64>> {
         }
     }
     Ok(out)
+}
+
+/// The scenario `--only` names, if the option is given; a missing or unknown name is an error, not "run nothing" or "run everything".
+fn only_scenario(args: &[String]) -> Result<Option<&'static str>> {
+    let Some(i) = args.iter().position(|a| a == "--only") else { return Ok(None) };
+    let given = args.get(i + 1).map(String::as_str);
+    match SCENARIOS.iter().find(|(name, _, _)| Some(*name) == given) {
+        Some((name, _, _)) => Ok(Some(name)),
+        None => {
+            let names: Vec<&str> = SCENARIOS.iter().map(|(name, _, _)| *name).collect();
+            bail!("--only needs the name of a scenario ({}), not {}", names.join(", "), given.unwrap_or("nothing"))
+        }
+    }
 }
 
 pub fn run(args: &[String]) -> Result<()> {
@@ -244,11 +271,17 @@ pub fn run(args: &[String]) -> Result<()> {
         }
         return Ok(());
     }
-    let only = args.iter().position(|a| a == "--only").and_then(|i| args.get(i + 1)).map(String::as_str);
+    let only = only_scenario(args)?;
+    let json = flag("--json");
     let (budgets, targets) = (table_of("budget_ms")?, table_of("target_ms")?);
     for name in budgets.keys().chain(targets.keys()) {
         if !SCENARIOS.iter().any(|(n, _, _)| n == name) {
             bail!("xtask/baselines/bench.toml names a scenario that does not exist: {name}");
+        }
+    }
+    for (name, _, _) in SCENARIOS {
+        if !budgets.contains_key(*name) {
+            bail!("xtask/baselines/bench.toml has no budget for the scenario {name}: every scenario is held to one");
         }
     }
     for (name, target) in &targets {
@@ -258,7 +291,9 @@ pub fn run(args: &[String]) -> Result<()> {
     }
     let mut over = Vec::new();
     let mut results = Vec::new();
-    println!("{:20} {:>10}  {:>8}  {:>8}  what", "scenario", "ms", "target", "budget");
+    // With --json standard output is the JSON and nothing else; the table goes to standard error.
+    let say = |line: String| if json { eprintln!("{line}") } else { println!("{line}") };
+    say(format!("{:20} {:>10}  {:>8}  {:>8}  what", "scenario", "ms", "target", "budget"));
     for (name, _, scenario) in SCENARIOS.iter().filter(|(name, _, _)| only.is_none_or(|o| o == *name)) {
         let measured = scenario().with_context(|| format!("scenario {name}"))?;
         let (budget, target) = (budgets.get(*name).copied(), targets.get(*name).copied());
@@ -268,15 +303,22 @@ pub fn run(args: &[String]) -> Result<()> {
                 "OVER BUDGET"
             }
             (_, Some(goal)) if measured.millis > goal => "ok (target not met yet)",
-            (Some(_), _) => "ok",
-            (None, _) => "no budget",
+            _ => "ok",
         };
         let show = |n: Option<f64>| n.map_or("-".to_owned(), |n| format!("{n}"));
-        println!("{name:20} {:>10.2}  {:>8}  {:>8}  {} ({}) {verdict}", measured.millis, show(target), show(budget), measured.what, measured.note);
-        results
-            .push(serde_json::json!({ "scenario": name, "ms": measured.millis, "what": measured.what, "budget_ms": budget, "note": measured.note }));
+        say(format!(
+            "{name:20} {:>10.2}  {:>8}  {:>8}  {} ({}) {verdict}",
+            measured.millis,
+            show(target),
+            show(budget),
+            measured.what,
+            measured.note
+        ));
+        results.push(serde_json::json!({
+            "scenario": name, "ms": measured.millis, "what": measured.what, "target_ms": target, "budget_ms": budget, "note": measured.note
+        }));
     }
-    if flag("--json") {
+    if json {
         println!("{}", serde_json::to_string_pretty(&results)?);
     }
     if !over.is_empty() {
@@ -297,10 +339,21 @@ mod tests {
         assert!(xmlcraft_syntax::parse(&a).diagnostics().is_empty(), "a well-formed document");
         let b = document_without_indentation(10_000);
         assert!(b.lines().all(|l| !l.starts_with(' ')));
+        assert!(b.len() >= 10_000 && b.len() < 10_400, "built to the size asked for, not shrunk by the indentation left out: {}", b.len());
         assert!(xmlcraft_syntax::parse(&b).diagnostics().is_empty());
         let mut x = Lcg(7);
         let mut y = Lcg(7);
         assert_eq!((x.next(), x.next()), (y.next(), y.next()));
+    }
+
+    #[test]
+    fn only_names_a_scenario_that_exists() {
+        let args = |list: &[&str]| list.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        assert_eq!(only_scenario(&args(&["--json"])).expect("no --only"), None);
+        assert_eq!(only_scenario(&args(&["--only", "reparse_1mb", "--json"])).expect("a scenario"), Some("reparse_1mb"));
+        for bad in [&["--only"][..], &["--only", "reparse_1m"], &["--only", "--json"]] {
+            assert!(only_scenario(&args(bad)).is_err(), "{bad:?}");
+        }
     }
 
     #[test]
