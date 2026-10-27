@@ -149,6 +149,8 @@ pub fn ci(_: &[String]) -> anyhow::Result<()> {
         ("wasm", Box::new(|| wasm(&[]))),
         ("assets", Box::new(|| crate::assets::run(&[]))),
         ("parity", Box::new(|| crate::parity::run(&[]))),
+        // Skips with a notice unless the suite has been fetched (`cargo xtask conformance xmlconf --fetch`).
+        ("conformance", Box::new(|| crate::conformance::run(&["xmlconf".to_owned()]))),
         ("deny", Box::new(|| deny(&[]))),
     ];
     for (i, (name, f)) in steps.iter().enumerate() {

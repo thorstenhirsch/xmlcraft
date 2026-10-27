@@ -147,6 +147,8 @@ struct Parser<'a> {
     overflowed: bool,
     /// Tokens consumed so far, to notice a step that made no progress.
     consumed: usize,
+    /// Where the last consumed token ends.
+    last_end: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -166,6 +168,7 @@ impl<'a> Parser<'a> {
             reported_deep: false,
             overflowed: false,
             consumed: 0,
+            last_end: 0,
         }
     }
 
@@ -199,6 +202,7 @@ impl<'a> Parser<'a> {
         let token = self.ahead.pop_front()?;
         self.tree.token(token.kind.into(), self.src.get(token.range()).unwrap_or_default());
         self.consumed += 1;
+        self.last_end = token.end;
         Some(token)
     }
 
@@ -376,12 +380,21 @@ impl<'a> Parser<'a> {
         };
         let mut attrs: Vec<Attr> = Vec::new();
         let mut end = TagEnd::Unterminated;
+        // Where the last attribute ended: the next one must not start right there.
+        let mut last_end: Option<usize> = None;
         while let Some(t) = self.peek() {
             match t.kind {
                 TokenKind::Whitespace => {
                     self.bump();
                 }
-                TokenKind::Name => self.attribute(&mut attrs),
+                TokenKind::Name => {
+                    if last_end == Some(t.start) {
+                        let name = self.slice(&t.range()).to_owned();
+                        self.diag(Code::MissingSpace, t.range(), vec![name]);
+                    }
+                    self.attribute(&mut attrs);
+                    last_end = Some(self.last_end);
+                }
                 TokenKind::Gt => {
                     self.bump();
                     end = TagEnd::Closed;
@@ -741,6 +754,9 @@ impl<'a> Parser<'a> {
                 if name.eq_ignore_ascii_case("xml") {
                     self.diag(Code::ReservedPiTarget, t.range(), vec![name.to_owned()]);
                 }
+                if name.contains(':') {
+                    self.diag(Code::ColonInName, t.range(), vec![name.to_owned()]);
+                }
                 self.bump();
             }
             None => self.diag(Code::MissingPiTarget, start.range(), Vec::new()),
@@ -749,6 +765,15 @@ impl<'a> Parser<'a> {
         while let Some(t) = self.peek() {
             match t.kind {
                 TokenKind::PiText => {
+                    // The data is separated from the target by whitespace.
+                    let text = self.slice(&t.range());
+                    if target.is_some_and(|target| target.end == t.start) && !text.starts_with(is_xml_space) {
+                        self.diag(
+                            Code::MissingSpace,
+                            t.start..t.start + text.chars().next().map_or(0, char::len_utf8),
+                            vec![text.chars().take(1).collect()],
+                        );
+                    }
                     self.check_chars(t.range());
                     self.bump();
                 }
@@ -776,6 +801,7 @@ impl<'a> Parser<'a> {
             self.diag(Code::MisplacedXmlDecl, start.start..target.end, Vec::new());
         }
         let mut pseudo: Vec<(Range<usize>, Option<Range<usize>>)> = Vec::new();
+        let mut last_end: Option<usize> = None;
         let mut closed = false;
         while let Some(t) = self.peek() {
             match t.kind {
@@ -788,8 +814,11 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 TokenKind::Name => {
-                    self.bump();
                     let name_text = self.slice(&t.range()).to_owned();
+                    if last_end == Some(t.start) {
+                        self.diag(Code::MissingSpace, t.range(), vec![name_text.clone()]);
+                    }
+                    self.bump();
                     let mut value = None;
                     if self.next_significant() == Some(TokenKind::Eq) {
                         self.skip_whitespace();
@@ -804,6 +833,7 @@ impl<'a> Parser<'a> {
                         self.diag(Code::AttrWithoutValue, t.range(), vec![name_text]);
                     }
                     pseudo.push((t.range(), value));
+                    last_end = Some(self.last_end);
                 }
                 TokenKind::Quote => {
                     self.diag(Code::UnexpectedCharacter, t.range(), vec!["\"".to_owned()]);
@@ -921,6 +951,7 @@ impl<'a> Parser<'a> {
         self.bump();
         let mut words: Vec<Range<usize>> = Vec::new();
         let mut literals = 0usize;
+        let mut after_subset = false;
         let mut closed = false;
         while let Some(t) = self.peek() {
             match t.kind {
@@ -928,14 +959,28 @@ impl<'a> Parser<'a> {
                     self.bump();
                 }
                 TokenKind::Name => {
-                    words.push(t.range());
+                    if after_subset {
+                        let text = self.slice(&t.range()).to_owned();
+                        self.diag(Code::BadDoctype, t.range(), vec![format!("unexpected '{text}' after the internal subset")]);
+                    } else {
+                        words.push(t.range());
+                    }
                     self.bump();
                 }
                 TokenKind::Quote => {
-                    self.literal();
+                    let range = self.literal();
                     literals += 1;
+                    if literals == 1
+                        && let Some(range) = range
+                        && words.get(1).is_some_and(|w| self.slice(w) == "PUBLIC")
+                    {
+                        self.check_pubid(range);
+                    }
                 }
-                TokenKind::LBracket => self.subset(),
+                TokenKind::LBracket => {
+                    self.subset();
+                    after_subset = true;
+                }
                 TokenKind::Gt => {
                     self.bump();
                     closed = true;
@@ -1002,11 +1047,20 @@ impl<'a> Parser<'a> {
         self.tree.finish();
     }
 
-    /// `<!ELEMENT ...>` and its kin; the DTD parser reads the inside, here only the extent matters.
+    /// `<!ELEMENT ...>` and its kin. The DTD parser reads the content; here the extent matters, and the few rules of well-formedness
+    /// that do not depend on the declarations around it.
     fn markup_decl(&mut self) {
         let Some(start) = self.peek() else { return };
+        let keyword = self.slice(&start.range());
+        if !matches!(keyword, "<!ELEMENT" | "<!ATTLIST" | "<!ENTITY" | "<!NOTATION") {
+            self.diag(Code::UnknownDeclaration, start.range(), vec![keyword.to_owned()]);
+        }
+        let (is_entity, is_notation) = (keyword == "<!ENTITY", keyword == "<!NOTATION");
         self.tree.start(SyntaxKind::MarkupDecl);
         self.bump();
+        let mut first_name = true;
+        let mut external = false;
+        let mut public_literals_left = 0;
         let mut closed = false;
         while let Some(t) = self.peek() {
             match t.kind {
@@ -1015,11 +1069,38 @@ impl<'a> Parser<'a> {
                     closed = true;
                     break;
                 }
-                TokenKind::Whitespace | TokenKind::Name | TokenKind::Punct | TokenKind::PercentRef => {
+                TokenKind::Name => {
+                    let name = self.slice(&t.range());
+                    if first_name && (is_entity || is_notation) && name.contains(':') {
+                        self.diag(Code::ColonInName, t.range(), vec![name.to_owned()]);
+                    }
+                    first_name = false;
+                    match name {
+                        "SYSTEM" => external = true,
+                        "PUBLIC" => {
+                            external = true;
+                            public_literals_left = 1;
+                        }
+                        _ => {}
+                    }
+                    self.bump();
+                }
+                TokenKind::PercentRef => {
+                    self.diag(Code::PeInDeclaration, t.range(), Vec::new());
+                    self.bump();
+                }
+                TokenKind::Whitespace | TokenKind::Punct => {
                     self.bump();
                 }
                 TokenKind::Quote => {
-                    self.literal();
+                    if let Some(range) = self.literal() {
+                        if public_literals_left > 0 {
+                            public_literals_left -= 1;
+                            self.check_pubid(range);
+                        } else if is_entity && !external {
+                            self.check_entity_value(range);
+                        }
+                    }
                 }
                 TokenKind::Error => {
                     let text = self.slice(&t.range()).to_owned();
@@ -1033,6 +1114,60 @@ impl<'a> Parser<'a> {
             self.diag(Code::UnterminatedDecl, start.range(), Vec::new());
         }
         self.tree.finish();
+    }
+
+    /// A public identifier uses only the characters of `PubidChar`.
+    fn check_pubid(&mut self, range: Range<usize>) {
+        let found = self
+            .slice(&range)
+            .char_indices()
+            .find(|(_, c)| !(matches!(c, ' ' | '\r' | '\n') || c.is_ascii_alphanumeric() || "-'()+,./:=?;!*#@$_%".contains(*c)));
+        if let Some((i, c)) = found {
+            self.diag(Code::BadPubidLiteral, range.start + i..range.start + i + c.len_utf8(), vec![c.to_string()]);
+        }
+    }
+
+    /// An entity value holds references, and a `&` or `%` that does not start one is an error. In the internal subset a parameter-entity
+    /// reference is not allowed inside a declaration at all.
+    fn check_entity_value(&mut self, range: Range<usize>) {
+        let text = self.slice(&range);
+        let mut at = 0;
+        while let Some(i) = text.get(at..).and_then(|rest| rest.find(['&', '%'])) {
+            let from = at + i;
+            let rest = text.get(from..).unwrap_or_default();
+            let bad = |this: &mut Self, c: &str| this.diag(Code::BadEntityValue, range.start + from..range.start + from + 1, vec![c.to_owned()]);
+            let name_end = |after: &str| -> Option<usize> {
+                let end = after.find(|c| !crate::chars::is_name_char(c)).unwrap_or(after.len());
+                let valid = after.chars().next().is_some_and(is_name_start_char) && after.get(end..).is_some_and(|r| r.starts_with(';'));
+                valid.then_some(end + 1)
+            };
+            if rest.starts_with('&') {
+                let after = rest.get(1..).unwrap_or_default();
+                let length = if after.starts_with('#') {
+                    after.find(';').filter(|e| char_ref_value(&format!("&{}", after.get(..=*e).unwrap_or_default())).is_some()).map(|e| e + 1)
+                } else {
+                    name_end(after)
+                };
+                match length {
+                    Some(n) => at = from + 1 + n,
+                    None => {
+                        bad(self, "&");
+                        at = from + 1;
+                    }
+                }
+            } else {
+                match name_end(rest.get(1..).unwrap_or_default()) {
+                    Some(n) => {
+                        self.diag(Code::PeInDeclaration, range.start + from..range.start + from + 1 + n, Vec::new());
+                        at = from + 1 + n;
+                    }
+                    None => {
+                        bad(self, "%");
+                        at = from + 1;
+                    }
+                }
+            }
+        }
     }
 
     fn declare(&mut self, prefix: Option<&str>, attr: &Attr) {

@@ -5,6 +5,7 @@
 use std::process::ExitCode;
 
 mod assets;
+mod conformance;
 mod gates;
 mod layers;
 mod parity;
@@ -23,6 +24,11 @@ const COMMANDS: &[(&str, &str, Command)] = &[
     ("ci", "fmt --check, clippy -D warnings, test, layers, wasm, assets, parity, deny (stops at first failure)", gates::ci),
     ("test", "Workspace tests: cargo nextest (cargo test when it is missing), then doctests", gates::test),
     ("assets", "Enforce the asset policy (AGENTS.md §1) against ATTRIBUTION.toml; --write regenerates ATTRIBUTION.md", assets::run),
+    (
+        "conformance",
+        "Run a W3C conformance suite against the parser and hold the ratchet: `conformance xmlconf [--fetch] [--write] [-v]`",
+        conformance::run,
+    ),
     ("parity", "Validate parity/xmlspy-features.toml against the registry, tools and tests; report progress (--json, --partial)", parity::run),
 ];
 

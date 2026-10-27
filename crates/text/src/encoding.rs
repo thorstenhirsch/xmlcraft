@@ -76,9 +76,12 @@ impl Detected {
         Self { encoding: Encoding::UTF_8, bom: false, declared: None }
     }
 
-    /// Whether the declared encoding names the encoding the file is really in (also true when nothing is declared).
+    /// Whether the declared encoding names the encoding the file is really in (also true when nothing is declared). A plain
+    /// `UTF-16` names either byte order.
     pub fn declaration_matches(&self) -> bool {
-        self.declared.as_deref().is_none_or(|label| Encoding::from_label(label) == Some(self.encoding))
+        self.declared.as_deref().is_none_or(|label| {
+            Encoding::from_label(label) == Some(self.encoding) || (label.trim().eq_ignore_ascii_case("UTF-16") && self.encoding.is_utf16())
+        })
     }
 }
 
@@ -329,6 +332,18 @@ mod tests {
         let d = sniff(b"\xEF\xBB\xBF<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><a/>");
         assert_eq!((d.encoding, d.bom, d.declared.as_deref()), (Encoding::UTF_8, true, Some("ISO-8859-1")));
         assert!(!d.declaration_matches());
+    }
+
+    #[test]
+    fn a_plain_utf16_declaration_matches_both_byte_orders() {
+        for (enc, bom) in [(Encoding::UTF_16LE, true), (Encoding::UTF_16BE, true), (Encoding::UTF_16BE, false)] {
+            let bytes = encode("<?xml version=\"1.0\" encoding=\"utf-16\"?><a/>", enc, bom, Unmappable::Refuse).expect("ok");
+            let d = sniff(&bytes);
+            assert_eq!((d.encoding, d.declared.as_deref()), (enc, Some("utf-16")));
+            assert!(d.declaration_matches(), "{enc:?} bom={bom}");
+        }
+        let utf8 = sniff(b"<?xml version=\"1.0\" encoding=\"UTF-16\"?><a/>");
+        assert!(!utf8.declaration_matches(), "ASCII bytes are not UTF-16");
     }
 
     #[test]

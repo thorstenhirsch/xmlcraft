@@ -1,0 +1,54 @@
+name: Conformance
+
+# The W3C and OASIS conformance suites against XmlCraft, with the ratchet in xtask/baselines/: a new failure fails the run, and so does a
+# fixed test that is still listed. The suites are fetched (pinned by URL and SHA-256) into the ignored conformance/ directory, which is
+# why this is its own workflow: the gate in ci.yml skips them when they are not there. Weekly, by hand, and when the ratchet or the runner
+# changes.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 5 * * 1"
+  pull_request:
+    paths:
+      - "xtask/src/conformance.rs"
+      - "xtask/baselines/**"
+      - ".github/workflows/conformance.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUST_BACKTRACE: 1
+
+jobs:
+  xmlconf:
+    name: xmlconf
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          prefix-key: v1-rust-conformance
+          key: ${{ hashFiles('Cargo.toml') }}
+          save-if: false
+
+      # Prints the pass rate per kind of test and fails on any difference from xtask/baselines/xmlconf.txt.
+      - name: W3C XML conformance suite
+        run: cargo xtask conformance xmlconf --fetch --verbose
