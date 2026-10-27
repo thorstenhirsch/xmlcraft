@@ -409,7 +409,26 @@ fn what_can_be_folded_is_listed_and_folding_it_hides_lines() {
     assert_eq!(level2["visible_lines"], 7, "one line of each book is hidden");
     let open = ok(&mut a, "doc_fold", json!({ "id": id, "action": "unfold_all" }));
     assert_eq!((open["changed"].as_bool(), open["visible_lines"].as_u64()), (Some(true), Some(9)));
+    // `unfold` at a line a fold hides works without the caret having to go there (which would open the fold by itself).
+    ok(&mut a, "doc_fold", json!({ "id": id, "action": "fold", "line": 3, "column": 5 }));
+    ok(&mut a, "doc_fold", json!({ "id": id, "action": "fold", "line": 2, "column": 1 }));
+    assert_eq!(
+        ok(&mut a, "doc_fold", json!({ "id": id, "action": "fold", "line": 2, "column": 1 }))["changed"],
+        false,
+        "folded already: the outer one"
+    );
+    let opened = ok(&mut a, "doc_fold", json!({ "id": id, "action": "unfold", "line": 3, "column": 1 }));
+    assert_eq!(
+        (opened["changed"].as_bool(), opened["folded"].as_array().map(Vec::len)),
+        (Some(true), Some(1)),
+        "line 3 is in the first book, which is folded; it opens: {opened}"
+    );
+    assert_eq!(listed["truncated"], false);
+    let wide = format!("<r>\n{}</r>", "<i>\n x\n</i>\n".repeat(50_010));
+    let capped = ok(&mut a, "xml_folds", json!({ "text": wide }));
+    assert_eq!((capped["count"].as_u64(), capped["truncated"].as_bool()), (Some(50_000), Some(true)), "the list says it is not all of it");
     // Bad arguments say what is wrong.
+    assert!(err(&mut a, "doc_fold", json!({ "id": id, "action": "fold", "line": 2 })).contains("go together"));
     assert!(err(&mut a, "doc_fold", json!({ "id": id, "action": "level" })).contains("level is missing"));
     assert!(err(&mut a, "doc_fold", json!({ "id": id, "action": "squash" })).contains("doc_fold"), "the schema lists the actions");
     assert!(err(&mut a, "doc_fold", json!({ "id": id, "action": "fold", "line": 99, "column": 1 })).contains("no line 99"));

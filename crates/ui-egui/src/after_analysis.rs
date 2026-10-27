@@ -66,7 +66,10 @@ impl XmlCraftApp {
         let name = doc.name().to_owned();
         if let Some(why) = analysis.skipped {
             self.status = match why {
-                Skipped::TooLarge => fmt(tl!("{name} is too large for this"), &[("name", &name)]),
+                Skipped::TooLarge => match then {
+                    Then::GoToMatchingTag => fmt(tl!("{name} is too large to look for matching tags in"), &[("name", &name)]),
+                    Then::Fold(_) | Then::FoldLine(_) => fmt(tl!("{name} is too large to fold"), &[("name", &name)]),
+                },
                 Skipped::Failed => fmt(tl!("Analysing {name} failed. This is a bug; the document is unchanged."), &[("name", &name)]),
             };
             return;

@@ -97,7 +97,10 @@ fn a_fold_command_given_while_the_analysis_is_old_waits_for_the_new_one() {
     editor_mut(&mut h); // the analysis is about the text before this
     h.state_mut().execute("edit.fold"); // so it waits for the new one
     editor_mut(&mut h); // and the text changes again before that arrives
-    for _ in 0..40 {
+    // The analysis of the latest text has arrived when the caret, which is in a tag name, has its pair highlighted: by then the command
+    // would have been done, were it not dropped.
+    wait(&mut h, "the analysis of the latest text", |app| app.highlighted_tag_names().is_some());
+    for _ in 0..5 {
         h.run_steps(1);
         std::thread::sleep(Duration::from_millis(5));
     }

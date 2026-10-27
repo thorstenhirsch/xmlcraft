@@ -140,17 +140,17 @@ impl Editor {
             return Plan::Literal;
         }
         let Some(name) = self.name_of_open_tag(head) else { return Plan::Literal };
-        // The end tag is there already (the `>` of a tag being edited in front of it).
-        let end_tag = format!("</{name}");
-        let mut end = head;
-        for _ in 0..end_tag.chars().count() + 1 {
-            end = self.buffer.next_char(end);
+        // The tag has its `>` already: typing it goes over it. In front of `/>` it is only a character.
+        match self.buffer.char_at(head) {
+            Some('>') => return Plan::StepOver,
+            Some('/') if self.buffer.char_at(head + 1) == Some('>') => return Plan::Literal,
+            _ => {}
         }
-        let following = self.buffer.slice(head..end).unwrap_or_default();
-        if following.strip_prefix(&end_tag).is_some_and(|rest| rest.starts_with(['>', ' ', '\t', '\r', '\n'])) {
+        // The end tag is there already (the `>` of a tag being edited in front of it).
+        if self.end_tag_follows(head, &name) {
             return Plan::Literal;
         }
-        Plan::Write { text: format!(">{end_tag}>"), caret: 1 }
+        Plan::Write { text: format!(">{}>", format_args!("</{name}")), caret: 1 }
     }
 
     /// The name of the start tag that the text before `head` is the inside of (`<a b="c"` is `a`), if it is a start tag that a `>` closes
@@ -175,14 +175,95 @@ impl Editor {
         if self.lexer.mode_at(&self.buffer, head - 1) != Mode::Content {
             return Plan::Literal;
         }
-        let Ok(before) = self.buffer.slice(0..head - 1) else { return Plan::Literal };
-        match innermost_open_element(&before) {
+        match self.open_element_before(head - 1) {
+            // The end tag is there already: `<a><|</a>`.
+            Some(name) if self.end_tag_follows(head, &name) => Plan::Literal,
             Some(name) => {
                 let text = format!("/{name}>");
                 Plan::Write { caret: text.len(), text }
             }
             None => Plan::Literal,
         }
+    }
+
+    /// Whether the text at `at` starts with the end tag of `name` (`</name>`, the `>` perhaps after white space).
+    fn end_tag_follows(&self, at: usize, name: &str) -> bool {
+        let end_tag = format!("</{name}");
+        let mut end = at;
+        for _ in 0..end_tag.chars().count() + 1 {
+            end = self.buffer.next_char(end);
+        }
+        let following = self.buffer.slice(at..end).unwrap_or_default();
+        following.strip_prefix(&end_tag).is_some_and(|rest| rest.starts_with(['>', ' ', '\t', '\r', '\n']))
+    }
+
+    /// The name of the innermost element that is open at `end`. The text before `end` is parsed from a line where the lexer is in
+    /// content: first a stretch of 64 KiB, then ever longer ones (up to [`MAX_PARSED_BEFORE`]) when the element was opened before it.
+    fn open_element_before(&mut self, end: usize) -> Option<String> {
+        let mut size = 64 * 1024;
+        loop {
+            let mut line = self.buffer.line_of(end.saturating_sub(size));
+            let from = loop {
+                if line == 0 {
+                    break 0;
+                }
+                let at = self.buffer.line_start(line)?;
+                if self.lexer.mode_at(&self.buffer, at) == Mode::Content {
+                    break at;
+                }
+                line -= 1;
+            };
+            let prefix = self.buffer.slice(from..end).ok()?;
+            if let Some(name) = innermost_open_element(&prefix) {
+                return Some(name);
+            }
+            if from == 0 || size >= MAX_PARSED_BEFORE {
+                return None;
+            }
+            size = size.saturating_mul(8);
+        }
+    }
+
+    /// Where the start tag begins, if what comes last before `offset` (past white space) is the end of one that is open (`<a b="c">`,
+    /// not `</a>`, `<b/>`, a comment, a declaration or a processing instruction), with `offset` in content. The text is lexed from a line
+    /// where the lexer is in content, so a tag that goes over lines is a start tag and a `<` in a comment is nothing.
+    pub(crate) fn after_start_tag(&mut self, offset: usize) -> Option<usize> {
+        use xmlcraft_syntax::{Lexer, TokenKind};
+        if self.lexer.mode_at(&self.buffer, offset) != Mode::Content {
+            return None;
+        }
+        let mut line = self.buffer.line_of(offset);
+        let mut steps = 0;
+        let from = loop {
+            let at = self.buffer.line_start(line)?;
+            if line == 0 || self.lexer.mode_at(&self.buffer, at) == Mode::Content {
+                break at;
+            }
+            steps += 1;
+            if steps > 200 {
+                return None; // a tag over more lines than that is not looked for
+            }
+            line -= 1;
+        };
+        let Ok(text) = self.buffer.slice(from..offset) else { return None };
+        let mut lexer = Lexer::new(&text);
+        let (mut in_start_tag, mut last_is_start_tag_end, mut tag_at) = (false, false, from);
+        loop {
+            let before = lexer.mode();
+            let Some(token) = lexer.next() else { break };
+            match token.kind {
+                TokenKind::Whitespace => {}
+                TokenKind::Text if text.get(token.range()).is_some_and(|t| t.trim().is_empty()) => {}
+                TokenKind::TagOpen => {
+                    (in_start_tag, last_is_start_tag_end) = (true, false);
+                    tag_at = from + token.start;
+                }
+                TokenKind::EndTagOpen => (in_start_tag, last_is_start_tag_end) = (false, false),
+                TokenKind::Gt if before == Mode::Tag => (in_start_tag, last_is_start_tag_end) = (false, in_start_tag),
+                _ => last_is_start_tag_end = false,
+            }
+        }
+        last_is_start_tag_end.then_some(tag_at)
     }
 
     /// Whether the last thing before `offset` on its line, past any white space, is `=`.
@@ -443,6 +524,37 @@ mod tests {
     }
 
     #[test]
+    fn a_closing_aid_does_not_double_what_is_there() {
+        // `>` in front of the `>` of the tag steps over it; in front of `/>` it is a character.
+        assert_eq!(typed("<a|>x</a>", ">"), "<a>|x</a>");
+        assert_eq!(typed("<a|/>", ">"), "<a>|/>");
+        // `/` in front of an end tag that is there already (`<a><|</a>`) is a slash.
+        assert_eq!(typed("<a><|</a>", "/"), "<a></|</a>");
+        assert_eq!(typed("<a><|</b>", "/"), "<a></a>|</b>", "another name is not this end tag");
+    }
+
+    #[test]
+    fn the_end_tag_of_an_element_opened_far_back_is_found() {
+        // Opened before the first 64 KiB window, and then before the next.
+        let near = format!("<outer>{}<|", "<i>x</i>\n".repeat(10_000));
+        assert!(near.len() > 64 * 1024);
+        assert!(typed(&near, "/").ends_with("</outer>|"));
+        let far = format!("<outer>{}<|", "<i>x</i>\n".repeat(100_000));
+        assert!(far.len() > 512 * 1024);
+        assert!(typed(&far, "/").ends_with("</outer>|"));
+        // The innermost open element is found in the first window, whatever is open further back.
+        let inner = format!("<outer>{}<inner>x<|", "<i>x</i>\n".repeat(10_000));
+        assert!(typed(&inner, "/").ends_with("</inner>|"));
+        // Nothing open anywhere: a slash.
+        let none = format!("{}<|", "<i>x</i>\n".repeat(20_000));
+        assert!(typed(&none, "/").ends_with("<i>x</i>\n</|"));
+        // Several carets each find theirs.
+        let mut e = at("<a><|\n<c><|");
+        e.type_input("/");
+        assert_eq!(shown(&e), "<a></a>|\n<c></c>|");
+    }
+
+    #[test]
     fn the_closing_aids_can_be_turned_off() {
         let mut e = Editor::with_settings("", Settings { auto_close: false, ..Settings::default() });
         for key in "<a><".chars() {
@@ -475,6 +587,15 @@ mod tests {
         assert_eq!(enter("<a b=\"x>|y\">"), "<a b=\"x>\n|y\">", "in a value");
         // A caret before something other than an end tag: only the extra level.
         assert_eq!(enter("<a>|<b/>"), "<a>\n  |<b/>");
+        // A `<` in a comment that ends before the caret opens nothing; a start tag over lines is a start tag; a comment after a tag is
+        // the last thing.
+        assert_eq!(enter("<!-- <x> -->|"), "<!-- <x> -->\n|");
+        assert_eq!(enter("<a\n  b=\"c\">|"), "<a\n  b=\"c\">\n  |", "one level in from the line the tag begins on");
+        assert_eq!(enter("<a\n  b=\"c\">|</a>"), "<a\n  b=\"c\">\n  |\n</a>");
+        assert_eq!(enter("<r>\n  <a\n    b=\"c\">|</a>"), "<r>\n  <a\n    b=\"c\">\n    |\n  </a>");
+        assert_eq!(enter("<a><!-- c -->|"), "<a><!-- c -->\n|");
+        assert_eq!(enter("<![CDATA[ <x> ]]>|"), "<![CDATA[ <x> ]]>\n|");
+        assert_eq!(enter("<?pi <x>?>|"), "<?pi <x>?>\n|");
         assert_eq!(enter("<a>|</b>"), "<a>\n  |\n</b>", "any end tag after it");
         // Several carets, and a selection is replaced.
         assert_eq!(enter("<a>|</a>\n<b>|</b>"), "<a>\n  |\n</a>\n<b>\n  |\n</b>");

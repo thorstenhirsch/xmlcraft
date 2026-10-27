@@ -17,6 +17,9 @@ use crate::caret::Caret;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fold {
     pub hidden: Range<usize>,
+    /// How many more positions after `hidden.end` the fold hides: those inside the line break that ends the last hidden line (one for
+    /// CRLF: between the CR and the LF), none for LF and for a last line without a break.
+    pub tail: usize,
 }
 
 /// Which lines are hidden, and what row each of the others is on.
@@ -180,15 +183,17 @@ impl Editor {
         let (Some(start), Some(end)) = (self.buffer.line_range(first).map(|r| r.end), self.buffer.line_range(last).map(|r| r.end)) else {
             return false;
         };
-        let fold = Fold { hidden: start..end };
-        if self.folds.contains(&fold) {
+        let mut fold = Fold { hidden: start..end, tail: 0 };
+        fold.tail = zone_of_fold(&self.buffer, &fold).1 - end;
+        if self.folds.iter().any(|f| f.hidden == fold.hidden) {
             return false;
         }
+        let zone_end = end + fold.tail;
         let at = self.folds.partition_point(|f| (f.hidden.start, f.hidden.end) < (start, end));
         self.folds.insert(at, fold);
         self.rebuild_fold_map();
         // What was in the hidden lines goes to the end of the line that stands for them.
-        let hidden = |offset: usize| start < offset && offset <= end;
+        let hidden = |offset: usize| start < offset && offset <= zone_end;
         let moved: Vec<Caret> = self
             .carets
             .iter()
@@ -240,8 +245,8 @@ impl Editor {
                     fold.hidden = start.saturating_add_signed(delta)..end.saturating_add_signed(delta);
                     true
                 } else {
-                    // After the fold, and not touching it.
-                    s > end
+                    // After the fold (past what it hides, the middle of a CRLF included), and not touching it.
+                    s > end.saturating_add(fold.tail)
                 }
             });
         }
@@ -292,7 +297,7 @@ mod tests {
     /// The fold that hides the lines after `first` up to and including `last`.
     fn fold(buffer: &Buffer, first: usize, last: usize) -> Fold {
         let (start, end) = (buffer.line_range(first).map(|r| r.end), buffer.line_range(last).map(|r| r.end));
-        Fold { hidden: start.unwrap_or(0)..end.unwrap_or(0) }
+        Fold { hidden: start.unwrap_or(0)..end.unwrap_or(0), tail: 0 }
     }
 
     #[test]
@@ -324,7 +329,13 @@ mod tests {
         assert_eq!(map.rows(), 2);
         // Nothing to hide, past the end, backwards, and ends that are not the ends of lines (bytes 1 and 7 are in the middle of lines).
         #[allow(clippy::reversed_empty_ranges)] // a fold that was left backwards is what is being tried
-        let odd = [Fold { hidden: 4..4 }, Fold { hidden: 0..9999 }, Fold { hidden: 9..3 }, Fold { hidden: 1..8 }, Fold { hidden: 2..7 }];
+        let odd = [
+            Fold { hidden: 4..4, tail: 0 },
+            Fold { hidden: 0..9999, tail: 0 },
+            Fold { hidden: 9..3, tail: 0 },
+            Fold { hidden: 1..8, tail: 0 },
+            Fold { hidden: 2..7, tail: 0 },
+        ];
         assert!(FoldMap::new(&buffer, &odd).is_empty());
         assert_eq!(FoldMap::new(&buffer, &[fold(&buffer, 0, 1)]).rows(), 9, "a good one is not");
         // A past-the-end query is answered, not overflowed.
@@ -513,6 +524,24 @@ mod tests {
         assert_eq!(e.folds().len(), 1, "the start of the next line is visible");
         e.move_carets(Motion::Left, false);
         assert_eq!(head(&e), 1, "back from there is the end of the line that stands for the fold");
+    }
+
+    #[test]
+    fn the_middle_of_the_last_line_break_belongs_to_the_fold_when_folding_and_when_editing() {
+        // Found in review: a caret between the CR and the LF after the last hidden line was not moved out when folding (the fold opened
+        // again at once), and an edit there was taken for one after the fold.
+        let mut e = Editor::new("a\r\nb\r\nc\r\nd");
+        e.set_selection(5, 5); // between the CR and the LF of the break after `b`
+        assert!(e.fold_lines(0, 1));
+        assert_eq!((e.folds().len(), e.folds()[0].tail, head(&e)), (1, 1, 1), "the fold stays, the caret went to the end of line 0");
+        e.apply_edits(&[Edit::insert(5, "X")]);
+        assert!(e.folds().is_empty(), "an edit inside the hidden break opens the fold");
+        // With LF there is no middle.
+        let mut e = Editor::new("a\nb\nc");
+        e.fold_lines(0, 1);
+        assert_eq!(e.folds()[0].tail, 0);
+        e.apply_edits(&[Edit::insert(4, "X")]);
+        assert_eq!(e.folds().len(), 1, "the start of line 2 is after the fold");
     }
 
     #[test]
