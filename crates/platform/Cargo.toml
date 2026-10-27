@@ -1,0 +1,18 @@
+[package]
+name = "xmlcraft-platform"
+description = "XmlCraft's native services: reading and atomically writing files, and noticing that a file changed on disk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-engine = { workspace = true }
+craft-atomic = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

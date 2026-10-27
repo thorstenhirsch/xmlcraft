@@ -39,3 +39,4 @@ Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is 
 - 2026-10-27: M1.6a (`xmlcraft-editor`): the headless editor model, multi-caret from the start.
 - 2026-10-27: M1.6b (`xmlcraft-code-editor`): the egui editor widget.
 - 2026-10-27: M1.7: XML colouring (per-line lexing from checkpoints) and its theme colours.
+- 2026-10-27: M1.12a: the document model (`xmlcraft-engine::Document`, `Session`) and native file I/O (`xmlcraft-platform`).

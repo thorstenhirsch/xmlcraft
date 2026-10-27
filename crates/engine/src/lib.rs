@@ -4,19 +4,26 @@
 //! documents and the command registry, and knows nothing about egui.
 
 pub mod commands;
+mod document;
 
-/// The open documents. Documents arrive with the editor milestone (M1); until then a session is empty.
-#[derive(Debug, Default)]
+pub use document::{Document, FileStamp, MAX_OPEN_BYTES, OpenError, SaveError};
+
+/// The open documents, and which one is shown.
+#[derive(Default)]
 pub struct Session {
     documents: Vec<Document>,
     active: Option<usize>,
+    next_id: u64,
+    untitled: usize,
 }
 
-/// One open document. Filled in by the editor milestone.
-#[derive(Debug)]
-pub struct Document {
-    pub name: String,
-    pub dirty: bool,
+impl std::fmt::Debug for Session {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Session")
+            .field("documents", &self.documents.iter().map(Document::name).collect::<Vec<_>>())
+            .field("active", &self.active)
+            .finish()
+    }
 }
 
 impl Session {
@@ -28,9 +35,38 @@ impl Session {
         &self.documents
     }
 
+    pub fn document(&self, index: usize) -> Option<&Document> {
+        self.documents.get(index)
+    }
+
+    pub fn document_mut(&mut self, index: usize) -> Option<&mut Document> {
+        self.documents.get_mut(index)
+    }
+
+    /// The index of the document with this id.
+    pub fn position_of(&self, id: u64) -> Option<usize> {
+        self.documents.iter().position(|d| d.id() == id)
+    }
+
     /// The index of the document being shown, if any.
     pub fn active(&self) -> Option<usize> {
         self.active.filter(|i| *i < self.documents.len())
+    }
+
+    pub fn active_document(&self) -> Option<&Document> {
+        self.active().and_then(|i| self.documents.get(i))
+    }
+
+    pub fn active_document_mut(&mut self) -> Option<&mut Document> {
+        let index = self.active()?;
+        self.documents.get_mut(index)
+    }
+
+    /// Show the document at `index`, or the home view for `None`. An index past the end is ignored.
+    pub fn set_active(&mut self, index: Option<usize>) {
+        if index.is_none_or(|i| i < self.documents.len()) {
+            self.active = index;
+        }
     }
 
     pub fn has_document(&self) -> bool {
@@ -38,11 +74,63 @@ impl Session {
     }
 
     pub fn can_undo(&self) -> bool {
-        false
+        self.active_document().is_some_and(|d| d.editor().can_undo())
     }
 
     pub fn can_redo(&self) -> bool {
-        false
+        self.active_document().is_some_and(|d| d.editor().can_redo())
+    }
+
+    /// Whether any document has changes that are not saved.
+    pub fn has_unsaved_changes(&self) -> bool {
+        self.documents.iter().any(Document::is_dirty)
+    }
+
+    fn next_id(&mut self) -> u64 {
+        self.next_id += 1;
+        self.next_id
+    }
+
+    /// A new empty document, shown. Returns its index.
+    pub fn new_document(&mut self) -> usize {
+        self.untitled += 1;
+        let id = self.next_id();
+        self.documents.push(Document::untitled(id, self.untitled));
+        let index = self.documents.len() - 1;
+        self.active = Some(index);
+        index
+    }
+
+    /// Open a file from its bytes and show it; a file that is already open is just shown. Returns its index.
+    pub fn open(&mut self, path: Option<std::path::PathBuf>, bytes: &[u8], stamp: Option<FileStamp>) -> Result<usize, OpenError> {
+        if let Some(path) = &path
+            && let Some(index) = self.documents.iter().position(|d| d.path() == Some(path.as_path()))
+        {
+            self.active = Some(index);
+            return Ok(index);
+        }
+        let id = self.next_id();
+        self.documents.push(Document::from_bytes(id, path, bytes, stamp)?);
+        let index = self.documents.len() - 1;
+        self.active = Some(index);
+        Ok(index)
+    }
+
+    /// Close the document at `index` (the caller has dealt with unsaved changes). The one to its left, or the home view, is shown next.
+    pub fn close(&mut self, index: usize) -> Option<Document> {
+        if index >= self.documents.len() {
+            return None;
+        }
+        let closed = self.documents.remove(index);
+        self.active = match self.active {
+            Some(a) if a == index => index.checked_sub(1).filter(|_| !self.documents.is_empty()).or((!self.documents.is_empty()).then_some(0)),
+            Some(a) if a > index => Some(a - 1),
+            other => other,
+        };
+        if self.documents.is_empty() {
+            self.active = None;
+        }
+        Some(closed)
     }
 }
 
@@ -72,7 +160,50 @@ mod tests {
     fn an_empty_session_has_no_document_and_nothing_to_undo() {
         let s = Session::new();
         assert!(!s.has_document() && s.active().is_none() && s.documents().is_empty());
-        assert!(!s.can_undo() && !s.can_redo());
+        assert!(!s.can_undo() && !s.can_redo() && !s.has_unsaved_changes());
+    }
+
+    #[test]
+    fn opening_showing_and_closing_documents() {
+        let mut s = Session::new();
+        let a = s.open(Some("/x/a.xml".into()), b"<a/>", None).expect("opens");
+        let b = s.new_document();
+        assert_eq!((a, b, s.active()), (0, 1, Some(1)));
+        assert_eq!(s.documents().iter().map(Document::name).collect::<Vec<_>>(), ["a.xml", "Untitled-1"]);
+        // Opening a file that is open shows it instead of opening it twice.
+        assert_eq!(s.open(Some("/x/a.xml".into()), b"<changed/>", None), Ok(0));
+        assert_eq!((s.documents().len(), s.active()), (2, Some(0)));
+        assert_eq!(s.document(0).map(|d| d.editor().text()), Some("<a/>".to_owned()), "the open document is kept as it is");
+        s.set_active(Some(9));
+        assert_eq!(s.active(), Some(0), "an index past the end is ignored");
+        s.set_active(None);
+        assert!(!s.has_document());
+        // Closing: the neighbour to the left is shown, indexes after it shift.
+        s.set_active(Some(1));
+        let c = s.new_document();
+        assert_eq!(c, 2);
+        assert!(s.close(1).is_some());
+        assert_eq!((s.active(), s.documents().len()), (Some(1), 2), "the active one moved down with the list");
+        assert!(s.close(1).is_some());
+        assert_eq!(s.active(), Some(0));
+        assert!(s.close(0).is_some() && s.active().is_none() && s.close(0).is_none());
+    }
+
+    #[test]
+    fn undo_and_unsaved_changes_follow_the_documents() {
+        let mut s = Session::new();
+        s.new_document();
+        assert!(!s.can_undo() && !s.has_unsaved_changes());
+        if let Some(d) = s.active_document_mut() {
+            d.editor_mut().type_text("x");
+        }
+        assert!(s.can_undo() && !s.can_redo() && s.has_unsaved_changes());
+        if let Some(d) = s.active_document_mut() {
+            d.editor_mut().undo();
+        }
+        assert!(s.can_redo());
+        assert_eq!(s.position_of(s.documents()[0].id()), Some(0));
+        assert_eq!(s.position_of(999), None);
     }
 
     #[test]

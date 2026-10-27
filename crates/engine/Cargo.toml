@@ -11,3 +11,8 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+xmlcraft-text = { workspace = true }
+xmlcraft-editor = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

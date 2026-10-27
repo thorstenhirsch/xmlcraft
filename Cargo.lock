@@ -4669,6 +4669,20 @@ dependencies = [
 [[package]]
 name = "xmlcraft-engine"
 version = "0.0.1"
+dependencies = [
+ "proptest",
+ "xmlcraft-editor",
+ "xmlcraft-text",
+]
+
+[[package]]
+name = "xmlcraft-platform"
+version = "0.0.1"
+dependencies = [
+ "craft-atomic",
+ "tempfile",
+ "xmlcraft-engine",
+]
 
 [[package]]
 name = "xmlcraft-syntax"
