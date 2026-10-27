@@ -159,6 +159,15 @@ impl Editor {
         self.carets.iter().map(|c| c.sel).collect()
     }
 
+    /// The selections with the primary caret's last, which is how [`Editor::set_selections`] reads them: undo and redo give back the
+    /// primary caret that an edit had, not the last one in the text.
+    fn selections_for_history(&self) -> Vec<Selection> {
+        let primary = self.primary_index();
+        let mut out: Vec<Selection> = self.carets.iter().enumerate().filter(|(i, _)| *i != primary).map(|(_, c)| c.sel).collect();
+        out.extend(self.carets.get(primary).map(|c| c.sel));
+        out
+    }
+
     pub fn has_selection(&self) -> bool {
         self.carets.iter().any(|c| !c.is_empty())
     }
@@ -350,13 +359,13 @@ impl Editor {
             self.set_carets_raw(carets, primary);
             return false;
         }
-        let before = self.selections();
+        let before = self.selections_for_history();
         let first_changed = edits.iter().map(|e| e.range.start).min().unwrap_or(0);
         // Last first: the offsets of the edits that come earlier in the text stay valid while the later ones are applied.
         let ordered: Vec<Edit> = edits.into_iter().rev().collect();
         let Ok(inverse) = self.buffer.apply_all(&ordered) else { return false };
         self.set_carets_raw(carets, primary);
-        let after = self.selections();
+        let after = self.selections_for_history();
         self.history.record(ordered, inverse, before, after, kind, self.time);
         self.version += 1;
         // The text before the first edit is unchanged, so that offset is on the same line as before.
@@ -704,6 +713,22 @@ mod tests {
 
     fn at(e: &Editor) -> (String, Vec<(usize, usize)>) {
         (e.text(), e.carets().iter().map(|c| (c.sel.anchor, c.sel.head)).collect())
+    }
+
+    #[test]
+    fn undo_and_redo_give_back_the_primary_caret() {
+        let mut e = Editor::new("one two three");
+        e.set_selection(0, 0);
+        e.place_caret(8, true);
+        e.place_caret(4, true); // the middle one is the primary
+        assert_eq!((e.carets().len(), e.primary_index(), e.primary().head()), (3, 1, 4));
+        e.type_text("-");
+        assert_eq!(e.text(), "-one -two -three");
+        e.undo();
+        assert_eq!(e.text(), "one two three");
+        assert_eq!((e.carets().len(), e.primary_index(), e.primary().head()), (3, 1, 4), "the middle caret again");
+        e.redo();
+        assert_eq!((e.text().as_str(), e.primary_index(), e.primary().head()), ("-one -two -three", 1, 6), "and after redo");
     }
 
     #[test]
