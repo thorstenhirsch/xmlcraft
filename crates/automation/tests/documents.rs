@@ -110,7 +110,9 @@ fn a_character_the_encoding_cannot_hold_is_an_error_unless_references_are_asked_
     let path = file(dir.path(), "latin.xml", b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><a><!-- c --></a>");
     let mut a = Automation::new();
     let id = ok(&mut a, "doc_open", json!({ "path": path }))["id"].as_u64().expect("id");
-    ok(&mut a, "doc_edit", json!({ "id": id, "edits": [{ "line": 1, "column": 56, "text": "日" }] }));
+    // Inside the comment, in front of the `c`.
+    let column = ok(&mut a, "doc_text", json!({ "id": id }))["text"].as_str().and_then(|t| t.find("c -->")).expect("the comment") + 1;
+    ok(&mut a, "doc_edit", json!({ "id": id, "edits": [{ "line": 1, "column": column, "text": "日" }] }));
     let refused = err(&mut a, "doc_save", json!({ "id": id }));
     assert!(refused.contains("U+65E5") && refused.contains("line 1"), "{refused}");
     // Inside the comment a reference would mean something else: refused too, with the way out.
@@ -254,7 +256,7 @@ fn files_outside_the_root_are_out_of_reach_and_the_root_is_what_refuses_them() {
         ("xml_wellformed", json!({ "path": "../out.xml" })),
     ] {
         let message = err(&mut confined, tool, args.clone());
-        assert!(message.contains("outside") || message.contains("root") || message.contains("No such file"), "{tool}: {message}");
+        assert!(message.contains("outside the root"), "{tool} {args}: {message}");
     }
     let id = ok(&mut confined, "doc_open", json!({ "path": "in.xml" }))["id"].as_u64().expect("id");
     let target = outside.path().join("copy.xml");
@@ -300,4 +302,45 @@ fn finding_and_replacing_text_and_patterns() {
     let many = ok(&mut a, "doc_new", json!({ "text": "x".repeat(10_001) }))["id"].as_u64().expect("id");
     assert!(err(&mut a, "doc_replace", json!({ "id": many, "pattern": "x", "replacement": "y" })).contains("nothing was replaced"));
     assert_eq!(ok(&mut a, "doc_text", json!({ "id": many }))["text"].as_str().map(|t| t.chars().all(|c| c == 'x')), Some(true));
+}
+
+#[test]
+fn a_deleted_file_or_another_route_to_it_does_not_get_around_the_save_checks() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = file(dir.path(), "a.xml", b"<a/>");
+    let mut a = Automation::new();
+    let id = ok(&mut a, "doc_open", json!({ "path": path }))["id"].as_u64().expect("id");
+    ok(&mut a, "doc_set_text", json!({ "id": id, "text": "<b/>" }));
+    // The file was deleted meanwhile: saving does not quietly bring it back.
+    std::fs::remove_file(&path).expect("removes");
+    let refused = err(&mut a, "doc_save", json!({ "id": id }));
+    assert!(refused.contains("is gone") && refused.contains("force"), "{refused}");
+    assert!(!Path::new(&path).exists());
+    ok(&mut a, "doc_save", json!({ "id": id, "force": true }));
+    assert_eq!(std::fs::read(&path).expect("reads"), b"<b/>");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_link_to_the_file_is_the_same_file_for_the_save_checks() {
+    let dir = tempfile::tempdir().expect("dir");
+    let bad = file(dir.path(), "bad.xml", b"<a>\xFF</a>");
+    let link = dir.path().join("link.xml");
+    std::os::unix::fs::symlink(&bad, &link).expect("links");
+    let mut a = Automation::new();
+    let id = ok(&mut a, "doc_open", json!({ "path": bad }))["id"].as_u64().expect("id");
+    // Opening the file through the link shows the same document.
+    assert_eq!(ok(&mut a, "doc_open", json!({ "path": link.to_str() }))["id"].as_u64(), Some(id));
+    // Saving to the link is saving over the file whose bytes were not valid: refused.
+    assert!(err(&mut a, "doc_save", json!({ "id": id, "path": link.to_str() })).contains("not valid"));
+    assert_eq!(std::fs::read(&bad).expect("reads"), b"<a>\xFF</a>");
+    // And a file that changed on disk is noticed through the link too.
+    let good = file(dir.path(), "good.xml", b"<a/>");
+    let good_link = dir.path().join("good-link.xml");
+    std::os::unix::fs::symlink(&good, &good_link).expect("links");
+    let id = ok(&mut a, "doc_open", json!({ "path": good }))["id"].as_u64().expect("id");
+    ok(&mut a, "doc_set_text", json!({ "id": id, "text": "<mine/>" }));
+    std::fs::write(&good, b"<theirs, longer/>").expect("writes");
+    assert!(err(&mut a, "doc_save", json!({ "id": id, "path": good_link.to_str() })).contains("changed on disk"));
+    assert_eq!(std::fs::read(&good).expect("reads"), b"<theirs, longer/>");
 }

@@ -496,7 +496,9 @@ fn doc_save(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         None => own.clone().ok_or_else(|| ToolError::Failed("the document has no file yet: give a path".into()))?,
     };
     let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
-    let same_file = own.as_deref() == Some(target.as_path());
+    // The same file by its identity, not by how the path is spelled (a link to it, another route to the same folder).
+    let same_file = own.as_deref() == Some(target.as_path())
+        || matches!((doc.stamp().and_then(|s| s.file_id), files::stamp_of(&target).ok().and_then(|s| s.file_id)), (Some(a), Some(b)) if a == b);
     if same_file && !doc.can_overwrite_source() {
         return fail(
             "the file had bytes that were not valid in its encoding, and saving over it would replace them for good: save under another path",
@@ -505,13 +507,22 @@ fn doc_save(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     if same_file
         && !flag(args, "force")
         && let Some(stamp) = doc.stamp()
-        && target.exists()
-        && files::changed_on_disk(&target, stamp) != DiskChange::Unchanged
     {
-        return fail(format!(
-            "{} changed on disk since it was read: reopen it, save under another path, or pass force: true to replace it",
-            target.display()
-        ));
+        match files::changed_on_disk(&target, stamp) {
+            DiskChange::Unchanged => {}
+            DiskChange::Modified => {
+                return fail(format!(
+                    "{} changed on disk since it was read: reopen it, save under another path, or pass force: true to replace it",
+                    target.display()
+                ));
+            }
+            DiskChange::Missing => {
+                return fail(format!(
+                    "{} is gone (or cannot be read) since it was read: save under another path, or pass force: true to write it again",
+                    target.display()
+                ));
+            }
+        }
     }
     let bytes = match doc.to_bytes() {
         Ok(bytes) => bytes,

@@ -162,6 +162,9 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
             }
             if let Some(n) = take_option(&mut rest, "--indent")? {
                 let n: u64 = n.parse().map_err(|_| format!("--indent needs a number of spaces, not {n:?}"))?;
+                if options.contains_key("tabs") {
+                    return Err("--tabs and --indent cannot be combined".into());
+                }
                 options.insert("indent".into(), json!(n));
             }
             if let Some(b) = take_option(&mut rest, "--blank-lines")? {
@@ -360,6 +363,14 @@ fn check(files: &[String], root: Option<PathBuf>, as_json: bool, out: &mut impl 
                 if result["errors"].as_u64().unwrap_or(0) > 0 {
                     code = 1;
                 }
+                // Bytes that are not valid in the file's encoding were read as U+FFFD: what was checked is not quite the file.
+                if result["lossy"] == true {
+                    code = 1;
+                    if !as_json {
+                        let _ =
+                            writeln!(err, "xmlcraft-cli: {file}: has bytes that are not valid in its encoding (checked with each shown as U+FFFD)");
+                    }
+                }
                 if !as_json {
                     for p in result["problems"].as_array().into_iter().flatten() {
                         say(
@@ -439,6 +450,10 @@ fn format_file(file: &str, options: Value, root: Option<PathBuf>, mode: FormatMo
             }
         }
         _ => {
+            // Not text that would be written over the file's bytes with U+FFFD in them.
+            if result["lossy"] == true {
+                return fail(err, &format!("{file} has bytes that are not valid in its encoding; nothing was printed"));
+            }
             // Print exactly the formatted text (no extra line break), as a person redirecting it to a file expects.
             let _ = write!(out, "{}", result["text"].as_str().unwrap_or_default());
             0
@@ -533,6 +548,7 @@ mod tests {
             ("format a.xml --indent x", "--indent needs a number"),
             ("format a.xml --blank-lines some", "keep or remove"),
             ("format a.xml --check --in-place", "cannot be combined"),
+            ("format a.xml --tabs --indent 4", "--tabs and --indent cannot be combined"),
             ("format a.xml --nope", "unknown option --nope"),
         ] {
             let err = parse(&args(line)).expect_err(line);
@@ -724,5 +740,25 @@ mod tests {
             assert!(err.contains("not well-formed"), "{err}");
         }
         assert_eq!(std::fs::read(&path).expect("reads"), b"<a><b></a>");
+    }
+
+    #[test]
+    fn a_file_with_invalid_bytes_is_not_reported_well_formed_printed_or_rewritten() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("bad.xml");
+        let original: &[u8] = b"<a>\n  <b/>\n</a><!-- \xFF -->";
+        std::fs::write(&path, original).expect("writes");
+        let file = path.to_str().expect("utf-8").to_owned();
+        let (code, _, err) = run(Command::Check { files: vec![file.clone()], root: None, json: false });
+        assert_eq!(code, 1, "the text is well-formed but it is not the file");
+        assert!(err.contains("not valid in its encoding"), "{err}");
+        let (code, out, err) = run(Command::Format { file: file.clone(), options: json!({"minify": true}), root: None, mode: FormatMode::Print });
+        assert_eq!((code, out.as_str()), (1, ""));
+        assert!(err.contains("nothing was printed"), "{err}");
+        // In place, it would have to write the replacement character over the bad byte: refused.
+        let (code, _, err) = run(Command::Format { file, options: json!({"minify": true}), root: None, mode: FormatMode::InPlace });
+        assert_eq!(code, 1);
+        assert!(err.contains("not valid"), "{err}");
+        assert_eq!(std::fs::read(&path).expect("reads"), original);
     }
 }
