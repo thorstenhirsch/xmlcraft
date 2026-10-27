@@ -300,6 +300,14 @@ impl<'a> CodeEditor<'a> {
                 let y = rect.min.y + line as f32 * row_h;
                 let line_start = editor.buffer().line_start(line).unwrap_or(0);
                 let line_range = editor.buffer().line_range_with_break(line).unwrap_or(line_start..line_start);
+                // Backgrounds the host asked for (search matches): under the selection and the text, and only where the line is laid out.
+                let highlights = frame.styler.borrow_mut().as_mut().map(|styler| styler.highlights(editor.buffer(), line)).unwrap_or_default();
+                for highlight in highlights {
+                    let Some(range) = layout.in_window(&highlight.range) else { continue };
+                    let x0 = text_x + layout.x_of_byte(range.start);
+                    let x1 = (text_x + layout.x_of_byte(range.end)).max(x0 + column_w * 0.5);
+                    text_painter.rect_filled(Rect::from_min_max(pos2(x0, y + 1.0), pos2(x1, y + row_h - 1.0)), 2.0, highlight.color);
+                }
                 for caret in carets.iter().filter(|c| !c.is_empty()) {
                     if caret.end() <= line_range.start || caret.start() > line_range.end {
                         continue;
@@ -318,21 +326,15 @@ impl<'a> CodeEditor<'a> {
                         text_painter.rect_filled(Rect::from_min_max(pos2(x0, y), pos2(x1, y + row_h)), 0.0, selection_color);
                     }
                 }
-                // Backgrounds the host asked for (search matches), under the text.
-                let highlights = frame.styler.borrow_mut().as_mut().map(|styler| styler.highlights(editor.buffer(), line)).unwrap_or_default();
-                for highlight in highlights {
-                    let x0 = text_x + layout.x_of_byte(highlight.range.start);
-                    let x1 = (text_x + layout.x_of_byte(highlight.range.end)).max(x0 + column_w * 0.5);
-                    text_painter.rect_filled(Rect::from_min_max(pos2(x0, y + 1.0), pos2(x1, y + row_h - 1.0)), 2.0, highlight.color);
-                }
                 let galley = layout.galley();
                 let dy = ((row_h - layout.size().y) / 2.0).max(0.0);
                 text_painter.galley(pos2(text_x + layout.x_origin(), y + dy), galley.clone(), colors.text);
                 let marks = frame.styler.borrow_mut().as_mut().map(|styler| styler.marks(editor.buffer(), line)).unwrap_or_default();
                 for mark in marks {
-                    let x0 = text_x + layout.x_of_byte(mark.range.start);
+                    let Some(range) = layout.in_window(&mark.range) else { continue };
+                    let x0 = text_x + layout.x_of_byte(range.start);
                     // A problem at a point still shows: at least a character wide.
-                    let x1 = (text_x + layout.x_of_byte(mark.range.end)).max(x0 + column_w);
+                    let x1 = (text_x + layout.x_of_byte(range.end)).max(x0 + column_w);
                     wavy_underline(&text_painter, x0, x1, y + row_h - 2.0, mark.color);
                 }
                 layouts.push((line, layout));

@@ -186,6 +186,13 @@ impl LineLayout {
         self.byte_of_char.first().map_or(0, |b| *b as usize)
     }
 
+    /// `range` (bytes of the line) cut to the window, or `None` when none of it is in the window: a long line is laid out in a window,
+    /// and what is outside it has no place on the screen.
+    pub fn in_window(&self, range: &std::ops::Range<usize>) -> Option<std::ops::Range<usize>> {
+        let (start, end) = (range.start.max(self.start_byte()), range.end.min(self.end_byte()));
+        (start < end || (range.is_empty() && range.start >= self.start_byte() && range.start <= self.end_byte())).then_some(start..end.max(start))
+    }
+
     /// How many characters the window holds.
     pub fn chars(&self) -> usize {
         self.byte_of_char.len().saturating_sub(1)
@@ -290,6 +297,36 @@ mod tests {
         // One dot, then a tab to column 4 (three spaces), then `x`.
         let layout = layout("\u{1}\tx");
         assert_eq!(layout.laid_out_index, [0, 1, 4, 5]);
+    }
+
+    #[test]
+    fn only_what_is_in_the_laid_out_window_has_a_place_on_the_screen() {
+        let ctx = egui::Context::default();
+        let mut found = Vec::new();
+        let font = FontId::monospace(13.0);
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let text = "a".repeat(100);
+            let params = LayoutParams { font: &font, color: Color32::BLACK, tab_width: 4, column_width: 8.0, spans: &[] };
+            // A long line is laid out in a window: here characters 20 to 60.
+            let layout = LineLayout::new(ui.painter(), &text, 20..60, &params);
+            for range in [0..10, 10..30, 30..40, 50..90, 70..80, 20..20, 30..30, 10..10, 60..60, 61..61] {
+                found.push((range.clone(), layout.in_window(&range)));
+            }
+        });
+        output.textures_delta.clear();
+        let expected: Vec<(Range<usize>, Option<Range<usize>>)> = vec![
+            (0..10, None),
+            (10..30, Some(20..30)),
+            (30..40, Some(30..40)),
+            (50..90, Some(50..60)),
+            (70..80, None),
+            (20..20, Some(20..20)),
+            (30..30, Some(30..30)),
+            (10..10, None),
+            (60..60, Some(60..60)),
+            (61..61, None),
+        ];
+        assert_eq!(found, expected);
     }
 
     #[test]

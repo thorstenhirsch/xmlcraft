@@ -305,6 +305,33 @@ fn finding_and_replacing_text_and_patterns() {
 }
 
 #[test]
+fn finding_in_a_file_says_when_it_was_not_read_exactly_and_when_a_match_is_cut() {
+    let dir = tempfile::tempdir().expect("dir");
+    // A file that is not valid UTF-8 is searched as it is read (the bad byte replaced), and the answer says so.
+    let bad = file(dir.path(), "bad.xml", b"<a>\xFF needle</a>");
+    let mut a = Automation::new();
+    let found = ok(&mut a, "doc_find", json!({ "path": bad, "pattern": "needle" }));
+    assert_eq!((found["count"].as_u64(), found["lossy"].as_bool()), (Some(1), Some(true)));
+    let clean = file(dir.path(), "clean.xml", b"<a>needle</a>");
+    let found = ok(&mut a, "doc_find", json!({ "path": clean, "pattern": "needle" }));
+    assert_eq!((found["count"].as_u64(), found["lossy"].as_bool()), (Some(1), Some(false)));
+    assert_eq!((found["matches"][0]["start"].as_u64(), found["matches"][0]["end"].as_u64()), (Some(3), Some(9)));
+    // A match longer than the text reported for it: the positions are the whole match, and the text says it was cut.
+    let long = format!("<a>{}</a>", "z".repeat(500));
+    let found = ok(&mut a, "doc_find", json!({ "text": long, "pattern": "z+", "regex": true }));
+    let m = &found["matches"][0];
+    assert_eq!((m["end"].as_u64().zip(m["start"].as_u64()).map(|(e, s)| e - s), m["text_truncated"].as_bool()), (Some(500), Some(true)));
+    assert_eq!(m["text"].as_str().map(|t| t.chars().count()), Some(200));
+    let found = ok(&mut a, "doc_find", json!({ "text": "<a>zz</a>", "pattern": "z+", "regex": true }));
+    assert_eq!(found["matches"][0]["text_truncated"], false);
+    // A file outside the root is not searched.
+    let inside = dir.path().join("inside");
+    std::fs::create_dir(&inside).expect("creates");
+    let mut confined = Automation::with_root(&inside).expect("root");
+    assert!(call(&mut confined, "doc_find", json!({ "path": clean, "pattern": "needle" })).is_err());
+}
+
+#[test]
 fn a_deleted_file_or_another_route_to_it_does_not_get_around_the_save_checks() {
     let dir = tempfile::tempdir().expect("dir");
     let path = file(dir.path(), "a.xml", b"<a/>");

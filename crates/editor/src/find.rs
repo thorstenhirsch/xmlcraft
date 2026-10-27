@@ -75,6 +75,8 @@ impl Matcher {
         let regex = RegexBuilder::new(&source)
             .case_insensitive(!query.case_sensitive)
             .multi_line(true)
+            // `^` and `$` are at the ends of lines whether they end in LF or CRLF.
+            .crlf(true)
             .size_limit(PATTERN_SIZE_LIMIT)
             .dfa_size_limit(PATTERN_SIZE_LIMIT)
             .nest_limit(64)
@@ -91,21 +93,21 @@ impl Matcher {
         self.regex.find_at(text, from).map(|m| m.range())
     }
 
-    /// The last match that ends at or before byte `before`.
+    /// The last match that ends at or before byte `before`. (The whole text is searched, so `$` and look-around see what is really
+    /// around the match, not the artificial end of a prefix.)
     pub fn find_last(&self, text: &str, before: usize) -> Option<Range<usize>> {
         let end = floor_boundary(text, before);
-        let head = text.get(..end)?;
         // Matches do not overlap, so the last one before `end` is the last of those found from the start. (A regex cannot search backwards.)
-        self.regex.find_iter(head).last().map(|m| m.range())
+        self.regex.find_iter(text).take_while(|m| m.end() <= end).last().map(|m| m.range())
     }
 
-    /// Every match inside `within` (at most `limit`), and whether there were more. An empty match (a pattern such as `a*`) counts.
+    /// Every match inside `within` (at most `limit`), and whether there were more. A match is inside when it lies entirely between the
+    /// ends; the text around is still the whole text. An empty match (a pattern such as `a*`) counts.
     pub fn find_all(&self, text: &str, within: Range<usize>, limit: usize) -> (Vec<Range<usize>>, bool) {
         let end = floor_boundary(text, within.end);
         let start = ceil_boundary(text, within.start);
         let mut found = Vec::new();
-        let Some(haystack) = text.get(..end) else { return (found, false) };
-        for m in self.regex.find_iter(haystack).skip_while(|m| m.start() < start) {
+        for m in self.regex.find_iter(text).skip_while(|m| m.start() < start).take_while(|m| m.end() <= end) {
             if found.len() >= limit {
                 return (found, true);
             }
@@ -120,24 +122,41 @@ impl Matcher {
         if !self.groups {
             return replacement.to_owned();
         }
-        let Some(captures) = self.regex.captures_at(text.get(..found.end).unwrap_or(text), found.start) else { return replacement.to_owned() };
+        // The whole text, not a prefix: a match that depends on what follows it (look-ahead cannot be written, but `\b` and `$` do) has the
+        // same groups it was found with.
+        let Some(captures) = self.regex.captures_at(text, found.start) else { return replacement.to_owned() };
         let mut out = String::new();
         captures.expand(replacement, &mut out);
         out
     }
 
-    /// The edits that replace every match inside `within` (at most `limit`; more is `None`: better none than half).
+    /// The edits that replace every match inside `within` (at most `limit`; more is `None`: better none than half). Also `None` when
+    /// the replacements together would be more than [`MAX_REPLACED_BYTES`], so that a long replacement over many matches cannot
+    /// exhaust memory.
     pub fn replace_all(&self, text: &str, within: Range<usize>, replacement: &str, limit: usize) -> Option<Vec<Edit>> {
         let (matches, more) = self.find_all(text, within, limit);
         if more {
             return None;
         }
-        Some(matches.into_iter().map(|range| Edit::replace(range.clone(), self.expand(text, &range, replacement))).collect())
+        let mut total = 0usize;
+        let mut edits = Vec::with_capacity(matches.len());
+        for range in matches {
+            let with = self.expand(text, &range, replacement);
+            total = total.saturating_add(with.len());
+            if total > MAX_REPLACED_BYTES {
+                return None;
+            }
+            edits.push(Edit::replace(range, with));
+        }
+        Some(edits)
     }
 }
 
 /// How many matches select-all and replace-all will deal with at once.
 pub const MAX_MATCHES: usize = 10_000;
+
+/// The most text a replace-all may write in all.
+pub const MAX_REPLACED_BYTES: usize = 16 * 1024 * 1024;
 
 /// Which way to look, and whether to start again at the other end of the text when nothing is left that way.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -158,10 +177,17 @@ impl Editor {
         let primary = self.primary();
         let (start, end) = (primary.start(), primary.end());
         if direction.backwards {
-            matcher.find_last(&text, start).or_else(|| if direction.wrap { matcher.find_last(&text, text.len()) } else { None })
+            // Before the selection; an empty match at the caret is skipped, or the search would stay where it is.
+            let mut found = matcher.find_last(&text, start);
+            if start == end && found.as_ref().is_some_and(|m| m.is_empty() && m.start == start) {
+                found = previous_boundary(&text, start).and_then(|before| matcher.find_last(&text, before));
+            }
+            found.or_else(|| if direction.wrap { matcher.find_last(&text, text.len()) } else { None })
         } else {
-            // After the selection; an empty match at the caret is skipped, or the search would stay where it is.
-            let found = matcher.find(&text, end).filter(|m| !(m.is_empty() && m.start == end && start == end && end > 0));
+            let mut found = matcher.find(&text, end);
+            if start == end && found.as_ref().is_some_and(|m| m.is_empty() && m.start == end) {
+                found = next_boundary(&text, end).and_then(|after| matcher.find(&text, after));
+            }
             found.or_else(|| if direction.wrap { matcher.find(&text, 0) } else { None })
         }
     }
@@ -192,7 +218,8 @@ impl Editor {
         let is_match = matcher.find(&text, selected.start).is_some_and(|m| m == selected);
         let mut replaced = false;
         if is_match {
-            let with = matcher.expand(&text, &selected, replacement);
+            // New line breaks in the replacement are the document's.
+            let with = matcher.expand(&text, &selected, &convert_eol(replacement, self.settings().eol));
             replaced = self.apply_edits(&[Edit::replace(selected.clone(), with)]);
             // Carried through the edit, the caret is at the end of what was written.
         }
@@ -206,7 +233,7 @@ impl Editor {
         let text = self.text();
         let selection = self.primary();
         let within = if in_selection && !selection.is_empty() { selection.start()..selection.end() } else { 0..text.len() };
-        let edits = matcher.replace_all(&text, within, replacement, MAX_MATCHES)?;
+        let edits = matcher.replace_all(&text, within, &convert_eol(replacement, self.settings().eol), MAX_MATCHES)?;
         let count = edits.len();
         if count > 0 {
             self.apply_edits(&edits);
@@ -214,16 +241,20 @@ impl Editor {
         Some(count)
     }
 
-    /// Put a caret on every match, selecting each (at most [`MAX_MATCHES`]); the last is the primary. Returns how many.
-    pub fn select_all_matches(&mut self, matcher: &Matcher) -> usize {
+    /// Put a caret on every match, selecting each; the last is the primary. Returns how many, or `None` when there are more than
+    /// [`MAX_MATCHES`] (nothing is changed then: carets on only the first ones would be a trap).
+    pub fn select_all_matches(&mut self, matcher: &Matcher) -> Option<usize> {
         let text = self.text();
-        let (found, _) = matcher.find_all(&text, 0..text.len(), MAX_MATCHES);
+        let (found, more) = matcher.find_all(&text, 0..text.len(), MAX_MATCHES);
+        if more {
+            return None;
+        }
         if found.is_empty() {
-            return 0;
+            return Some(0);
         }
         let selections: Vec<Selection> = found.iter().map(|r| Selection { anchor: r.start, head: r.end }).collect();
         self.set_selections(&selections);
-        selections.len()
+        Some(selections.len())
     }
 
     /// ⌘D: with an empty selection, select the word at the caret; otherwise add the next occurrence of the selected text (the text of the
@@ -244,9 +275,10 @@ impl Editor {
         let Some(needle) = text.get(primary.start()..primary.end()) else { return false };
         let Ok(matcher) = Matcher::new(&Query::text(needle)) else { return false };
         let taken = self.selections();
-        let candidates = (matcher.find(&text, primary.end()), matcher.find(&text, 0));
-        let Some(found) = [candidates.0, candidates.1].into_iter().flatten().find(|m| !taken.iter().any(|s| s.start() < m.end && m.start < s.end()))
-        else {
+        // Every occurrence, those after the selection first and then those before it: the first that is not taken.
+        let (all, _) = matcher.find_all(&text, 0..text.len(), MAX_MATCHES);
+        let (after, before): (Vec<_>, Vec<_>) = all.into_iter().partition(|m| m.start >= primary.end());
+        let Some(found) = after.into_iter().chain(before).find(|m| !taken.iter().any(|s| s.start() < m.end && m.start < s.end())) else {
             return false;
         };
         let mut all = taken;
@@ -263,6 +295,26 @@ fn word_at(text: &str, offset: usize) -> Option<Range<usize>> {
     let start = text.get(..at)?.char_indices().rev().take_while(|(_, c)| is_word(*c)).last().map_or(at, |(i, _)| i);
     let end = at + text.get(at..)?.char_indices().take_while(|(_, c)| is_word(*c)).last().map_or(0, |(i, c)| i + c.len_utf8());
     (start < end).then_some(start..end)
+}
+
+/// `text` as a pattern that matches exactly it (for putting a selection into a regular-expression search).
+pub fn escape(text: &str) -> String {
+    regex::escape(text)
+}
+
+/// The replacement with its line breaks written as the document writes them.
+fn convert_eol(text: &str, eol: xmlcraft_text::eol::Eol) -> String {
+    xmlcraft_text::eol::convert(text, eol)
+}
+
+/// The first character boundary after `at`, if the text goes on.
+fn next_boundary(text: &str, at: usize) -> Option<usize> {
+    (at < text.len()).then(|| ceil_boundary(text, at + 1))
+}
+
+/// The last character boundary before `at`, if there is one.
+fn previous_boundary(text: &str, at: usize) -> Option<usize> {
+    (at > 0).then(|| floor_boundary(text, at - 1))
 }
 
 fn first_line(message: &str) -> String {
@@ -422,11 +474,11 @@ mod tests {
     #[test]
     fn select_all_matches_makes_a_caret_for_each() {
         let mut e = Editor::new("ab ab ab");
-        assert_eq!(e.select_all_matches(&matcher("ab")), 3);
+        assert_eq!(e.select_all_matches(&matcher("ab")), Some(3));
         assert_eq!(sel(&e), [(0, 2), (3, 5), (6, 8)]);
         e.type_text("X");
         assert_eq!(e.text(), "X X X", "typing replaces every selection at once");
-        assert_eq!(e.select_all_matches(&matcher("nope")), 0);
+        assert_eq!(e.select_all_matches(&matcher("nope")), Some(0));
         assert_eq!(sel(&e).len(), 3, "no match: the carets stay");
     }
 
@@ -447,6 +499,75 @@ mod tests {
         let mut blank = Editor::new("  ");
         blank.set_selection(1, 1);
         assert!(!blank.select_next_occurrence());
+    }
+
+    #[test]
+    fn more_matches_than_the_limit_select_nothing() {
+        let mut e = Editor::new(&"x".repeat(MAX_MATCHES + 1));
+        assert_eq!(e.select_all_matches(&matcher("x")), None);
+        assert_eq!(e.carets().len(), 1, "no carets on only the first ones");
+        let mut ok = Editor::new(&"x".repeat(MAX_MATCHES));
+        assert_eq!(ok.select_all_matches(&matcher("x")), Some(MAX_MATCHES));
+    }
+
+    #[test]
+    fn a_long_replacement_over_many_matches_is_refused_before_it_is_built() {
+        let mut e = Editor::new(&"x".repeat(MAX_MATCHES));
+        let long = "y".repeat(4096); // 10,000 of these are 40 MB
+        assert_eq!(e.replace_all(&matcher("x"), &long, false), None);
+        assert_eq!(e.text(), "x".repeat(MAX_MATCHES), "nothing changed");
+        assert_eq!(e.replace_all(&matcher("x"), "yy", false), Some(MAX_MATCHES));
+    }
+
+    #[test]
+    fn replacements_take_the_documents_line_ending() {
+        let mut e = Editor::new("a\r\nb\r\nc");
+        assert_eq!(e.replace_all(&matcher("b"), "1\n2", false), Some(1));
+        assert_eq!(e.text(), "a\r\n1\r\n2\r\nc", "an LF in the replacement is a CRLF in a CRLF document");
+        e.set_selection(0, 1);
+        assert!(e.replace_next(&matcher("a"), "x\ny"));
+        assert!(e.text().starts_with("x\r\ny\r\n1"), "{:?}", e.text());
+        let mut lf = Editor::new("a b");
+        lf.replace_all(&matcher("b"), "1\r\n2", false);
+        assert_eq!(lf.text(), "a 1\n2", "and the other way round");
+    }
+
+    #[test]
+    fn line_anchors_work_in_crlf_text_and_see_the_whole_text() {
+        let lines = Matcher::new(&Query { pattern: "^x$".into(), regex: true, case_sensitive: true, whole_word: false }).expect("ok");
+        assert_eq!(all(&lines, "x\r\nxx\r\nx"), [0..1, 7..8], "`$` is before the CRLF");
+        // `$` is the end of a line in the text, not the end of the prefix or of the selection a search is limited to.
+        let end = Matcher::new(&Query { pattern: "a$".into(), regex: true, case_sensitive: true, whole_word: false }).expect("ok");
+        assert_eq!(end.find_last("ab\nab", 4), None);
+        assert_eq!(end.find_all("abab\n", 0..4, 10).0, Vec::<Range<usize>>::new());
+        assert_eq!(end.find_all("ab\na\n", 0..5, 10).0, [3..4]);
+        let word = Matcher::new(&Query { pattern: "ab".into(), regex: false, case_sensitive: true, whole_word: true }).expect("ok");
+        assert_eq!(word.find_all("abc ab", 0..2, 10).0, Vec::<Range<usize>>::new(), "`ab` at the edge of a range is still the start of `abc`");
+    }
+
+    #[test]
+    fn stepping_does_not_stick_on_an_empty_match() {
+        let m = Matcher::new(&Query { pattern: "x*".into(), regex: true, case_sensitive: true, whole_word: false }).expect("ok");
+        let mut e = Editor::new("axb");
+        e.set_selection(0, 0);
+        let mut seen = Vec::new();
+        for _ in 0..6 {
+            seen.push(e.select_match(&m, Direction::NEXT).map(|r| (r.start, r.end)));
+        }
+        assert_eq!(seen[0], Some((1, 2)), "from a caret at 0 the next match after the empty one at 0");
+        assert!(seen.windows(2).any(|w| w[0] != w[1]), "it moves: {seen:?}");
+        e.set_selection(3, 3);
+        let before = e.select_match(&m, Direction::PREVIOUS).map(|r| (r.start, r.end));
+        assert_ne!(before, Some((3, 3)), "backwards from the end it does not stay at the empty match there");
+    }
+
+    #[test]
+    fn next_occurrence_finds_a_free_one_between_and_after_the_taken() {
+        let mut e = Editor::new("x x x x");
+        e.set_selections(&[Selection { anchor: 0, head: 1 }, Selection { anchor: 4, head: 5 }, Selection { anchor: 2, head: 3 }]);
+        assert!(e.select_next_occurrence(), "the one at 6 is free, though the next after the primary and the first are taken");
+        assert_eq!(sel(&e), [(0, 1), (2, 3), (4, 5), (6, 7)]);
+        assert!(!e.select_next_occurrence());
     }
 
     #[test]

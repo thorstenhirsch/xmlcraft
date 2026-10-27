@@ -99,7 +99,7 @@ status = "partial"
 commands = ["edit.find", "edit.replace", "edit.find_next", "edit.find_previous"]
 tools = ["doc_find", "doc_replace"]
 evidence = ["crates/editor/src/find.rs::literal_search_agrees_with_the_standard_library", "crates/editor/src/find.rs::replacing_one_at_a_time_then_all", "crates/ui-egui/tests/find.rs::the_find_bar_finds_counts_and_steps_through_matches", "crates/ui-egui/tests/find.rs::replace_one_and_replace_all", "crates/automation/tests/documents.rs::finding_and_replacing_text_and_patterns"]
-notes = "⌘F opens a bar above the editor: text or a regular expression (groups in the replacement as $1), match case, whole word, a counter, next and previous (Enter, F3), Replace and Replace All (one undo step), every match highlighted in the text, and `doc_find` / `doc_replace` headlessly. Still missing: searching only the selection from the bar (the engine can), find history, a replace preview, matches that span lines are not highlighted (they are found), and find in files (M6)."
+notes = "⌘F opens a bar above the editor: text or a regular expression (groups in the replacement as $1), match case, whole word, a counter, next and previous (Enter, F3), Replace and Replace All (one undo step), every match highlighted in the text (up to 10,000 matches, in documents up to 4 MB; a match across lines is highlighted on each of its lines; above those sizes the matches are found and stepped through but not painted), and `doc_find` / `doc_replace` headlessly. Replace All refuses more than 10,000 matches or 16 MiB of replacement text, and says so. Still missing: searching only the selection from the bar (the engine can), find history, a replace preview, and find in files (M6)."
 
 [[feature]]
 id = "editor.find-in-files"

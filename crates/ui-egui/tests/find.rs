@@ -2,7 +2,7 @@
 
 use egui::{Key, Modifiers};
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use xmlcraft_ui_egui::XmlCraftApp;
 
 fn shell_with(text: &str) -> Harness<'static, XmlCraftApp> {
@@ -19,6 +19,16 @@ fn text(h: &Harness<'static, XmlCraftApp>) -> String {
 
 fn selections(h: &Harness<'static, XmlCraftApp>) -> Vec<(usize, usize)> {
     h.state().session.active_document().expect("a document").editor().carets().iter().map(|c| (c.start(), c.end())).collect()
+}
+
+/// The bar's counter ("2 of 5", "5 matches"…), `None` while there is none.
+fn counter(h: &Harness<'static, XmlCraftApp>) -> Option<String> {
+    let mut labels = h.query_all_by_label_contains(" of ").chain(h.query_all_by_label_contains(" match")).filter_map(|n| {
+        let a = n.accesskit_node();
+        a.label().or_else(|| a.value())
+    });
+    // The counter is the label that starts with a number (the buttons are "Next match", "Previous match").
+    labels.find(|l| l.starts_with(|c: char| c.is_ascii_digit()))
 }
 
 const BOOKS: &str = "<books>\n  <book id=\"1\"/>\n  <Book id=\"2\"/>\n  <magazine/>\n  <book id=\"3\"/>\n</books>\n";
@@ -47,6 +57,15 @@ fn the_find_bar_finds_counts_and_steps_through_matches() {
     h.run_steps(3);
     assert_eq!(selections(&h), first, "Shift+Enter comes back");
     assert!(h.query_by_label("1 of 5").is_some());
+    // The commands step the same way: Shift+F3 from the first match wraps round to the last one.
+    assert!(h.state_mut().execute("edit.find_previous"));
+    h.run_steps(3);
+    let last = BOOKS.rfind("book").expect("there");
+    assert_eq!(selections(&h), [(last, last + 4)], "backwards from the first match: the last one, in the closing tag");
+    assert_eq!(counter(&h).as_deref(), Some("5 of 5"));
+    assert!(h.state_mut().execute("edit.find_previous"));
+    h.run_steps(3);
+    assert_eq!(counter(&h).as_deref(), Some("4 of 5"));
     // Escape closes the bar and gives the text the keyboard.
     h.key_press(Key::Escape);
     h.run_steps(3);
@@ -60,16 +79,13 @@ fn the_options_change_what_matches() {
     h.run_steps(3);
     h.get_by_label("Find").type_text("book");
     h.run_steps(3);
-    assert!(h.query_by_label("2 of 5").is_some() || h.query_by_label("1 of 5").is_some() || h.query_by_label("5 matches").is_some());
+    assert_eq!(counter(&h).as_deref(), Some("1 of 5"));
     h.get_by_label("Match case").click();
     h.run_steps(3);
-    assert!(h.query_all_by_label_contains("of 4").next().is_some() || h.query_by_label("4 matches").is_some(), "`Book` no longer matches");
+    assert!(counter(&h).is_some_and(|c| c.ends_with(" of 4")), "`Book` no longer matches: {:?}", counter(&h));
     h.get_by_label("Whole word").click();
     h.run_steps(3);
-    assert!(
-        h.query_all_by_label_contains("of 2").next().is_some() || h.query_by_label("2 matches").is_some(),
-        "`books` and `magazine` are not the word"
-    );
+    assert!(counter(&h).is_some_and(|c| c.ends_with(" of 2")), "`books` and `magazine` are not the word: {:?}", counter(&h));
     // A pattern that is not valid says so instead of finding nothing.
     h.get_by_label("Regular expression").click();
     h.get_by_label("Find").focus();
@@ -92,11 +108,20 @@ fn a_selection_becomes_the_search_and_f3_goes_on_without_the_bar() {
     h.state_mut().execute("edit.find");
     h.run_steps(3);
     assert_eq!(h.get_by_label("Find").value().as_deref(), Some("magazine"), "the selected text is what to look for");
-    // F3 and Shift+F3 are commands of their own.
-    h.state_mut().execute("edit.find_next");
+    // F3 and Shift+F3 are commands of their own: they carry on without the bar.
+    h.key_press(Key::Escape);
+    h.run_steps(3);
+    assert!(h.query_by_label("Find").is_none(), "the bar is closed");
+    h.state_mut().session.active_document_mut().expect("shown").editor_mut().set_selection(0, 0);
+    assert!(h.state_mut().execute("edit.find_next"));
     h.run_steps(2);
-    assert_eq!(selections(&h), [(at, at + 8)], "the only match: it wraps back to it");
+    assert_eq!(selections(&h), [(at, at + 8)], "the retained query finds the next match");
+    assert!(h.query_by_label("Find").is_none(), "F3 does not bring the bar back when there is a query");
+    h.state_mut().session.active_document_mut().expect("shown").editor_mut().set_selection(BOOKS.len(), BOOKS.len());
     assert!(h.state_mut().execute("edit.find_previous"));
+    h.run_steps(2);
+    assert_eq!(selections(&h), [(at, at + 8)], "backwards from the end: the same, only, match");
+    assert!(h.query_by_label("Find").is_none());
 }
 
 #[test]
@@ -112,6 +137,8 @@ fn replace_one_and_replace_all() {
     h.get_by_label("Replace").click();
     h.run_steps(3);
     assert_eq!(text(&h).matches("<volume ").count(), 1, "one replaced, the next selected: {}", text(&h));
+    let next = text(&h).find("<Book ").expect("the next match is still there");
+    assert_eq!(selections(&h), [(next, next + 6)], "and the next `<Book ` is selected: {}", text(&h));
     h.get_by_label("Replace All").click();
     h.run_steps(3);
     assert_eq!(text(&h).matches("<volume ").count(), 3, "all three `<book ` (the case does not matter): {}", text(&h));

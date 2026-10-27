@@ -3,6 +3,9 @@
 //! The search itself is the editor crate's (`xmlcraft_editor::find`); this is the state of the bar and how it is drawn. All the matches
 //! are shown in the editor (the styler's highlights), and the bar says which one is selected out of how many.
 
+use std::ops::Range;
+use std::sync::Arc;
+
 use egui::{Key, vec2};
 use xmlcraft_editor::find::{Direction, MAX_MATCHES, Matcher, Query, QueryError};
 
@@ -21,7 +24,7 @@ pub(crate) struct FindStats {
     version: u64,
     query: Query,
     /// The matches (at most [`MAX_MATCHES`]), in order, and whether there were more.
-    matches: Vec<std::ops::Range<usize>>,
+    matches: Arc<Vec<Range<usize>>>,
     more: bool,
 }
 
@@ -36,8 +39,10 @@ pub(crate) struct FindBar {
     pub regex: bool,
     /// Give the keyboard to the find box in the next frame (the bar was just opened or asked for again).
     pub focus: bool,
-    /// The query as compiled; changes with the text and the options.
-    compiled: Option<(Query, Result<Matcher, QueryError>)>,
+    /// The same for the replacement box (Enter in it replaces and stays there).
+    focus_replacement: bool,
+    /// The query as compiled; changes with the text and the options. Shared, so a frame hands it on without compiling it again.
+    compiled: Option<(Query, Result<Arc<Matcher>, QueryError>)>,
     stats: Option<FindStats>,
 }
 
@@ -47,13 +52,20 @@ impl FindBar {
     }
 
     /// The compiled search for what is typed, if it is a valid one. Empty text is no search.
-    pub fn matcher(&mut self) -> Option<&Matcher> {
+    pub fn matcher(&mut self) -> Option<&Arc<Matcher>> {
         let query = self.current_query();
         if self.compiled.as_ref().is_none_or(|(compiled_for, _)| *compiled_for != query) {
-            let result = Matcher::new(&query);
+            let result = Matcher::new(&query).map(Arc::new);
             self.compiled = Some((query, result));
         }
         self.compiled.as_ref().and_then(|(_, result)| result.as_ref().ok())
+    }
+
+    /// The matches of the typed query in this version of this document, if the bar is open and has worked them out: what the editor
+    /// highlights, the same ones the counter counts and Next goes to.
+    pub fn shown_matches(&self, document: u64, version: u64) -> Option<Arc<Vec<Range<usize>>>> {
+        let stats = self.stats.as_ref().filter(|s| self.open && s.document == document && s.version == version && s.query == self.current_query())?;
+        Some(stats.matches.clone())
     }
 
     /// Why the typed query cannot be used (not for an empty one: that is just no search).
@@ -80,7 +92,8 @@ impl XmlCraftApp {
                 && !text.contains(['\n', '\r'])
                 && text.chars().count() <= 200
             {
-                self.find.query = text;
+                // In a regular-expression search the selected text is looked for as it is, not as a pattern.
+                self.find.query = if self.find.regex { xmlcraft_editor::find::escape(&text) } else { text };
             }
         }
     }
@@ -93,11 +106,11 @@ impl XmlCraftApp {
 
     /// Select the next or previous match of the typed query (opening the bar when there is none yet).
     pub(crate) fn find_step(&mut self, direction: Direction) {
-        if !self.find.open || self.find.query.is_empty() {
+        // With a query typed before, F3 goes on with it even though the bar was closed; with none (or one that does not work) the bar opens.
+        let Some(matcher) = (!self.find.query.is_empty()).then(|| self.find.matcher().cloned()).flatten() else {
             self.open_find(false);
             return;
-        }
-        let Some(matcher) = self.find.matcher().cloned() else { return };
+        };
         if let Some(doc) = self.session.active_document_mut()
             && doc.editor_mut().select_match(&matcher, direction).is_none()
         {
@@ -128,7 +141,14 @@ impl XmlCraftApp {
 
     /// ⌘⇧L: a caret on every match of the typed query, or of the selected text (or word) when nothing is typed.
     pub(crate) fn select_all_occurrences(&mut self) {
-        let matcher = if self.find.open && !self.find.query.is_empty() { self.find.matcher().cloned() } else { None };
+        let typed = self.find.open && !self.find.query.is_empty();
+        // A query that is typed but does not work selects nothing: the occurrences of something else would be a surprise.
+        let matcher = if typed {
+            let Some(matcher) = self.find.matcher().cloned() else { return };
+            Some(matcher)
+        } else {
+            None
+        };
         let Some(doc) = self.session.active_document_mut() else { return };
         let matcher = matcher.or_else(|| {
             let editor = doc.editor_mut();
@@ -137,10 +157,12 @@ impl XmlCraftApp {
             }
             let primary = editor.primary();
             let text = editor.buffer().slice(primary.start()..primary.end()).ok()?;
-            Matcher::new(&Query::text(&text)).ok()
+            Matcher::new(&Query::text(&text)).ok().map(Arc::new)
         });
-        if let Some(matcher) = matcher {
-            doc.editor_mut().select_all_matches(&matcher);
+        if let Some(matcher) = matcher
+            && doc.editor_mut().select_all_matches(&matcher).is_none()
+        {
+            self.status = fmt(tl!("More than {n} matches: no carets were added"), &[("n", &MAX_MATCHES.to_string())]);
         }
     }
 
@@ -155,7 +177,7 @@ impl XmlCraftApp {
         if !fresh {
             let len = doc.editor().buffer().len();
             let (matches, more) = if len <= COUNT_UP_TO { matcher.find_all(&doc.editor().text(), 0..len, MAX_MATCHES) } else { (Vec::new(), true) };
-            self.find.stats = Some(FindStats { document, version, query, matches, more });
+            self.find.stats = Some(FindStats { document, version, query, matches: Arc::new(matches), more });
         }
         let stats = self.find.stats.as_ref()?;
         let selection = doc.editor().primary();
@@ -182,7 +204,8 @@ impl XmlCraftApp {
         let mut action: Option<Action> = None;
         egui::Frame::NONE.fill(t.panel).stroke(egui::Stroke::new(1.0, t.divider)).inner_margin(egui::Margin::symmetric(10, 6)).show(ui, |ui| {
             ui.set_min_width(ui.available_width());
-            ui.horizontal(|ui| {
+            // Wraps in a narrow window rather than losing the controls at the right.
+            ui.horizontal_wrapped(|ui| {
                 let toggle = |ui: &mut egui::Ui, on: &mut bool, text: &str, name: &str| {
                     let response =
                         ui.add(egui::Button::new(egui::RichText::new(text).font(theme::mono(12.0))).selected(*on).min_size(vec2(26.0, 24.0)));
@@ -248,7 +271,7 @@ impl XmlCraftApp {
                 }
             });
             if self.find.show_replace {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     let field = ui.add(
                         egui::TextEdit::singleline(&mut self.find.replacement)
                             .id(egui::Id::new("xmlcraft-find-replacement"))
@@ -256,8 +279,12 @@ impl XmlCraftApp {
                             .desired_width(field_width),
                     );
                     widgets::name_for_assistive_technology(ui, &field, tl!("Replace with"));
+                    if std::mem::take(&mut self.find.focus_replacement) {
+                        field.request_focus();
+                    }
                     if field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
                         action = Some(Action::Replace);
+                        self.find.focus_replacement = true; // Enter replaces and stays in the box, as Enter in the find box stays there
                     }
                     if ui.button(tl!("Replace")).clicked() {
                         action = Some(Action::Replace);

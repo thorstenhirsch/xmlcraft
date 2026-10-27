@@ -2,11 +2,11 @@
 //!
 //! ```text
 //! cargo run -p xmlcraft-ui-egui --example shot -- out.png [--size 1440x900] [--scale 2] [--theme light|dark|system]
-//!     [--tabs a.xml,b.xml] [--active 0] [--width 1200] [--open FILE.xml] [--find TEXT]
+//!     [--tabs a.xml,b.xml] [--active 0] [--width 1200] [--open FILE.xml [--find TEXT]]
 //! ```
 //! `--width N` downscales the image to N pixels wide (README screenshots). `--tabs` shows sample document tabs (the engine's
-//! documents replace them with milestone M1.12). `--open` opens a (synthetic) file and `--find` opens the find bar with that text. Only
-//! synthetic names and files are ever shown.
+//! documents replace them with milestone M1.12). `--open` reads a real file from disk and opens it (use a synthetic one), and `--find`,
+//! which needs `--open`, opens the find bar with that text. Only synthetic names and files are ever shown.
 
 use std::time::Duration;
 
@@ -16,8 +16,9 @@ use xmlcraft_ui_egui::{TabInfo, XmlCraftApp};
 
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
-    let out =
-        args.next().ok_or("usage: shot <out.png> [--size WxH] [--scale N] [--theme light|dark|system] [--tabs a,b] [--active N] [--width N]")?;
+    let out = args.next().ok_or(
+        "usage: shot <out.png> [--size WxH] [--scale N] [--theme light|dark|system] [--tabs a,b] [--active N] [--width N] [--open FILE [--find TEXT]]",
+    )?;
     let (mut size, mut scale) = (egui::vec2(1440.0, 900.0), 2.0f32);
     let (mut width, mut theme, mut tabs, mut active): (Option<u32>, Option<ThemePreference>, Vec<TabInfo>, Option<usize>) =
         (None, None, Vec::new(), None);
@@ -55,6 +56,9 @@ fn main() -> Result<(), String> {
             _ => return Err(format!("unexpected argument {a}")),
         }
     }
+    if find.is_some() && open.is_none() {
+        return Err("--find needs --open FILE: it searches that file".into());
+    }
     let mut harness = Harness::builder().with_size(size).with_pixels_per_point(scale).build_eframe(move |cc| {
         let mut app = XmlCraftApp::new(cc);
         if let Some(theme) = theme {
@@ -90,8 +94,12 @@ fn main() -> Result<(), String> {
             harness.get_by_label("Find").type_text(query);
             harness.run_steps(4);
         }
-        // The analysis runs on another thread: give it a moment.
-        std::thread::sleep(Duration::from_millis(300));
+        // The analysis runs on another thread: wait until the problems of the file are in (five seconds at most).
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while harness.state().problems().is_none() && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+            harness.run_steps(1);
+        }
         harness.run_steps(4);
     }
     std::thread::sleep(Duration::from_millis(250));

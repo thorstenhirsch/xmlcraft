@@ -188,7 +188,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             name: "doc_find",
             title: "Find text",
             description: "Find text or a regular expression in an open document (`id`), a file (`path`) or text. Returns each match with its position (line and column \
-                          from 1), its text, and whether there were more than `limit`. In a regular expression `^` and `$` match at every line.",
+                          from 1), its text (cut after 200 characters, then `text_truncated`), and whether there were more than `limit`. In a regular expression `^` and `$` match at every line.",
             input_schema: {
                 let mut properties = source_properties();
                 if let Some(map) = properties.as_object_mut() {
@@ -560,6 +560,9 @@ fn doc_close(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
 
 // --- find and replace --------------------------------------------------------------------------------------------------------
 
+/// The most characters of a match `doc_find` reports as its text.
+const MATCH_TEXT_CHARS: usize = 200;
+
 fn matcher_of(args: &Value) -> Result<Matcher> {
     let query = Query {
         pattern: text_arg(args, "pattern").unwrap_or_default().to_owned(),
@@ -581,11 +584,17 @@ fn doc_find(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         .map(|range| {
             let (line, column) = position_json(&buffer, range.start);
             let (end_line, end_column) = position_json(&buffer, range.end);
-            let text: String = source.text.get(range.clone()).unwrap_or_default().chars().take(200).collect();
-            json!({ "line": line, "column": column, "end_line": end_line, "end_column": end_column, "start": range.start, "end": range.end, "text": text })
+            let whole = source.text.get(range.clone()).unwrap_or_default();
+            let text: String = whole.chars().take(MATCH_TEXT_CHARS).collect();
+            // `start` and `end` are the whole match; `text` is cut for a match longer than MATCH_TEXT_CHARS.
+            let truncated = text.len() < whole.len();
+            json!({
+                "line": line, "column": column, "end_line": end_line, "end_column": end_column,
+                "start": range.start, "end": range.end, "text": text, "text_truncated": truncated,
+            })
         })
         .collect();
-    json_result(json!({ "matches": matches, "count": matches.len(), "more": more }))
+    json_result(json!({ "matches": matches, "count": matches.len(), "more": more, "lossy": source.lossy }))
 }
 
 fn doc_replace(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
@@ -594,7 +603,9 @@ fn doc_replace(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
     let replacement = text_arg(args, "replacement").unwrap_or_default();
     let Some(count) = doc.editor_mut().replace_all(&matcher, replacement, false) else {
-        return fail(format!("more than {MAX_MATCHES} matches: nothing was replaced (make the pattern narrower)"));
+        return fail(format!(
+            "more than {MAX_MATCHES} matches, or more than the replacements may add up to: nothing was replaced (make the pattern narrower)"
+        ));
     };
     json_result(json!({ "replaced": count, "document": describe(doc) }))
 }
