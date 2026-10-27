@@ -2,7 +2,7 @@
 
 **Stage: pre-alpha** · now: M1 (text editor and XML syntax); M0's release dry run builds all six targets, install-and-launch is verified on Windows ARM64 only
 
-> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** M1.1–M1.5 · **Target:** Altova XMLSpy (feature set described in its public documentation)
+> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** M1.1–M1.6a · **Target:** Altova XMLSpy (feature set described in its public documentation)
 
 XmlCraft is a clean-room, open-source XML editor in the spirit of Altova XMLSpy, built in Rust with egui, like its sibling [PdfCraft](https://github.com/storytold/pdfcraft). The first release (0.1.0) is an XML editor with XSD and DTD support, validation, schema generation from XML, and sample XML generation from schemas. JSON and YAML follow.
 
