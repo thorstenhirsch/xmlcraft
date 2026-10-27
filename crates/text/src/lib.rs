@@ -5,7 +5,7 @@
 //! - **Layer:** L0, standalone, no UI and no I/O, so it compiles for the web too.
 //! - [`Buffer`] is the text itself, kept in a rope (cheap to clone, so a snapshot can go to a worker thread). It is always UTF-8.
 //!   Offsets are **byte offsets** into that UTF-8; columns are counted in characters.
-//! - [`Edit`]s change it; every edit is checked (a range outside the text, or inside a character, is an [`TextError`], never a
+//! - [`Edit`]s change it; every edit is checked (a range outside the text, or inside a character, is a [`TextError`], never a
 //!   panic) and returns its own inverse, which is how [`History`] undoes.
 //! - [`encoding`] turns file bytes into text and back without losing a byte: the encoding, the byte-order mark and the line endings
 //!   are remembered, so saving an unedited file writes it back exactly (CLAUDE.md, "The text is the model").

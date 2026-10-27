@@ -13,6 +13,8 @@ pub enum TextError {
     NotCharBoundary { offset: usize },
     /// A range that ends before it starts.
     ReversedRange { start: usize, end: usize },
+    /// The undo history does not match the text: it was changed behind the history's back.
+    HistoryMismatch,
 }
 
 impl std::fmt::Display for TextError {
@@ -21,6 +23,7 @@ impl std::fmt::Display for TextError {
             TextError::OutOfRange { offset, len } => write!(f, "offset {offset} is past the end of the text ({len} bytes)"),
             TextError::NotCharBoundary { offset } => write!(f, "offset {offset} is inside a character"),
             TextError::ReversedRange { start, end } => write!(f, "the range {start}..{end} ends before it starts"),
+            TextError::HistoryMismatch => f.write_str("the undo history no longer matches the text"),
         }
     }
 }
@@ -149,9 +152,13 @@ impl Buffer {
 
     /// The boundary after the character that starts at `offset` (or the end of the text).
     pub fn next_char(&self, offset: usize) -> usize {
+        if offset >= self.len() {
+            return self.len();
+        }
         match self.char_at(offset) {
             Some(c) => offset + c.len_utf8(),
-            None => self.len(),
+            // Inside a character: the next boundary.
+            None => self.next_boundary_at_or_after(offset),
         }
     }
 
@@ -217,7 +224,9 @@ impl Buffer {
         }
         let line = self.rope.line_of_byte(offset);
         let start = self.line_start(line).unwrap_or(0);
-        Position { line, col: self.rope.byte_slice(start..offset).chars().count() }
+        // The line break is not part of the line: an offset on the `\n` of a `\r\n` is at the end of the content, not past the `\r`.
+        let content_end = self.line_range(line).map_or(offset, |r| r.end);
+        Position { line, col: self.rope.byte_slice(start..offset.min(content_end).max(start)).chars().count() }
     }
 
     /// The offset of `pos`. A line past the end is the end of the text; a column past the end of the line is the end of the line
@@ -379,6 +388,27 @@ mod tests {
         assert_eq!(buf.char_at(2), None);
         assert_eq!(buf.char_at(99), None);
         assert_eq!((buf.byte(0), buf.byte(99)), (Some(b'a'), None));
+    }
+
+    #[test]
+    fn stepping_from_inside_a_character_goes_to_the_next_boundary() {
+        let buf = b("a€𝄞");
+        assert_eq!(buf.next_char(0), 1);
+        assert_eq!(buf.next_char(1), 4);
+        assert_eq!(buf.next_char(2), 4, "inside the euro sign: its end, not the end of the text");
+        assert_eq!(buf.next_char(3), 4);
+        assert_eq!(buf.next_char(5), 8, "inside the clef");
+        assert_eq!(buf.next_char(8), 8);
+        assert_eq!(buf.next_char(99), 8);
+    }
+
+    #[test]
+    fn an_offset_on_the_newline_of_a_crlf_is_at_the_end_of_the_line() {
+        let buf = b("a\r\nb");
+        assert_eq!(buf.position(1), Position { line: 0, col: 1 });
+        assert_eq!(buf.position(2), Position { line: 0, col: 1 }, "between the CR and the LF: still the end of line 0");
+        assert_eq!(buf.position(3), Position { line: 1, col: 0 });
+        assert_eq!(buf.offset_of(buf.position(2)), 1);
     }
 
     #[test]
