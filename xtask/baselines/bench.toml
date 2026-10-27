@@ -2,7 +2,8 @@
 #
 # `target_ms`: what the plan (§3) asks for, where it asks for something.
 # `budget_ms`: what the scenario is held to now; a scenario over it fails the command. A budget above its target is a known
-# shortfall (docs/gaps.md): lower it when the shortfall is worked on, never raise it.
+# shortfall (docs/gaps.md): lower it when the shortfall is worked on, never raise it. A budget is the measurement on a development
+# machine plus headroom for noise (two to three times for the quick scenarios, less for the long ones), not a round number.
 
 [target_ms]
 open_100mb = 3000
@@ -17,5 +18,5 @@ first_frame_100mb = 100
 keystroke_1mb = 8
 reparse_1mb = 30
 reparse_10mb = 400
-format_1mb = 200
-find_all_10mb = 200
+format_1mb = 60
+find_all_10mb = 10
