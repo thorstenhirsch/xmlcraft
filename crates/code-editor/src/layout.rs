@@ -4,7 +4,7 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use egui::epaint::text::{LayoutJob, TextFormat};
+use egui::epaint::text::{ByteIndex, LayoutJob, LayoutSection, TextFormat};
 use egui::{Color32, FontId, Galley, Painter, Vec2, vec2};
 use xmlcraft_editor::motion::char_width;
 
@@ -41,6 +41,15 @@ pub struct LineLayout {
     x_origin: f32,
 }
 
+/// Whether the font may draw `a` followed by `b` as one joined shape (a ligature): any two ASCII punctuation characters.
+fn joins(a: char, b: char) -> bool {
+    a.is_ascii_punctuation() && b.is_ascii_punctuation()
+}
+
+fn section(start: usize, end: usize, font: &FontId, color: Color32) -> LayoutSection {
+    LayoutSection { leading_space: 0.0, byte_range: ByteIndex(start)..ByteIndex(end), format: TextFormat::simple(font.clone(), color) }
+}
+
 pub struct LayoutParams<'a> {
     pub font: &'a FontId,
     pub color: Color32,
@@ -66,8 +75,14 @@ impl LineLayout {
         job.break_on_newline = false;
         let mut laid_out_index = Vec::new();
         let mut byte_of_char = Vec::new();
-        let mut run = String::new();
-        let mut run_color = params.color;
+        let mut text_out = String::new();
+        // The laid-out text is cut into sections: a change of colour starts one, and so does every pair of adjacent punctuation
+        // characters, because the font joins some of them into one shape (`--`, `->`, `<!--`) and a document must show what is there.
+        // Shaping is done per section, so a boundary stops the joining.
+        let mut sections: Vec<LayoutSection> = Vec::new();
+        let mut section_start = 0usize;
+        let mut section_color = params.color;
+        let mut previous: Option<char> = None;
         let mut laid_out_chars = 0u32;
         let mut spans = params.spans.iter().peekable();
         let width = window.end.saturating_sub(window.start);
@@ -83,33 +98,36 @@ impl LineLayout {
                 spans.next();
             }
             let color = spans.peek().filter(|s| s.range.start <= byte).map_or(params.color, |s| s.color);
-            if color != run_color && !run.is_empty() {
-                job.append(&run, 0.0, TextFormat::simple(params.font.clone(), run_color));
-                run.clear();
+            if text_out.len() > section_start && (color != section_color || previous.is_some_and(|p| joins(p, c))) {
+                sections.push(section(section_start, text_out.len(), params.font, section_color));
+                section_start = text_out.len();
             }
-            run_color = color;
+            section_color = color;
+            previous = Some(c);
             match c {
                 '\t' => {
                     let w = char_width('\t', column, tab);
-                    run.extend(std::iter::repeat_n(' ', w));
+                    text_out.extend(std::iter::repeat_n(' ', w));
                     laid_out_chars += w as u32;
                     column += w;
                 }
                 c if c.is_control() => {
-                    run.push('\u{B7}');
+                    text_out.push('\u{B7}');
                     laid_out_chars += 1;
                     column += char_width(c, column, tab);
                 }
                 c => {
-                    run.push(c);
+                    text_out.push(c);
                     laid_out_chars += 1;
                     column += char_width(c, column, tab);
                 }
             }
         }
-        if !run.is_empty() {
-            job.append(&run, 0.0, TextFormat::simple(params.font.clone(), run_color));
+        if text_out.len() > section_start {
+            sections.push(section(section_start, text_out.len(), params.font, section_color));
         }
+        job.text = text_out;
+        job.sections = sections;
         laid_out_index.push(laid_out_chars);
         byte_of_char.push(end_byte as u32);
         let galley = painter.layout_job(job);
@@ -173,6 +191,61 @@ impl LineLayout {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Lay out `text` in a bare egui context and return the laid-out job's sections as text pieces.
+    fn pieces(text: &str, spans: &[StyleSpan]) -> Vec<String> {
+        let ctx = egui::Context::default();
+        let mut result = Vec::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let font = FontId::monospace(13.0);
+            let params = LayoutParams { font: &font, color: Color32::BLACK, tab_width: 4, column_width: 8.0, spans };
+            let layout = LineLayout::new(ui.painter(), text, 0..text.chars().count(), &params);
+            let job = &layout.galley().job;
+            result = job.sections.iter().map(|s| job.text[s.byte_range.start.0..s.byte_range.end.0].to_owned()).collect();
+        });
+        output.textures_delta.clear();
+        result
+    }
+
+    #[test]
+    fn adjacent_punctuation_is_never_shaped_together() {
+        assert_eq!(
+            pieces("<!-- a -->", &[]),
+            ["<", "!", "-", "- a -", "-", ">"],
+            "so `<!--` and `-->` are drawn as the characters they are (a space already separates the rest)"
+        );
+        assert_eq!(pieces("a->b", &[]), ["a-", ">b"], "a letter and a dash may stay together; two punctuation marks may not");
+        assert_eq!(pieces("ab cd", &[]), ["ab cd"], "ordinary text stays one section");
+        assert_eq!(pieces("", &[]), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_change_of_colour_starts_a_section_and_a_tab_becomes_spaces() {
+        let spans = [StyleSpan { range: 1..3, color: Color32::RED }];
+        // The tab is at column 1, so it fills three columns; the red part is the tab and `b`.
+        assert_eq!(pieces("a\tb c", &spans), ["a", "   b", " c"]);
+    }
+
+    #[test]
+    fn positions_map_back_through_tabs_and_wide_text() {
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let font = FontId::monospace(13.0);
+            let params = LayoutParams { font: &font, color: Color32::BLACK, tab_width: 4, column_width: 8.0, spans: &[] };
+            let text = "a\tb";
+            let layout = LineLayout::new(ui.painter(), text, 0..3, &params);
+            // `b` is after the tab, which fills the line to column 4: three laid-out columns beyond `a`'s one.
+            assert!(layout.x_of_byte(3) > layout.x_of_byte(2), "b is right of the tab");
+            assert!(layout.x_of_byte(2) > layout.x_of_byte(1), "the tab has width");
+            // Clicking inside the tab goes to its nearer edge.
+            let tab_start = layout.x_of_byte(1);
+            let tab_end = layout.x_of_byte(2);
+            assert_eq!(layout.byte_at_x(tab_start + 1.0), 1);
+            assert_eq!(layout.byte_at_x(tab_end - 1.0), 2);
+            assert_eq!(layout.byte_at_x(10_000.0), 3, "past the end: the end");
+        });
+        output.textures_delta.clear();
+    }
 
     /// Lay `text` out headless (the first frame of a throwaway context has the default fonts).
     fn layout(text: &str) -> LineLayout {

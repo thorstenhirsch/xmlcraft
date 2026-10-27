@@ -65,19 +65,26 @@ fn main() -> Result<(), String> {
         view: ViewState,
         styler: XmlStyler,
         kind: ThemeKind,
+        fonts_installed: bool,
     }
     let mut editor = Editor::new(SAMPLE);
     let start = SAMPLE.find("Fish").unwrap_or(0);
     editor.set_selections(&[Selection { anchor: start, head: start + 4 }]);
     let mut harness = Harness::builder().with_size(size).with_pixels_per_point(scale).build_ui_state(
         |ui, state: &mut State| {
+            // The app's own fonts (JetBrains Mono for code), installed before anything is laid out: they take effect next frame.
+            if !state.fonts_installed {
+                xmlcraft_ui_egui::theme::install_fonts(ui.ctx());
+                state.fonts_installed = true;
+                return;
+            }
             let tokens = Tokens::for_kind(state.kind);
             CodeEditor::new(Id::new("shot"), &mut state.editor, &mut state.view, editor_colors(&tokens))
                 .blink(false)
                 .styler(&mut state.styler)
                 .show(ui);
         },
-        State { editor, view: ViewState::new(), styler: XmlStyler::new(kind), kind },
+        State { editor, view: ViewState::new(), styler: XmlStyler::new(kind), kind, fonts_installed: false },
     );
     harness.run_steps(6);
     std::thread::sleep(std::time::Duration::from_millis(200));

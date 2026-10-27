@@ -99,7 +99,8 @@ impl ViewState {
         Self::default()
     }
 
-    /// Forget everything about the text (after loading another file). A styler hears that the text changed from its first line.
+    /// Forget everything about the text (after loading another file). A styler hears that the text changed from its first line. Also
+    /// call it if the host changes the fonts: laid-out lines belong to the fonts they were laid out with.
     pub fn reset(&mut self) {
         self.restyle_all = true;
         self.cache.clear();
@@ -555,6 +556,18 @@ fn handle_pointer(
 fn handle_events(ui: &mut Ui, editor: &mut Editor, view: &mut ViewState, mac: bool, read_only: bool, page: usize, now: f64) {
     let events = ui.input(|i| i.events.clone());
     for event in events {
+        // The kind only: what was typed or pasted is the user's document, and a debug log gets shared.
+        let kind = match &event {
+            Event::Text(_) => Some("text"),
+            Event::Paste(_) => Some("paste"),
+            Event::Cut => Some("cut"),
+            Event::Ime(_) => Some("input method"),
+            Event::Key { pressed: true, .. } => Some("key"),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            log::debug!("editor input: {kind}");
+        }
         match event {
             Event::Text(text) if !read_only => {
                 let text: String = text.chars().filter(|c| !c.is_control()).collect();

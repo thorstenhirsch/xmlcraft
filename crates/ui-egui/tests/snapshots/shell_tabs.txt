@@ -1,13 +1,18 @@
 Button "Home" [toggled=false]
 Tab "invoice.xml (edited)" [selected]
 Tab "catalog.xsd"
-Button "Open" [disabled]
+Button "New"
+Button "Open"
 Button "Display theme: Light" [toggled=false]
 Button "Menu"
 Button "Text" [toggled=true]
 Button "Find tools and commands"
 Label value="Ready"
 Label value="XmlCraft 0.0.1"
+Label value="Spaces: 2"
+Label value="LF"
+Label value="UTF-8"
+Label value="Ln 1, Col 2"
 Button "Entry Helpers" [toggled=true]
 Pane "Outline"
 Label value="Outline"
@@ -32,3 +37,4 @@ Button "Close" [toggled=false]
 Label value="No messages"
 Label value="Well-formedness and validation results appear here."
 Splitter "Resize panels"
+TextInput "XML editor"

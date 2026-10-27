@@ -6,8 +6,8 @@
 use egui::accesskit::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::NodeT;
+use xmlcraft_ui_egui::XmlCraftApp;
 use xmlcraft_ui_egui::theme::ThemePreference;
-use xmlcraft_ui_egui::{TabInfo, XmlCraftApp};
 
 fn shell() -> Harness<'static, XmlCraftApp> {
     let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).build_eframe(|cc| XmlCraftApp::new(cc));
@@ -79,8 +79,11 @@ fn the_home_shell() {
 #[test]
 fn a_document_tab_with_unsaved_changes() {
     let mut h = shell();
-    h.state_mut().tabs = vec![TabInfo { name: "invoice.xml".into(), dirty: true }, TabInfo { name: "catalog.xsd".into(), dirty: false }];
-    h.state_mut().active = Some(0);
+    let session = &mut h.state_mut().session;
+    session.open(Some("/x/invoice.xml".into()), b"<invoice/>", None).expect("opens");
+    session.active_document_mut().expect("shown").editor_mut().type_text(" ");
+    session.open(Some("/x/catalog.xsd".into()), b"<schema/>", None).expect("opens");
+    session.set_active(Some(0));
     h.run_steps(3);
     check("shell_tabs", &tree_text(&h));
 }

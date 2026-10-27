@@ -5,6 +5,8 @@
 mod chrome;
 mod commands;
 mod control;
+mod dialog;
+mod documents;
 pub mod editor_view;
 mod home;
 mod i18n;
@@ -12,15 +14,21 @@ mod icon_data;
 mod icons;
 mod motion;
 mod palette;
+mod pickers;
 mod side_panels;
 pub mod theme;
 pub use control::{ControlClient, Reply as ControlReply};
 mod widgets;
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use xmlcraft_engine::Session;
 
+use crate::dialog::Dialog;
+use crate::documents::DocView;
+use crate::pickers::Pickers;
 use crate::side_panels::{RightPanel, SidePanels};
 use crate::theme::{ThemeKind, ThemePreference};
 
@@ -37,7 +45,7 @@ pub enum Mode {
     Text,
 }
 
-/// A document tab as the strip shows it. The engine's documents replace this when they exist (milestone M1.12).
+/// A document tab as the strip shows it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TabInfo {
     pub name: String,
@@ -78,9 +86,6 @@ impl Prefs {
 
 pub struct XmlCraftApp {
     pub theme_preference: ThemePreference,
-    /// Open documents, as tabs. `None` in `active` is the home view.
-    pub tabs: Vec<TabInfo>,
-    pub active: Option<usize>,
     pub mode: Mode,
     pub left_open: bool,
     pub right: Option<RightPanel>,
@@ -91,6 +96,23 @@ pub struct XmlCraftApp {
     palette_selected: usize,
     /// The open documents and the commands that act on them.
     pub session: Session,
+    /// What the editor keeps for each open document (layout caches, colouring), by document id.
+    views: HashMap<u64, DocView>,
+    /// The question being asked, if any.
+    dialog: Option<Dialog>,
+    pickers: Pickers,
+    /// Answers the next file picker with these paths instead of showing one (tests and automation).
+    pub pick_override: Option<Vec<std::path::PathBuf>>,
+    /// The egui context, for commands that show panels and dialogs.
+    ctx: Option<egui::Context>,
+    /// Put the keyboard focus in the editor on the next frame.
+    focus_editor: bool,
+    /// The app is closing, one document at a time, asking about each that has unsaved changes.
+    quitting: bool,
+    /// Every question is answered: the next close request goes through.
+    quit_confirmed: bool,
+    /// Whether the window had the focus last frame, to notice getting it back.
+    was_focused: bool,
     /// Commands for the window that a command asked for; sent on the next frame.
     viewport_commands: Vec<egui::ViewportCommand>,
     /// What the status bar says instead of "Ready": the last command's trouble, if any.
@@ -111,14 +133,14 @@ impl XmlCraftApp {
         egui_extras::install_image_loaders(&cc.egui_ctx);
         theme::install_fonts(&cc.egui_ctx);
         let prefs = Prefs::load(cc.storage.and_then(|s| s.get_string(STORAGE_KEY)).as_deref());
-        Self::with_prefs(prefs)
+        let mut app = Self::with_prefs(prefs);
+        app.ctx = Some(cc.egui_ctx.clone());
+        app
     }
 
     fn with_prefs(prefs: Prefs) -> Self {
         Self {
             theme_preference: prefs.theme,
-            tabs: Vec::new(),
-            active: None,
             mode: Mode::default(),
             left_open: prefs.left_open,
             right: prefs.right,
@@ -128,6 +150,15 @@ impl XmlCraftApp {
             palette_last_query: String::new(),
             palette_selected: 0,
             session: Session::new(),
+            views: HashMap::new(),
+            dialog: None,
+            pickers: Pickers::default(),
+            pick_override: None,
+            ctx: None,
+            focus_editor: false,
+            quitting: false,
+            quit_confirmed: false,
+            was_focused: true,
             viewport_commands: Vec::new(),
             status: String::new(),
             control: None,
@@ -169,30 +200,9 @@ impl XmlCraftApp {
         }
     }
 
-    /// Whether closing the window now would lose work.
-    pub fn has_unsaved_changes(&self) -> bool {
-        self.tabs.iter().any(|t| t.dirty)
-    }
-
     /// The colours currently installed, once a frame has applied them.
     pub fn applied_theme(&self) -> Option<ThemeKind> {
         self.applied
-    }
-
-    /// Close the tab at `index`; the neighbour to its left (or the home view) becomes active.
-    pub fn close_tab(&mut self, index: usize) {
-        if index >= self.tabs.len() {
-            return;
-        }
-        self.tabs.remove(index);
-        self.active = match self.active {
-            Some(a) if a == index => index.checked_sub(1).filter(|_| !self.tabs.is_empty()).or((!self.tabs.is_empty()).then_some(0)),
-            Some(a) if a > index => Some(a - 1),
-            other => other,
-        };
-        if self.tabs.is_empty() {
-            self.active = None;
-        }
     }
 
     /// Install the colours for the current preference and system setting, when they changed.
@@ -202,6 +212,11 @@ impl XmlCraftApp {
         if self.applied != Some(kind) {
             theme::apply(ctx, kind);
             self.applied = Some(kind);
+            // Open documents are coloured again, in the new theme's colours.
+            for view in self.views.values_mut() {
+                view.styler.set_theme(kind);
+                view.view.highlight_version += 1;
+            }
         }
     }
 }
@@ -214,11 +229,25 @@ impl eframe::App for XmlCraftApp {
             self.control = Some(control);
         }
         self.handle_shortcuts(ctx);
+        self.process_picks(ctx);
+        self.handle_dropped_files(ctx);
+        // Getting the window back: another program may have changed the files in the meantime.
+        let focused = ctx.input(|i| i.viewport().focused.unwrap_or(true));
+        if focused && !self.was_focused {
+            self.check_disk_changes();
+        }
+        self.was_focused = focused;
         for command in self.viewport_commands.drain(..) {
             ctx.send_viewport_cmd(command);
         }
-        if ctx.input(|i| i.viewport().close_requested()) && !self.has_unsaved_changes() {
-            self.release_control_file();
+        if ctx.input(|i| i.viewport().close_requested()) {
+            if self.quit_confirmed || !self.has_unsaved_changes() {
+                self.release_control_file();
+            } else {
+                // Unsaved work: stop the close and ask, document by document.
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.request_quit(ctx);
+            }
         }
         // Last, so it sees any `CancelClose` above: on macOS a close quits through `terminate:` (the Touch Bar crash).
         craft_quit::on_close_request(ctx);
@@ -232,11 +261,10 @@ impl eframe::App for XmlCraftApp {
         chrome::status_bar(self, ui);
         side_panels::show(self, ui);
         palette::show(self, ui.ctx());
-        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.pasteboard)).show(ui, |ui| {
-            if self.active.is_none() {
-                home::show(ui);
-            }
-        });
+        let fill = if self.session.has_document() { editor_view::editor_colors(&t).background } else { t.pasteboard };
+        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| self.central(ui));
+        self.show_dialog(ui.ctx());
+        self.show_drop_hint(ui.ctx());
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
@@ -253,7 +281,9 @@ mod tests {
 
     fn app_with_tabs(n: usize) -> XmlCraftApp {
         let mut app = XmlCraftApp::with_prefs(Prefs::default());
-        app.tabs = (0..n).map(|i| TabInfo { name: format!("{i}.xml"), dirty: false }).collect();
+        for i in 0..n {
+            app.session.open(Some(format!("/x/{i}.xml").into()), b"<a/>", None).expect("opens");
+        }
         app
     }
 
@@ -300,34 +330,44 @@ mod tests {
     #[test]
     fn closing_a_tab_keeps_the_selection_sensible() {
         let mut app = app_with_tabs(3);
-        app.active = Some(1);
-        app.close_tab(1);
-        assert_eq!((app.tabs.len(), app.active), (2, Some(0)), "the left neighbour becomes active");
-        app.close_tab(1);
-        assert_eq!(app.active, Some(0));
-        app.close_tab(0);
-        assert_eq!((app.tabs.len(), app.active), (0, None), "the home view when the last tab goes");
+        app.session.set_active(Some(1));
+        app.request_close(1);
+        assert_eq!((app.tabs().len(), app.active()), (2, Some(0)), "the left neighbour becomes active");
+        app.request_close(1);
+        assert_eq!(app.active(), Some(0));
+        app.request_close(0);
+        assert_eq!((app.tabs().len(), app.active()), (0, None), "the home view when the last tab goes");
     }
 
     #[test]
     fn closing_before_the_active_tab_follows_it() {
         let mut app = app_with_tabs(3);
-        app.active = Some(2);
-        app.close_tab(0);
-        assert_eq!(app.active, Some(1));
-        assert_eq!(app.tabs[1].name, "2.xml");
-        app.active = None;
-        app.close_tab(0);
-        assert_eq!(app.active, None, "the home view stays");
+        app.session.set_active(Some(2));
+        app.request_close(0);
+        assert_eq!(app.active(), Some(1));
+        assert_eq!(app.tabs()[1].name, "2.xml");
+        app.session.set_active(None);
+        app.request_close(0);
+        assert_eq!(app.active(), None, "the home view stays");
     }
 
     #[test]
     fn closing_a_tab_that_does_not_exist_is_harmless() {
         let mut app = app_with_tabs(1);
-        app.close_tab(5);
-        app.close_tab(usize::MAX);
-        assert_eq!(app.tabs.len(), 1);
-        assert_eq!(XmlCraftApp::with_prefs(Prefs::default()).tabs.len(), 0);
+        app.request_close(5);
+        app.request_close(usize::MAX);
+        assert_eq!(app.tabs().len(), 1);
+        assert_eq!(XmlCraftApp::with_prefs(Prefs::default()).tabs().len(), 0);
+    }
+
+    #[test]
+    fn a_tab_with_unsaved_changes_asks_before_it_closes() {
+        let mut app = app_with_tabs(2);
+        app.session.document_mut(1).expect("there").editor_mut().type_text("x");
+        assert!(app.has_unsaved_changes());
+        app.request_close(1);
+        assert_eq!(app.tabs().len(), 2, "still open: the question comes first");
+        assert!(matches!(app.dialog, Some(Dialog::Unsaved { .. })));
     }
 
     #[test]
@@ -350,7 +390,7 @@ mod tests {
     fn unsaved_changes_are_noticed() {
         let mut app = app_with_tabs(2);
         assert!(!app.has_unsaved_changes());
-        app.tabs[1].dirty = true;
+        app.session.document_mut(1).expect("there").editor_mut().type_text("x");
         assert!(app.has_unsaved_changes());
     }
 }

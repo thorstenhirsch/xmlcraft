@@ -1,103 +1,12 @@
 //! Files: read, write atomically, and notice outside changes.
 
-use std::fs;
-use std::io::{self, Read};
-use std::path::{Path, PathBuf};
-
-use xmlcraft_engine::{FileStamp, MAX_OPEN_BYTES};
+use xmlcraft_engine::FileStamp;
 
 /// A file's bytes and what it looked like when they were read.
 #[derive(Debug)]
 pub struct Loaded {
     pub bytes: Vec<u8>,
     pub stamp: FileStamp,
-}
-
-fn stamp_from(meta: &fs::Metadata) -> FileStamp {
-    #[cfg(unix)]
-    let (changed, file_id) = {
-        use std::os::unix::fs::MetadataExt;
-        (Some((meta.ctime(), meta.ctime_nsec())), Some((meta.dev(), meta.ino())))
-    };
-    #[cfg(not(unix))]
-    let (changed, file_id) = (None, None);
-    FileStamp { len: meta.len(), modified: meta.modified().ok(), changed, file_id }
-}
-
-/// What a file looks like now.
-pub fn stamp_of(path: &Path) -> io::Result<FileStamp> {
-    Ok(stamp_from(&fs::metadata(path)?))
-}
-
-fn too_large(len: u64) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, format!("the file is {len} bytes, more than the {MAX_OPEN_BYTES} bytes XmlCraft opens"))
-}
-
-/// How many times a file that changes while it is read is read again.
-const READ_ATTEMPTS: usize = 3;
-
-/// Read a file. Only a regular file is read (not a pipe or a device, which could block or never end), one larger than
-/// [`MAX_OPEN_BYTES`] is refused (also when it grows while being read), and the stamp returned describes the very file that was read,
-/// from the open handle: if the file changed while it was read, it is read again rather than returning bytes and a stamp that do not
-/// belong together.
-pub fn read_file(path: &Path) -> io::Result<Loaded> {
-    for _ in 0..READ_ATTEMPTS {
-        // Looking before opening keeps a pipe from blocking the open; the handle is checked again below.
-        if !fs::metadata(path)?.is_file() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "not a regular file"));
-        }
-        let mut file = fs::File::open(path)?;
-        let meta = file.metadata()?;
-        if !meta.is_file() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "not a regular file"));
-        }
-        let before = stamp_from(&meta);
-        if before.len > MAX_OPEN_BYTES as u64 {
-            return Err(too_large(before.len));
-        }
-        let mut bytes = Vec::with_capacity(usize::try_from(before.len).unwrap_or(0));
-        // One byte more than allowed, so a file that outgrew its size is noticed without reading all of it.
-        (&mut file).take(MAX_OPEN_BYTES as u64 + 1).read_to_end(&mut bytes)?;
-        if bytes.len() > MAX_OPEN_BYTES {
-            return Err(too_large(bytes.len() as u64));
-        }
-        let after = stamp_from(&file.metadata()?);
-        if before == after && after.len == bytes.len() as u64 {
-            return Ok(Loaded { bytes, stamp: after });
-        }
-    }
-    Err(io::Error::other("the file keeps changing while it is read"))
-}
-
-/// How many symbolic links are followed to find where a write goes.
-const MAX_LINK_HOPS: usize = 40;
-
-/// The path a write should go to: symbolic links are followed (also a dangling one, whose target is then created), so that saving
-/// replaces the file a link points to and keeps the link.
-fn write_target(path: &Path) -> io::Result<PathBuf> {
-    let mut current = path.to_path_buf();
-    for _ in 0..MAX_LINK_HOPS {
-        match fs::symlink_metadata(&current) {
-            Ok(meta) if meta.file_type().is_symlink() => {
-                let link = fs::read_link(&current)?;
-                current = match current.parent() {
-                    Some(parent) if link.is_relative() => parent.join(link),
-                    _ => link,
-                };
-            }
-            Ok(_) => return Ok(current),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(current), // a new file
-            Err(e) => return Err(e),
-        }
-    }
-    Err(io::Error::new(io::ErrorKind::InvalidInput, "too many levels of symbolic links"))
-}
-
-/// Write a file atomically: the old bytes stay whole until the new ones are complete and on disk, and a failure leaves the old file as
-/// it was. Returns the stamp of the new file.
-pub fn write_file(path: &Path, bytes: &[u8]) -> io::Result<FileStamp> {
-    craft_atomic::atomic_write(&write_target(path)?, bytes)?;
-    stamp_of(path)
 }
 
 /// How a file compares with the stamp taken when it was read or written.
@@ -110,16 +19,152 @@ pub enum DiskChange {
     Missing,
 }
 
-pub fn changed_on_disk(path: &Path, stamp: &FileStamp) -> DiskChange {
-    match stamp_of(path) {
-        Ok(now) if now == *stamp => DiskChange::Unchanged,
-        Ok(_) => DiskChange::Modified,
-        Err(_) => DiskChange::Missing,
+pub use imp::{changed_on_disk, read_file, stamp_of, write_file};
+
+#[cfg(not(target_arch = "wasm32"))]
+mod imp {
+    use std::fs;
+    use std::io::{self, Read};
+    use std::path::{Path, PathBuf};
+
+    use xmlcraft_engine::{FileStamp, MAX_OPEN_BYTES};
+
+    use super::{DiskChange, Loaded};
+
+    fn stamp_from(meta: &fs::Metadata) -> FileStamp {
+        #[cfg(unix)]
+        let (changed, file_id) = {
+            use std::os::unix::fs::MetadataExt;
+            (Some((meta.ctime(), meta.ctime_nsec())), Some((meta.dev(), meta.ino())))
+        };
+        #[cfg(not(unix))]
+        let (changed, file_id) = (None, None);
+        FileStamp { len: meta.len(), modified: meta.modified().ok(), changed, file_id }
+    }
+
+    /// What a file looks like now.
+    pub fn stamp_of(path: &Path) -> io::Result<FileStamp> {
+        Ok(stamp_from(&fs::metadata(path)?))
+    }
+
+    fn too_large(len: u64) -> io::Error {
+        io::Error::new(io::ErrorKind::InvalidData, format!("the file is {len} bytes, more than the {MAX_OPEN_BYTES} bytes XmlCraft opens"))
+    }
+
+    /// How many times a file that changes while it is read is read again.
+    const READ_ATTEMPTS: usize = 3;
+
+    /// Read a file. Only a regular file is read (not a pipe or a device, which could block or never end), one larger than
+    /// [`MAX_OPEN_BYTES`] is refused (also when it grows while being read), and the stamp returned describes the very file that was read,
+    /// from the open handle: if the file changed while it was read, it is read again rather than returning bytes and a stamp that do not
+    /// belong together.
+    pub fn read_file(path: &Path) -> io::Result<Loaded> {
+        for _ in 0..READ_ATTEMPTS {
+            // Looking before opening keeps a pipe from blocking the open; the handle is checked again below.
+            if !fs::metadata(path)?.is_file() {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, "not a regular file"));
+            }
+            let mut file = fs::File::open(path)?;
+            let meta = file.metadata()?;
+            if !meta.is_file() {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, "not a regular file"));
+            }
+            let before = stamp_from(&meta);
+            if before.len > MAX_OPEN_BYTES as u64 {
+                return Err(too_large(before.len));
+            }
+            let mut bytes = Vec::with_capacity(usize::try_from(before.len).unwrap_or(0));
+            // One byte more than allowed, so a file that outgrew its size is noticed without reading all of it.
+            (&mut file).take(MAX_OPEN_BYTES as u64 + 1).read_to_end(&mut bytes)?;
+            if bytes.len() > MAX_OPEN_BYTES {
+                return Err(too_large(bytes.len() as u64));
+            }
+            let after = stamp_from(&file.metadata()?);
+            if before == after && after.len == bytes.len() as u64 {
+                return Ok(Loaded { bytes, stamp: after });
+            }
+        }
+        Err(io::Error::other("the file keeps changing while it is read"))
+    }
+
+    /// How many symbolic links are followed to find where a write goes.
+    const MAX_LINK_HOPS: usize = 40;
+
+    /// The path a write should go to: symbolic links are followed (also a dangling one, whose target is then created), so that saving
+    /// replaces the file a link points to and keeps the link.
+    fn write_target(path: &Path) -> io::Result<PathBuf> {
+        let mut current = path.to_path_buf();
+        for _ in 0..MAX_LINK_HOPS {
+            match fs::symlink_metadata(&current) {
+                Ok(meta) if meta.file_type().is_symlink() => {
+                    let link = fs::read_link(&current)?;
+                    current = match current.parent() {
+                        Some(parent) if link.is_relative() => parent.join(link),
+                        _ => link,
+                    };
+                }
+                Ok(_) => return Ok(current),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(current), // a new file
+                Err(e) => return Err(e),
+            }
+        }
+        Err(io::Error::new(io::ErrorKind::InvalidInput, "too many levels of symbolic links"))
+    }
+
+    /// Write a file atomically: the old bytes stay whole until the new ones are complete and on disk, and a failure leaves the old file as
+    /// it was. Returns the stamp of the new file.
+    pub fn write_file(path: &Path, bytes: &[u8]) -> io::Result<FileStamp> {
+        craft_atomic::atomic_write(&write_target(path)?, bytes)?;
+        stamp_of(path)
+    }
+
+    pub fn changed_on_disk(path: &Path, stamp: &FileStamp) -> DiskChange {
+        match stamp_of(path) {
+            Ok(now) if now == *stamp => DiskChange::Unchanged,
+            Ok(_) => DiskChange::Modified,
+            Err(_) => DiskChange::Missing,
+        }
     }
 }
 
-#[cfg(test)]
+/// On the web there are no files to open by path: every function says so.
+#[cfg(target_arch = "wasm32")]
+mod imp {
+    use std::io;
+    use std::path::Path;
+
+    use xmlcraft_engine::FileStamp;
+
+    use super::{DiskChange, Loaded};
+
+    fn unsupported<T>() -> io::Result<T> {
+        Err(io::Error::from(io::ErrorKind::Unsupported))
+    }
+
+    pub fn stamp_of(_path: &Path) -> io::Result<FileStamp> {
+        unsupported()
+    }
+
+    pub fn read_file(_path: &Path) -> io::Result<Loaded> {
+        unsupported()
+    }
+
+    pub fn write_file(_path: &Path, _bytes: &[u8]) -> io::Result<FileStamp> {
+        unsupported()
+    }
+
+    pub fn changed_on_disk(_path: &Path, _stamp: &FileStamp) -> DiskChange {
+        DiskChange::Missing
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
+    use std::fs;
+    use std::io;
+
+    use xmlcraft_engine::MAX_OPEN_BYTES;
+
     use super::*;
 
     #[test]

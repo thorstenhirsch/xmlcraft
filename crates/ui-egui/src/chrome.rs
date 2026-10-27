@@ -51,14 +51,16 @@ pub fn tab_strip(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
             }
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                if icons::button(ui, "house", button, app.active.is_none(), tl!("Home")).clicked() {
-                    app.active = None;
+                let active = app.session.active();
+                if icons::button(ui, "house", button, active.is_none(), tl!("Home")).clicked() {
+                    app.session.set_active(None);
                 }
                 let mut close = None;
-                for (i, tab_info) in app.tabs.iter().enumerate() {
-                    let response = tab(ui, &t, &tab_info.name, tab_info.dirty, app.active == Some(i), &mut close, i, tab_h);
+                for (i, tab_info) in app.tabs().iter().enumerate() {
+                    let response = tab(ui, &t, &tab_info.name, tab_info.dirty, active == Some(i), &mut close, i, tab_h);
                     if response.clicked() {
-                        app.active = Some(i);
+                        app.session.set_active(Some(i));
+                        app.focus_editor = true;
                     }
                     // A middle click closes the tab, as in browsers.
                     if response.middle_clicked() {
@@ -66,14 +68,16 @@ pub fn tab_strip(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                     }
                 }
                 if let Some(i) = close {
-                    app.close_tab(i);
+                    app.request_close(i);
                 }
                 ui.add_space(4.0);
-                // Opening files arrives with the editor (M1.12): the button is here so the strip looks like it will, and says why
-                // it cannot be used yet.
-                ui.add_enabled_ui(false, |ui| widgets::ghost_button_sized(ui, "plus", tl!("Open"), tab_h))
-                    .response
-                    .on_disabled_hover_text(tl!("Opening files arrives with the editor milestone"));
+                // New and Open sit next to the tabs, as in a browser.
+                if widgets::ghost_button_sized(ui, "plus", tl!("New"), tab_h).clicked() {
+                    app.execute("file.new");
+                }
+                if widgets::ghost_button_sized(ui, "folder-open", tl!("Open"), tab_h).clicked() {
+                    app.execute("file.open");
+                }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let (icon, label) = match app.theme_preference {
                         ThemePreference::System => ("monitor", tl!("Use system setting")),
@@ -211,14 +215,60 @@ pub fn status_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                     if !app.bottom_open && widgets::ghost_button_sized(ui, "panel-bottom", tl!("Messages"), 22.0).clicked() {
                         app.execute("view.messages");
                     }
+                    // About the document being shown: where the caret is, and how the file is written.
+                    if let Some(doc) = app.session.active_document() {
+                        ui.spacing_mut().item_spacing.x = 14.0;
+                        for part in document_summary(doc).into_iter().rev() {
+                            ui.label(egui::RichText::new(part).font(theme::regular(11.5)).color(t.text_muted));
+                        }
+                    }
                 });
             });
         });
 }
 
+/// What the status bar says about a document, left to right: the caret, the encoding, the line ending and the indentation.
+pub(crate) fn document_summary(doc: &xmlcraft_engine::Document) -> Vec<String> {
+    let editor = doc.editor();
+    let caret = editor.primary();
+    let buffer = editor.buffer();
+    let line = buffer.line_of(caret.head());
+    let column = xmlcraft_editor::motion::display_column(buffer, caret.head(), editor.settings().tab_width);
+    let mut position = crate::i18n::fmt(tl!("Ln {line}, Col {col}"), &[("line", &(line + 1).to_string()), ("col", &(column + 1).to_string())]);
+    if !caret.is_empty() {
+        let chars = buffer.slice(caret.start()..caret.end()).map_or(0, |s| s.chars().count());
+        position.push_str(&crate::i18n::fmt(tl!(" ({n} selected)"), &[("n", &chars.to_string())]));
+    }
+    let encoding = doc.encoding();
+    let mut name = encoding.encoding.name().to_owned();
+    if encoding.bom {
+        name.push_str(" BOM");
+    }
+    let endings = doc.line_endings();
+    let eol = if endings.is_mixed() { tl!("Mixed line endings").to_owned() } else { editor.settings().eol.label().to_owned() };
+    let indent = if editor.settings().use_tabs {
+        tl!("Tabs").to_owned()
+    } else {
+        crate::i18n::fmt(tl!("Spaces: {n}"), &[("n", &editor.settings().indent_size.to_string())])
+    };
+    vec![position, name, eol, indent]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_status_summary_describes_the_caret_and_the_file() {
+        let mut session = xmlcraft_engine::Session::new();
+        session.open(None, b"\xEF\xBB\xBF<a>\r\n\t<b/>\r\n</a>", None).expect("opens");
+        let doc = session.active_document_mut().expect("shown");
+        doc.editor_mut().set_selection(5, 7);
+        let summary = document_summary(doc);
+        assert_eq!(summary, ["Ln 2, Col 6 (2 selected)", "UTF-8 BOM", "CRLF", "Tabs"]);
+        doc.editor_mut().place_caret(0, false);
+        assert_eq!(document_summary(doc)[0], "Ln 1, Col 1");
+    }
 
     #[test]
     fn the_mac_title_bar_centres_and_clears_the_traffic_lights() {

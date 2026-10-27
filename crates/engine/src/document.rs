@@ -4,6 +4,7 @@
 //! order mark and line endings. Where reading had to replace something (bytes that are not valid in the encoding), the document says so
 //! and refuses to overwrite the file it came from, so nothing is lost without the user choosing it.
 
+use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -84,6 +85,8 @@ pub struct Document {
     /// The encoding and byte-order mark the file has: another one makes the document dirty until it is the same again.
     saved_encoding: (Encoding, bool),
     stamp: Option<FileStamp>,
+    /// The line endings of the text, counted for the editor version in the first part (counting reads the whole text).
+    endings: Cell<Option<(u64, LineEndings)>>,
 }
 
 impl Document {
@@ -101,6 +104,7 @@ impl Document {
             encoding,
             lossy: false,
             stamp: None,
+            endings: Cell::new(None),
         }
     }
 
@@ -116,7 +120,18 @@ impl Document {
         editor.load(&decoded.text);
         let name = path.as_deref().and_then(Path::file_name).map_or_else(|| "Untitled".to_owned(), |n| n.to_string_lossy().into_owned());
         let saved_encoding = (encoding.encoding, encoding.bom);
-        Ok(Self { id, name, path, saved_state: editor.state_id(), saved_encoding, editor, encoding, lossy: decoded.lossy, stamp })
+        Ok(Self {
+            id,
+            name,
+            path,
+            saved_state: editor.state_id(),
+            saved_encoding,
+            editor,
+            encoding,
+            lossy: decoded.lossy,
+            stamp,
+            endings: Cell::new(None),
+        })
     }
 
     pub fn id(&self) -> u64 {
@@ -159,9 +174,24 @@ impl Document {
         self.stamp.as_ref()
     }
 
-    /// The line endings in the text now.
+    /// Remember the file as it is on disk now, without reading it or touching the text: the user chose to keep their version, so the
+    /// change that was noticed is not asked about again.
+    pub fn set_stamp(&mut self, stamp: Option<FileStamp>) {
+        self.stamp = stamp;
+    }
+
+    /// The line endings in the text now. Counted once per version of the text, so asking every frame costs nothing while it does not
+    /// change.
     pub fn line_endings(&self) -> LineEndings {
-        LineEndings::count_chunks(self.editor.buffer().chunks())
+        let version = self.editor.version();
+        if let Some((counted_for, endings)) = self.endings.get()
+            && counted_for == version
+        {
+            return endings;
+        }
+        let endings = LineEndings::count_chunks(self.editor.buffer().chunks());
+        self.endings.set(Some((version, endings)));
+        endings
     }
 
     /// Write the file in another encoding from now on (with or without a byte-order mark; only UTF-8 and UTF-16 have one). The XML
@@ -539,6 +569,17 @@ mod tests {
     }
 
     #[test]
+    fn the_line_ending_count_follows_the_text_but_is_counted_once_per_version() {
+        let mut d = open(b"a\nb\nc");
+        assert_eq!((d.line_endings().lf, d.line_endings().crlf), (2, 0));
+        d.editor_mut().apply_edits(&[Edit::insert(0, "x\r\ny\r\n")]); // as a formatter would: no conversion to the document's ending
+        assert_eq!((d.line_endings().lf, d.line_endings().crlf), (2, 2), "an edit is counted");
+        assert!(d.line_endings().is_mixed());
+        d.editor_mut().undo();
+        assert_eq!((d.line_endings().lf, d.line_endings().crlf), (2, 0), "and so is undoing it");
+    }
+
+    #[test]
     fn indentation_detection() {
         assert_eq!(detect_indent("a\n  b\n    c\n  d\ne"), (false, 2));
         assert_eq!(detect_indent("a\n   b\n      c\n"), (false, 3));
@@ -552,6 +593,17 @@ mod tests {
         let big = vec![b'a'; MAX_OPEN_BYTES + 1];
         let result = Document::from_bytes(1, None, &big, None);
         assert!(matches!(result, Err(OpenError::TooLarge { .. })));
+    }
+
+    #[test]
+    fn keeping_ones_version_remembers_the_stamp_and_changes_nothing_else() {
+        let mut d = open(b"<a/>");
+        d.editor_mut().type_text("x");
+        let stamp = FileStamp { len: 9, modified: None, changed: None, file_id: None };
+        d.set_stamp(Some(stamp));
+        assert_eq!(d.stamp(), Some(&stamp));
+        assert!(d.is_dirty(), "the text is still not saved");
+        assert_eq!(d.editor().text(), "x<a/>");
     }
 
     #[test]

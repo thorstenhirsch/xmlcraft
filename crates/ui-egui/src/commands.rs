@@ -73,11 +73,10 @@ impl XmlCraftApp {
         if !self.command_enabled(spec) {
             return false;
         }
+        // Cleared first, so what the command says ("Saved a.xml") is what the status bar shows afterwards.
+        self.status.clear();
         match xmlcraft_engine::guard(|| self.execute_unguarded(id)) {
-            Ok(done) => {
-                self.status.clear();
-                done
-            }
+            Ok(done) => done,
             Err(message) => {
                 log::error!("command {id} failed: {message}");
                 self.status = crate::i18n::fmt(
@@ -90,8 +89,39 @@ impl XmlCraftApp {
     }
 
     fn execute_unguarded(&mut self, id: &str) -> bool {
+        // Commands that show a panel or a dialog need the egui context; it is set when the app is created.
+        let Some(ctx) = self.ctx.clone() else {
+            log::warn!("command {id} ran before the first frame");
+            return false;
+        };
+        let ctx = &ctx;
         match id {
-            "file.quit" => self.viewport_commands.push(egui::ViewportCommand::Close),
+            "file.new" => self.new_document(),
+            "file.open" => return self.pick_open(ctx),
+            "file.save" => self.save_active(ctx),
+            "file.save_as" => self.save_as_active(ctx),
+            "file.revert" => self.revert_active(),
+            "file.close" => {
+                if let Some(index) = self.session.active() {
+                    self.request_close(index);
+                }
+            }
+            "file.quit" => self.request_quit(ctx),
+            "edit.undo" => {
+                if let Some(doc) = self.session.active_document_mut() {
+                    doc.editor_mut().undo();
+                }
+            }
+            "edit.redo" => {
+                if let Some(doc) = self.session.active_document_mut() {
+                    doc.editor_mut().redo();
+                }
+            }
+            "edit.select_all" => {
+                if let Some(doc) = self.session.active_document_mut() {
+                    doc.editor_mut().select_all();
+                }
+            }
             "view.palette" => {
                 self.palette_open = !self.palette_open;
                 self.palette_query.clear();

@@ -23,11 +23,11 @@ title = "Syntax colouring for XML, XSD, DTD and entity files"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = "Light and dark token palettes; two tiers: synchronous lexer for visible lines, CST refinements from the worker."
+evidence = ["crates/syntax/src/highlight.rs::line_by_line_equals_the_whole_text", "crates/ui-egui/src/editor_view.rs::every_class_that_is_read_has_enough_contrast_in_both_themes"]
+notes = "XML (so XSD and every other XML file) and a DOCTYPE with its internal subset are coloured line by line from the lexer's mode, in light and dark palettes checked for contrast. Not yet: .dtd, .ent and .mod files as DTD (needs file-type detection), refinements from the syntax tree, JSON and YAML."
 
 [[feature]]
 id = "editor.line-numbers-gutter"
@@ -35,11 +35,11 @@ title = "Line numbers, current-line highlight and gutter"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "The gutter with line numbers, the current-line wash and the caret line's number are drawn and were looked at in both themes; no test pins them yet."
 
 [[feature]]
 id = "editor.undo-redo"
@@ -47,11 +47,11 @@ title = "Undo and redo with grouping"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
-commands = []
+status = "shipped"
+commands = ["edit.undo", "edit.redo"]
 tools = []
-evidence = []
-notes = "Transaction log with time and kind grouping and a memory cap."
+evidence = ["crates/editor/tests/model.rs::any_commands_keep_the_carets_valid_and_undo_redo_consistent", "crates/text/src/history.rs::typing_in_a_run_is_one_undo_step", "crates/ui-egui/tests/documents.rs::undo_and_redo_through_the_menu_commands"]
+notes = "Typing runs merge into one step, selections come back, the history is capped at 64 MiB. Undoing back to the saved text is clean again. Reachable through the registry commands (menu, palette, control channel); the headless tools for documents (`doc_*`) arrive with M1.14."
 
 [[feature]]
 id = "editor.clipboard"
@@ -59,11 +59,11 @@ title = "Cut, copy and paste"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/code-editor/tests/widget.rs::copy_cut_and_paste_events", "crates/editor/src/editor.rs::paste_converts_line_endings_and_distributes_lines"]
+notes = "Cut, copy and paste by keyboard (whole lines when nothing is selected; line endings become the document's; one line per caret). Paste is not in the Edit menu (egui can only receive a paste, not read the clipboard), and there is no registry command or headless tool for it yet: the `doc_*` tools of M1.14 add the headless side."
 
 [[feature]]
 id = "editor.multi-cursor"
@@ -71,11 +71,11 @@ title = "Multiple cursors (click, next occurrence)"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/editor/tests/model.rs::typing_matches_a_hand_rebuilt_string"]
+notes = "Every command works on several carets and a command-click adds one. Not yet: next occurrence (Cmd-D), Alt-click and the gestures' tests in the widget."
 
 [[feature]]
 id = "editor.column-selection"
@@ -287,11 +287,11 @@ title = "Open and save UTF-8, UTF-16 and legacy encodings, with BOM handling"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = "Reload as and convert to another encoding."
+evidence = ["crates/text/src/encoding.rs::any_bytes_are_either_flagged_or_written_back_identically", "crates/ui-egui/tests/documents.rs::a_latin_1_file_stays_latin_1"]
+notes = "UTF-8, UTF-16 (both orders) and legacy encodings are read, shown in the status bar and written back; a character the encoding cannot hold offers character references or UTF-8. Not yet: reloading as, or converting to, another encoding on request. ISO-8859-1 is read as windows-1252."
 
 [[feature]]
 id = "editor.line-endings"
@@ -299,11 +299,11 @@ title = "Detect, show and convert line endings"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/engine/src/document.rs::new_lines_use_the_files_line_ending_and_its_indentation", "crates/ui-egui/tests/documents.rs::typing_and_saving_keep_the_encoding_the_byte_order_mark_and_the_line_endings", "crates/engine/src/document.rs::a_character_the_encoding_cannot_hold_is_reported_and_becomes_a_reference_in_the_text"]
+notes = "LF, CRLF and CR are detected, kept, used for new lines, and shown (including mixed). Not yet: converting a file's line endings."
 
 [[feature]]
 id = "editor.byte-faithful-save"
@@ -311,11 +311,11 @@ title = "Saving an unedited file writes identical bytes"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
-commands = []
+status = "shipped"
+commands = ["file.save", "file.save_as"]
 tools = []
-evidence = []
-notes = "The text-is-the-model rule (CLAUDE.md)."
+evidence = ["crates/engine/src/document.rs::open_then_save_is_the_identity_or_flagged", "crates/ui-egui/tests/documents.rs::typing_and_saving_keep_the_encoding_the_byte_order_mark_and_the_line_endings", "crates/engine/src/document.rs::a_character_the_encoding_cannot_hold_is_reported_and_becomes_a_reference_in_the_text"]
+notes = "For any bytes, a document is flagged lossy or saving gives back exactly the bytes read; saves are atomic (craft-atomic) and keep a symbolic link; a file with invalid bytes is never overwritten; a character the encoding cannot hold is never replaced silently: the user chooses character references (an undoable edit of the text, only in character data and attribute values) or another encoding (which also updates the XML declaration). Edits are not yet minimal diffs of the bytes (the whole file is rewritten, identically)."
 
 [[feature]]
 id = "editor.large-files"
@@ -335,11 +335,11 @@ title = "Input method editor support"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = "Depends on the vendored winit IME fixes."
+evidence = ["crates/code-editor/tests/widget.rs::an_input_method_composes_without_touching_the_document_until_it_commits"]
+notes = "The composition is drawn at the caret and enters the document only on commit; the window position is reported. Verified with synthetic events only, not with a real input method."
 
 [[feature]]
 id = "editor.completion-document"
@@ -443,11 +443,11 @@ title = "Detect external changes and offer a reload"
 area = "A"
 tier = "P1"
 milestone = "M1"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["file.revert"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/tests/documents.rs::a_file_changed_elsewhere_is_reloaded_when_clean_and_asked_about_when_edited"]
+notes = "Checked when the window gets the focus back and before saving: a clean document reloads, an edited one asks, saving over a changed file asks. No live file watching."
 
 [[feature]]
 id = "editor.drag-drop-open"
@@ -455,11 +455,11 @@ title = "Open files by drag and drop"
 area = "A"
 tier = "P1"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "Files dropped on the window open, with a hint while they hover. The drop events themselves are not simulated in tests (opening goes through the same path as File > Open)."
 
 [[feature]]
 id = "editor.spell-check"
@@ -545,10 +545,10 @@ area = "B"
 tier = "P0"
 milestone = "M0"
 status = "partial"
-commands = []
+commands = ["file.new", "file.close"]
 tools = []
-evidence = ["crates/ui-egui/tests/shell.rs::a_document_tab_replaces_the_home_view"]
-notes = "The strip, tab drawing, close, unsaved dot and the home view exist and are tested; there are no documents to put in them until the editor milestone (M1.12). No scrolling or drag-reorder yet."
+evidence = ["crates/ui-egui/tests/documents.rs::closing_a_document_with_changes_asks_first"]
+notes = "Tabs are the open documents: new, open, close (with a prompt for unsaved changes), middle-click close, an unsaved dot. No scrolling or drag-reorder when many are open."
 
 [[feature]]
 id = "view.status-bar"
@@ -556,11 +556,11 @@ title = "Status bar: position, encoding, line ending, indentation, schema, valid
 area = "B"
 tier = "P0"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/src/chrome.rs::the_status_summary_describes_the_caret_and_the_file"]
+notes = "Caret line and column, selection size, encoding, line ending and indentation. No validity badge, schema association or clickable encoding and line-ending switchers yet."
 
 [[feature]]
 id = "view.command-palette"

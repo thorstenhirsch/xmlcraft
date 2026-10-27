@@ -1,5 +1,6 @@
 Button "Home" [toggled=true]
-Button "Open" [disabled]
+Button "New"
+Button "Open"
 Button "Display theme: Light" [toggled=false]
 Button "Menu"
 Button "Text" [toggled=true]
@@ -37,6 +38,8 @@ Label value="Pre-alpha"
 Label value="The window and its panes are in place. Editing, schemas and validation arrive milestone by milestone."
 Image
 TextInput value=""
+Button "New"
+Button "Open…"
 Button "Quit"
 Button "Find tools and commands…"
 Button "Outline"
@@ -45,3 +48,5 @@ Button "Messages"
 Button "Use system theme"
 Button "Light theme"
 Button "Dark theme"
+Button "Save" [disabled]
+Button "Save As…" [disabled]

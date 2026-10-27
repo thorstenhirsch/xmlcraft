@@ -71,24 +71,27 @@ fn the_rail_reopens_entry_helpers() {
 }
 
 #[test]
-fn opening_files_is_disabled_until_the_editor_exists() {
-    let h = shell();
-    let open = h.get_by_label("Open");
-    assert!(open.accesskit_node().is_disabled(), "the Open button must not look usable yet");
+fn new_opens_an_untitled_document_and_open_is_enabled() {
+    let mut h = shell();
+    assert!(!h.get_by_label("Open").accesskit_node().is_disabled());
+    h.get_by_label("New").click();
+    h.run_steps(3);
+    assert_eq!(h.state().tabs().iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), ["Untitled-1"]);
+    assert!(h.query_by_label("XML editor").is_some(), "the editor shows");
 }
 
 #[test]
 fn a_document_tab_replaces_the_home_view() {
     let mut h = shell();
     assert!(h.query_by_label("XmlCraft").is_some());
-    h.state_mut().tabs = vec![xmlcraft_ui_egui::TabInfo { name: "invoice.xml".into(), dirty: true }];
-    h.state_mut().active = Some(0);
+    h.state_mut().session.open(Some("/x/invoice.xml".into()), b"<invoice/>", None).expect("opens");
+    h.state_mut().session.active_document_mut().expect("shown").editor_mut().type_text(" ");
     h.run_steps(3);
     assert!(h.query_by_label("XmlCraft").is_none(), "no home card over a document");
     assert!(h.query_by_label("invoice.xml (edited)").is_some(), "an unsaved tab says so to assistive technology");
     // The home button returns to the home view.
     h.get_by_label("Home").click();
     h.run_steps(3);
-    assert_eq!(h.state().active, None);
+    assert_eq!(h.state().active(), None);
     assert!(h.query_by_label("XmlCraft").is_some());
 }
