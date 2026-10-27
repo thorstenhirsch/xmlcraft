@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 
 use serde_json::{Value, json};
+use xmlcraft_editor::find::{MAX_MATCHES, Matcher, Query};
 use xmlcraft_engine::analysis::{Analysis, Skipped, analyze};
 use xmlcraft_engine::{Document, SaveError};
 use xmlcraft_format::{BlankLines, FormatError, Indent};
@@ -38,6 +39,16 @@ fn source_properties() -> Value {
         "id": { "type": "integer", "minimum": 0, "description": "An open document (from doc_open, doc_new or doc_list)" },
         "path": { "type": "string", "description": "A file to read (it is not opened as a document)" },
         "text": { "type": "string", "description": "The XML itself" },
+    })
+}
+
+/// The properties that say what to search for.
+fn search_properties() -> Value {
+    json!({
+        "pattern": { "type": "string", "minLength": 1, "description": "The text, or a regular expression with `regex: true`" },
+        "regex": { "type": "boolean" },
+        "case_sensitive": { "type": "boolean", "description": "Default true" },
+        "whole_word": { "type": "boolean" },
     })
 }
 
@@ -172,6 +183,45 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             read_only: false,
             destructive: true,
             handler: doc_close,
+        },
+        ToolDef {
+            name: "doc_find",
+            title: "Find text",
+            description: "Find text or a regular expression in an open document (`id`), a file (`path`) or text. Returns each match with its position (line and column \
+                          from 1), its text, and whether there were more than `limit`. In a regular expression `^` and `$` match at every line.",
+            input_schema: {
+                let mut properties = source_properties();
+                if let Some(map) = properties.as_object_mut() {
+                    for (key, value) in search_properties().as_object().into_iter().flatten() {
+                        map.insert(key.clone(), value.clone());
+                    }
+                    map.insert(
+                        "limit".into(),
+                        json!({ "type": "integer", "minimum": 1, "maximum": 10000, "description": "At most this many matches (default 1000)" }),
+                    );
+                }
+                object(properties, &["pattern"])
+            },
+            read_only: true,
+            destructive: false,
+            handler: doc_find,
+        },
+        ToolDef {
+            name: "doc_replace",
+            title: "Replace text",
+            description: "Replace every match of a text or regular expression in an open document, as one undoable step. In a regular expression the replacement may use \
+                          $1 or ${name} for groups ($$ is a dollar sign). Nothing is changed when there are more than 10000 matches.",
+            input_schema: {
+                let mut properties = search_properties();
+                if let Some(map) = properties.as_object_mut() {
+                    map.insert("id".into(), json!({ "type": "integer", "minimum": 0, "description": "The document's id" }));
+                    map.insert("replacement".into(), json!({ "type": "string" }));
+                }
+                object(properties, &["id", "pattern", "replacement"])
+            },
+            read_only: false,
+            destructive: false,
+            handler: doc_replace,
         },
         ToolDef {
             name: "xml_wellformed",
@@ -495,6 +545,47 @@ fn doc_close(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     }
     let closed = a.session.close(index);
     json_result(json!({ "closed": closed.is_some(), "discarded_changes": dirty }))
+}
+
+// --- find and replace --------------------------------------------------------------------------------------------------------
+
+fn matcher_of(args: &Value) -> Result<Matcher> {
+    let query = Query {
+        pattern: text_arg(args, "pattern").unwrap_or_default().to_owned(),
+        regex: flag(args, "regex"),
+        case_sensitive: args.get("case_sensitive").and_then(Value::as_bool).unwrap_or(true),
+        whole_word: flag(args, "whole_word"),
+    };
+    Matcher::new(&query).map_err(|e| ToolError::InvalidArgs(e.to_string()))
+}
+
+fn doc_find(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let matcher = matcher_of(args)?;
+    let source = source(a, args)?;
+    let limit = args.get("limit").and_then(Value::as_u64).map_or(1000, |l| usize::try_from(l).unwrap_or(MAX_MATCHES)).min(MAX_MATCHES);
+    let (found, more) = matcher.find_all(&source.text, 0..source.text.len(), limit);
+    let buffer = Buffer::from_text(&source.text);
+    let matches: Vec<Value> = found
+        .iter()
+        .map(|range| {
+            let (line, column) = position_json(&buffer, range.start);
+            let (end_line, end_column) = position_json(&buffer, range.end);
+            let text: String = source.text.get(range.clone()).unwrap_or_default().chars().take(200).collect();
+            json!({ "line": line, "column": column, "end_line": end_line, "end_column": end_column, "start": range.start, "end": range.end, "text": text })
+        })
+        .collect();
+    json_result(json!({ "matches": matches, "count": matches.len(), "more": more }))
+}
+
+fn doc_replace(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let matcher = matcher_of(args)?;
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    let replacement = text_arg(args, "replacement").unwrap_or_default();
+    let Some(count) = doc.editor_mut().replace_all(&matcher, replacement, false) else {
+        return fail(format!("more than {MAX_MATCHES} matches: nothing was replaced (make the pattern narrower)"));
+    };
+    json_result(json!({ "replaced": count, "document": describe(doc) }))
 }
 
 // --- XML ---------------------------------------------------------------------------------------------------------------------

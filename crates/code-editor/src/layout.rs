@@ -22,6 +22,13 @@ pub struct Mark {
     pub color: Color32,
 }
 
+/// A filled background behind part of a line, as a byte range of the line's text (a search match the host wants to show).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Highlight {
+    pub range: Range<usize>,
+    pub color: Color32,
+}
+
 /// Supplies the colours of the text, line by line. The host implements it for its language.
 pub trait LineStyler {
     /// The text changed. Lines before `first_line` (0-based) are as they were, so whatever was worked out for them is still good.
@@ -33,6 +40,12 @@ pub trait LineStyler {
 
     /// The wavy underlines of line `line`, as byte ranges of its text. Asked for every visible line on every frame, so it must be cheap.
     fn marks(&mut self, _buffer: &xmlcraft_text::Buffer, _line: usize) -> Vec<Mark> {
+        Vec::new()
+    }
+
+    /// The backgrounds of line `line`, as byte ranges of its text, drawn behind the text and the selection. Asked for every visible line
+    /// on every frame, so it must be cheap.
+    fn highlights(&mut self, _buffer: &xmlcraft_text::Buffer, _line: usize) -> Vec<Highlight> {
         Vec::new()
     }
 }

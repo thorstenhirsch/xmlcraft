@@ -267,3 +267,37 @@ fn files_outside_the_root_are_out_of_reach_and_the_root_is_what_refuses_them() {
     ok(&mut free, "doc_save", json!({ "id": id, "path": target.to_str() }));
     assert!(target.exists());
 }
+
+#[test]
+fn finding_and_replacing_text_and_patterns() {
+    let mut a = Automation::new();
+    let id = ok(&mut a, "doc_new", json!({ "text": "<book id=\"b1\"/>\n<Book id=\"b2\"/>\n<notebook/>" }))["id"].as_u64().expect("id");
+    let found = ok(&mut a, "doc_find", json!({ "id": id, "pattern": "book" }));
+    assert_eq!((found["count"].as_u64(), found["more"].as_bool()), (Some(2), Some(false)), "case-sensitive: `book` and the one in `notebook`");
+    assert_eq!(
+        (found["matches"][0]["line"].as_u64(), found["matches"][0]["column"].as_u64(), found["matches"][0]["text"].as_str()),
+        (Some(1), Some(2), Some("book"))
+    );
+    assert_eq!(ok(&mut a, "doc_find", json!({ "id": id, "pattern": "book", "case_sensitive": false }))["count"], 3);
+    assert_eq!(ok(&mut a, "doc_find", json!({ "id": id, "pattern": "book", "case_sensitive": false, "whole_word": true }))["count"], 2);
+    // The same on text and on a file, and the limit.
+    assert_eq!(ok(&mut a, "doc_find", json!({ "text": "aaa", "pattern": "a", "limit": 2 }))["more"], true);
+    // A regular expression with groups: the replacement is one undoable step.
+    let replaced = ok(&mut a, "doc_replace", json!({ "id": id, "pattern": "id=\"(\\w+)\"", "regex": true, "replacement": "key='$1'" }));
+    assert_eq!(replaced["replaced"], 2);
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], "<book key='b1'/>\n<Book key='b2'/>\n<notebook/>");
+    ok(&mut a, "doc_undo", json!({ "id": id }));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], "<book id=\"b1\"/>\n<Book id=\"b2\"/>\n<notebook/>");
+    // In a text search `$` is just a dollar sign.
+    ok(&mut a, "doc_replace", json!({ "id": id, "pattern": "notebook", "replacement": "$1" }));
+    assert!(ok(&mut a, "doc_text", json!({ "id": id }))["text"].as_str().is_some_and(|t| t.ends_with("<$1/>")));
+    // Bad patterns and arguments say what is wrong.
+    assert!(err(&mut a, "doc_find", json!({ "id": id, "pattern": "(", "regex": true })).contains("not valid"));
+    assert!(err(&mut a, "doc_find", json!({ "id": id, "pattern": "" })).contains("pattern"), "the schema wants a pattern");
+    assert!(err(&mut a, "doc_replace", json!({ "id": 99, "pattern": "a", "replacement": "b" })).contains("no document"));
+    assert!(err(&mut a, "doc_find", json!({ "pattern": "a" })).contains("exactly one"));
+    // Too many matches: nothing is replaced.
+    let many = ok(&mut a, "doc_new", json!({ "text": "x".repeat(10_001) }))["id"].as_u64().expect("id");
+    assert!(err(&mut a, "doc_replace", json!({ "id": many, "pattern": "x", "replacement": "y" })).contains("nothing was replaced"));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": many }))["text"].as_str().map(|t| t.chars().all(|c| c == 'x')), Some(true));
+}

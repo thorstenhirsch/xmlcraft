@@ -318,6 +318,13 @@ impl<'a> CodeEditor<'a> {
                         text_painter.rect_filled(Rect::from_min_max(pos2(x0, y), pos2(x1, y + row_h)), 0.0, selection_color);
                     }
                 }
+                // Backgrounds the host asked for (search matches), under the text.
+                let highlights = frame.styler.borrow_mut().as_mut().map(|styler| styler.highlights(editor.buffer(), line)).unwrap_or_default();
+                for highlight in highlights {
+                    let x0 = text_x + layout.x_of_byte(highlight.range.start);
+                    let x1 = (text_x + layout.x_of_byte(highlight.range.end)).max(x0 + column_w * 0.5);
+                    text_painter.rect_filled(Rect::from_min_max(pos2(x0, y + 1.0), pos2(x1, y + row_h - 1.0)), 2.0, highlight.color);
+                }
                 let galley = layout.galley();
                 let dy = ((row_h - layout.size().y) / 2.0).max(0.0);
                 text_painter.galley(pos2(text_x + layout.x_origin(), y + dy), galley.clone(), colors.text);

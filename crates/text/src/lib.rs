@@ -18,5 +18,5 @@ pub mod encoding;
 pub mod eol;
 mod history;
 
-pub use buffer::{Buffer, Edit, Position, TextError};
+pub use buffer::{Buffer, Edit, Position, TextError, apply_edits};
 pub use history::{EditKind, History, Selection};

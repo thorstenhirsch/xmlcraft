@@ -37,6 +37,7 @@ crop = "0.4"
 rowan = "0.16"
 unicode-segmentation = "1"
 unicode-width = "0.2"
+regex = { version = "1", default-features = false, features = ["std", "unicode", "perf"] }
 encoding_rs = "0.8"
 thiserror = "2"
 serde = { version = "1", features = ["derive", "rc"] }
