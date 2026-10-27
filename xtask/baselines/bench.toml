@@ -1,0 +1,22 @@
+# Numbers of `cargo xtask bench`, in milliseconds, by scenario.
+#
+# `target_ms`: what the plan (§3) asks for, where it asks for something.
+# `budget_ms`: what the scenario is held to now; a scenario over it fails the command. A budget above its target is a known
+# shortfall (docs/gaps.md): lower it when the shortfall is worked on, never raise it. A budget is the measurement on a development
+# machine plus headroom for noise (two to three times for the quick scenarios, less for the long ones), not a round number.
+
+[target_ms]
+open_100mb = 3000
+scroll_100mb_far = 16
+keystroke_1mb = 8
+reparse_1mb = 30
+
+[budget_ms]
+open_100mb = 3000
+# The first look at the end of a 100 MB document colours its lines from the colour of the first: it reads all the text before it.
+scroll_100mb_far = 1800
+keystroke_1mb = 8
+reparse_1mb = 30
+reparse_10mb = 400
+format_1mb = 60
+find_all_10mb = 10

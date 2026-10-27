@@ -4836,6 +4836,9 @@ dependencies = [
  "serde_json",
  "sha2",
  "toml",
+ "xmlcraft-editor",
+ "xmlcraft-engine",
+ "xmlcraft-format",
  "xmlcraft-syntax",
  "xmlcraft-text",
 ]

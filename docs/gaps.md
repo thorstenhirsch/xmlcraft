@@ -1,6 +1,6 @@
 # Where XmlCraft falls short of XMLSpy
 
-> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** gap 17 (analysis lags the text) · **Target:** Altova XMLSpy 2026 (public documentation)
+> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** gap 18 (colouring far into a very large document) · **Target:** Altova XMLSpy 2026 (public documentation)
 
 The ranked gaps. Prefer fixing these over adding new features. Every gap states what is missing, why it matters and how it will be measured. At 0.0.1 the application does not exist yet, so the first entries are simply "the MVP".
 
@@ -25,6 +25,7 @@ The ranked gaps. Prefer fixing these over adding new features. Every gap states 
 | 15 | No log file, only standard error | P2 | M1 |
 | 16 | 359 of 1017 not-well-formed xmlconf tests are accepted (DTD declaration syntax and entity rules) | P0 | M2.3, M2.6, M2.8 |
 | 17 | The analysis is whole-document and per edit: results can be a little behind the text, underlines are clamped (not shifted) through later edits, and a document over 32 MB is not analysed | P1 | M1.15 |
+| 18 | The first look at a far place in a very large document colours its lines from the start of the text: 1.2 s for 100 MB (target 16 ms) | P1 | M1.15 |
 
 ## The gaps
 
@@ -36,6 +37,8 @@ The ranked gaps. Prefer fixing these over adding new features. Every gap states 
 
 **17. Incremental analysis.** Every edit asks for a full parse of the text on a worker thread (only the newest request per document is kept). Until the answer arrives the window shows the previous result, and its underlines are clamped to the text rather than moved through the edits made since, so a squiggle can sit beside the wrong word for a moment. A document over 32 MB is not analysed at all. Large-file mode and an incremental reparse (M1.15, driven by `cargo xtask bench`) close it; measured by the keystroke-to-paint and reparse targets in `docs/target-app-parity.md`.
 
+**18. Colouring far into a very large document.** The colour of a line depends on where the lexer is at its start (inside a comment, a tag, a value), which is known only by reading everything before it. The first jump to the end of a 100 MB document reads it all: `cargo xtask bench` measures 1.2 s against the target of 16 ms (later jumps cost 0.05 ms at the 95th percentile, as `scroll_100mb_far` reports: the lexer's state at the start of every line it has read is kept). Large-file mode (M1.15) starts from a guess for a far place and corrects it when the real answer arrives, as the plan has it. The scenario `scroll_100mb_far` holds the number: its budget (1800 ms) is lowered as it improves.
+
 Details are added here as each gap is worked, including known approximations (for example in XSD particle restriction) and the test that measures them. Nothing may be marked closed here without a cited test.
 
 ## Revision history
@@ -43,3 +46,4 @@ Details are added here as each gap is worked, including known approximations (fo
 - 2026-10-27: created.
 - 2026-10-27: gap 16 added with the first xmlconf numbers (M1.5); the M1 exit criterion for not-well-formed tests now covers only what needs no DTD.
 - 2026-10-27: gap 17 added with M1.13 (analysis is whole-document and may lag the text).
+- 2026-10-27: gap 18 added with `cargo xtask bench` (colouring far into a very large document takes 1.2 s for 100 MB).
