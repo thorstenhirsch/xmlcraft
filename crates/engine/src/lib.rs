@@ -6,6 +6,7 @@
 pub mod analysis;
 pub mod commands;
 mod document;
+pub mod folding;
 
 pub use document::{Document, FileStamp, MAX_OPEN_BYTES, OpenError, SaveError};
 

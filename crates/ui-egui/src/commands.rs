@@ -5,8 +5,10 @@
 
 use egui::{Key, Modifiers};
 use xmlcraft_engine::commands::{self, COMMANDS, CommandSpec, Kind, Shortcut};
+use xmlcraft_engine::folding::FoldAction;
 
 use crate::XmlCraftApp;
+use crate::after_analysis::Then;
 use crate::i18n::tl;
 use crate::side_panels::RightPanel;
 use crate::theme::ThemePreference;
@@ -39,6 +41,9 @@ pub(crate) fn egui_shortcut(s: Shortcut) -> Option<egui::KeyboardShortcut> {
     }
     if s.mac_ctrl {
         modifiers |= Modifiers::CTRL;
+    }
+    if s.alt {
+        modifiers |= Modifiers::ALT;
     }
     Some(egui::KeyboardShortcut::new(modifiers, key))
 }
@@ -125,7 +130,14 @@ impl XmlCraftApp {
                     self.dialog = Some(crate::dialog::Dialog::GoToLine);
                 }
             }
-            "edit.go_to_matching_tag" => self.go_to_matching_tag(),
+            "edit.go_to_matching_tag" => self.when_analysed(Then::GoToMatchingTag),
+            "edit.fold" => self.when_analysed(Then::Fold(FoldAction::Fold)),
+            "edit.unfold" => self.when_analysed(Then::Fold(FoldAction::Unfold)),
+            "edit.fold_all" => self.when_analysed(Then::Fold(FoldAction::FoldAll)),
+            "edit.unfold_all" => self.when_analysed(Then::Fold(FoldAction::UnfoldAll)),
+            "edit.fold_level_1" => self.when_analysed(Then::Fold(FoldAction::Level(1))),
+            "edit.fold_level_2" => self.when_analysed(Then::Fold(FoldAction::Level(2))),
+            "edit.fold_level_3" => self.when_analysed(Then::Fold(FoldAction::Level(3))),
             "edit.find" => self.open_find(false),
             "edit.replace" => self.open_find(true),
             "edit.find_next" => self.find_step(xmlcraft_editor::find::Direction::NEXT),

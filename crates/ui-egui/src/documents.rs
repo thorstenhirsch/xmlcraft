@@ -11,6 +11,7 @@ use xmlcraft_engine::{Document, SaveError};
 use xmlcraft_platform::files::{self, DiskChange};
 use xmlcraft_text::encoding::Encoding;
 
+use crate::after_analysis::Then;
 use crate::dialog::Dialog;
 use crate::editor_view::{XmlStyler, editor_colors};
 use crate::i18n::{fmt, tl};
@@ -41,10 +42,20 @@ impl DocView {
         Self { view: ViewState::new(), styler: XmlStyler::new(kind), analysis: None, requested: None }
     }
 
-    /// Keep `analysis` and underline its problems in the editor.
+    /// Keep `analysis`, underline its problems in the editor and offer what it says can be folded.
     fn set_analysis(&mut self, analysis: Analysis) {
         self.styler.set_problems(analysis.diagnostics.iter().map(|d| (d.span.clone(), d.severity())).collect());
+        self.styler.set_folds(analysis.folds.clone());
         self.analysis = Some(analysis);
+    }
+
+    /// The version of the text last handed to the analyzer.
+    pub(crate) fn requested(&self) -> Option<u64> {
+        self.requested
+    }
+
+    pub(crate) fn set_requested(&mut self, version: u64) {
+        self.requested = Some(version);
     }
 }
 
@@ -151,7 +162,7 @@ impl XmlCraftApp {
             }
         }
         self.report_check();
-        self.finish_tag_jump();
+        self.finish_waiting();
     }
 
     /// If a check (F7) is waiting and the analysis of the text it asked about has arrived (or a later one), say what it found.
@@ -183,53 +194,10 @@ impl XmlCraftApp {
         analysis.matching_tag(caret.head()).map(|m| [m.name, m.partner_name])
     }
 
-    /// Go to the other tag of the element the caret is in or next to (⇧⌘\). When the text has changed since the last analysis the jump
-    /// waits for the new one; it is dropped if the text changes again meanwhile.
-    pub(crate) fn go_to_matching_tag(&mut self) {
-        let kind = self.applied.unwrap_or(ThemeKind::Light);
-        let Some(doc) = self.session.active_document() else { return };
-        let (id, version) = (doc.id(), doc.editor().version());
-        let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
-        if view.requested != Some(version) {
-            view.requested = Some(version);
-            self.analyzer.submit(id, version, doc.editor().buffer());
-        }
-        self.tag_jump_pending = Some((id, version));
-        self.finish_tag_jump();
-    }
-
-    /// Make the jump that was waiting for an analysis, if the analysis of its text is here.
-    fn finish_tag_jump(&mut self) {
-        let Some((id, version)) = self.tag_jump_pending else { return };
-        let Some(doc) = self.session.position_of(id).and_then(|i| self.session.document(i)) else {
-            self.tag_jump_pending = None; // closed meanwhile
-            return;
-        };
-        if doc.editor().version() != version {
-            self.tag_jump_pending = None; // the text changed: the caret is not where it was asked in
-            return;
-        }
-        if self.session.active_document().map(Document::id) != Some(id) {
-            self.tag_jump_pending = None; // another tab is shown now: the jump would move the caret of that one
-            return;
-        }
-        let Some(analysis) = self.views.get(&id).and_then(|v| v.analysis.as_ref()).filter(|a| a.version == version) else { return };
-        self.tag_jump_pending = None;
-        let head = doc.editor().primary().head();
-        let name = doc.name().to_owned();
-        if let Some(why) = analysis.skipped {
-            self.status = match why {
-                Skipped::TooLarge => fmt(tl!("{name} is too large to look for matching tags in"), &[("name", &name)]),
-                Skipped::Failed => {
-                    fmt(tl!("Looking for the matching tag in {name} failed. This is a bug; the document is unchanged."), &[("name", &name)])
-                }
-            };
-        } else if let Some(found) = analysis.matching_tag(head) {
-            let at = found.jump_target(head);
-            self.jump_to(at..at);
-        } else {
-            self.status = tl!("No matching tag here").to_owned();
-        }
+    /// Where things were on the screen in the last frame of the editor of the document being shown (for tests and the control channel).
+    pub fn editor_geometry(&self) -> Option<xmlcraft_code_editor::Geometry> {
+        let id = self.session.active_document()?.id();
+        self.views.get(&id)?.view.geometry()
     }
 
     /// The names of the two tags the editor of the document being shown highlights now (the caret is in or next to one of them).
@@ -344,12 +312,19 @@ impl XmlCraftApp {
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
         view.styler.set_matches(matches);
         view.styler.set_tag_match(Self::matching_tag_names(view, doc.editor()));
+        // What can be folded is right for the lines above the first one that changed since the analysis (and for none before there is one).
+        let valid_before = view.analysis.as_ref().map_or(0, |a| doc.editor().first_changed_line_since(a.version).unwrap_or(usize::MAX));
+        view.styler.set_folds_valid_before(valid_before);
         let salt = egui::Id::new(("xmlcraft-editor", id));
         if focus {
             let widget = ui.make_persistent_id(salt);
             ui.memory_mut(|m| m.request_focus(widget));
         }
-        CodeEditor::new(salt, doc.editor_mut(), &mut view.view, colors).font(theme::mono(13.0)).styler(&mut view.styler).show(ui);
+        let output = CodeEditor::new(salt, doc.editor_mut(), &mut view.view, colors).font(theme::mono(13.0)).styler(&mut view.styler).show(ui);
+        // The mark of something that can be folded was clicked: fold it, knowing how far it goes from the analysis of the text as it is.
+        if let Some(line) = output.fold_clicked {
+            self.when_analysed(Then::FoldLine(line));
+        }
     }
 
     /// While files are dragged over the window, say that dropping opens them.

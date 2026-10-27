@@ -19,4 +19,4 @@ pub mod eol;
 mod history;
 
 pub use buffer::{Buffer, Edit, Position, TextError, apply_edits};
-pub use history::{EditKind, History, Selection};
+pub use history::{Applied, EditKind, History, Selection};

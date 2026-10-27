@@ -48,6 +48,19 @@ pub trait LineStyler {
     fn highlights(&mut self, _buffer: &xmlcraft_text::Buffer, _line: usize) -> Vec<Highlight> {
         Vec::new()
     }
+
+    /// Whether the lines after `line` can be folded into it (and how far the fold goes): the gutter shows a mark on `line` when they
+    /// can. Asked for every visible line on every frame, so it must be cheap.
+    fn fold_at(&mut self, _buffer: &xmlcraft_text::Buffer, _line: usize) -> Option<FoldRegion> {
+        None
+    }
+}
+
+/// What can be folded into a line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FoldRegion {
+    /// The last line (0-based) that is hidden when the lines after the one that stands for it are folded.
+    pub last_line: usize,
 }
 
 /// Lines longer than this (in characters) are laid out in a window of this many characters.

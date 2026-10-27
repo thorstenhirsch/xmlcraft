@@ -119,11 +119,11 @@ title = "Folding of elements, comments, CDATA and DOCTYPE; fold all and to level
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["edit.fold", "edit.unfold", "edit.fold_all", "edit.unfold_all", "edit.fold_level_1", "edit.fold_level_2", "edit.fold_level_3"]
+tools = ["xml_folds", "doc_fold"]
+evidence = ["crates/engine/src/folding.rs::an_element_with_content_on_lines_of_its_own_folds_down_to_its_end_tag", "crates/engine/src/folding.rs::fold_and_unfold_work_on_the_innermost_range_at_the_caret", "crates/editor/src/folds.rs::the_caret_moves_over_a_fold_not_into_it", "crates/editor/src/folds.rs::the_map_agrees_with_a_list_of_the_visible_lines", "crates/code-editor/tests/widget.rs::hidden_lines_have_no_row_and_a_click_goes_to_the_line_on_the_row", "crates/ui-egui/tests/folding.rs::the_fold_commands_fold_and_unfold_what_the_caret_is_in", "crates/automation/tests/documents.rs::what_can_be_folded_is_listed_and_folding_it_hides_lines"]
+notes = "Elements whose content is on lines of their own (the end tag line stays visible), and comments, CDATA sections, processing instructions and DOCTYPEs over several lines, fold into the line that stands for them, which ends in a … mark. Marks in the gutter fold and open, and so does a click on the …; Fold and Unfold (⌥⌘[ and ⌥⌘]) work on the innermost range at the caret, Fold All, Unfold All and Fold Level 1 to 3 on all. The caret moves over a fold instead of into it, typing at the end of its line keeps it, an edit that touches it, an undo into it and a jump to a match, a message or the outline open it, and folds move with the text (also through undo and redo). `xml_folds` lists what can be folded and `doc_fold` folds headlessly. The ranges come from the analysis, so a command given just after an edit waits for it (about 30 ms) and the marks of ranges that reach past the edit are absent until it arrives. Not yet: folds kept when a file is reopened, folding by indentation in other languages, the text of the fold shown in the mark (it shows only …), a fold level beyond 3 from the menu."
 
 [[feature]]
 id = "editor.bookmarks"

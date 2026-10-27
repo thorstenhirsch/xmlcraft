@@ -20,6 +20,11 @@ pub struct EditorColors {
     pub gutter_border: Color32,
     /// The text being composed through an input method.
     pub preedit_background: Color32,
+    /// The gutter's mark of something that can be folded.
+    pub fold_mark: Color32,
+    /// The "…" that stands for the hidden lines of a fold, and the text on it.
+    pub fold_mark_background: Color32,
+    pub fold_mark_text: Color32,
 }
 
 impl EditorColors {
@@ -36,6 +41,9 @@ impl EditorColors {
             gutter_text_current: Color32::from_rgb(0x44, 0x44, 0x4B),
             gutter_border: Color32::from_rgb(0xE8, 0xE8, 0xEB),
             preedit_background: Color32::from_rgb(0xE3, 0xEC, 0xFD),
+            fold_mark: Color32::from_rgb(0xA8, 0xA8, 0xB0),
+            fold_mark_background: Color32::from_rgb(0xEC, 0xEE, 0xF3),
+            fold_mark_text: Color32::from_rgb(0x55, 0x55, 0x5E),
         }
     }
 
@@ -52,6 +60,9 @@ impl EditorColors {
             gutter_text_current: Color32::from_rgb(0xC4, 0xC4, 0xCB),
             gutter_border: Color32::from_rgb(0x33, 0x33, 0x39),
             preedit_background: Color32::from_rgb(0x2E, 0x3A, 0x55),
+            fold_mark: Color32::from_rgb(0x70, 0x70, 0x79),
+            fold_mark_background: Color32::from_rgb(0x30, 0x32, 0x3A),
+            fold_mark_text: Color32::from_rgb(0xB4, 0xB4, 0xBC),
         }
     }
 }
