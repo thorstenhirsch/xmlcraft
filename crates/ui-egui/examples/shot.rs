@@ -2,11 +2,11 @@
 //!
 //! ```text
 //! cargo run -p xmlcraft-ui-egui --example shot -- out.png [--size 1440x900] [--scale 2] [--theme light|dark|system]
-//!     [--tabs a.xml,b.xml] [--active 0] [--width 1200] [--open FILE.xml [--find TEXT] [--goto LINE:COL]]
+//!     [--tabs a.xml,b.xml] [--active 0] [--width 1200] [--open FILE.xml [--find TEXT] [--goto LINE:COL] [--command ID]]
 //! ```
 //! `--width N` downscales the image to N pixels wide (README screenshots). `--tabs` shows sample document tabs (the engine's
 //! documents replace them with milestone M1.12). `--open` reads a real file from disk and opens it (use a synthetic one), and `--find`,
-//! which needs `--open`, opens the find bar with that text; `--goto`, also with `--open`, puts the caret at a line and column (from 1). Only synthetic names and files are ever shown.
+//! which needs `--open`, opens the find bar with that text; `--goto`, also with `--open`, puts the caret at a line and column (from 1), and `--command`, also with `--open`, runs a registered command (`edit.fold_all`) once the file has been analysed. Only synthetic names and files are ever shown.
 
 use std::time::Duration;
 
@@ -17,12 +17,15 @@ use xmlcraft_ui_egui::{TabInfo, XmlCraftApp};
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let out = args.next().ok_or(
-        "usage: shot <out.png> [--size WxH] [--scale N] [--theme light|dark|system] [--tabs a,b] [--active N] [--width N] [--open FILE [--find TEXT] [--goto LINE:COL]]",
+        "usage: shot <out.png> [--size WxH] [--scale N] [--theme light|dark|system] [--tabs a,b] [--active N] [--width N] [--open FILE [--find TEXT] [--goto LINE:COL] [--command ID]]",
     )?;
     let (mut size, mut scale) = (egui::vec2(1440.0, 900.0), 2.0f32);
     let (mut width, mut theme, mut tabs, mut active): (Option<u32>, Option<ThemePreference>, Vec<TabInfo>, Option<usize>) =
         (None, None, Vec::new(), None);
-    let (mut open, mut find, mut goto): (Option<std::path::PathBuf>, Option<String>, Option<(usize, usize)>) = (None, None, None);
+    let mut open: Option<std::path::PathBuf> = None;
+    let mut find: Option<String> = None;
+    let mut goto: Option<(usize, usize)> = None;
+    let mut command: Option<String> = None;
     while let Some(a) = args.next() {
         match a.strip_prefix("--") {
             Some("size") => {
@@ -32,6 +35,7 @@ fn main() -> Result<(), String> {
             }
             Some("open") => open = Some(args.next().ok_or("--open needs a file")?.into()),
             Some("find") => find = Some(args.next().ok_or("--find needs the text to look for")?),
+            Some("command") => command = Some(args.next().ok_or("--command needs a command id")?),
             Some("goto") => {
                 let v = args.next().unwrap_or_default();
                 let (line, column) = v.split_once(':').ok_or("--goto LINE:COL")?;
@@ -61,8 +65,8 @@ fn main() -> Result<(), String> {
             _ => return Err(format!("unexpected argument {a}")),
         }
     }
-    if (find.is_some() || goto.is_some()) && open.is_none() {
-        return Err("--find and --goto need --open FILE: they work on that file".into());
+    if (find.is_some() || goto.is_some() || command.is_some()) && open.is_none() {
+        return Err("--find, --goto and --command need --open FILE: they work on that file".into());
     }
     let mut harness = Harness::builder().with_size(size).with_pixels_per_point(scale).build_eframe(move |cc| {
         let mut app = XmlCraftApp::new(cc);
@@ -110,6 +114,12 @@ fn main() -> Result<(), String> {
         while harness.state().problems().is_none() && std::time::Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(20));
             harness.run_steps(1);
+        }
+        harness.run_steps(4);
+        if let Some(id) = &command
+            && !harness.state_mut().execute(id)
+        {
+            return Err(format!("the command {id} is not known or not enabled"));
         }
         harness.run_steps(4);
     }

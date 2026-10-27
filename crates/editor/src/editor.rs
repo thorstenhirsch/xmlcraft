@@ -11,6 +11,7 @@ use xmlcraft_text::eol::{self, Eol};
 use xmlcraft_text::{Buffer, Edit, EditKind, History, Selection};
 
 use crate::caret::{Caret, normalize};
+use crate::folds::{Fold, FoldMap};
 use crate::motion::{
     clamp, display_column, first_non_blank, next_grapheme, offset_at_column, prev_grapheme, smart_home, word_left, word_range_at, word_right,
 };
@@ -86,9 +87,13 @@ pub struct Editor {
     /// Where in the markup an offset is (inside a tag, a value, a comment…), for the typing aids. Knows the modes of the lines it has been
     /// asked about, and forgets those after a change.
     pub(crate) lexer: Highlighter,
+    /// Stretches of lines that are hidden, in the order of the text (see [`crate::Fold`]).
+    pub(crate) folds: Vec<Fold>,
+    /// Which lines the folds hide, for the current text and folds.
+    pub(crate) fold_map: FoldMap,
     history: History,
-    carets: Vec<Caret>,
-    primary: usize,
+    pub(crate) carets: Vec<Caret>,
+    pub(crate) primary: usize,
     settings: Settings,
     version: u64,
     time: f64,
@@ -114,6 +119,8 @@ impl Editor {
         Self {
             buffer: Buffer::from_text(text),
             lexer: Highlighter::new(),
+            folds: Vec::new(),
+            fold_map: FoldMap::default(),
             history: History::new(),
             carets: vec![Caret::at(0)],
             primary: 0,
@@ -241,6 +248,8 @@ impl Editor {
         self.settings.eol = line_ending_of(text, self.settings.eol);
         self.buffer = Buffer::from_text(text);
         self.history.clear();
+        self.folds.clear();
+        self.fold_map = FoldMap::default();
         self.carets = vec![Caret::at(0)];
         self.primary = 0;
         self.version += 1;
@@ -255,7 +264,7 @@ impl Editor {
     }
 
     /// Make `carets` the carets; `primary` is the index in the list of the primary one.
-    fn set_carets_raw(&mut self, carets: Vec<Caret>, primary: usize) {
+    pub(crate) fn set_carets_raw(&mut self, carets: Vec<Caret>, primary: usize) {
         let carets: Vec<Caret> = carets.into_iter().map(|c| Caret { sel: self.sanitized(c.sel), goal: c.goal }).collect();
         let (carets, primary) = normalize(carets, primary);
         if carets.is_empty() {
@@ -266,6 +275,8 @@ impl Editor {
             self.primary = primary;
         }
         self.reveal = true;
+        // A caret that lands in a fold (a jump to a match, a message, the outline) opens it.
+        self.reveal_carets();
     }
 
     /// One selection, nothing else.
@@ -327,7 +338,19 @@ impl Editor {
     }
 
     pub fn move_carets(&mut self, motion: Motion, extend: bool) {
-        let carets: Vec<Caret> = self.carets.iter().map(|c| self.moved(*c, motion, extend)).collect();
+        let carets: Vec<Caret> = self
+            .carets
+            .iter()
+            .map(|c| {
+                let mut moved = self.moved(*c, motion, extend);
+                // A movement that ends in a fold goes past it, or back to the line that stands for it: it does not open it.
+                moved.sel.head = self.out_of_folds(moved.sel.head, moved.sel.head >= c.head());
+                if !extend {
+                    moved.sel.anchor = moved.sel.head;
+                }
+                moved
+            })
+            .collect();
         self.set_carets_raw(carets, self.primary);
     }
 
@@ -337,16 +360,16 @@ impl Editor {
         let head = caret.head();
         let mut goal = None;
         let mut vertical = |lines: isize| -> usize {
-            let line = buf.line_of(head);
+            let row = self.row_of_line(buf.line_of(head));
             let column = caret.goal.unwrap_or_else(|| display_column(buf, head, tab));
             goal = Some(column);
-            let target = line as isize + lines;
+            let target = row as isize + lines;
             if target < 0 {
                 0
-            } else if target as usize >= buf.line_count() {
+            } else if target as usize >= self.visible_rows() {
                 buf.len()
             } else {
-                offset_at_column(buf, target as usize, column, tab)
+                offset_at_column(buf, self.line_of_row(target as usize), column, tab)
             }
         };
         let to = match motion {
@@ -384,6 +407,7 @@ impl Editor {
         // Last first: the offsets of the edits that come earlier in the text stay valid while the later ones are applied.
         let ordered: Vec<Edit> = edits.into_iter().rev().collect();
         let Ok(inverse) = self.buffer.apply_all(&ordered) else { return false };
+        self.remap_folds(&ordered);
         self.set_carets_raw(carets, primary);
         let after = self.selections_for_history();
         self.history.record(ordered, inverse, before, after, kind, self.time);
@@ -666,22 +690,23 @@ impl Editor {
     // --- history and outside edits -------------------------------------------------------------------------------------------
 
     pub fn undo(&mut self) -> bool {
-        let result = self.history.undo(&mut self.buffer);
+        let result = self.history.undo_applied(&mut self.buffer);
         self.after_history(result)
     }
 
     pub fn redo(&mut self) -> bool {
-        let result = self.history.redo(&mut self.buffer);
+        let result = self.history.redo_applied(&mut self.buffer);
         self.after_history(result)
     }
 
-    fn after_history(&mut self, result: Result<Option<Vec<Selection>>, xmlcraft_text::TextError>) -> bool {
+    fn after_history(&mut self, result: Result<Option<xmlcraft_text::Applied>, xmlcraft_text::TextError>) -> bool {
         match result {
-            Ok(Some(selections)) => {
+            Ok(Some(applied)) => {
                 self.version += 1;
                 // Which lines an undo touched is not known here: everything counts as changed.
                 self.log_change(0);
-                self.set_selections(&selections);
+                self.remap_folds(&applied.edits);
+                self.set_selections(&applied.selections);
                 true
             }
             _ => false,

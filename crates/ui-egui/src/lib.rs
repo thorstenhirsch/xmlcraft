@@ -2,6 +2,7 @@
 
 //! The egui shell of XmlCraft: the window chrome, panes and theme, with the look of PdfCraft.
 
+mod after_analysis;
 mod chrome;
 mod commands;
 mod control;
@@ -111,8 +112,8 @@ pub struct XmlCraftApp {
     goto_focus: bool,
     /// A check (F7) is waiting for the analysis of this version of this document, to report its result.
     check_pending: Option<(u64, u64)>,
-    /// A jump to the matching tag (⇧⌘\) that is waiting for the analysis of the text it was asked in: the document and its version.
-    tag_jump_pending: Option<(u64, u64)>,
+    /// A command (the jump to the matching tag, folding) that is waiting for the analysis of the text it was asked in.
+    waiting: Option<after_analysis::Waiting>,
     /// What the editor keeps for each open document (layout caches, colouring), by document id.
     views: HashMap<u64, DocView>,
     /// The question being asked, if any.
@@ -176,7 +177,7 @@ impl XmlCraftApp {
             goto_input: String::new(),
             goto_focus: false,
             check_pending: None,
-            tag_jump_pending: None,
+            waiting: None,
             views: HashMap::new(),
             dialog: None,
             pickers: Pickers::default(),

@@ -4,8 +4,9 @@ use egui::Color32;
 use std::ops::Range;
 
 use std::sync::Arc;
-use xmlcraft_code_editor::{EditorColors, Highlight, LineStyler, Mark, StyleSpan};
+use xmlcraft_code_editor::{EditorColors, FoldRegion, Highlight, LineStyler, Mark, StyleSpan};
 use xmlcraft_editor::find::Matcher;
+use xmlcraft_engine::folding::FoldRange;
 use xmlcraft_syntax::{HighlightClass, Highlighter, Severity};
 use xmlcraft_text::Buffer;
 
@@ -156,6 +157,10 @@ pub struct XmlStyler {
     matches: Option<Matches>,
     /// The names of the two tags of the element the caret is at (byte ranges of the whole text), highlighted.
     tag_match: Option<[Range<usize>; 2]>,
+    /// What the last analysis says can be folded, in the order of the text, and how many lines from the top of the text it is still right
+    /// about (the lines above the first that changed since).
+    folds: Vec<FoldRange>,
+    folds_valid_before: usize,
 }
 
 impl XmlStyler {
@@ -167,6 +172,8 @@ impl XmlStyler {
             reach: Vec::new(),
             matches: None,
             tag_match: None,
+            folds: Vec::new(),
+            folds_valid_before: 0,
         }
     }
 
@@ -190,6 +197,18 @@ impl XmlStyler {
     /// Highlight these two tag names (ranges of the whole text); `None` for none.
     pub fn set_tag_match(&mut self, names: Option<[Range<usize>; 2]>) {
         self.tag_match = names;
+    }
+
+    /// What can be folded (replacing the last): the ranges of an analysis, which are right for every line until [`Self::set_folds_valid_before`]
+    /// says otherwise.
+    pub fn set_folds(&mut self, folds: Vec<FoldRange>) {
+        self.folds = folds;
+        self.folds_valid_before = usize::MAX;
+    }
+
+    /// The lines before `line` are still as they were when the folds were worked out (the text changed from `line` on).
+    pub fn set_folds_valid_before(&mut self, line: usize) {
+        self.folds_valid_before = line;
     }
 
     /// The tag names highlighted now.
@@ -254,6 +273,14 @@ impl LineStyler for XmlStyler {
         let color = self.tokens.tag_match;
         out.extend(self.tag_match.iter().flatten().filter_map(|name| on_line(name, &line_range).map(|range| Highlight { range, color })));
         out
+    }
+
+    fn fold_at(&mut self, _buffer: &Buffer, line: usize) -> Option<FoldRegion> {
+        if line >= self.folds_valid_before {
+            return None;
+        }
+        let at = self.folds.partition_point(|range| range.first_line < line);
+        self.folds.get(at).filter(|range| range.first_line == line).map(|range| FoldRegion { last_line: range.last_line })
     }
 
     fn marks(&mut self, buffer: &Buffer, line: usize) -> Vec<Mark> {

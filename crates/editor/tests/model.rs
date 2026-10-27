@@ -2,7 +2,7 @@
 //! sequence of commands the carets are valid and undo and redo agree with the text.
 
 use proptest::prelude::*;
-use xmlcraft_editor::{Editor, Motion};
+use xmlcraft_editor::{Editor, FoldMap, Motion};
 use xmlcraft_text::Selection;
 
 /// Pieces of text: ASCII, line breaks of both kinds, tabs, multi-byte characters, a combining mark, an emoji.
@@ -39,6 +39,9 @@ enum Op {
     SelectWord(usize, bool),
     SelectLine(usize, bool),
     Extend(usize),
+    Fold(usize, usize),
+    Unfold(usize),
+    UnfoldAll,
 }
 
 const MOTIONS: &[Motion] = &[
@@ -77,6 +80,9 @@ fn op() -> impl Strategy<Value = Op> {
         1 => (0usize..200, any::<bool>()).prop_map(|(o, a)| Op::SelectWord(o, a)),
         1 => (0usize..200, any::<bool>()).prop_map(|(o, a)| Op::SelectLine(o, a)),
         1 => (0usize..200).prop_map(Op::Extend),
+        2 => (0usize..12, 1usize..6).prop_map(|(first, len)| Op::Fold(first, first + len)),
+        1 => (0usize..12).prop_map(Op::Unfold),
+        1 => Just(Op::UnfoldAll),
     ]
 }
 
@@ -101,6 +107,9 @@ fn apply(e: &mut Editor, op: &Op) {
         Op::SelectWord(o, add) => e.select_word_at(*o, *add),
         Op::SelectLine(o, add) => e.select_line_at(*o, *add),
         Op::Extend(o) => e.extend_selection_to(*o),
+        Op::Fold(first, last) => drop(e.fold_lines(*first, *last)),
+        Op::Unfold(line) => drop(e.unfold_line(*line)),
+        Op::UnfoldAll => drop(e.unfold_all()),
     }
 }
 
@@ -113,6 +122,17 @@ fn assert_valid(e: &Editor) -> Result<(), TestCaseError> {
         prop_assert!(c.sel.anchor <= len && c.sel.head <= len, "{:?} in {} bytes", c, len);
         prop_assert!(e.buffer().is_boundary(c.sel.anchor) && e.buffer().is_boundary(c.sel.head), "{:?}", c);
     }
+    // No caret is in a hidden line, and the folds are stretches of whole lines that the editor's rows agree with.
+    for c in carets {
+        prop_assert!(!e.is_line_hidden(e.buffer().line_of(c.sel.head)), "{:?} is in a fold", c);
+    }
+    let buffer = e.buffer();
+    for fold in e.folds() {
+        let end_of = |offset: usize| buffer.line_range(buffer.line_of(offset)).map(|r| r.end);
+        prop_assert!(fold.hidden.start < fold.hidden.end && fold.hidden.end <= buffer.len(), "{:?}", fold);
+        prop_assert!(end_of(fold.hidden.start) == Some(fold.hidden.start) && end_of(fold.hidden.end) == Some(fold.hidden.end), "{:?}", fold);
+    }
+    prop_assert_eq!(e.visible_rows(), if e.folds().is_empty() { buffer.line_count() } else { FoldMap::new(buffer, e.folds()).rows() });
     for pair in carets.windows(2) {
         prop_assert!(
             pair[0].end() < pair[1].start() || (pair[0].end() == pair[1].start() && !pair[0].is_empty() && !pair[1].is_empty()),

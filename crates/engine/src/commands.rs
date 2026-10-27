@@ -39,6 +39,8 @@ pub struct Shortcut {
     pub shift: bool,
     /// ⌃ on macOS (in addition to ⌘); Ctrl elsewhere.
     pub mac_ctrl: bool,
+    /// ⌥ on macOS, Alt elsewhere.
+    pub alt: bool,
     /// Key name: a letter, a digit, punctuation such as `,`, or a name such as `F8` or `Delete`.
     pub key: &'static str,
 }
@@ -46,22 +48,27 @@ pub struct Shortcut {
 impl Shortcut {
     /// ⌘ (Ctrl elsewhere) and `key`.
     pub const fn cmd(key: &'static str) -> Self {
-        Self { command: true, shift: false, mac_ctrl: false, key }
+        Self { command: true, shift: false, mac_ctrl: false, alt: false, key }
+    }
+
+    /// ⌥⌘ (Ctrl+Alt elsewhere) and `key`.
+    pub const fn cmd_alt(key: &'static str) -> Self {
+        Self { command: true, shift: false, mac_ctrl: false, alt: true, key }
     }
 
     /// ⇧⌘ (Ctrl+Shift elsewhere) and `key`.
     pub const fn cmd_shift(key: &'static str) -> Self {
-        Self { command: true, shift: true, mac_ctrl: false, key }
+        Self { command: true, shift: true, mac_ctrl: false, alt: false, key }
     }
 
     /// `key` on its own (function keys).
     pub const fn key(key: &'static str) -> Self {
-        Self { command: false, shift: false, mac_ctrl: false, key }
+        Self { command: false, shift: false, mac_ctrl: false, alt: false, key }
     }
 
     /// ⇧ and `key` (Shift+F3).
     pub const fn shift_key(key: &'static str) -> Self {
-        Self { command: false, shift: true, mac_ctrl: false, key }
+        Self { command: false, shift: true, mac_ctrl: false, alt: false, key }
     }
 
     /// How the shortcut is written in menus: `⇧⌘S` on macOS, `Ctrl+Shift+S` elsewhere.
@@ -70,6 +77,9 @@ impl Shortcut {
             let mut s = String::new();
             if self.mac_ctrl {
                 s.push('⌃');
+            }
+            if self.alt {
+                s.push('⌥');
             }
             if self.shift {
                 s.push('⇧');
@@ -84,6 +94,9 @@ impl Shortcut {
             if self.command || self.mac_ctrl {
                 parts.push("Ctrl");
             }
+            if self.alt {
+                parts.push("Alt");
+            }
             if self.shift {
                 parts.push("Shift");
             }
@@ -94,7 +107,7 @@ impl Shortcut {
 
     /// Number of modifiers (more specific shortcuts are matched first).
     pub fn modifier_count(&self) -> usize {
-        usize::from(self.command) + usize::from(self.shift) + usize::from(self.mac_ctrl)
+        usize::from(self.command) + usize::from(self.shift) + usize::from(self.mac_ctrl) + usize::from(self.alt)
     }
 }
 
@@ -179,6 +192,13 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("edit.select_all_occurrences", "Select All Occurrences", EDIT, Some(Shortcut::cmd_shift("L")), Needs::Document, "plus"),
     c("edit.go_to_line", "Go to Line…", EDIT, Some(Shortcut::cmd("G")), Needs::Document, "align-left").sep(),
     c("edit.go_to_matching_tag", "Go to Matching Tag", EDIT, Some(Shortcut::cmd_shift("Backslash")), Needs::Document, "code-xml"),
+    c("edit.fold", "Fold", EDIT, Some(Shortcut::cmd_alt("OpenBracket")), Needs::Document, "chevron-right").sep(),
+    c("edit.unfold", "Unfold", EDIT, Some(Shortcut::cmd_alt("CloseBracket")), Needs::Document, "chevron-down"),
+    c("edit.fold_all", "Fold All", EDIT, None, Needs::Document, "chevron-right"),
+    c("edit.unfold_all", "Unfold All", EDIT, None, Needs::Document, "chevron-down"),
+    c("edit.fold_level_1", "Fold Level 1", EDIT, None, Needs::Document, "chevron-right"),
+    c("edit.fold_level_2", "Fold Level 2", EDIT, None, Needs::Document, "chevron-right"),
+    c("edit.fold_level_3", "Fold Level 3", EDIT, None, Needs::Document, "chevron-right"),
     c("xml.check", "Check Well-formedness", XML, Some(Shortcut::key("F7")), Needs::Document, "file-check"),
     c("xml.pretty_print", "Pretty-print", XML, None, Needs::Document, "wand-sparkles").sep(),
     c("xml.minify", "Strip White Space", XML, None, Needs::Document, "align-left"),
@@ -282,7 +302,14 @@ mod tests {
                 "edit.select_next_occurrence",
                 "edit.select_all_occurrences",
                 "edit.go_to_line",
-                "edit.go_to_matching_tag"
+                "edit.go_to_matching_tag",
+                "edit.fold",
+                "edit.unfold",
+                "edit.fold_all",
+                "edit.unfold_all",
+                "edit.fold_level_1",
+                "edit.fold_level_2",
+                "edit.fold_level_3"
             ]
         );
         assert_eq!(in_menu("XML").map(|c| c.id).collect::<Vec<_>>(), ["xml.check", "xml.pretty_print", "xml.minify"]);
@@ -296,8 +323,11 @@ mod tests {
         assert_eq!(save.label(false), "Ctrl+Shift+S");
         assert_eq!(Shortcut::cmd("K").label(true), "⌘K");
         assert_eq!(Shortcut::key("F8").label(false), "F8");
-        assert_eq!(Shortcut { command: true, shift: false, mac_ctrl: true, key: "I" }.label(true), "⌃⌘I");
-        assert_eq!(Shortcut { command: true, shift: true, mac_ctrl: true, key: "I" }.modifier_count(), 3);
+        assert_eq!(Shortcut { command: true, shift: false, mac_ctrl: true, alt: false, key: "I" }.label(true), "⌃⌘I");
+        assert_eq!(Shortcut { command: true, shift: true, mac_ctrl: true, alt: false, key: "I" }.modifier_count(), 3);
+        assert_eq!(Shortcut::cmd_alt("[").label(true), "⌥⌘[");
+        assert_eq!(Shortcut::cmd_alt("[").label(false), "Ctrl+Alt+[");
+        assert_eq!(Shortcut::cmd_alt("[").modifier_count(), 2);
     }
 
     #[test]

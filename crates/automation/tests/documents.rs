@@ -338,6 +338,49 @@ fn finding_in_a_file_says_when_it_was_not_read_exactly_and_when_a_match_is_cut()
 }
 
 #[test]
+fn what_can_be_folded_is_listed_and_folding_it_hides_lines() {
+    let text = "<lib>\n  <book>\n    <t>x</t>\n  </book>\n  <book>\n    <t>y</t>\n  </book>\n</lib>\n";
+    let mut a = Automation::new();
+    let listed = ok(&mut a, "xml_folds", json!({ "text": text }));
+    let folds = listed["folds"].as_array().expect("a list");
+    let summary: Vec<(u64, u64, u64, u64, &str)> = folds
+        .iter()
+        .map(|f| {
+            (
+                f["first_line"].as_u64().unwrap_or(0),
+                f["last_line"].as_u64().unwrap_or(0),
+                f["end_line"].as_u64().unwrap_or(0),
+                f["level"].as_u64().unwrap_or(0),
+                f["kind"].as_str().unwrap_or(""),
+            )
+        })
+        .collect();
+    assert_eq!(summary, [(1, 7, 8, 1, "element"), (2, 3, 4, 2, "element"), (5, 6, 7, 2, "element")], "lines count from 1");
+    // Folding: at a line, everything, a level, and open again. The text itself never changes.
+    let id = ok(&mut a, "doc_new", json!({ "text": text }))["id"].as_u64().expect("id");
+    let folded = ok(&mut a, "doc_fold", json!({ "id": id, "action": "fold", "line": 3, "column": 5 }));
+    assert_eq!(
+        (folded["changed"].as_bool(), folded["visible_lines"].as_u64()),
+        (Some(true), Some(8)),
+        "line 3 is hidden; there are 9 lines in all (the last is empty)"
+    );
+    assert_eq!(folded["folded"][0]["first_line"], 2);
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], text);
+    let all = ok(&mut a, "doc_fold", json!({ "id": id, "action": "fold_all" }));
+    assert_eq!(all["visible_lines"], 3, "line 1, the root's end tag on line 8 and the empty last line");
+    let level2 = ok(&mut a, "doc_fold", json!({ "id": id, "action": "level", "level": 2 }));
+    assert_eq!(level2["folded"].as_array().map(Vec::len), Some(2));
+    assert_eq!(level2["visible_lines"], 7, "one line of each book is hidden");
+    let open = ok(&mut a, "doc_fold", json!({ "id": id, "action": "unfold_all" }));
+    assert_eq!((open["changed"].as_bool(), open["visible_lines"].as_u64()), (Some(true), Some(9)));
+    // Bad arguments say what is wrong.
+    assert!(err(&mut a, "doc_fold", json!({ "id": id, "action": "level" })).contains("level is missing"));
+    assert!(err(&mut a, "doc_fold", json!({ "id": id, "action": "squash" })).contains("doc_fold"), "the schema lists the actions");
+    assert!(err(&mut a, "doc_fold", json!({ "id": id, "action": "fold", "line": 99, "column": 1 })).contains("no line 99"));
+    assert!(err(&mut a, "xml_folds", json!({})).contains("exactly one"));
+}
+
+#[test]
 fn typing_and_keys_work_as_the_keyboard_does() {
     let mut a = Automation::new();
     let id = ok(&mut a, "doc_new", json!({ "text": "<a b=/>" }))["id"].as_u64().expect("id");

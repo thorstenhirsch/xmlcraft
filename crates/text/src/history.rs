@@ -207,6 +207,16 @@ impl History {
 
     /// Undo the last change; returns the selections from before it.
     pub fn undo(&mut self, buffer: &mut Buffer) -> Result<Option<Vec<Selection>>, TextError> {
+        Ok(self.undo_applied(buffer)?.map(|undone| undone.selections))
+    }
+
+    /// Redo the last undone change; returns the selections from after it.
+    pub fn redo(&mut self, buffer: &mut Buffer) -> Result<Option<Vec<Selection>>, TextError> {
+        Ok(self.redo_applied(buffer)?.map(|undone| undone.selections))
+    }
+
+    /// [`History::undo`], and which edits it made.
+    pub fn undo_applied(&mut self, buffer: &mut Buffer) -> Result<Option<Applied>, TextError> {
         let Some(entry) = self.undo.pop() else { return Ok(None) };
         self.bytes = self.bytes.saturating_sub(entry.bytes());
         // Undoing replaces what the change wrote with what it replaced, so what comes back out must be exactly what it wrote.
@@ -215,27 +225,36 @@ impl History {
             self.clear();
             return Err(e);
         }
-        let before = entry.before.clone();
+        let applied = Applied { selections: entry.before.clone(), edits: entry.inverse.clone() };
         self.bytes = self.bytes.saturating_add(entry.bytes());
         self.redo.push(entry);
         self.closed = true;
-        Ok(Some(before))
+        Ok(Some(applied))
     }
 
-    /// Redo the last undone change; returns the selections from after it.
-    pub fn redo(&mut self, buffer: &mut Buffer) -> Result<Option<Vec<Selection>>, TextError> {
+    /// [`History::redo`], and which edits it made.
+    pub fn redo_applied(&mut self, buffer: &mut Buffer) -> Result<Option<Applied>, TextError> {
         let Some(entry) = self.redo.pop() else { return Ok(None) };
         self.bytes = self.bytes.saturating_sub(entry.bytes());
         if let Err(e) = self.apply_checked(buffer, &entry.forward, &entry.inverse) {
             self.clear();
             return Err(e);
         }
-        let after = entry.after.clone();
+        let applied = Applied { selections: entry.after.clone(), edits: entry.forward.clone() };
         self.bytes = self.bytes.saturating_add(entry.bytes());
         self.undo.push(entry);
         self.closed = true;
-        Ok(Some(after))
+        Ok(Some(applied))
     }
+}
+
+/// What an undo or a redo did.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Applied {
+    /// The selections to go back to.
+    pub selections: Vec<Selection>,
+    /// The edits it made to the text, in the order they were made: each is in the coordinates of the text as it was just before it.
+    pub edits: Vec<Edit>,
 }
 
 #[cfg(test)]
@@ -264,6 +283,33 @@ mod tests {
         assert_eq!(h.redo(&mut buf).expect("ok"), Some(vec![Selection::caret(0)]));
         assert!(buf.eq_str("bcd"));
         assert_eq!(h.redo(&mut buf).expect("ok"), None);
+    }
+
+    #[test]
+    fn undo_and_redo_say_which_edits_they_made_in_the_order_they_made_them() {
+        let mut buf = Buffer::from_text("abcdef");
+        let mut h = History::new();
+        // Two edits in one step (last first, as the editor applies them): each is in the coordinates of the text just before it.
+        do_edit(&mut buf, &mut h, vec![Edit::replace(4..5, "XYZ"), Edit::delete(1..2)], 0, 0, EditKind::Other, 0.0);
+        assert!(buf.eq_str("acdXYZf"));
+        let before = buf.text();
+        let undone = h.undo_applied(&mut buf).expect("ok").expect("something to undo");
+        assert!(buf.eq_str("abcdef"));
+        assert_eq!(apply_in_order(&before, &undone.edits), "abcdef");
+        let after = buf.text();
+        let redone = h.redo_applied(&mut buf).expect("ok").expect("something to redo");
+        assert!(buf.eq_str("acdXYZf"));
+        assert_eq!(apply_in_order(&after, &redone.edits), "acdXYZf");
+        assert_eq!(h.redo_applied(&mut buf).expect("ok"), None);
+    }
+
+    /// `text` with `edits` made one after the other, each in the coordinates of what the ones before it left.
+    fn apply_in_order(text: &str, edits: &[Edit]) -> String {
+        let mut text = text.to_owned();
+        for edit in edits {
+            text.replace_range(edit.range.clone(), &edit.text);
+        }
+        text
     }
 
     #[test]

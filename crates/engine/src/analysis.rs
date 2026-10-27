@@ -8,6 +8,8 @@ use std::ops::Range;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use xmlcraft_syntax::{Diagnostic, Limits, Severity, SyntaxKind, parse_with};
+
+use crate::folding::{FoldRange, fold_ranges};
 use xmlcraft_text::Buffer;
 
 /// Documents larger than this are not analysed on every edit (large-file mode, M1.15, takes over).
@@ -56,6 +58,8 @@ pub struct Analysis {
     pub outline: Vec<OutlineItem>,
     /// The outline stopped at [`MAX_OUTLINE_ITEMS`].
     pub outline_truncated: bool,
+    /// What can be folded, in the order it starts.
+    pub folds: Vec<FoldRange>,
     /// The text was not analysed, and why.
     pub skipped: Option<Skipped>,
 }
@@ -103,7 +107,7 @@ impl Analysis {
     }
 
     fn skipped(version: u64, why: Skipped) -> Self {
-        Self { version, diagnostics: Vec::new(), outline: Vec::new(), outline_truncated: false, skipped: Some(why) }
+        Self { version, diagnostics: Vec::new(), outline: Vec::new(), outline_truncated: false, folds: Vec::new(), skipped: Some(why) }
     }
 }
 
@@ -154,7 +158,8 @@ pub fn analyze(text: &str, version: u64) -> Analysis {
     let mut diagnostics = parsed.diagnostics().to_vec();
     diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
     let (outline, outline_truncated) = outline_of(&parsed.syntax(), text);
-    Analysis { version, diagnostics, outline, outline_truncated, skipped: None }
+    let folds = fold_ranges(&parsed.syntax(), text);
+    Analysis { version, diagnostics, outline, outline_truncated, folds, skipped: None }
 }
 
 fn outline_of(root: &xmlcraft_syntax::SyntaxNode, text: &str) -> (Vec<OutlineItem>, bool) {
