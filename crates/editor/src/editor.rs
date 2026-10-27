@@ -478,15 +478,22 @@ impl Editor {
                 let line_start = self.buffer.line_start(line).unwrap_or(0);
                 let indent_end = first_non_blank(&self.buffer, line).min(c.start());
                 let indent = self.buffer.slice(line_start..indent_end).unwrap_or_default();
-                let after_start_tag = smart && self.after_start_tag(c.start(), line_start);
-                let before_end_tag = after_start_tag
+                // After the end of a start tag, the new line is one level in from the line the tag begins on (a tag over several lines
+                // has its attributes on lines of their own).
+                let start_tag = if smart { self.after_start_tag(c.start()) } else { None };
+                let before_end_tag = start_tag.is_some()
                     && c.is_empty()
                     && self.buffer.slice(c.end()..self.buffer.next_char(self.buffer.next_char(c.end()))).is_ok_and(|s| s == "</");
-                if before_end_tag {
-                    let caret = eol.len() + indent.len() + unit.len();
-                    (format!("{eol}{indent}{unit}{eol}{indent}"), caret)
-                } else if after_start_tag {
-                    let text = format!("{eol}{indent}{unit}");
+                let tag_indent = start_tag.map(|at| {
+                    let tag_line = self.buffer.line_of(at);
+                    let from = self.buffer.line_start(tag_line).unwrap_or(0);
+                    self.buffer.slice(from..first_non_blank(&self.buffer, tag_line).min(at)).unwrap_or_default()
+                });
+                if let (true, Some(base)) = (before_end_tag, &tag_indent) {
+                    let caret = eol.len() + base.len() + unit.len();
+                    (format!("{eol}{base}{unit}{eol}{base}"), caret)
+                } else if let Some(base) = &tag_indent {
+                    let text = format!("{eol}{base}{unit}");
                     let caret = text.len();
                     (text, caret)
                 } else {
@@ -500,19 +507,6 @@ impl Editor {
         let after: Vec<Caret> =
             carets.iter().zip(&writes).map(|(c, (_, caret))| Caret::at(map_offset(&edits, c.start(), Bias::Before) + caret)).collect();
         self.commit(edits, after, EditKind::Other)
-    }
-
-    /// Whether the text just before `offset` on its line (from `line_start`) ends with a start tag that is still open (`<a b="c">`,
-    /// not `</a>`, `<b/>`, a comment, a declaration or a processing instruction), with `offset` in content.
-    fn after_start_tag(&mut self, offset: usize, line_start: usize) -> bool {
-        if self.lexer.mode_at(&self.buffer, offset) != xmlcraft_syntax::Mode::Content {
-            return false;
-        }
-        let Ok(before) = self.buffer.slice(line_start..offset) else { return false };
-        let before = before.trim_end();
-        let Some(tag) = before.strip_suffix('>').and_then(|b| b.rfind('<').map(|at| &b[at..])) else { return false };
-        let name_starts = tag.chars().nth(1).is_some_and(xmlcraft_syntax::is_name_start_char);
-        name_starts && !tag.ends_with('/')
     }
 
     /// Backspace: the selection, or the character cluster before the caret; between the quotes of an empty attribute value, both quotes.
