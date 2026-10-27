@@ -6,7 +6,6 @@
 
 use xmlcraft_editor::Editor;
 use xmlcraft_syntax::{SyntaxKind, SyntaxNode};
-use xmlcraft_text::Buffer;
 
 /// At most this many ranges are made for one text.
 pub const MAX_FOLD_RANGES: usize = 50_000;
@@ -59,7 +58,7 @@ impl FoldRange {
 /// rest are left out). Of ranges that start on the same line only the outer one is there: there is one mark to click on a line.
 pub fn fold_ranges(root: &SyntaxNode, text: &str) -> (Vec<FoldRange>, bool) {
     use rowan::WalkEvent;
-    let buffer = Buffer::from_text(text);
+    let lines = Lines::new(text);
     let mut ranges: Vec<FoldRange> = Vec::new();
     let mut depth = 0usize;
     let mut truncated = false;
@@ -75,7 +74,7 @@ pub fn fold_ranges(root: &SyntaxNode, text: &str) -> (Vec<FoldRange>, bool) {
                 }
             }
             WalkEvent::Enter(node) => {
-                if let Some(range) = range_of(&node, &buffer, depth + 1)
+                if let Some(range) = range_of(&node, &lines, depth + 1)
                     && ranges.last().is_none_or(|last| last.first_line < range.first_line)
                 {
                     if ranges.len() >= MAX_FOLD_RANGES {
@@ -93,12 +92,54 @@ pub fn fold_ranges(root: &SyntaxNode, text: &str) -> (Vec<FoldRange>, bool) {
     (ranges, truncated)
 }
 
-/// The line the last character before `end` is on (a tag that is not closed may end in a character of several bytes).
-fn line_of_last_char(buffer: &Buffer, end: usize) -> usize {
-    buffer.line_of(buffer.prev_char(end))
+/// Where the lines of a text begin: what the ranges need to turn offsets into lines, one pass over the text and a search for each.
+struct Lines<'a> {
+    text: &'a str,
+    /// The offset each line starts at (at least one: the first).
+    starts: Vec<usize>,
 }
 
-fn range_of(node: &SyntaxNode, buffer: &Buffer, level: usize) -> Option<FoldRange> {
+impl<'a> Lines<'a> {
+    fn new(text: &'a str) -> Self {
+        let mut starts = vec![0];
+        starts.extend(text.match_indices('\n').map(|(at, _)| at + 1));
+        Self { text, starts }
+    }
+
+    /// The line `offset` is on (an offset past the end is on the last line).
+    fn line_of(&self, offset: usize) -> usize {
+        self.starts.partition_point(|start| *start <= offset).saturating_sub(1)
+    }
+
+    /// The line the last character before `end` is on (a tag that is not closed may end in a character of several bytes).
+    fn line_of_last_char(&self, end: usize) -> usize {
+        let mut at = end.min(self.text.len()).saturating_sub(1);
+        while at > 0 && !self.text.is_char_boundary(at) {
+            at -= 1;
+        }
+        self.line_of(at)
+    }
+
+    /// Where the text of `line` starts and ends: its line break is not in it.
+    fn text_of(&self, line: usize) -> Option<std::ops::Range<usize>> {
+        let start = *self.starts.get(line)?;
+        let end = match self.starts.get(line + 1) {
+            Some(next) => {
+                let newline = next - 1;
+                if newline > start && self.text.as_bytes().get(newline - 1) == Some(&b'\r') { newline - 1 } else { newline }
+            }
+            None => self.text.len(),
+        };
+        Some(start..end)
+    }
+
+    /// Whether the text from `from` to `to` (a stretch of a line) is white space or nothing.
+    fn is_blank(&self, from: usize, to: usize) -> Option<bool> {
+        Some(self.text.get(from..to)?.trim().is_empty())
+    }
+}
+
+fn range_of(node: &SyntaxNode, lines: &Lines<'_>, level: usize) -> Option<FoldRange> {
     let span = usize::from(node.text_range().start())..usize::from(node.text_range().end());
     let kind = match node.kind() {
         SyntaxKind::Element => FoldKind::Element,
@@ -109,14 +150,13 @@ fn range_of(node: &SyntaxNode, buffer: &Buffer, level: usize) -> Option<FoldRang
         _ => return None,
     };
     if kind != FoldKind::Element {
-        let (first, last) = (buffer.line_of(span.start), line_of_last_char(buffer, span.end));
+        let (first, last) = (lines.line_of(span.start), lines.line_of_last_char(span.end));
         if first >= last {
             return None;
         }
         // Something after it on its last line would be hidden with that line: the fold stops a line short of it.
-        let line = buffer.line_range(last)?;
-        let rest_is_blank = buffer.slice(span.end.min(line.end)..line.end).ok()?.trim().is_empty();
-        let hidden_to = if rest_is_blank { last } else { last - 1 };
+        let line = lines.text_of(last)?;
+        let hidden_to = if lines.is_blank(span.end.min(line.end), line.end)? { last } else { last - 1 };
         return (hidden_to > first).then_some(FoldRange { first_line: first, last_line: hidden_to, end_line: last, level, kind });
     }
     let start_tag = node.children().find(|n| n.kind() == SyntaxKind::StartTag)?;
@@ -124,18 +164,18 @@ fn range_of(node: &SyntaxNode, buffer: &Buffer, level: usize) -> Option<FoldRang
     let tag_end = usize::from(start_tag.text_range().end());
     let end_start = usize::from(end_tag.text_range().start());
     let end_end = usize::from(end_tag.text_range().end());
-    let first = line_of_last_char(buffer, tag_end);
+    let first = lines.line_of_last_char(tag_end);
     // The end tag is on the lines from where it starts to where it ends (nearly always one).
-    let (end_starts, end_ends) = (buffer.line_of(end_start), line_of_last_char(buffer, end_end));
+    let (end_starts, end_ends) = (lines.line_of(end_start), lines.line_of_last_char(end_end));
     if end_starts <= first {
         return None;
     }
     // When it stands alone on its lines, they stay visible; with something before it on its first line, that is hidden with the content;
     // with something after it on its last line nothing of them can be hidden.
-    let first_line_of_tag = buffer.line_range(end_starts)?;
-    let last_line_of_tag = buffer.line_range(end_ends)?;
-    let before_is_blank = buffer.slice(first_line_of_tag.start..end_start).ok()?.trim().is_empty();
-    let after_is_blank = buffer.slice(end_end.min(last_line_of_tag.end)..last_line_of_tag.end).ok()?.trim().is_empty();
+    let first_line_of_tag = lines.text_of(end_starts)?;
+    let last_line_of_tag = lines.text_of(end_ends)?;
+    let before_is_blank = lines.is_blank(first_line_of_tag.start, end_start)?;
+    let after_is_blank = lines.is_blank(end_end.min(last_line_of_tag.end), last_line_of_tag.end)?;
     let last = if !after_is_blank {
         return None; // something follows the end tag on its line: hiding the line would hide that too
     } else if before_is_blank {
@@ -201,6 +241,24 @@ mod tests {
     }
 
     use FoldKind::*;
+
+    proptest::proptest! {
+        /// The line table answers like the rope it replaced: the lines of every offset and the text of every line, line breaks excluded.
+        #[test]
+        fn the_line_table_agrees_with_the_buffer(
+            pieces in proptest::collection::vec(proptest::sample::select(&["a", " ", "\n", "\r\n", "\r", "é", "<a>", "日"][..]), 0..40),
+        ) {
+            let text: String = pieces.concat();
+            let (lines, buffer) = (Lines::new(&text), xmlcraft_text::Buffer::from_text(&text));
+            for line in 0..buffer.line_count() + 1 {
+                proptest::prop_assert_eq!(lines.text_of(line), buffer.line_range(line), "text of line {}", line);
+            }
+            for offset in 0..text.len() + 2 {
+                proptest::prop_assert_eq!(lines.line_of(offset), buffer.line_of(offset), "line of {}", offset);
+                proptest::prop_assert_eq!(lines.line_of_last_char(offset), buffer.line_of(buffer.prev_char(offset.min(text.len()))), "line of the character before {}", offset);
+            }
+        }
+    }
 
     #[test]
     fn an_element_with_content_on_lines_of_its_own_folds_down_to_its_end_tag() {
