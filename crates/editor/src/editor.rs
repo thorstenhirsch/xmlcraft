@@ -34,11 +34,23 @@ pub struct Settings {
     /// Enter between a start tag and its end tag puts the end tag on a line of its own, and after a start tag indents one more level
     /// ([`Editor::insert_newline`]).
     pub smart_indent: bool,
+    /// Typing in the name of a tag changes the name in the other tag of the element too, once the names are linked
+    /// ([`Editor::link_names`]).
+    pub sync_tag_names: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { tab_width: 4, indent_size: 2, use_tabs: false, eol: Eol::Lf, auto_pair: true, auto_close: true, smart_indent: true }
+        Self {
+            tab_width: 4,
+            indent_size: 2,
+            use_tabs: false,
+            eol: Eol::Lf,
+            auto_pair: true,
+            auto_close: true,
+            smart_indent: true,
+            sync_tag_names: true,
+        }
     }
 }
 
@@ -100,6 +112,8 @@ pub struct Editor {
     pub(crate) expansions: Vec<crate::structure::Expansion>,
     /// An expansion or a shrinking of the selection is setting the carets: that is not a change of them to forget the expansions for.
     pub(crate) expanding: bool,
+    /// The names of a start tag and its end tag that are renamed together ([`Editor::link_names`]), kept in step with the text.
+    pub(crate) linked: Option<[Range<usize>; 2]>,
     history: History,
     pub(crate) carets: Vec<Caret>,
     pub(crate) primary: usize,
@@ -131,6 +145,7 @@ impl Editor {
             folds: Vec::new(),
             fold_map: FoldMap::default(),
             expansions: Vec::new(),
+            linked: None,
             expanding: false,
             history: History::new(),
             carets: vec![Caret::at(0)],
@@ -262,6 +277,7 @@ impl Editor {
         self.folds.clear();
         self.fold_map = FoldMap::default();
         self.expansions.clear();
+        self.linked = None;
         self.carets = vec![Caret::at(0)];
         self.primary = 0;
         self.version += 1;
@@ -418,11 +434,14 @@ impl Editor {
             self.set_carets_raw(carets, primary);
             return false;
         }
+        // Typing in a linked name is written into the other name too.
+        let crate::linked::LinkedStep { edits, carets, names } = self.step_linked(edits, carets, kind);
         let before = self.selections_for_history();
         let first_changed = edits.iter().map(|e| e.range.start).min().unwrap_or(0);
         // Last first: the offsets of the edits that come earlier in the text stay valid while the later ones are applied.
         let ordered: Vec<Edit> = edits.into_iter().rev().collect();
         let Ok(inverse) = self.buffer.apply_all(&ordered) else { return false };
+        self.linked = names;
         self.remap_folds(&ordered);
         self.set_carets_raw(carets, primary);
         let after = self.selections_for_history();
@@ -753,6 +772,7 @@ impl Editor {
         match result {
             Ok(Some(applied)) => {
                 self.version += 1;
+                self.linked = None;
                 // Which lines an undo touched is not known here: everything counts as changed.
                 self.log_change(0);
                 self.remap_folds(&applied.edits);

@@ -706,6 +706,8 @@ fn doc_type(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         return fail(format!("the control character U+{:04X} cannot be typed", u32::from(c)));
     }
     place_caret(doc, args)?;
+    // As in the window: typing in the name of a tag renames the other tag of the element too.
+    doc.link_tag_names();
     let mut typed = 0usize;
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
@@ -731,6 +733,7 @@ fn doc_key(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let key = text_arg(args, "key").unwrap_or_default();
     let times = args.get("times").and_then(Value::as_u64).map_or(1, |t| usize::try_from(t).unwrap_or(1)).min(1000);
     place_caret(doc, args)?;
+    doc.link_tag_names();
     for _ in 0..times {
         let editor = doc.editor_mut();
         match key {

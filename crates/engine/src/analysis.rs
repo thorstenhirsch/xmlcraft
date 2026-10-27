@@ -108,6 +108,13 @@ impl Analysis {
             .and_then(|(_, item, is_start)| item.tag_match(is_start))
     }
 
+    /// The names of the start tag and the end tag of the element whose tag name `offset` is in or at the end of (what the editor keeps
+    /// in step while one of them is typed in). `None` when the offset is elsewhere in a tag, or the element has no pair.
+    pub fn linked_names(&self, offset: usize) -> Option<[Range<usize>; 2]> {
+        let found = self.matching_tag(offset)?;
+        (found.name.start <= offset && offset <= found.name.end).then_some([found.name, found.partner_name])
+    }
+
     fn skipped(version: u64, why: Skipped) -> Self {
         Self {
             version,
@@ -428,6 +435,24 @@ mod tests {
         // The root, and a namespace prefix.
         assert_eq!(matched("<r:a x:y='1'|>text</r:a>"), pair("<r:a x:y='1'>", "</r:a>"));
         assert_eq!(matched("<?xml version=\"1.0\"?>\n<a>\n  <b/>\n</a|>\n"), pair("</a>", "<a>"));
+    }
+
+    #[test]
+    fn the_names_to_link_are_those_of_the_tag_the_caret_is_in_the_name_of() {
+        let text = "<a><item id=\"1\">x</item><br/></a>";
+        let analysis = analyze(text, 1);
+        let (open, close) = (text.find("item").expect("there"), text.rfind("item").expect("there"));
+        // In the name, at either end of it, and from the end tag.
+        for column in 0..=4 {
+            assert_eq!(analysis.linked_names(open + column), Some([open..open + 4, close..close + 4]), "start tag, column {column}");
+            assert_eq!(analysis.linked_names(close + column), Some([close..close + 4, open..open + 4]), "end tag, column {column}");
+        }
+        // Elsewhere in the tag, in text, and where there is no pair.
+        for (label, at) in
+            [("an attribute", open + 8), ("text", text.find('x').expect("there")), ("an empty-element tag", text.find("br").expect("there"))]
+        {
+            assert_eq!(analysis.linked_names(at), None, "{label}");
+        }
     }
 
     #[test]

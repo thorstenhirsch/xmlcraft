@@ -12,6 +12,7 @@
 //!   movement and edits keep to the folds.
 //! - [`Editor::toggle_comment`] comments lines out and in; [`Editor::expand_selection`] and [`Editor::shrink_selection`] grow and shrink a
 //!   selection by what the syntax tree says (the word, the value, the attribute, the tag, the content, the element, the one around it).
+//! - [`Editor::link_names`] keeps the names of a start tag and its end tag in step: typing in one is written into the other.
 //! - [`motion`] has the pure movement functions: by character cluster, by word, by line, by display column.
 //!
 //! The view (`xmlcraft-code-editor`) turns key presses and mouse gestures into calls on the editor and draws what it holds.
@@ -20,6 +21,7 @@ mod caret;
 mod editor;
 pub mod find;
 mod folds;
+mod linked;
 pub mod motion;
 mod structure;
 mod typing;
