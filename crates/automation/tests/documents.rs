@@ -302,6 +302,11 @@ fn finding_and_replacing_text_and_patterns() {
     let many = ok(&mut a, "doc_new", json!({ "text": "x".repeat(10_001) }))["id"].as_u64().expect("id");
     assert!(err(&mut a, "doc_replace", json!({ "id": many, "pattern": "x", "replacement": "y" })).contains("nothing was replaced"));
     assert_eq!(ok(&mut a, "doc_text", json!({ "id": many }))["text"].as_str().map(|t| t.chars().all(|c| c == 'x')), Some(true));
+    assert!(err(&mut a, "doc_replace", json!({ "id": many, "pattern": "x", "replacement": "y" })).contains("more than 10000 matches"));
+    // Few matches, but more to write than may be: the other reason says so.
+    let big = ok(&mut a, "doc_new", json!({ "text": "x".repeat(5000) }))["id"].as_u64().expect("id");
+    let refused = err(&mut a, "doc_replace", json!({ "id": big, "pattern": "x", "replacement": "y".repeat(4000) }));
+    assert!(refused.contains("16 MiB") && refused.contains("nothing was replaced"), "{refused}");
 }
 
 #[test]

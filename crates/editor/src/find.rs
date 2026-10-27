@@ -102,16 +102,28 @@ impl Matcher {
     }
 
     /// Every match inside `within` (at most `limit`), and whether there were more. A match is inside when it lies entirely between the
-    /// ends; the text around is still the whole text. An empty match (a pattern such as `a*`) counts.
+    /// ends; the text around is still the whole text. An empty match (a pattern such as `a*`) counts. The search starts at the start of
+    /// `within`, so a match before it that would overlap the first one inside is no obstacle.
     pub fn find_all(&self, text: &str, within: Range<usize>, limit: usize) -> (Vec<Range<usize>>, bool) {
         let end = floor_boundary(text, within.end);
-        let start = ceil_boundary(text, within.start);
+        let mut at = ceil_boundary(text, within.start);
         let mut found = Vec::new();
-        for m in self.regex.find_iter(text).skip_while(|m| m.start() < start).take_while(|m| m.end() <= end) {
-            if found.len() >= limit {
-                return (found, true);
+        let mut last_end: Option<usize> = None;
+        while at <= end {
+            let Some(m) = self.regex.find_at(text, at) else { break };
+            if m.end() > end {
+                break;
             }
-            found.push(m.range());
+            // As `Regex::find_iter` does it: an empty match where the match before ended is not a match of its own.
+            let skipped = m.is_empty() && last_end == Some(m.end());
+            if !skipped {
+                if found.len() >= limit {
+                    return (found, true);
+                }
+                found.push(m.range());
+            }
+            last_end = Some(m.end());
+            at = if m.is_empty() { next_boundary(text, m.end()).unwrap_or(usize::MAX) } else { m.end() };
         }
         (found, false)
     }
@@ -130,13 +142,13 @@ impl Matcher {
         out
     }
 
-    /// The edits that replace every match inside `within` (at most `limit`; more is `None`: better none than half). Also `None` when
-    /// the replacements together would be more than [`MAX_REPLACED_BYTES`], so that a long replacement over many matches cannot
-    /// exhaust memory.
-    pub fn replace_all(&self, text: &str, within: Range<usize>, replacement: &str, limit: usize) -> Option<Vec<Edit>> {
+    /// The edits that replace every match inside `within`, unless there are more than `limit` of them (better none than half) or the
+    /// replacements together would be more than [`MAX_REPLACED_BYTES`], so that a long replacement over many matches cannot exhaust
+    /// memory.
+    pub fn replace_all(&self, text: &str, within: Range<usize>, replacement: &str, limit: usize) -> Result<Vec<Edit>, Refused> {
         let (matches, more) = self.find_all(text, within, limit);
         if more {
-            return None;
+            return Err(Refused::TooManyMatches);
         }
         let mut total = 0usize;
         let mut edits = Vec::with_capacity(matches.len());
@@ -144,13 +156,33 @@ impl Matcher {
             let with = self.expand(text, &range, replacement);
             total = total.saturating_add(with.len());
             if total > MAX_REPLACED_BYTES {
-                return None;
+                return Err(Refused::TooMuchText);
             }
             edits.push(Edit::replace(range, with));
         }
-        Some(edits)
+        Ok(edits)
     }
 }
+
+/// Why a replace-all was not done (nothing is changed then).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refused {
+    /// More than [`MAX_MATCHES`] matches.
+    TooManyMatches,
+    /// The replacements would add up to more than [`MAX_REPLACED_BYTES`].
+    TooMuchText,
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Refused::TooManyMatches => write!(f, "more than {MAX_MATCHES} matches"),
+            Refused::TooMuchText => write!(f, "the replacements would be more than {} MiB", MAX_REPLACED_BYTES / (1024 * 1024)),
+        }
+    }
+}
+
+impl std::error::Error for Refused {}
 
 /// How many matches select-all and replace-all will deal with at once.
 pub const MAX_MATCHES: usize = 10_000;
@@ -228,8 +260,8 @@ impl Editor {
     }
 
     /// Replace every match (in the primary selection when `in_selection` and it is not empty) as one undoable step. Returns how many were
-    /// replaced, or `None` when there are more than [`MAX_MATCHES`] (nothing is changed then).
-    pub fn replace_all(&mut self, matcher: &Matcher, replacement: &str, in_selection: bool) -> Option<usize> {
+    /// replaced, or why not (nothing is changed then): more than [`MAX_MATCHES`] matches, or more than [`MAX_REPLACED_BYTES`] to write.
+    pub fn replace_all(&mut self, matcher: &Matcher, replacement: &str, in_selection: bool) -> Result<usize, Refused> {
         let text = self.text();
         let selection = self.primary();
         let within = if in_selection && !selection.is_empty() { selection.start()..selection.end() } else { 0..text.len() };
@@ -238,7 +270,7 @@ impl Editor {
         if count > 0 {
             self.apply_edits(&edits);
         }
-        Some(count)
+        Ok(count)
     }
 
     /// Put a caret on every match, selecting each; the last is the primary. Returns how many, or `None` when there are more than
@@ -392,7 +424,22 @@ mod tests {
         assert_eq!(m.find_last(text, 1), None);
         assert_eq!(m.find_all(text, 2..8, 10).0, [3..5, 6..8]);
         assert_eq!(m.find_all(text, 0..8, 2), (vec![0..2, 3..5], true), "the limit, and that there were more");
-        assert_eq!(m.replace_all(text, 0..8, "X", 2), None, "too many to replace safely");
+        assert_eq!(m.replace_all(text, 0..8, "X", 2), Err(Refused::TooManyMatches), "too many to replace safely");
+    }
+
+    #[test]
+    fn a_range_is_searched_from_its_start_whatever_overlaps_before_it() {
+        let m = matcher("aba");
+        // The match at 0..3 overlaps the one at 2..5: a search of the whole text does not see the second, a search from 2 does.
+        assert_eq!(m.find_all("ababa", 0..5, 10).0, [0..3]);
+        assert_eq!(m.find_all("ababa", 2..5, 10).0, [2..5]);
+        assert_eq!(m.find_all("ababa", 1..5, 10).0, [2..5]);
+        // What is around the range is still there for the anchors and word boundaries.
+        let word = Matcher::new(&Query { pattern: "ab".into(), regex: false, case_sensitive: true, whole_word: true }).expect("ok");
+        assert_eq!(word.find_all("xab ab", 1..6, 10).0, [4..6], "`ab` at 1 is in the middle of a word");
+        let line = Matcher::new(&Query { pattern: "^b".into(), regex: true, case_sensitive: true, whole_word: false }).expect("ok");
+        assert_eq!(line.find_all("ab\nb", 1..4, 10).0, [3..4]);
+        assert_eq!(line.find_all("ab\nb", 0..2, 10).0, Vec::<Range<usize>>::new());
     }
 
     #[test]
@@ -454,20 +501,20 @@ mod tests {
         e.undo();
         assert_eq!(e.text(), "X-a-a", "one replacement is one undo step");
         e.set_selection(0, 3);
-        assert_eq!(e.replace_all(&m, "Q", true), Some(1), "only inside the selection: `X-a`");
+        assert_eq!(e.replace_all(&m, "Q", true), Ok(1), "only inside the selection: `X-a`");
         assert_eq!(e.text(), "X-Q-a");
-        assert_eq!(e.replace_all(&m, "Q", false), Some(1));
+        assert_eq!(e.replace_all(&m, "Q", false), Ok(1));
         assert_eq!(e.text(), "X-Q-Q");
         e.undo();
         assert_eq!(e.text(), "X-Q-a", "replace all is one step too");
-        assert_eq!(e.replace_all(&matcher("nothing"), "Q", false), Some(0));
+        assert_eq!(e.replace_all(&matcher("nothing"), "Q", false), Ok(0));
     }
 
     #[test]
     fn regular_expression_replacements_use_groups() {
         let mut e = Editor::new("<a x=\"1\"/><b x=\"2\"/>");
         let m = Matcher::new(&Query { pattern: r#"x="(\d)""#.into(), regex: true, case_sensitive: true, whole_word: false }).expect("ok");
-        assert_eq!(e.replace_all(&m, "n=\"$1$1\"", false), Some(2));
+        assert_eq!(e.replace_all(&m, "n=\"$1$1\"", false), Ok(2));
         assert_eq!(e.text(), "<a n=\"11\"/><b n=\"22\"/>");
     }
 
@@ -514,21 +561,25 @@ mod tests {
     fn a_long_replacement_over_many_matches_is_refused_before_it_is_built() {
         let mut e = Editor::new(&"x".repeat(MAX_MATCHES));
         let long = "y".repeat(4096); // 10,000 of these are 40 MB
-        assert_eq!(e.replace_all(&matcher("x"), &long, false), None);
+        assert_eq!(e.replace_all(&matcher("x"), &long, false), Err(Refused::TooMuchText));
         assert_eq!(e.text(), "x".repeat(MAX_MATCHES), "nothing changed");
-        assert_eq!(e.replace_all(&matcher("x"), "yy", false), Some(MAX_MATCHES));
+        assert_eq!(e.replace_all(&matcher("x"), "yy", false), Ok(MAX_MATCHES));
+        let mut many = Editor::new(&"x".repeat(MAX_MATCHES + 1));
+        assert_eq!(many.replace_all(&matcher("x"), "y", false), Err(Refused::TooManyMatches));
+        assert_eq!(many.text(), "x".repeat(MAX_MATCHES + 1), "nothing changed");
+        assert_ne!(Refused::TooManyMatches.to_string(), Refused::TooMuchText.to_string(), "the two refusals say different things");
     }
 
     #[test]
     fn replacements_take_the_documents_line_ending() {
         let mut e = Editor::new("a\r\nb\r\nc");
-        assert_eq!(e.replace_all(&matcher("b"), "1\n2", false), Some(1));
+        assert_eq!(e.replace_all(&matcher("b"), "1\n2", false), Ok(1));
         assert_eq!(e.text(), "a\r\n1\r\n2\r\nc", "an LF in the replacement is a CRLF in a CRLF document");
         e.set_selection(0, 1);
         assert!(e.replace_next(&matcher("a"), "x\ny"));
         assert!(e.text().starts_with("x\r\ny\r\n1"), "{:?}", e.text());
         let mut lf = Editor::new("a b");
-        lf.replace_all(&matcher("b"), "1\r\n2", false);
+        assert_eq!(lf.replace_all(&matcher("b"), "1\r\n2", false), Ok(1));
         assert_eq!(lf.text(), "a 1\n2", "and the other way round");
     }
 
@@ -587,6 +638,18 @@ mod tests {
             prop_assert_eq!(all(&m, &text), expected);
             let edits = m.replace_all(&text, 0..text.len(), &replacement, 1000).expect("few");
             prop_assert_eq!(xmlcraft_text::apply_edits(&text, &edits), text.replace(&needle, &replacement));
+        }
+
+        /// Searching the whole text finds exactly what `Regex::find_iter` does, empty matches included.
+        #[test]
+        fn find_all_is_the_regex_crates_iteration(
+            text in "[ab\\n é]{0,30}",
+            pattern in prop::sample::select(vec!["a*", "b", "ab", "a|", "^", "$", "\\b", "a?", "(a|b)*", "é?", "^a|b$", ".", "\\w+", "a*?"]),
+            whole_word in prop::bool::ANY,
+        ) {
+            let m = Matcher::new(&Query { pattern: pattern.to_owned(), regex: true, case_sensitive: true, whole_word }).expect("compiles");
+            let expected: Vec<Range<usize>> = m.regex.find_iter(&text).map(|m| m.range()).collect();
+            prop_assert_eq!(m.find_all(&text, 0..text.len(), usize::MAX).0, expected);
         }
 
         #[test]

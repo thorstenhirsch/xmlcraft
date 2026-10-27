@@ -7,9 +7,10 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use egui::{Key, vec2};
-use xmlcraft_editor::find::{Direction, MAX_MATCHES, Matcher, Query, QueryError};
+use xmlcraft_editor::find::{Direction, MAX_MATCHES, Matcher, Query, QueryError, Refused};
 
 use crate::XmlCraftApp;
+use crate::editor_view::Matches;
 use crate::i18n::{fmt, tl};
 use crate::theme::{self, Tokens};
 use crate::{icons, widgets};
@@ -26,6 +27,8 @@ pub(crate) struct FindStats {
     /// The matches (at most [`MAX_MATCHES`]), in order, and whether there were more.
     matches: Arc<Vec<Range<usize>>>,
     more: bool,
+    /// The text was small enough to look through (otherwise `matches` is empty and the bar does not count).
+    counted: bool,
 }
 
 #[derive(Default)]
@@ -61,11 +64,14 @@ impl FindBar {
         self.compiled.as_ref().and_then(|(_, result)| result.as_ref().ok())
     }
 
-    /// The matches of the typed query in this version of this document, if the bar is open and has worked them out: what the editor
-    /// highlights, the same ones the counter counts and Next goes to.
-    pub fn shown_matches(&self, document: u64, version: u64) -> Option<Arc<Vec<Range<usize>>>> {
+    /// What the editor highlights for the typed query in this version of this document, if the bar is open and has worked it out: the
+    /// matches the counter counts and Next goes to, or, in a text too large to count, what each line shown has.
+    pub fn shown_matches(&self, document: u64, version: u64) -> Option<Matches> {
         let stats = self.stats.as_ref().filter(|s| self.open && s.document == document && s.version == version && s.query == self.current_query())?;
-        Some(stats.matches.clone())
+        if stats.counted {
+            return Some(Matches::Ranges(stats.matches.clone()));
+        }
+        self.compiled.as_ref().and_then(|(_, result)| result.as_ref().ok()).map(|matcher| Matches::Lines(matcher.clone()))
     }
 
     /// Why the typed query cannot be used (not for an empty one: that is just no search).
@@ -133,9 +139,13 @@ impl XmlCraftApp {
         let replacement = self.find.replacement.clone();
         let Some(doc) = self.session.active_document_mut() else { return };
         self.status = match doc.editor_mut().replace_all(&matcher, &replacement, false) {
-            Some(0) => fmt(tl!("No matches for “{text}”"), &[("text", &self.find.query)]),
-            Some(n) => fmt(tl!("Replaced {n} matches"), &[("n", &n.to_string())]),
-            None => fmt(tl!("More than {n} matches: nothing was replaced"), &[("n", &MAX_MATCHES.to_string())]),
+            Ok(0) => fmt(tl!("No matches for “{text}”"), &[("text", &self.find.query)]),
+            Ok(n) => fmt(tl!("Replaced {n} matches"), &[("n", &n.to_string())]),
+            Err(Refused::TooManyMatches) => fmt(tl!("More than {n} matches: nothing was replaced"), &[("n", &MAX_MATCHES.to_string())]),
+            Err(Refused::TooMuchText) => fmt(
+                tl!("The replacements would be more than {n} MiB: nothing was replaced"),
+                &[("n", &(xmlcraft_editor::find::MAX_REPLACED_BYTES / (1024 * 1024)).to_string())],
+            ),
         };
     }
 
@@ -176,8 +186,9 @@ impl XmlCraftApp {
         let fresh = self.find.stats.as_ref().is_some_and(|s| s.document == document && s.version == version && s.query == query);
         if !fresh {
             let len = doc.editor().buffer().len();
-            let (matches, more) = if len <= COUNT_UP_TO { matcher.find_all(&doc.editor().text(), 0..len, MAX_MATCHES) } else { (Vec::new(), true) };
-            self.find.stats = Some(FindStats { document, version, query, matches: Arc::new(matches), more });
+            let counted = len <= COUNT_UP_TO;
+            let (matches, more) = if counted { matcher.find_all(&doc.editor().text(), 0..len, MAX_MATCHES) } else { (Vec::new(), true) };
+            self.find.stats = Some(FindStats { document, version, query, matches: Arc::new(matches), more, counted });
         }
         let stats = self.find.stats.as_ref()?;
         let selection = doc.editor().primary();
@@ -321,4 +332,30 @@ enum Action {
     Step(Direction),
     Replace,
     ReplaceAll,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[allow(clippy::single_range_in_vec_init)] // a list of ranges with one range in it is what is being compared
+    fn what_the_editor_highlights_depends_on_whether_the_text_could_be_counted() {
+        let mut bar = FindBar { open: true, query: "ab".into(), ..FindBar::default() };
+        assert!(bar.matcher().is_some());
+        let query = bar.current_query();
+        let stats = |counted| FindStats { document: 1, version: 2, query: query.clone(), matches: Arc::new(vec![0..2]), more: false, counted };
+        bar.stats = Some(stats(true));
+        assert!(matches!(bar.shown_matches(1, 2), Some(Matches::Ranges(r)) if *r == vec![0..2]));
+        // Too large to count: the matches are looked for on the lines that are drawn.
+        bar.stats = Some(stats(false));
+        assert!(matches!(bar.shown_matches(1, 2), Some(Matches::Lines(_))));
+        // Never for another version or document, or with the bar closed, or for a query that was changed since.
+        assert!(bar.shown_matches(1, 3).is_none() && bar.shown_matches(2, 2).is_none());
+        bar.query = "abc".into();
+        assert!(bar.shown_matches(1, 2).is_none());
+        bar.query = "ab".into();
+        bar.open = false;
+        assert!(bar.shown_matches(1, 2).is_none());
+    }
 }

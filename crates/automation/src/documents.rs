@@ -210,7 +210,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             name: "doc_replace",
             title: "Replace text",
             description: "Replace every match of a text or regular expression in an open document, as one undoable step. In a regular expression the replacement may use \
-                          $1 or ${name} for groups ($$ is a dollar sign). Nothing is changed when there are more than 10000 matches.",
+                          $1 or ${name} for groups ($$ is a dollar sign). Nothing is changed when there are more than 10000 matches or the replacements would add up to more than 16 MiB.",
             input_schema: {
                 let mut properties = search_properties();
                 if let Some(map) = properties.as_object_mut() {
@@ -602,11 +602,10 @@ fn doc_replace(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let index = index_of(a, id_arg(args)?)?;
     let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
     let replacement = text_arg(args, "replacement").unwrap_or_default();
-    let Some(count) = doc.editor_mut().replace_all(&matcher, replacement, false) else {
-        return fail(format!(
-            "more than {MAX_MATCHES} matches, or more than the replacements may add up to: nothing was replaced (make the pattern narrower)"
-        ));
-    };
+    let count = doc
+        .editor_mut()
+        .replace_all(&matcher, replacement, false)
+        .map_err(|refused| ToolError::Failed(format!("{refused}: nothing was replaced (make the pattern narrower)")))?;
     json_result(json!({ "replaced": count, "document": describe(doc) }))
 }
 

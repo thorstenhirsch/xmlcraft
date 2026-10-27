@@ -58,12 +58,12 @@ fn the_find_bar_finds_counts_and_steps_through_matches() {
     assert_eq!(selections(&h), first, "Shift+Enter comes back");
     assert!(h.query_by_label("1 of 5").is_some());
     // The commands step the same way: Shift+F3 from the first match wraps round to the last one.
-    assert!(h.state_mut().execute("edit.find_previous"));
+    h.key_press_modifiers(Modifiers::SHIFT, Key::F3);
     h.run_steps(3);
     let last = BOOKS.rfind("book").expect("there");
     assert_eq!(selections(&h), [(last, last + 4)], "backwards from the first match: the last one, in the closing tag");
     assert_eq!(counter(&h).as_deref(), Some("5 of 5"));
-    assert!(h.state_mut().execute("edit.find_previous"));
+    h.key_press_modifiers(Modifiers::SHIFT, Key::F3);
     h.run_steps(3);
     assert_eq!(counter(&h).as_deref(), Some("4 of 5"));
     // Escape closes the bar and gives the text the keyboard.
@@ -113,14 +113,14 @@ fn a_selection_becomes_the_search_and_f3_goes_on_without_the_bar() {
     h.run_steps(3);
     assert!(h.query_by_label("Find").is_none(), "the bar is closed");
     h.state_mut().session.active_document_mut().expect("shown").editor_mut().set_selection(0, 0);
-    assert!(h.state_mut().execute("edit.find_next"));
+    h.key_press(Key::F3);
     h.run_steps(2);
-    assert_eq!(selections(&h), [(at, at + 8)], "the retained query finds the next match");
+    assert_eq!(selections(&h), [(at, at + 8)], "F3 finds the next match of the retained query");
     assert!(h.query_by_label("Find").is_none(), "F3 does not bring the bar back when there is a query");
     h.state_mut().session.active_document_mut().expect("shown").editor_mut().set_selection(BOOKS.len(), BOOKS.len());
-    assert!(h.state_mut().execute("edit.find_previous"));
+    h.key_press_modifiers(Modifiers::SHIFT, Key::F3);
     h.run_steps(2);
-    assert_eq!(selections(&h), [(at, at + 8)], "backwards from the end: the same, only, match");
+    assert_eq!(selections(&h), [(at, at + 8)], "Shift+F3 goes backwards from the end: the same, only, match");
     assert!(h.query_by_label("Find").is_none());
 }
 
@@ -149,13 +149,62 @@ fn replace_one_and_replace_all() {
 }
 
 #[test]
+fn replace_all_says_which_limit_stopped_it() {
+    let mut h = shell_with(&"x".repeat(10_001));
+    h.state_mut().execute("edit.replace");
+    h.run_steps(3);
+    h.get_by_label("Find").type_text("x");
+    h.get_by_label("Replace with").focus();
+    h.run_steps(2);
+    h.get_by_label("Replace with").type_text("y");
+    h.run_steps(3);
+    h.get_by_label("Replace All").click();
+    h.run_steps(3);
+    assert_eq!(h.state().status, "More than 10000 matches: nothing was replaced");
+    assert_eq!(text(&h), "x".repeat(10_001), "nothing changed");
+    // Few matches, but together more than may be written.
+    let mut h = shell_with(&"x".repeat(5000));
+    h.state_mut().execute("edit.replace");
+    h.run_steps(3);
+    h.get_by_label("Find").type_text("x");
+    h.get_by_label("Replace with").focus();
+    h.run_steps(2);
+    h.get_by_label("Replace with").type_text(&"y".repeat(4000));
+    h.run_steps(3);
+    h.get_by_label("Replace All").click();
+    h.run_steps(3);
+    assert_eq!(h.state().status, "The replacements would be more than 16 MiB: nothing was replaced");
+    assert_eq!(text(&h), "x".repeat(5000), "nothing changed");
+}
+
+#[test]
+fn a_text_too_large_to_count_is_still_searched_and_stepped_through() {
+    // Over 4 MiB: the bar does not read the whole text after every edit, so it does not count; it still finds and goes to matches.
+    let filler = "<row>filler text to make the document big</row>\n".repeat(100_000);
+    let text = format!("<rows>\n{filler}<hit>needle</hit>\n</rows>\n");
+    assert!(text.len() > 4 * 1024 * 1024);
+    let mut h = shell_with(&text);
+    h.state_mut().execute("edit.find");
+    h.run_steps(3);
+    h.get_by_label("Find").type_text("needle");
+    h.run_steps(3);
+    assert!(h.query_by_label("Too large to count").is_some(), "no counter for a text this size");
+    let at = text.find("needle").expect("there");
+    assert_eq!(selections(&h), [(at, at + 6)], "the match is found, and selected");
+    h.state_mut().session.active_document_mut().expect("shown").editor_mut().set_selection(0, 0);
+    h.key_press(Key::F3);
+    h.run_steps(2);
+    assert_eq!(selections(&h), [(at, at + 6)], "F3 goes to it");
+}
+
+#[test]
 fn control_d_adds_the_next_occurrence_and_typing_changes_all_of_them() {
     let mut h = shell_with("one two one three one");
     h.state_mut().session.active_document_mut().expect("shown").editor_mut().set_selection(1, 1);
-    h.state_mut().execute("edit.select_next_occurrence");
-    h.state_mut().execute("edit.select_next_occurrence");
-    h.state_mut().execute("edit.select_next_occurrence");
-    h.run_steps(2);
+    for _ in 0..3 {
+        h.key_press_modifiers(Modifiers::COMMAND, Key::D);
+        h.run_steps(2);
+    }
     assert_eq!(selections(&h), [(0, 3), (8, 11), (18, 21)]);
     h.get_by_label("XML editor").focus();
     h.run_steps(2);
@@ -164,7 +213,7 @@ fn control_d_adds_the_next_occurrence_and_typing_changes_all_of_them() {
     assert_eq!(text(&h), "1 two 1 three 1");
     // And all at once.
     h.state_mut().session.active_document_mut().expect("shown").editor_mut().set_selection(0, 0);
-    h.state_mut().execute("edit.select_all_occurrences");
+    h.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::L);
     h.run_steps(2);
     assert_eq!(selections(&h).len(), 3, "every `1`");
 }
