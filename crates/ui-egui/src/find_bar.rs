@@ -218,6 +218,8 @@ impl XmlCraftApp {
                     (_, _, true) => String::new(),
                     (Some(message), _, _) => message.clone(),
                     (None, Some((0, false, _)), _) => tl!("No results").to_owned(),
+                    // A text too large to count (it is not read after every edit): matches are still found and highlighted.
+                    (None, Some((0, true, _)), _) => tl!("Too large to count").to_owned(),
                     (None, Some((count, more, current)), _) => {
                         let total = if more { format!("{count}+") } else { count.to_string() };
                         match current {
