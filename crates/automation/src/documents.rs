@@ -190,6 +190,72 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             handler: doc_fold,
         },
         ToolDef {
+            name: "doc_select",
+            title: "Select text",
+            description: "Put the caret of an open document at `line` and `column` (from 1), or select from there to `end_line` and `end_column`. Returns where the selection is.",
+            input_schema: object(
+                json!({
+                    "id": id.clone(),
+                    "line": { "type": "integer", "minimum": 1 },
+                    "column": { "type": "integer", "minimum": 1 },
+                    "end_line": { "type": "integer", "minimum": 1 },
+                    "end_column": { "type": "integer", "minimum": 1 },
+                }),
+                &["id", "line", "column"],
+            ),
+            read_only: false,
+            destructive: false,
+            handler: doc_select,
+        },
+        ToolDef {
+            name: "doc_expand_selection",
+            title: "Expand the selection",
+            description: "Grow the selection of an open document, `times` times (default 1), by what the syntax says: the word, the value, the attribute, the tag, the content of the element, \
+                          the element and the one around it. Starts from `line` and `column` (and `end_line`, `end_column`) when they are given. Returns where the selection is and whether it grew.",
+            input_schema: object(
+                json!({
+                    "id": id.clone(),
+                    "times": { "type": "integer", "minimum": 1, "maximum": 100 },
+                    "line": { "type": "integer", "minimum": 1 },
+                    "column": { "type": "integer", "minimum": 1 },
+                    "end_line": { "type": "integer", "minimum": 1 },
+                    "end_column": { "type": "integer", "minimum": 1 },
+                }),
+                &["id"],
+            ),
+            read_only: false,
+            destructive: false,
+            handler: doc_expand_selection,
+        },
+        ToolDef {
+            name: "doc_shrink_selection",
+            title: "Shrink the selection",
+            description: "Go back one step of doc_expand_selection (not after the text changed or the selection was set another way). Returns where the selection is and whether it shrank.",
+            input_schema: object(json!({ "id": id.clone() }), &["id"]),
+            read_only: false,
+            destructive: false,
+            handler: doc_shrink_selection,
+        },
+        ToolDef {
+            name: "doc_toggle_comment",
+            title: "Comment out or in",
+            description: "Wrap the lines of the selection of an open document in `<!-- -->`, or take the markers off when they are one comment. The selection is the one in the document, or \
+                          `line`, `column` (and `end_line`, `end_column`) when given. Refused, with nothing changed, when the text has `--` in it.",
+            input_schema: object(
+                json!({
+                    "id": id.clone(),
+                    "line": { "type": "integer", "minimum": 1 },
+                    "column": { "type": "integer", "minimum": 1 },
+                    "end_line": { "type": "integer", "minimum": 1 },
+                    "end_column": { "type": "integer", "minimum": 1 },
+                }),
+                &["id"],
+            ),
+            read_only: false,
+            destructive: false,
+            handler: doc_toggle_comment,
+        },
+        ToolDef {
             name: "doc_undo",
             title: "Undo or redo",
             description: "Undo (or, with redo: true, redo) the last change of a document. Returns whether anything was undone.",
@@ -561,6 +627,62 @@ fn place_caret(doc: &mut Document, args: &Value) -> Result<()> {
     let at = offset_from(doc.editor().buffer(), args.get("line").and_then(Value::as_u64), args.get("column").and_then(Value::as_u64), "position")?;
     doc.editor_mut().place_caret(at, false);
     Ok(())
+}
+
+/// Put the selection at `line`/`column` (to `end_line`/`end_column` when those are given), when they are given.
+fn place_selection(doc: &mut Document, args: &Value) -> Result<()> {
+    match (args.get("end_line"), args.get("end_column")) {
+        (None, None) => return place_caret(doc, args),
+        (Some(_), Some(_)) => {}
+        _ => return Err(ToolError::InvalidArgs("end_line and end_column go together: give both, or neither".into())),
+    }
+    let buffer = doc.editor().buffer();
+    let from = offset_from(buffer, args.get("line").and_then(Value::as_u64), args.get("column").and_then(Value::as_u64), "start")?;
+    let to = offset_from(buffer, args.get("end_line").and_then(Value::as_u64), args.get("end_column").and_then(Value::as_u64), "end")?;
+    doc.editor_mut().set_selection(from, to);
+    Ok(())
+}
+
+fn doc_select(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    place_selection(doc, args)?;
+    json_result(json!({ "carets": carets_json(doc) }))
+}
+
+fn doc_expand_selection(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    place_selection(doc, args)?;
+    let times = args.get("times").and_then(Value::as_u64).map_or(1, |t| usize::try_from(t).unwrap_or(1)).min(100);
+    let mut grew = false;
+    for _ in 0..times {
+        grew |= doc.editor_mut().expand_selection();
+    }
+    json_result(json!({ "grew": grew, "carets": carets_json(doc) }))
+}
+
+fn doc_shrink_selection(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    let shrank = doc.editor_mut().shrink_selection();
+    json_result(json!({ "shrank": shrank, "carets": carets_json(doc) }))
+}
+
+fn doc_toggle_comment(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    let before = doc.editor().selections();
+    place_selection(doc, args)?;
+    let changed = match doc.editor_mut().toggle_comment() {
+        Ok(changed) => changed,
+        Err(refused) => {
+            // Nothing is changed: not the text, and not where the selection was either.
+            doc.editor_mut().set_selections(&before);
+            return Err(ToolError::Failed(format!("{refused}: nothing was changed")));
+        }
+    };
+    json_result(json!({ "changed": changed, "carets": carets_json(doc), "document": describe(doc) }))
 }
 
 /// Where the carets of `doc` are, as the tools write positions.

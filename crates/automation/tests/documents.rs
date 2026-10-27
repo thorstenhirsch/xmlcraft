@@ -338,6 +338,46 @@ fn finding_in_a_file_says_when_it_was_not_read_exactly_and_when_a_match_is_cut()
 }
 
 #[test]
+fn comments_and_selections_work_on_the_structure() {
+    let mut a = Automation::new();
+    let text = "<lib>\n  <book id=\"b1\">\n    <t>x</t>\n  </book>\n</lib>\n";
+    let id = ok(&mut a, "doc_new", json!({ "text": text }))["id"].as_u64().expect("id");
+    // Growing from the middle of the value: the word, the value with its quotes, the attribute, the tag.
+    let grown = |a: &mut Automation, times: u64| {
+        let r = ok(a, "doc_expand_selection", json!({ "id": id, "line": 2, "column": 14, "times": times }));
+        let c = &r["carets"][0];
+        (c["start"].as_u64().unwrap_or(0), c["end"].as_u64().unwrap_or(0), r["grew"].as_bool())
+    };
+    let book = text.find("<book").expect("there") as u64;
+    assert_eq!(grown(&mut a, 1), (book + 10, book + 12, Some(true)), "the word `b1`");
+    assert_eq!(grown(&mut a, 2), (book + 9, book + 13, Some(true)), "`\"b1\"`");
+    assert_eq!(grown(&mut a, 3), (book + 6, book + 13, Some(true)), "the attribute `id=\"b1\"`");
+    assert_eq!(grown(&mut a, 4), (book, book + 14, Some(true)), "the start tag");
+    // Going back: the selection steps back through what it was.
+    let r = ok(&mut a, "doc_shrink_selection", json!({ "id": id }));
+    assert_eq!((r["shrank"].as_bool(), r["carets"][0]["start"].as_u64()), (Some(true), Some(book + 6)), "back to the attribute");
+    // A selection set another way cannot be shrunk.
+    ok(&mut a, "doc_select", json!({ "id": id, "line": 1, "column": 1 }));
+    assert_eq!(ok(&mut a, "doc_shrink_selection", json!({ "id": id }))["shrank"], false);
+    // Comments: lines of a selection, one block; again to bring them back; `--` is refused with nothing changed.
+    let done = ok(&mut a, "doc_toggle_comment", json!({ "id": id, "line": 2, "column": 1, "end_line": 4, "end_column": 10 }));
+    assert_eq!(done["changed"], true);
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], "<lib>\n  <!-- <book id=\"b1\">\n    <t>x</t>\n  </book> -->\n</lib>\n");
+    let refused = err(&mut a, "doc_toggle_comment", json!({ "id": id, "line": 1, "column": 1, "end_line": 5, "end_column": 1 }));
+    assert!(refused.contains("--") && refused.contains("nothing was changed"), "{refused}");
+    let placed = ok(&mut a, "doc_select", json!({ "id": id, "line": 3, "column": 2 }));
+    err(&mut a, "doc_toggle_comment", json!({ "id": id, "line": 1, "column": 1, "end_line": 5, "end_column": 1 }));
+    let still = ok(&mut a, "doc_shrink_selection", json!({ "id": id })); // changes nothing: it only says where the selection is
+    assert_eq!(still["carets"], placed["carets"], "a refused call leaves the selection where it was");
+    ok(&mut a, "doc_toggle_comment", json!({ "id": id, "line": 2, "column": 1, "end_line": 4, "end_column": 5 }));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], text);
+    // Bad arguments.
+    assert!(err(&mut a, "doc_select", json!({ "id": id, "line": 1, "column": 1, "end_line": 2 })).contains("go together"));
+    assert!(err(&mut a, "doc_select", json!({ "id": id, "line": 99, "column": 1 })).contains("no line 99"));
+    assert!(err(&mut a, "doc_select", json!({ "id": id, "line": 1 })).contains("doc_select"), "the schema wants a column");
+}
+
+#[test]
 fn what_can_be_folded_is_listed_and_folding_it_hides_lines() {
     let text = "<lib>\n  <book>\n    <t>x</t>\n  </book>\n  <book>\n    <t>y</t>\n  </book>\n</lib>\n";
     let mut a = Automation::new();

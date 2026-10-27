@@ -10,6 +10,8 @@
 //!   over (and a Backspace between an empty pair removes both). Its tags and quotes are read with the lexer of `xmlcraft-syntax` (L1).
 //! - Folds hide stretches of lines ([`Fold`]); the view works in rows ([`Editor::visible_rows`], [`Editor::row_of_line`]), and carets,
 //!   movement and edits keep to the folds.
+//! - [`Editor::toggle_comment`] comments lines out and in; [`Editor::expand_selection`] and [`Editor::shrink_selection`] grow and shrink a
+//!   selection by what the syntax tree says (the word, the value, the attribute, the tag, the content, the element, the one around it).
 //! - [`motion`] has the pure movement functions: by character cluster, by word, by line, by display column.
 //!
 //! The view (`xmlcraft-code-editor`) turns key presses and mouse gestures into calls on the editor and draws what it holds.
@@ -19,8 +21,10 @@ mod editor;
 pub mod find;
 mod folds;
 pub mod motion;
+mod structure;
 mod typing;
 
 pub use caret::Caret;
 pub use editor::{Editor, Motion, Settings};
 pub use folds::{Fold, FoldMap};
+pub use structure::CommentRefused;
