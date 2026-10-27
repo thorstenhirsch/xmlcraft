@@ -588,7 +588,7 @@ mod tests {
         assert_eq!((d.editor().settings().use_tabs, d.editor().settings().indent_size), (false, 4));
         d.editor_mut().place_caret(3, false);
         d.editor_mut().insert_newline();
-        assert!(d.editor().text().starts_with("<a>\r\n\r\n"));
+        assert!(d.editor().text().starts_with("<a>\r\n    \r\n"), "after a start tag: the file's line ending and one more level of its indentation");
         let d = open(b"<a>\n\t<b>\n\t\t<c/>\n\t</b>\n</a>\n");
         assert!(d.editor().settings().use_tabs);
         let d = open(b"<a/>");

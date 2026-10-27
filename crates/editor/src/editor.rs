@@ -29,11 +29,16 @@ pub struct Settings {
     pub eol: Eol,
     /// Typing a quote after `=` in a tag writes the pair and steps over the closing one ([`Editor::type_input`]).
     pub auto_pair: bool,
+    /// Typing `>` that ends a start tag writes the end tag, and `</` is completed ([`Editor::type_input`]).
+    pub auto_close: bool,
+    /// Enter between a start tag and its end tag puts the end tag on a line of its own, and after a start tag indents one more level
+    /// ([`Editor::insert_newline`]).
+    pub smart_indent: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { tab_width: 4, indent_size: 2, use_tabs: false, eol: Eol::Lf, auto_pair: true }
+        Self { tab_width: 4, indent_size: 2, use_tabs: false, eol: Eol::Lf, auto_pair: true, auto_close: true, smart_indent: true }
     }
 }
 
@@ -457,17 +462,57 @@ impl Editor {
         self.commit(planned, carets, EditKind::Other)
     }
 
-    /// Enter: a line break (the document's) followed by the indentation of the line the caret is on, up to the caret.
+    /// Enter: a line break (the document's) followed by the indentation of the line the caret is on, up to the caret. With
+    /// [`Settings::smart_indent`]: after a start tag the new line is indented one level more, and between a start tag and its end tag
+    /// (`<a>|</a>`) there is a line for the content and the end tag goes to a line of its own.
     pub fn insert_newline(&mut self) -> bool {
-        let eol = self.settings.eol.as_str();
-        self.replace_at_carets(EditKind::Other, |this, c| {
-            let buf = &this.buffer;
-            let line = buf.line_of(c.start());
-            let line_start = buf.line_start(line).unwrap_or(0);
-            let indent_end = first_non_blank(buf, line).min(c.start());
-            let indent = buf.slice(line_start..indent_end).unwrap_or_default();
-            Some(Edit::replace(c.start()..c.end(), format!("{eol}{indent}")))
-        })
+        let eol = self.settings.eol.as_str().to_owned();
+        let unit = self.indent_unit();
+        let smart = self.settings.smart_indent;
+        let carets: Vec<Caret> = self.carets.clone();
+        // What to write for each caret, and where the caret is in it.
+        let writes: Vec<(String, usize)> = carets
+            .iter()
+            .map(|c| {
+                let line = self.buffer.line_of(c.start());
+                let line_start = self.buffer.line_start(line).unwrap_or(0);
+                let indent_end = first_non_blank(&self.buffer, line).min(c.start());
+                let indent = self.buffer.slice(line_start..indent_end).unwrap_or_default();
+                let after_start_tag = smart && self.after_start_tag(c.start(), line_start);
+                let before_end_tag = after_start_tag
+                    && c.is_empty()
+                    && self.buffer.slice(c.end()..self.buffer.next_char(self.buffer.next_char(c.end()))).is_ok_and(|s| s == "</");
+                if before_end_tag {
+                    let caret = eol.len() + indent.len() + unit.len();
+                    (format!("{eol}{indent}{unit}{eol}{indent}"), caret)
+                } else if after_start_tag {
+                    let text = format!("{eol}{indent}{unit}");
+                    let caret = text.len();
+                    (text, caret)
+                } else {
+                    let text = format!("{eol}{indent}");
+                    let caret = text.len();
+                    (text, caret)
+                }
+            })
+            .collect();
+        let edits = coalesce(carets.iter().zip(&writes).map(|(c, (text, _))| Edit::replace(c.start()..c.end(), text.clone())).collect());
+        let after: Vec<Caret> =
+            carets.iter().zip(&writes).map(|(c, (_, caret))| Caret::at(map_offset(&edits, c.start(), Bias::Before) + caret)).collect();
+        self.commit(edits, after, EditKind::Other)
+    }
+
+    /// Whether the text just before `offset` on its line (from `line_start`) ends with a start tag that is still open (`<a b="c">`,
+    /// not `</a>`, `<b/>`, a comment, a declaration or a processing instruction), with `offset` in content.
+    fn after_start_tag(&mut self, offset: usize, line_start: usize) -> bool {
+        if self.lexer.mode_at(&self.buffer, offset) != xmlcraft_syntax::Mode::Content {
+            return false;
+        }
+        let Ok(before) = self.buffer.slice(line_start..offset) else { return false };
+        let before = before.trim_end();
+        let Some(tag) = before.strip_suffix('>').and_then(|b| b.rfind('<').map(|at| &b[at..])) else { return false };
+        let name_starts = tag.chars().nth(1).is_some_and(xmlcraft_syntax::is_name_start_char);
+        name_starts && !tag.ends_with('/')
     }
 
     /// Backspace: the selection, or the character cluster before the caret; between the quotes of an empty attribute value, both quotes.
@@ -853,10 +898,10 @@ mod tests {
 
     #[test]
     fn newline_keeps_the_indentation_up_to_the_caret() {
-        let mut e = Editor::new("  <a>\n");
+        let mut e = Editor::new("  abc\n");
         e.set_selection(5, 5);
         e.insert_newline();
-        assert_eq!(at(&e), ("  <a>\n  \n".to_owned(), vec![(8, 8)]));
+        assert_eq!(at(&e), ("  abc\n  \n".to_owned(), vec![(8, 8)]));
         let mut e = ed("\t\tx", 1);
         e.insert_newline();
         assert_eq!(at(&e), ("\t\n\t\tx".to_owned(), vec![(3, 3)]), "only the indentation before the caret is copied");
