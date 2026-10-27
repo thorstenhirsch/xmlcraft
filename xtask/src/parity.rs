@@ -90,6 +90,14 @@ fn quoted_after(src: &str, prefixes: &[&str]) -> HashSet<String> {
     out
 }
 
+/// The files that define tools (`ToolDef { name: "…", … }`): the table itself and the tool modules it collects.
+const TOOL_FILES: &[&str] = &["crates/automation/src/tools.rs", "crates/automation/src/documents.rs"];
+
+/// The names of every tool in the automation table.
+fn tool_names(read: &dyn Fn(&str) -> String) -> HashSet<String> {
+    TOOL_FILES.iter().flat_map(|file| quoted_field(&read(file), "name")).collect()
+}
+
 /// Quoted values of a struct field in a source file: `name: "app_info"` → `app_info`. Whole field names only.
 fn quoted_field(src: &str, field: &str) -> HashSet<String> {
     let pat = format!("{field}:");
@@ -197,7 +205,7 @@ pub fn run(args: &[String]) -> Result<()> {
     // empty registry (and any `shipped` or `partial` feature that names a command or tool is reported).
     let read = |p: &str| std::fs::read_to_string(repo.join(p)).unwrap_or_default();
     let commands = quoted_after(&read("crates/engine/src/commands.rs"), &["c", "ct"]);
-    let tools = quoted_field(&read("crates/automation/src/tools.rs"), "name");
+    let tools = tool_names(&read);
     let errors = validate(&file.features, &commands, &tools, &repo);
 
     // Progress: per tier and per area. N/A tier and `na` status are excluded from percentages.
@@ -295,7 +303,7 @@ mod tests {
         assert!(file.features.len() > 100, "the checklist should cover the whole feature set");
         let read = |p: &str| std::fs::read_to_string(root().join(p)).unwrap_or_default();
         let commands = quoted_after(&read("crates/engine/src/commands.rs"), &["c", "ct"]);
-        let tools = quoted_field(&read("crates/automation/src/tools.rs"), "name");
+        let tools = tool_names(&read);
         let errors = validate(&file.features, &commands, &tools, &root());
         assert!(errors.is_empty(), "{errors:#?}");
     }

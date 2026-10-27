@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc ce82e40e6b149bf50f95aca6098ff56477707c7c6364c5e88d6be6c5332eadd9 # shrinks to src = "<a><a xml:space='default' y='2'><a xml:space='default' y='2'>text<e/></a></a></a>", options = FormatOptions { indent: Spaces(2), eol: Lf, blank_lines: Keep }
+cc 35dc9c9804ad53a8454a77dc6834d93e189d6b3489523751ee144aeb43bde7b0 # shrinks to src = "<a xml:space='default' y='2'><a><e/>&amp;</a></a>"
+cc 5ee7f7c78b96ff15b92a07a7d9193c7f355a947c23056ee2ca2651e147c77c49 # shrinks to src = "<a xml:space=\"preserve\"><a></a> </a>"
+cc 90dc6623fc6438fe59e0f3f1ea7c6ceaff13c3299e08ec953c24c75b24fe78c4 # shrinks to src = "<a><a xml:space=\"preserve\"><a></a></a></a>", options = FormatOptions { indent: Spaces(2), eol: Lf, blank_lines: Keep }

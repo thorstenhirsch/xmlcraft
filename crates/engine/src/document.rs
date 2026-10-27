@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use xmlcraft_editor::{Editor, Settings};
+use xmlcraft_format::{BlankLines, FormatError, FormatOptions, Indent};
 use xmlcraft_syntax::{Lexer, TokenKind};
 use xmlcraft_text::Edit;
 use xmlcraft_text::encoding::{
@@ -243,6 +244,29 @@ impl Document {
         if let Ok(head) = buffer.slice(0..end) {
             self.encoding.declared = declared_encoding_span(&head).and_then(|span| head.get(span).map(str::to_owned));
         }
+    }
+
+    /// How the document is pretty-printed: with the indentation its new lines use and the line ending its text has most of now (the
+    /// one it was opened with, when the text has no line break).
+    pub fn format_options(&self) -> FormatOptions {
+        let settings = self.editor.settings();
+        let indent = if settings.use_tabs { Indent::Tab } else { Indent::Spaces(settings.indent_size) };
+        let endings = self.line_endings();
+        let eol = if endings.total() == 0 { settings.eol } else { endings.dominant() };
+        FormatOptions { indent, eol, blank_lines: BlankLines::Keep }
+    }
+
+    /// Pretty-print the text: only the white space between nodes changes (see `xmlcraft-format`), as one undoable edit. Returns whether
+    /// anything changed. A document that is not well-formed is refused and left as it is.
+    pub fn pretty_print(&mut self) -> Result<bool, FormatError> {
+        let edits = xmlcraft_format::pretty_print(&self.editor.text(), &self.format_options())?;
+        Ok(self.editor.apply_edits(&edits) && !edits.is_empty())
+    }
+
+    /// Remove the white space between nodes that means nothing, as one undoable edit. Returns whether anything changed.
+    pub fn minify(&mut self) -> Result<bool, FormatError> {
+        let edits = xmlcraft_format::minify(&self.editor.text())?;
+        Ok(self.editor.apply_edits(&edits) && !edits.is_empty())
     }
 
     /// The characters the file's encoding cannot hold (the first ones, if there are very many), with where they are in the text.
@@ -577,6 +601,31 @@ mod tests {
         assert!(d.line_endings().is_mixed());
         d.editor_mut().undo();
         assert_eq!((d.line_endings().lf, d.line_endings().crlf), (2, 0), "and so is undoing it");
+    }
+
+    #[test]
+    fn pretty_printing_is_one_undoable_edit_that_follows_the_documents_style() {
+        let mut d = open(b"<a>\r\n    <b><c/></b>\r\n</a>");
+        // The document indents by four spaces and ends its lines with CRLF; that is how it is formatted.
+        assert_eq!(d.pretty_print(), Ok(true));
+        assert_eq!(d.editor().text(), "<a>\r\n    <b>\r\n        <c/>\r\n    </b>\r\n</a>");
+        assert!(d.is_dirty());
+        d.editor_mut().undo();
+        assert_eq!(d.editor().text(), "<a>\r\n    <b><c/></b>\r\n</a>", "one undo puts it all back");
+        assert!(!d.is_dirty(), "and the document is as saved");
+        assert_eq!(d.pretty_print(), Ok(true));
+        assert_eq!(d.pretty_print(), Ok(false), "formatted already: nothing to do, nothing recorded");
+        assert_eq!(d.minify(), Ok(true));
+        assert_eq!(d.editor().text(), "<a><b><c/></b></a>");
+        // Broken markup is refused and the text is untouched.
+        let mut broken = open(b"<a><b></a>");
+        assert!(matches!(broken.pretty_print(), Err(FormatError::NotWellFormed { .. })));
+        assert!(matches!(broken.minify(), Err(FormatError::NotWellFormed { .. })));
+        assert_eq!((broken.editor().text().as_str(), broken.is_dirty()), ("<a><b></a>", false));
+        // Tabs when the document uses them.
+        let mut tabs = open(b"<a>\n\t<b>\n\t\t<c/></b>\n</a><!--x-->");
+        assert_eq!(tabs.pretty_print(), Ok(true));
+        assert_eq!(tabs.editor().text(), "<a>\n\t<b>\n\t\t<c/>\n\t</b>\n</a>\n<!--x-->");
     }
 
     #[test]

@@ -168,6 +168,8 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("edit.select_all", "Select All", EDIT, Some(Shortcut::cmd("A")), Needs::Document, "align-left").sep().not_in_text(),
     c("edit.go_to_line", "Go to Line…", EDIT, Some(Shortcut::cmd("G")), Needs::Document, "align-left").sep(),
     c("xml.check", "Check Well-formedness", XML, Some(Shortcut::key("F7")), Needs::Document, "file-check"),
+    c("xml.pretty_print", "Pretty-print", XML, None, Needs::Document, "wand-sparkles").sep(),
+    c("xml.minify", "Strip White Space", XML, None, Needs::Document, "align-left"),
     c("view.palette", "Find tools and commands…", VIEW, Some(Shortcut::cmd("K")), Nothing, "search"),
     c("view.outline", "Outline", VIEW, None, Nothing, "list-tree").toggle().sep(),
     c("view.entry_helpers", "Entry Helpers", VIEW, None, Nothing, "braces").toggle(),
@@ -256,7 +258,7 @@ mod tests {
             ["file.new", "file.open", "file.save", "file.save_as", "file.revert", "file.close", "file.quit"]
         );
         assert_eq!(in_menu("Edit").map(|c| c.id).collect::<Vec<_>>(), ["edit.undo", "edit.redo", "edit.select_all", "edit.go_to_line"]);
-        assert_eq!(in_menu("XML").map(|c| c.id).collect::<Vec<_>>(), ["xml.check"]);
+        assert_eq!(in_menu("XML").map(|c| c.id).collect::<Vec<_>>(), ["xml.check", "xml.pretty_print", "xml.minify"]);
         assert_eq!(in_menu("Nope").count(), 0);
     }
 

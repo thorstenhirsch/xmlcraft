@@ -122,6 +122,8 @@ impl XmlCraftApp {
                 self.dialog = Some(crate::dialog::Dialog::GoToLine);
             }
             "xml.check" => self.check_now(),
+            "xml.pretty_print" => self.reformat(false),
+            "xml.minify" => self.reformat(true),
             "edit.select_all" => {
                 if let Some(doc) = self.session.active_document_mut() {
                     doc.editor_mut().select_all();
