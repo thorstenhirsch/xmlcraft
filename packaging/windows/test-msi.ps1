@@ -44,10 +44,12 @@ $scopeMessage = 'XmlCraft must be installed for all users. Run setup with admini
 $scopeCondition = Read-Row ('SELECT `Condition` FROM `LaunchCondition` WHERE `Description` = ''' + $scopeMessage + '''') 1
 Assert-Equal $scopeCondition[0] 'ALLUSERS = 1 OR (Installed AND REMOVE = "ALL")' 'launch condition'
 
-# The program and the CLI are installed.
-foreach ($file in @('xmlcraft.exe', 'xmlcraft-cli.exe', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE')) {
-  $row = Read-Row ('SELECT `FileName` FROM `File` WHERE `FileName` LIKE ''%' + $file + '''') 1
-  if (-not $row[0]) { throw "the MSI does not install $file" }
+# The program, the CLI and the licences are installed. The MSI SQL dialect has no LIKE, so the names are read whole; a name is
+# "SHORT|long" when it needs an 8.3 alias.
+$installed = @()
+foreach ($fileRow in (Read-Rows 'SELECT `FileName` FROM `File`' 1)) { $installed += ($fileRow[0] -split '\|')[-1] }
+foreach ($file in @('xmlcraft.exe', 'xmlcraft-cli.exe', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE', 'OFL-Inter.txt', 'OFL-JetBrainsMono.txt', 'LICENSE-lucide.txt')) {
+  if ($installed -cnotcontains $file) { throw "the MSI does not install $file" }
 }
 
 # Plain (non-advertised) shortcuts to xmlcraft.exe, each in its own component; the desktop one is gated by INSTALLDESKTOPSHORTCUT.

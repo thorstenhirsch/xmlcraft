@@ -9,7 +9,7 @@ use xmlcraft_code_editor::{CodeEditor, ViewState};
 use xmlcraft_engine::analysis::{Analysis, analyze};
 use xmlcraft_engine::{Document, SaveError};
 use xmlcraft_platform::files::{self, DiskChange};
-use xmlcraft_text::encoding::{Encoding, Unmappable};
+use xmlcraft_text::encoding::Encoding;
 
 use crate::dialog::Dialog;
 use crate::editor_view::{XmlStyler, editor_colors};
@@ -75,40 +75,45 @@ impl XmlCraftApp {
 
     // --- opening ---------------------------------------------------------------------------------------------------------------
 
-    /// Open the file at `path` and show it. A file that is already open is just shown. Returns whether it is now open.
+    /// Open the file at `path` and show it. A file that is already open is just shown. Returns whether it is now open; if not, the
+    /// reason is shown to the user.
     pub fn open_path(&mut self, path: &Path) -> bool {
-        let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-        let loaded = match files::read_file(&canonical) {
-            Ok(loaded) => loaded,
-            Err(e) => {
-                self.message(
-                    tl!("Couldn't open the file"),
-                    fmt(tl!("{path}: {error}"), &[("path", &path.display().to_string()), ("error", &e.to_string())]),
-                );
-                return false;
-            }
-        };
-        match self.session.open(Some(canonical), &loaded.bytes, Some(loaded.stamp)) {
-            Ok(_) => {
-                self.focus_editor = true;
-                if let Some(doc) = self.session.active_document()
-                    && doc.is_lossy()
-                {
-                    self.status = fmt(
-                        tl!("{name} has bytes that are not valid {encoding}: they are shown as �, and the file cannot be saved over."),
-                        &[("name", doc.name()), ("encoding", doc.encoding().encoding.name())],
-                    );
-                }
-                true
-            }
-            Err(e) => {
-                self.message(
-                    tl!("Couldn't open the file"),
-                    fmt(tl!("{path}: {error}"), &[("path", &path.display().to_string()), ("error", &e.to_string())]),
-                );
+        match self.try_open(path) {
+            Ok(()) => true,
+            Err(reason) => {
+                self.message(tl!("Couldn't open the file"), reason);
                 false
             }
         }
+    }
+
+    /// Open several files (the command line, the Open panel, a drop), each in its own tab. The ones that fail are reported together, in
+    /// one message, instead of each replacing the one before.
+    pub fn open_paths<'p>(&mut self, paths: impl IntoIterator<Item = &'p Path>) {
+        let failures: Vec<String> = paths.into_iter().filter_map(|path| self.try_open(path).err()).collect();
+        match failures.as_slice() {
+            [] => {}
+            [only] => self.message(tl!("Couldn't open the file"), only.clone()),
+            many => self.message(tl!("Couldn't open some of the files"), many.join("\n")),
+        }
+    }
+
+    /// Open one file; the error is the line to show for it.
+    fn try_open(&mut self, path: &Path) -> Result<(), String> {
+        let failed = |e: &dyn std::fmt::Display| fmt(tl!("{path}: {error}"), &[("path", &path.display().to_string()), ("error", &e.to_string())]);
+        let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let loaded = files::read_file(&canonical).map_err(|e| failed(&e))?;
+        self.session.open(Some(canonical), &loaded.bytes, Some(loaded.stamp)).map_err(|e| failed(&e))?;
+        self.focus_editor = true;
+        if let Some(doc) = self.session.active_document()
+            && doc.is_lossy()
+        {
+            self.status = fmt(
+                tl!("{name} has bytes that are not valid {encoding}: they are shown as �, and the file cannot be saved over."),
+                &[("name", doc.name()), ("encoding", doc.encoding().encoding.name())],
+            );
+        }
+        Ok(())
     }
 
     pub(crate) fn new_document(&mut self) {
@@ -119,9 +124,7 @@ impl XmlCraftApp {
     /// Open the files dropped on the window, and show a hint while files are over it.
     pub(crate) fn handle_dropped_files(&mut self, ctx: &egui::Context) {
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
-        for path in dropped {
-            self.open_path(&path);
-        }
+        self.open_paths(dropped.iter().map(PathBuf::as_path));
     }
 
     // --- analysis --------------------------------------------------------------------------------------------------------------
@@ -215,7 +218,14 @@ impl XmlCraftApp {
             return;
         };
         let kind = self.applied.unwrap_or(ThemeKind::Light);
-        let focus = std::mem::take(&mut self.focus_editor);
+        // Not in the frame of a click: egui takes the focus back from the editor at a click that is not on it (a clicked message or
+        // outline entry asks for the editor in that very frame), so the request waits one frame.
+        let focus = self.focus_editor && !ui.input(|i| i.pointer.any_click());
+        if focus {
+            self.focus_editor = false;
+        } else if self.focus_editor {
+            ui.ctx().request_repaint();
+        }
         let tokens = Tokens::get(ui.ctx());
         let colors = editor_colors(&tokens);
         let Some(doc) = self.session.document_mut(index) else { return };
@@ -291,20 +301,20 @@ impl XmlCraftApp {
             None => {
                 self.pick_save_as(ctx, id, then);
             }
-            Some(_) if !doc.can_overwrite_source() => self.dialog = Some(Dialog::Lossy { id }),
-            Some(path) => self.write_document(ctx, id, path, Unmappable::Refuse, false, then),
+            Some(_) if !doc.can_overwrite_source() => self.dialog = Some(Dialog::Lossy { id, then }),
+            Some(path) => self.write_document(ctx, id, path, false, then),
         }
     }
 
-    /// Save a document under the name the user chose. Replacing a file that is not the document's own is the panel's question
-    /// (the native panel asks before replacing).
+    /// Save a document under the name the user chose. Replacing a file that is not the document's own is the panel's question (the
+    /// native panel asks before replacing); when the name is the document's own file, the check for outside changes still applies.
     pub(crate) fn save_document_as(&mut self, ctx: &egui::Context, id: u64, path: PathBuf, then: Option<AfterClose>) {
-        self.write_document(ctx, id, path, Unmappable::Refuse, true, then);
+        self.write_document(ctx, id, path, false, then);
     }
 
-    /// Write the document to `path`. `force` skips the check that the file changed on disk since it was read (the user said to, or the
-    /// file is a different one).
-    pub(crate) fn write_document(&mut self, ctx: &egui::Context, id: u64, path: PathBuf, policy: Unmappable, force: bool, then: Option<AfterClose>) {
+    /// Write the document to `path`. Unless `force` (the user said to overwrite), a file that is the document's own and changed on disk
+    /// since it was read is not replaced without asking.
+    pub(crate) fn write_document(&mut self, ctx: &egui::Context, id: u64, path: PathBuf, force: bool, then: Option<AfterClose>) {
         let Some(index) = self.session.position_of(id) else { return };
         let Some(doc) = self.session.document(index) else { return };
         let same_file = doc.path() == Some(path.as_path());
@@ -317,14 +327,14 @@ impl XmlCraftApp {
             self.dialog = Some(Dialog::OverwriteChanged { id, path, then });
             return;
         }
-        let bytes = match doc.to_bytes(policy) {
+        let bytes = match doc.to_bytes() {
             Ok(bytes) => bytes,
             Err(SaveError::Unmappable(error)) => {
                 self.dialog = Some(Dialog::Unmappable { id, path, then, character: error.ch });
                 return;
             }
             Err(SaveError::Lossy) => {
-                self.dialog = Some(Dialog::Lossy { id });
+                self.dialog = Some(Dialog::Lossy { id, then });
                 return;
             }
         };
@@ -358,12 +368,37 @@ impl XmlCraftApp {
         }
     }
 
-    /// Save as UTF-8 when the document's encoding cannot hold a character.
+    /// Save as UTF-8 when the document's encoding cannot hold a character. (The XML declaration is brought in line with an edit.) The
+    /// check for outside changes still applies: the user answered the encoding question, not that one.
     pub(crate) fn change_encoding_and_write(&mut self, ctx: &egui::Context, id: u64, path: PathBuf, then: Option<AfterClose>) {
         if let Some(doc) = self.session.position_of(id).and_then(|i| self.session.document_mut(i)) {
             doc.set_encoding(Encoding::UTF_8, false);
         }
-        self.write_document(ctx, id, path, Unmappable::Refuse, true, then);
+        self.write_document(ctx, id, path, false, then);
+    }
+
+    /// Replace the characters the encoding cannot hold by character references in the text, then write. Where a reference would not
+    /// mean the same (a comment, a CDATA section, a processing instruction, a name) nothing is changed and the user is told which
+    /// character it is.
+    pub(crate) fn write_with_references(&mut self, ctx: &egui::Context, id: u64, path: PathBuf, then: Option<AfterClose>) {
+        let Some(doc) = self.session.position_of(id).and_then(|i| self.session.document_mut(i)) else { return };
+        match doc.apply_character_references() {
+            Ok(_) => self.write_document(ctx, id, path, false, then),
+            Err(error) => {
+                let (character, line) = match &error {
+                    SaveError::Unmappable(e) => (e.ch, doc.editor().buffer().line_of(e.offset) + 1),
+                    SaveError::Lossy => ('\u{FFFD}', 0),
+                };
+                self.quitting = false;
+                self.message(
+                    tl!("A character reference won't do here"),
+                    fmt(
+                        tl!("The character '{character}' (U+{code}) on line {line} cannot be written in this file's encoding, and it is in a comment, a CDATA section, a processing instruction or a name, where a character reference would not mean the same. Save the file as UTF-8 instead."),
+                        &[("character", &character.to_string()), ("code", &format!("{:04X}", u32::from(character))), ("line", &line.to_string())],
+                    ),
+                );
+            }
+        }
     }
 
     // --- reverting and outside changes -----------------------------------------------------------------------------------------
@@ -415,7 +450,7 @@ impl XmlCraftApp {
                 DiskChange::Unchanged => {}
                 DiskChange::Modified => changed.push((doc.id(), doc.is_dirty())),
                 DiskChange::Missing => {
-                    self.status = fmt(tl!("{name} is no longer on disk. Saving will write it again."), &[("name", doc.name())]);
+                    self.status = fmt(tl!("{name} can't be found or read on disk any more. Saving will write it again."), &[("name", doc.name())]);
                 }
             }
         }

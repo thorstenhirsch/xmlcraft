@@ -19,6 +19,8 @@
 //! - `ui.focus {id}` | `{label}`: focus one enabled widget through its AccessKit action.
 //! - `ui.type {text}`, `ui.key {key, modifiers?}`, `ui.move {x, y}`: keyboard and pointer input.
 //! - `ui.command {id}`: run a registry command (as the menu would). `ui.commands` lists them.
+//! - `ui.open {path}`: open a file in a tab (`{opened, active}`), or the reason it could not be opened.
+//! - `ui.document_text {index?}`: the name and text of a document (the one shown when `index` is left out).
 //! - `ui.resize {width, height}`: request a native window size (320–8192 logical points per dimension).
 //! - `ui.quit {}`: normal native exit, or `quitting: false, needs_confirmation: true` when a document has unsaved changes.
 //! - `ui.screenshot {region?}`: PNG of the window (base64), optionally cropped to a rect.
@@ -283,7 +285,15 @@ impl Control {
             }
             "ui.document_text" => {
                 only_params(p, method, &["index"])?;
-                let index = p.get("index").and_then(Value::as_u64).map(|i| i as usize);
+                let index = match p.get("index") {
+                    None => None,
+                    Some(value) => Some(
+                        value
+                            .as_u64()
+                            .and_then(|i| usize::try_from(i).ok())
+                            .ok_or_else(|| "ui.document_text: index must be a non-negative integer".to_owned())?,
+                    ),
+                };
                 Ok(Handled::Now(host.document_text(index)))
             }
             "ui.command" => {
@@ -360,7 +370,7 @@ impl Control {
                 Ok(Handled::Screenshot(region))
             }
             other => Err(format!(
-                "unknown method {other:?} (ui.state, ui.inspect, ui.click, ui.focus, ui.resize, ui.quit, ui.move, ui.type, ui.key, ui.command, ui.commands, ui.screenshot)"
+                "unknown method {other:?} (ui.state, ui.inspect, ui.click, ui.focus, ui.resize, ui.quit, ui.move, ui.type, ui.key, ui.command, ui.commands, ui.open, ui.document_text, ui.screenshot)"
             )),
         })();
         r.unwrap_or_else(|e| Handled::Now(Err(e)))
@@ -678,7 +688,12 @@ impl Host for crate::XmlCraftApp {
         if self.open_path(std::path::Path::new(path)) {
             Ok(json!({ "opened": path, "active": self.active() }))
         } else {
-            Err(format!("could not open {path}: {}", self.status))
+            // `open_path` tells the user in a message; that is also the reason to give back.
+            let reason = match &self.dialog {
+                Some(crate::dialog::Dialog::Message { text, .. }) => text.clone(),
+                _ => self.status.clone(),
+            };
+            Err(format!("could not open {path}: {reason}"))
         }
     }
 

@@ -205,7 +205,8 @@ fn outline_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     };
     let caret = doc.editor().primary().head();
     egui::Frame::NONE.inner_margin(egui::Margin { left: 12, right: 12, top: 0, bottom: 6 }).show(ui, |ui| {
-        ui.add(egui::TextEdit::singleline(&mut app.outline_filter).hint_text(tl!("Filter elements")).desired_width(f32::INFINITY));
+        let filter = ui.add(egui::TextEdit::singleline(&mut app.outline_filter).hint_text(tl!("Filter elements")).desired_width(f32::INFINITY));
+        widgets::name_for_assistive_technology(ui, &filter, tl!("Filter elements"));
     });
     let Some(analysis) = app.active_analysis() else {
         widgets::empty_state(ui, 12.0, tl!("Reading the document…"), "");

@@ -1,9 +1,9 @@
 name: Conformance
 
-# The W3C and OASIS conformance suites against XmlCraft, with the ratchet in xtask/baselines/: a new failure fails the run, and so does a
-# fixed test that is still listed. The suites are fetched (pinned by URL and SHA-256) into the ignored conformance/ directory, which is
-# why this is its own workflow: the gate in ci.yml skips them when they are not there. Weekly, by hand, and when the ratchet or the runner
-# changes.
+# The W3C XML conformance suite (xmlconf) against XmlCraft, with the ratchet in xtask/baselines/: a new failure fails the run, and so does
+# a fixed test that is still listed. The suite is fetched (pinned by URL and SHA-256) into the ignored conformance/ directory, which is
+# why this is its own workflow: the gate in ci.yml skips it when it is not there. Weekly, by hand, and when the ratchet, the runner or
+# the code under test (the parser and the text layer) changes. More suites are added here as they land.
 on:
   workflow_dispatch:
   schedule:
@@ -12,6 +12,10 @@ on:
     paths:
       - "xtask/src/conformance.rs"
       - "xtask/baselines/**"
+      - "crates/syntax/**"
+      - "crates/text/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
       - ".github/workflows/conformance.yml"
 
 permissions:

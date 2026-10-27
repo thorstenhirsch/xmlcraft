@@ -56,15 +56,20 @@ fn main() -> Result<(), String> {
         if let Some(theme) = theme {
             app.theme_preference = theme;
         }
+        // The document index of each tab named: a repeated name is the same document (the session opens a file once), so `--active N`
+        // goes through this list rather than counting tabs.
+        let mut documents: Vec<Option<usize>> = Vec::new();
         for tab in &tabs {
-            if app.session.open(Some(std::path::PathBuf::from(&tab.name)), b"", None).is_ok()
+            let opened = app.session.open(Some(std::path::PathBuf::from(&tab.name)), b"", None).ok();
+            if opened.is_some()
                 && tab.dirty
                 && let Some(doc) = app.session.active_document_mut()
             {
                 doc.editor_mut().type_text(" ");
             }
+            documents.push(opened);
         }
-        app.session.set_active(active.filter(|i| *i < tabs.len()));
+        app.session.set_active(active.and_then(|i| documents.get(i).copied().flatten()));
         app
     });
     // Let fonts install and layout settle; hover and press washes ease for a moment.

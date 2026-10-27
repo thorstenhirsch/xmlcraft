@@ -126,6 +126,7 @@ impl LineLayout {
                 c if c.is_control() => {
                     text_out.push('\u{B7}');
                     laid_out_chars += 1;
+                    column += char_width(c, column, tab);
                 }
                 c => {
                     text_out.push(c);
@@ -256,5 +257,32 @@ mod tests {
             assert_eq!(layout.byte_at_x(10_000.0), 3, "past the end: the end");
         });
         output.textures_delta.clear();
+    }
+
+    /// Lay `text` out headless (the first frame of a throwaway context has the default fonts).
+    fn layout(text: &str) -> LineLayout {
+        let ctx = egui::Context::default();
+        let mut out = None;
+        let font = FontId::monospace(13.0);
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let params = LayoutParams { font: &font, color: Color32::BLACK, tab_width: 4, column_width: 8.0, spans: &[] };
+            out = Some(LineLayout::new(ui.painter(), text, 0..text.chars().count(), &params));
+        });
+        output.textures_delta.clear(); // nothing is painted
+        out.expect("the pass ran")
+    }
+
+    #[test]
+    fn a_control_character_takes_a_column_so_the_tab_after_it_stops_where_the_editor_expects() {
+        // One dot, then a tab to column 4 (three spaces), then `x`.
+        let layout = layout("\u{1}\tx");
+        assert_eq!(layout.laid_out_index, [0, 1, 4, 5]);
+    }
+
+    #[test]
+    fn tabs_and_wide_characters_in_the_layout() {
+        let layout = layout("a\t日\tb");
+        // `a` is column 0; the tab fills columns 1..4; the wide character takes 4..6; the next tab goes to 8; `b` is column 8.
+        assert_eq!(layout.laid_out_index, [0, 1, 4, 5, 7, 8]);
     }
 }

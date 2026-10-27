@@ -54,7 +54,13 @@ fn problems_are_listed_and_a_click_goes_to_them() {
     assert_eq!(h.state().problems(), Some((1, 0)));
     assert!(h.query_by_label("1 errors").is_some());
     let row = h.get_by_label("The end tag </c> does not match the start tag <b>. (Ln 2, Col 6)");
-    row.click();
+    // A pointer delivers the press and the release in frames of their own (egui drops the focus at a press that is not on the focused
+    // widget; the click that follows is what hands the keyboard to the editor).
+    let at = row.rect().center();
+    h.hover_at(at);
+    h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.step();
+    h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(3);
     let doc = h.state().session.active_document().expect("shown");
     let sel = doc.editor().primary().sel;

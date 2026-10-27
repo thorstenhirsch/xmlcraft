@@ -302,3 +302,127 @@ fn undo_and_redo_through_the_menu_commands() {
     h.run_steps(2);
     assert_eq!(h.state().session.active_document().expect("shown").editor().primary().sel.end(), 3);
 }
+
+#[test]
+fn dismissing_the_reload_question_does_not_accept_the_other_programs_change() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = file(dir.path(), "a.xml", b"<a/>");
+    let mut h = shell();
+    open(&mut h, &path);
+    type_text(&mut h, "x");
+    std::fs::write(&path, b"<changed-elsewhere/>").expect("writes");
+    h.state_mut().check_disk_changes();
+    h.run_steps(3);
+    assert!(h.query_by_label("a.xml changed on disk").is_some());
+    // Escape is not a decision: the text stays, and the next save still asks before replacing what the other program wrote.
+    h.key_press(Key::Escape);
+    h.run_steps(3);
+    assert!(h.query_by_label("a.xml changed on disk").is_none(), "the question is closed");
+    assert_eq!(text(&h), "x<a/>");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    h.run_steps(3);
+    assert!(h.query_by_label("a.xml changed on disk").is_some(), "saving asks again");
+    assert_eq!(std::fs::read(&path).expect("reads"), b"<changed-elsewhere/>", "nothing was overwritten");
+    h.get_by_label("Cancel").click();
+    h.run_steps(3);
+    assert_eq!(std::fs::read(&path).expect("reads"), b"<changed-elsewhere/>");
+}
+
+#[test]
+fn save_as_onto_the_documents_own_file_still_checks_for_outside_changes() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = file(dir.path(), "a.xml", b"<a/>");
+    let mut h = shell();
+    open(&mut h, &path);
+    type_text(&mut h, "x");
+    std::fs::write(&path, b"<changed-elsewhere/>").expect("writes");
+    let own = h.state().session.active_document().and_then(|d| d.path()).map(Path::to_path_buf).expect("has a path");
+    h.state_mut().pick_override = Some(vec![own]);
+    h.state_mut().execute("file.save_as");
+    h.run_steps(4);
+    assert!(h.query_by_label("a.xml changed on disk").is_some(), "asked, not overwritten");
+    assert_eq!(std::fs::read(&path).expect("reads"), b"<changed-elsewhere/>");
+}
+
+#[test]
+fn closing_a_file_with_invalid_bytes_through_save_as_still_closes_it() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = file(dir.path(), "bad.xml", b"<a>\xFF</a>");
+    let mut h = shell();
+    open(&mut h, &path);
+    type_text(&mut h, "x");
+    h.state_mut().execute("file.close");
+    h.run_steps(3);
+    h.get_by_label("Save").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("bad.xml cannot be saved over").is_some());
+    let copy = dir.path().join("copy.xml");
+    h.state_mut().pick_override = Some(vec![copy.clone()]);
+    h.get_by_label("Save As…").click();
+    h.run_steps(4);
+    assert!(copy.exists(), "the copy was written");
+    assert!(h.state().tabs().is_empty(), "and the close that asked for the save went on");
+    assert_eq!(std::fs::read(&path).expect("reads"), b"<a>\xFF</a>");
+}
+
+#[test]
+fn quitting_while_another_question_is_open_goes_on_once_it_is_answered() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = file(dir.path(), "a.xml", b"<a/>");
+    let mut h = shell();
+    open(&mut h, &path);
+    type_text(&mut h, "x");
+    assert!(!h.state_mut().open_path(&dir.path().join("missing.xml")));
+    h.run_steps(3);
+    assert!(h.query_by_label("Couldn't open the file").is_some());
+    h.state_mut().execute("file.quit");
+    h.run_steps(3);
+    h.get_by_label("OK").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("Save changes to a.xml?").is_some(), "the quit was not forgotten");
+}
+
+#[test]
+fn several_files_that_cannot_be_opened_are_reported_together() {
+    let dir = tempfile::tempdir().expect("dir");
+    let good = file(dir.path(), "good.xml", b"<a/>");
+    let (one, two) = (dir.path().join("one.xml"), dir.path().join("two.xml"));
+    let mut h = shell();
+    h.state_mut().open_paths([one.as_path(), good.as_path(), two.as_path()]);
+    h.run_steps(3);
+    assert_eq!(h.state().tabs().len(), 1, "the good one opened");
+    assert!(h.query_by_label("Couldn't open some of the files").is_some());
+    for name in ["one.xml", "two.xml"] {
+        assert!(h.query_all_by_label_contains(name).next().is_some(), "{name} is named in the message");
+    }
+}
+
+#[test]
+fn the_status_bar_keeps_what_a_command_says() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = file(dir.path(), "a.xml", b"<a/>");
+    let mut h = shell();
+    open(&mut h, &path);
+    type_text(&mut h, "x");
+    assert!(h.state_mut().execute("file.save"));
+    assert_eq!(h.state().status, "Saved a.xml");
+}
+
+#[test]
+fn a_character_reference_is_not_written_into_a_comment() {
+    let dir = tempfile::tempdir().expect("dir");
+    let original = b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><a><!----></a>";
+    let path = file(dir.path(), "latin.xml", original);
+    let mut h = shell();
+    open(&mut h, &path);
+    let at = text(&h).find("-->").expect("the comment");
+    h.state_mut().session.active_document_mut().expect("shown").editor_mut().set_selection(at, at);
+    type_text(&mut h, "日");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    h.run_steps(3);
+    h.get_by_label("Write character references").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("A character reference won't do here").is_some());
+    assert_eq!(std::fs::read(&path).expect("reads"), original, "nothing was written");
+    assert!(text(&h).contains("<!--日-->"), "and the text was not touched: {}", text(&h));
+}

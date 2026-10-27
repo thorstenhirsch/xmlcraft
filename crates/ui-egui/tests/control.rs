@@ -66,10 +66,24 @@ fn clicking_by_label_does_what_the_user_would() {
     assert_eq!(r["label"], "Display theme: Use system setting");
     h.run_steps(2);
     assert_eq!(h.state().theme_preference, ThemePreference::Light);
-    // A disabled widget cannot be clicked, and an agent is told why: Save in the open menu, with no document to save.
+    // A disabled widget cannot be clicked, and an agent is told why. Save is a command that is off with no document to save: the command
+    // list says so, and so does the click on the menu entry once its submenu is open.
+    let commands = ask(&mut h, &c, "ui.commands", Value::Null).expect("commands");
+    let save = commands["commands"].as_array().and_then(|l| l.iter().find(|c| c["id"] == "file.save")).expect("file.save is listed");
+    assert_eq!(save["enabled"], false, "nothing to save yet");
     ask(&mut h, &c, "ui.click", json!({"label": "Menu"})).expect("opens the menu");
-    h.run_steps(3);
-    let err = ask(&mut h, &c, "ui.click", json!({"label": "Save"})).expect_err("disabled");
+    h.run_steps(6);
+    ask(&mut h, &c, "ui.click", json!({"label": "File ⏵"})).expect("opens the File submenu");
+    h.run_steps(6);
+    let entry = ask(&mut h, &c, "ui.inspect", json!({"query": "Save"})).expect("inspect");
+    let entry = entry["widgets"]
+        .as_array()
+        .and_then(|w| w.iter().find(|w| w["label"].as_str().is_some_and(|l| l.starts_with("Save ") && !l.starts_with("Save As"))))
+        .cloned()
+        .expect("the Save entry is in the open submenu");
+    assert_eq!(entry["enabled"], false, "{entry}");
+    let label = entry["label"].as_str().expect("a label").to_owned();
+    let err = ask(&mut h, &c, "ui.click", json!({"label": label})).expect_err("disabled");
     assert!(err.contains("no enabled clickable widget"), "{err}");
     let err = ask(&mut h, &c, "ui.click", json!({"label": "Nothing like this"})).expect_err("missing");
     assert!(err.contains("ui.inspect"), "{err}");
@@ -161,4 +175,29 @@ fn a_request_after_the_app_is_gone_is_answered_not_lost() {
     drop(h);
     let rx = c.send("ui.state", Value::Null);
     assert_eq!(rx.recv_timeout(std::time::Duration::from_secs(2)), Ok(Err("the app has closed".to_owned())));
+}
+
+#[test]
+fn open_and_document_text_work_on_files_and_refuse_bad_requests() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = dir.path().join("a.xml");
+    std::fs::write(&path, b"<a>hello</a>").expect("writes");
+    let (mut h, c) = shell();
+    let opened = ask(&mut h, &c, "ui.open", json!({"path": path.to_str()})).expect("opens");
+    assert_eq!(opened["active"], 0);
+    let doc = ask(&mut h, &c, "ui.document_text", Value::Null).expect("the shown document");
+    assert_eq!((doc["name"].as_str(), doc["text"].as_str()), (Some("a.xml"), Some("<a>hello</a>")));
+    assert_eq!(ask(&mut h, &c, "ui.document_text", json!({"index": 0})).expect("by index")["text"], "<a>hello</a>");
+    // A missing file says why (the same reason the user is shown), and nothing else is opened.
+    let missing = dir.path().join("missing.xml");
+    let err = ask(&mut h, &c, "ui.open", json!({"path": missing.to_str()})).expect_err("missing");
+    assert!(err.contains("missing.xml") && err.starts_with("could not open"), "{err}");
+    assert!(!err.ends_with(": "), "a reason follows the colon: {err}");
+    assert_eq!(ask(&mut h, &c, "ui.state", Value::Null).expect("state")["tabs"].as_array().map(Vec::len), Some(1));
+    // A bad index is an error, not the shown document's text.
+    for bad in [json!(-1), json!("one"), json!(1.5), json!(null), json!(7)] {
+        let err = ask(&mut h, &c, "ui.document_text", json!({"index": bad.clone()})).expect_err("bad index");
+        assert!(err.contains("index") || err.contains("no such document"), "{bad}: {err}");
+    }
+    assert!(ask(&mut h, &c, "ui.open", json!({})).is_err() && ask(&mut h, &c, "ui.open", json!({"path": path.to_str(), "x": 1})).is_err());
 }

@@ -102,10 +102,20 @@ impl Session {
         index
     }
 
-    /// Open a file from its bytes and show it; a file that is already open is just shown. Returns its index.
+    /// The document that is the file at `path`, whose stamp is `stamp`: the same path, or (where the platform says which file a stamp is
+    /// about) the same file reached by another path, such as through a link or by another spelling.
+    fn position_of_file(&self, path: &std::path::Path, stamp: Option<&FileStamp>) -> Option<usize> {
+        let file_id = stamp.and_then(|s| s.file_id);
+        self.documents
+            .iter()
+            .position(|d| d.path() == Some(path) || file_id.is_some_and(|id| d.path().is_some() && d.stamp().and_then(|s| s.file_id) == Some(id)))
+    }
+
+    /// Open a file from its bytes and show it; a file that is already open (under this path, or another one to the same file) is just
+    /// shown. Returns its index.
     pub fn open(&mut self, path: Option<std::path::PathBuf>, bytes: &[u8], stamp: Option<FileStamp>) -> Result<usize, OpenError> {
         if let Some(path) = &path
-            && let Some(index) = self.documents.iter().position(|d| d.path() == Some(path.as_path()))
+            && let Some(index) = self.position_of_file(path, stamp.as_ref())
         {
             self.active = Some(index);
             return Ok(index);
@@ -123,14 +133,15 @@ impl Session {
             return None;
         }
         let closed = self.documents.remove(index);
-        self.active = match self.active {
-            Some(a) if a == index => index.checked_sub(1).filter(|_| !self.documents.is_empty()).or((!self.documents.is_empty()).then_some(0)),
-            Some(a) if a > index => Some(a - 1),
-            other => other,
+        self.active = if self.documents.is_empty() {
+            None
+        } else {
+            match self.active {
+                Some(a) if a == index => Some(index.saturating_sub(1)), // the left neighbour, or the new first document
+                Some(a) if a > index => Some(a - 1),
+                other => other,
+            }
         };
-        if self.documents.is_empty() {
-            self.active = None;
-        }
         Some(closed)
     }
 }
@@ -188,6 +199,38 @@ mod tests {
         assert!(s.close(1).is_some());
         assert_eq!(s.active(), Some(0));
         assert!(s.close(0).is_some() && s.active().is_none() && s.close(0).is_none());
+    }
+
+    #[test]
+    fn a_file_reached_by_another_path_is_the_same_document() {
+        let stamp = |id: Option<(u64, u64)>| Some(FileStamp { len: 4, modified: None, changed: None, file_id: id });
+        let mut s = Session::new();
+        let first = s.open(Some("/x/a.xml".into()), b"<a/>", stamp(Some((1, 77)))).expect("opens");
+        // Another spelling (a link, a different folder name for the same one): the same file, the same document.
+        assert_eq!(s.open(Some("/x/link/../a.xml".into()), b"<a/>", stamp(Some((1, 77)))), Ok(first));
+        assert_eq!(s.documents().len(), 1);
+        // A different file, or one the platform cannot identify, is a document of its own.
+        assert_eq!(s.open(Some("/x/b.xml".into()), b"<b/>", stamp(Some((1, 78)))), Ok(1));
+        assert_eq!(s.open(Some("/x/other/a.xml".into()), b"<c/>", stamp(None)), Ok(2));
+        assert_eq!(s.documents().len(), 3);
+        // An untitled document has no file, and never matches one.
+        let untitled = s.new_document();
+        assert_eq!(s.open(Some("/y/c.xml".into()), b"<c/>", stamp(Some((1, 77)))), Ok(first));
+        assert_eq!(s.document(untitled).map(|d| d.path().is_none()), Some(true));
+    }
+
+    #[test]
+    fn closing_the_first_tab_shows_the_next_one() {
+        let mut s = Session::new();
+        for _ in 0..3 {
+            s.new_document();
+        }
+        s.set_active(Some(0));
+        assert!(s.close(0).is_some());
+        assert_eq!((s.active(), s.documents().len()), (Some(0), 2), "the old second tab is now the first and shown");
+        s.set_active(Some(1));
+        assert!(s.close(1).is_some());
+        assert_eq!(s.active(), Some(0), "the left neighbour");
     }
 
     #[test]

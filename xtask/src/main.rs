@@ -15,7 +15,7 @@ mod version;
 type Command = fn(&[String]) -> anyhow::Result<()>;
 
 /// Every subcommand: name, one-line summary, entry point. Commands for later milestones (schemas,
-/// conformance, oracle, fuzz, bench, screenshots, i18n-report) are added with the milestone that needs them.
+/// oracle, fuzz, bench, screenshots, i18n-report) are added with the milestone that needs them.
 const COMMANDS: &[(&str, &str, Command)] = &[
     ("version", "Print the workspace version, or `version set X.Y.Z[-pre]` to change it and refresh Cargo.lock", version_cmd),
     ("layers", "Enforce the crate dependency layering (docs/architecture.md)", gates::layers),
