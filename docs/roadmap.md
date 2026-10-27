@@ -6,7 +6,7 @@ Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is 
 
 | Milestone | Scope | Version | Status |
 |---|---|---|---|
-| **M0** Bootstrap | Workspace, policies, xtask gates, assets, app shell with the PdfCraft look, automation/CLI skeleton, CI, packaging for all six targets | 0.0.x | **in progress** (M0.1–M0.11 done, M0.6 folded into M0.7; the release dry run builds macOS and Linux, the Windows MSI fix is in review) |
+| **M0** Bootstrap | Workspace, policies, xtask gates, assets, app shell with the PdfCraft look, automation/CLI skeleton, CI, packaging for all six targets | 0.0.x | **in progress** (M0.1–M0.11 done, M0.6 folded into M0.7; the release dry run builds and verifies all six targets (run 40454851007, after the Windows MSI fix in #4); installing and launching each artifact is checked only for Windows ARM64, by the `windows-arm64` workflow) |
 | **M1** Text editor and XML syntax | Rope buffer, encodings, lossless CST, well-formedness, the code-editor widget (highlighting, folding, multi-cursor, find/replace, XML typing aids), formatting, outline, large files | 0.0.x | **in progress** (M1.1 buffer and undo, M1.2 encodings and line endings, M1.3 lexer done; CST next) |
 | **M2** Catalogs, resolver and DTD | OASIS catalogs, bundled-schema crate, resolver with disk cache and network fetcher, the shared grammar model, DTD parsing and validation, Entry Helpers | 0.0.x | not started |
 | **M3** XSD engine and validation UX | XSD regex and datatypes, schema compilation, XSD 1.0 validation, identity constraints, the W3C xsdtests ratchet, schema-aware completion and Entry Helpers | 0.0.x | not started |

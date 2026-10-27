@@ -405,7 +405,8 @@ impl<'a> Lexer<'a> {
                         Step::Token(TokenKind::CommentStart, p + 4, Mode::Comment(Return::Content))
                     } else if self.looking_at("<![CDATA[") {
                         Step::Token(TokenKind::CdataStart, p + 9, Mode::Cdata)
-                    } else if self.looking_at("<!DOCTYPE") {
+                    } else if self.looking_at("<!DOCTYPE") && !self.char_at(p + 9).is_some_and(is_name_char) {
+                        // `<!DOCTYPEfoo>` is not a DOCTYPE: the keyword ends where the name characters stop.
                         Step::Token(TokenKind::DoctypeStart, p + 9, Mode::Doctype)
                     } else {
                         Step::Token(TokenKind::Error, p + 2, Mode::Content)
@@ -766,6 +767,16 @@ mod tests {
         assert_eq!(lex("<!DOCTYPE a <b/>").last(), Some(&(SlashGt, "/>")));
         let open_decl = lex("<!DOCTYPE a [<!ELEMENT a\n<!ELEMENT b EMPTY>]>");
         assert_eq!(open_decl.iter().filter(|(k, _)| *k == DeclStart).count(), 2);
+    }
+
+    #[test]
+    fn the_doctype_keyword_must_end_where_the_name_characters_stop() {
+        assert_eq!(lex("<!DOCTYPE a>")[0], (DoctypeStart, "<!DOCTYPE"));
+        assert_eq!(lex("<!DOCTYPE>")[0], (DoctypeStart, "<!DOCTYPE"));
+        assert_eq!(lex("<!DOCTYPE\n")[0], (DoctypeStart, "<!DOCTYPE"));
+        assert_eq!(lex("<!DOCTYPEfoo>"), [(Error, "<!"), (Text, "DOCTYPEfoo>")]);
+        assert_eq!(lex("<!DOCTYPE-x>")[0], (Error, "<!"));
+        assert_eq!(lex("<!DOCTYPE"), [(DoctypeStart, "<!DOCTYPE")]);
     }
 
     #[test]
