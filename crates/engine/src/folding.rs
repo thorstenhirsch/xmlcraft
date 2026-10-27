@@ -21,6 +21,19 @@ pub enum FoldKind {
     Doctype,
 }
 
+impl FoldKind {
+    /// The kind as it is written in the tools' answers.
+    pub fn name(self) -> &'static str {
+        match self {
+            FoldKind::Element => "element",
+            FoldKind::Comment => "comment",
+            FoldKind::Cdata => "cdata",
+            FoldKind::ProcessingInstruction => "processing_instruction",
+            FoldKind::Doctype => "doctype",
+        }
+    }
+}
+
 /// A stretch of lines that can be folded. All lines count from 0.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FoldRange {
@@ -42,13 +55,14 @@ impl FoldRange {
     }
 }
 
-/// The ranges of the text `root` is the tree of, in the order they start. Of ranges that start on the same line only the outer one is
-/// there: there is one mark to click on a line.
-pub fn fold_ranges(root: &SyntaxNode, text: &str) -> Vec<FoldRange> {
+/// The ranges of the text `root` is the tree of, in the order they start, and whether there were more than [`MAX_FOLD_RANGES`] (the
+/// rest are left out). Of ranges that start on the same line only the outer one is there: there is one mark to click on a line.
+pub fn fold_ranges(root: &SyntaxNode, text: &str) -> (Vec<FoldRange>, bool) {
     use rowan::WalkEvent;
     let buffer = Buffer::from_text(text);
     let mut ranges: Vec<FoldRange> = Vec::new();
     let mut depth = 0usize;
+    let mut truncated = false;
     for event in root.preorder() {
         let node = match &event {
             WalkEvent::Enter(node) | WalkEvent::Leave(node) => node,
@@ -61,10 +75,13 @@ pub fn fold_ranges(root: &SyntaxNode, text: &str) -> Vec<FoldRange> {
                 }
             }
             WalkEvent::Enter(node) => {
-                if ranges.len() < MAX_FOLD_RANGES
-                    && let Some(range) = range_of(&node, &buffer, depth + 1)
+                if let Some(range) = range_of(&node, &buffer, depth + 1)
                     && ranges.last().is_none_or(|last| last.first_line < range.first_line)
                 {
+                    if ranges.len() >= MAX_FOLD_RANGES {
+                        truncated = true;
+                        break;
+                    }
                     ranges.push(range);
                 }
                 if is_element {
@@ -73,7 +90,7 @@ pub fn fold_ranges(root: &SyntaxNode, text: &str) -> Vec<FoldRange> {
             }
         }
     }
-    ranges
+    (ranges, truncated)
 }
 
 /// The line the last character before `end` is on (a tag that is not closed may end in a character of several bytes).
@@ -139,9 +156,15 @@ pub enum FoldAction {
     Level(usize),
 }
 
-/// Do `action` to `editor` with the `ranges` of its text. Returns whether any fold changed.
+/// Do `action` to `editor` with the `ranges` of its text, at the caret's line. Returns whether any fold changed.
 pub fn apply(editor: &mut Editor, ranges: &[FoldRange], action: FoldAction) -> bool {
     let line = editor.buffer().line_of(editor.primary().head());
+    apply_at(editor, ranges, action, line)
+}
+
+/// [`apply`] with the lines `Fold` and `Unfold` look at given (0-based), whatever the caret is on: a line a fold hides can be asked
+/// about without opening the fold by putting the caret in it.
+pub fn apply_at(editor: &mut Editor, ranges: &[FoldRange], action: FoldAction, line: usize) -> bool {
     // The ranges the caret's line is in, the innermost first (they start in the order of the text, so the later the inner).
     let here = || ranges.iter().rev().filter(move |r| r.contains(line));
     match action {
@@ -177,7 +200,7 @@ mod tests {
     use xmlcraft_syntax::parse;
 
     fn ranges(text: &str) -> Vec<(usize, usize, usize, usize, FoldKind)> {
-        fold_ranges(&parse(text).syntax(), text).into_iter().map(|r| (r.first_line, r.last_line, r.end_line, r.level, r.kind)).collect()
+        fold_ranges(&parse(text).syntax(), text).0.into_iter().map(|r| (r.first_line, r.last_line, r.end_line, r.level, r.kind)).collect()
     }
 
     use FoldKind::*;
@@ -247,7 +270,10 @@ mod tests {
         assert_eq!(ranges("<a>\n  <b>\n    x\n"), []);
         assert_eq!(ranges("<!-- never closed\n\n"), [(0, 1, 1, 1, Comment)], "a comment that is not closed goes to the end of the text");
         let wide = format!("<r>\n{}</r>", "<i>\n x\n</i>\n".repeat(MAX_FOLD_RANGES + 10));
-        assert_eq!(fold_ranges(&parse(&wide).syntax(), &wide).len(), MAX_FOLD_RANGES, "capped");
+        let (found, truncated) = fold_ranges(&parse(&wide).syntax(), &wide);
+        assert_eq!((found.len(), truncated), (MAX_FOLD_RANGES, true), "capped, and it says so");
+        assert!(!fold_ranges(&parse("<a>\n x\n</a>").syntax(), "<a>\n x\n</a>").1);
+        assert_eq!(FoldKind::ProcessingInstruction.name(), "processing_instruction");
     }
 
     // --- the commands ---------------------------------------------------------------------------------------------------------
@@ -258,7 +284,7 @@ mod tests {
         let mut e = Editor::new(DOC);
         let at = e.buffer().line_start(line).unwrap_or(0) + 1;
         e.set_selection(at, at);
-        (e, fold_ranges(&parse(DOC).syntax(), DOC))
+        (e, fold_ranges(&parse(DOC).syntax(), DOC).0)
     }
 
     fn hidden(e: &Editor) -> Vec<usize> {

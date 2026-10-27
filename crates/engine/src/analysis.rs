@@ -58,8 +58,9 @@ pub struct Analysis {
     pub outline: Vec<OutlineItem>,
     /// The outline stopped at [`MAX_OUTLINE_ITEMS`].
     pub outline_truncated: bool,
-    /// What can be folded, in the order it starts.
+    /// What can be folded, in the order it starts, and whether there was more than [`crate::folding::MAX_FOLD_RANGES`] of it.
     pub folds: Vec<FoldRange>,
+    pub folds_truncated: bool,
     /// The text was not analysed, and why.
     pub skipped: Option<Skipped>,
 }
@@ -108,7 +109,15 @@ impl Analysis {
     }
 
     fn skipped(version: u64, why: Skipped) -> Self {
-        Self { version, diagnostics: Vec::new(), outline: Vec::new(), outline_truncated: false, folds: Vec::new(), skipped: Some(why) }
+        Self {
+            version,
+            diagnostics: Vec::new(),
+            outline: Vec::new(),
+            outline_truncated: false,
+            folds: Vec::new(),
+            folds_truncated: false,
+            skipped: Some(why),
+        }
     }
 }
 
@@ -159,8 +168,8 @@ pub fn analyze(text: &str, version: u64) -> Analysis {
     let mut diagnostics = parsed.diagnostics().to_vec();
     diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
     let (outline, outline_truncated) = outline_of(&parsed.syntax(), text);
-    let folds = fold_ranges(&parsed.syntax(), text);
-    Analysis { version, diagnostics, outline, outline_truncated, folds, skipped: None }
+    let (folds, folds_truncated) = fold_ranges(&parsed.syntax(), text);
+    Analysis { version, diagnostics, outline, outline_truncated, folds, folds_truncated, skipped: None }
 }
 
 fn outline_of(root: &xmlcraft_syntax::SyntaxNode, text: &str) -> (Vec<OutlineItem>, bool) {

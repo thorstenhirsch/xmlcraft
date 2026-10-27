@@ -626,7 +626,7 @@ fn doc_key(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
 fn fold_json(range: &FoldRange) -> Value {
     json!({
         "first_line": range.first_line + 1, "last_line": range.last_line + 1, "end_line": range.end_line + 1,
-        "level": range.level, "kind": format!("{:?}", range.kind).to_lowercase(),
+        "level": range.level, "kind": range.kind.name(),
     })
 }
 
@@ -634,7 +634,10 @@ fn xml_folds(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let source = source(a, args)?;
     let analysis = analysis_of(&source)?;
     let folds: Vec<Value> = analysis.folds.iter().map(fold_json).collect();
-    json_result(json!({ "folds": folds, "count": folds.len(), "well_formed": analysis.is_well_formed(), "lossy": source.lossy }))
+    json_result(json!({
+        "folds": folds, "count": folds.len(), "truncated": analysis.folds_truncated,
+        "well_formed": analysis.is_well_formed(), "lossy": source.lossy,
+    }))
 }
 
 fn doc_fold(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
@@ -651,12 +654,21 @@ fn doc_fold(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         },
         other => return fail(format!("{other}: no such action (fold, unfold, fold_all, unfold_all, level)")),
     };
-    place_caret(doc, args)?;
+    // `line` and `column` say which line to fold or unfold at; the caret is not moved (a caret in a hidden line would open the fold).
+    let line = match (args.get("line"), args.get("column")) {
+        (None, None) => doc.editor().buffer().line_of(doc.editor().primary().head()),
+        (Some(_), Some(_)) => {
+            let at =
+                offset_from(doc.editor().buffer(), args.get("line").and_then(Value::as_u64), args.get("column").and_then(Value::as_u64), "position")?;
+            doc.editor().buffer().line_of(at)
+        }
+        _ => return Err(ToolError::InvalidArgs("line and column go together: give both, or neither for the caret's line".into())),
+    };
     let analysis = analyze_guarded(&doc.editor().text(), 0);
     if analysis.skipped.is_some() {
         return fail("the text is too large to analyse, or the analysis failed: nothing was folded");
     }
-    let changed = xmlcraft_engine::folding::apply(doc.editor_mut(), &analysis.folds, action);
+    let changed = xmlcraft_engine::folding::apply_at(doc.editor_mut(), &analysis.folds, action, line);
     let buffer = doc.editor().buffer();
     let folded: Vec<Value> = doc
         .editor()
@@ -667,9 +679,10 @@ fn doc_fold(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
             json!({ "first_line": first + 1, "last_line": last + 1 })
         })
         .collect();
-    json_result(
-        json!({ "changed": changed, "folded": folded, "visible_lines": doc.editor().visible_rows(), "carets": carets_json(doc), "document": describe(doc) }),
-    )
+    json_result(json!({
+        "changed": changed, "folded": folded, "visible_lines": doc.editor().visible_rows(), "truncated": analysis.folds_truncated,
+        "carets": carets_json(doc), "document": describe(doc),
+    }))
 }
 
 fn doc_set_text(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
