@@ -338,6 +338,54 @@ fn finding_in_a_file_says_when_it_was_not_read_exactly_and_when_a_match_is_cut()
 }
 
 #[test]
+fn the_matching_tag_is_found_from_a_position_in_text_a_file_or_a_document() {
+    let text = "<lib>\n  <book id=\"1\">x</book>\n  <br/>\n</lib>";
+    let mut a = Automation::new();
+    // From just before the `b` of `book` (line 2, column 4): the end tag, and where the caret goes (the same place in its name).
+    let found = ok(&mut a, "xml_matching_tag", json!({ "text": text, "line": 2, "column": 4 }));
+    let m = &found["match"];
+    assert_eq!((m["tag"]["line"].as_u64(), m["tag"]["column"].as_u64()), (Some(2), Some(3)));
+    assert_eq!((m["partner"]["line"].as_u64(), m["partner"]["column"].as_u64(), m["partner"]["end_column"].as_u64()), (Some(2), Some(17), Some(24)));
+    assert_eq!(
+        (m["partner_name"]["start"].as_u64(), m["partner_name"]["end"].as_u64()),
+        (text.rfind("book").map(|i| i as u64), text.rfind("book").map(|i| i as u64 + 4))
+    );
+    assert_eq!(
+        (m["jump_to"]["line"].as_u64(), m["jump_to"]["column"].as_u64()),
+        (Some(2), Some(19)),
+        "the start of the name in the end tag, as in the start tag"
+    );
+    let inside_name = ok(&mut a, "xml_matching_tag", json!({ "text": text, "line": 2, "column": 6 }));
+    assert_eq!(inside_name["match"]["jump_to"]["column"].as_u64(), Some(21), "two letters into the name, two letters into the other");
+    // By byte offset, and the same from the end tag back to the start tag.
+    let end_tag = text.find("</book>").expect("there") as u64;
+    let back = ok(&mut a, "xml_matching_tag", json!({ "text": text, "offset": end_tag + 1 }));
+    assert_eq!(back["match"]["partner"]["start"].as_u64(), text.find("<book").map(|i| i as u64));
+    // No pair: an empty-element tag, text, and a position that is not in the text.
+    assert!(ok(&mut a, "xml_matching_tag", json!({ "text": text, "line": 3, "column": 4 }))["match"].is_null());
+    assert!(
+        ok(&mut a, "xml_matching_tag", json!({ "text": text, "line": 2, "column": 1 }))["match"].is_null(),
+        "in white space, away from every tag"
+    );
+    assert!(err(&mut a, "xml_matching_tag", json!({ "text": text, "line": 9, "column": 1 })).contains("no line 9"));
+    assert!(err(&mut a, "xml_matching_tag", json!({ "text": text, "offset": 9999 })).contains("offset"));
+    assert!(err(&mut a, "xml_matching_tag", json!({ "text": text })).contains("line is missing"));
+    // A file and an open document give the same answer; one that is not valid UTF-8 says it was read lossily.
+    let dir = tempfile::tempdir().expect("dir");
+    let path = file(dir.path(), "a.xml", text.as_bytes());
+    assert_eq!(ok(&mut a, "xml_matching_tag", json!({ "path": path, "line": 2, "column": 4 }))["match"], *m);
+    let id = ok(&mut a, "doc_new", json!({ "text": text }))["id"].as_u64().expect("id");
+    assert_eq!(ok(&mut a, "xml_matching_tag", json!({ "id": id, "line": 2, "column": 4 }))["match"], *m);
+    let bad = file(dir.path(), "bad.xml", b"<a>\xFF</a>");
+    assert_eq!(ok(&mut a, "xml_matching_tag", json!({ "path": bad, "offset": 1 }))["lossy"], true);
+    // The root keeps it to its files.
+    let inside = dir.path().join("inside");
+    std::fs::create_dir(&inside).expect("creates");
+    let mut confined = Automation::with_root(&inside).expect("root");
+    assert!(call(&mut confined, "xml_matching_tag", json!({ "path": path, "offset": 1 })).is_err());
+}
+
+#[test]
 fn a_deleted_file_or_another_route_to_it_does_not_get_around_the_save_checks() {
     let dir = tempfile::tempdir().expect("dir");
     let path = file(dir.path(), "a.xml", b"<a/>");

@@ -28,6 +28,23 @@ pub struct OutlineItem {
     pub range: Range<usize>,
     /// The name in the start tag.
     pub name_range: Range<usize>,
+    /// The start tag, `<` to `>` (or `/>`).
+    pub start_tag: Range<usize>,
+    /// The end tag, `</` to `>`; none for an empty-element tag and for an element that was never closed.
+    pub end_tag: Option<Range<usize>>,
+    /// The name in the end tag, if it has one.
+    pub end_name_range: Option<Range<usize>>,
+}
+
+/// An element's start tag and end tag, as the caret sees them: the tag it is in, and the one that goes with it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TagMatch {
+    /// The tag the offset is in or next to, and its name.
+    pub tag: Range<usize>,
+    pub name: Range<usize>,
+    /// The other tag of the element, and its name.
+    pub partner: Range<usize>,
+    pub partner_name: Range<usize>,
 }
 
 /// The result of analysing one version of a document.
@@ -65,8 +82,67 @@ impl Analysis {
         self.skipped.is_none() && self.error_count() == 0
     }
 
+    /// The tag at `offset` (a byte offset of the text this is about) and the other tag of its element. The tag the offset is inside
+    /// wins; then one that ends at the offset (a caret that has just typed the `>`), then one that starts there. `None` when the offset
+    /// is in no tag, or the tag has no partner: an empty-element tag, or an element that was never closed.
+    pub fn matching_tag(&self, offset: usize) -> Option<TagMatch> {
+        // Start tags are in the order of the text, so those that touch the offset (at most two: one ends there, the next starts there)
+        // are the last ones that start at or before it.
+        let started = self.outline.get(..self.outline.partition_point(|item| item.start_tag.start <= offset))?;
+        let starts = started.iter().rev().take(2).map(|item| (item, true));
+        // An end tag that touches the offset belongs to the innermost element the offset is past the start of and not past the end of;
+        // what the walk back passes over has ended. (An element that starts at the offset has not begun: the one before it may end here.)
+        let end = started.iter().rev().find(|item| item.range.start < offset && offset <= item.range.end).map(|item| (item, false));
+        starts
+            .chain(end)
+            .filter_map(|(item, is_start)| {
+                let tag = if is_start { Some(&item.start_tag) } else { item.end_tag.as_ref() }?;
+                Some((closeness(tag, offset)?, item, is_start))
+            })
+            .min_by_key(|(closeness, ..)| *closeness)
+            .and_then(|(_, item, is_start)| item.tag_match(is_start))
+    }
+
     fn skipped(version: u64, why: Skipped) -> Self {
         Self { version, diagnostics: Vec::new(), outline: Vec::new(), outline_truncated: false, skipped: Some(why) }
+    }
+}
+
+/// How near `offset` is to `tag`: 0 inside it, 1 just after it, 2 just before it, `None` otherwise.
+fn closeness(tag: &Range<usize>, offset: usize) -> Option<u8> {
+    if tag.start < offset && offset < tag.end {
+        Some(0)
+    } else if tag.end == offset {
+        Some(1)
+    } else if tag.start == offset {
+        Some(2)
+    } else {
+        None
+    }
+}
+
+impl TagMatch {
+    /// Where the caret goes to follow `offset`, which is in or next to [`TagMatch::tag`]: from inside the name, to the same place in the
+    /// other name (as far as it reaches); from anywhere else in the tag, to the start of the other name.
+    pub fn jump_target(&self, offset: usize) -> usize {
+        if self.name.start <= offset && offset <= self.name.end {
+            self.partner_name.start + (offset - self.name.start).min(self.partner_name.len())
+        } else {
+            self.partner_name.start
+        }
+    }
+}
+
+impl OutlineItem {
+    /// This element's start tag (`start`) or end tag, with the other one; `None` when there is no end tag to pair it with.
+    fn tag_match(&self, start: bool) -> Option<TagMatch> {
+        let end_tag = self.end_tag.clone()?;
+        let end_name = self.end_name_range.clone()?;
+        Some(if start {
+            TagMatch { tag: self.start_tag.clone(), name: self.name_range.clone(), partner: end_tag, partner_name: end_name }
+        } else {
+            TagMatch { tag: end_tag, name: end_name, partner: self.start_tag.clone(), partner_name: self.name_range.clone() }
+        })
     }
 }
 
@@ -104,8 +180,12 @@ fn outline_of(root: &xmlcraft_syntax::SyntaxNode, text: &str) -> (Vec<OutlineIte
     (items, truncated)
 }
 
+fn range_of(node: &xmlcraft_syntax::SyntaxNode) -> Range<usize> {
+    usize::from(node.text_range().start())..usize::from(node.text_range().end())
+}
+
 fn item_of(node: &xmlcraft_syntax::SyntaxNode, text: &str, depth: usize) -> Option<OutlineItem> {
-    let range = usize::from(node.text_range().start())..usize::from(node.text_range().end());
+    let range = range_of(node);
     let tag = node.children().find(|n| n.kind() == SyntaxKind::StartTag)?;
     let name_token = tag.children_with_tokens().filter_map(|e| e.into_token()).find(|t| t.kind() == SyntaxKind::Name)?;
     let name_range = usize::from(name_token.text_range().start())..usize::from(name_token.text_range().end());
@@ -124,7 +204,13 @@ fn item_of(node: &xmlcraft_syntax::SyntaxNode, text: &str, depth: usize) -> Opti
             }
         }
     }
-    Some(OutlineItem { depth, name: name_token.text().to_owned(), label, range, name_range })
+    let end = node.children().find(|n| n.kind() == SyntaxKind::EndTag);
+    let end_tag = end.as_ref().map(range_of);
+    let end_name_range = end
+        .as_ref()
+        .and_then(|e| e.children_with_tokens().filter_map(|c| c.into_token()).find(|t| t.kind() == SyntaxKind::Name))
+        .map(|t| usize::from(t.text_range().start())..usize::from(t.text_range().end()));
+    Some(OutlineItem { depth, name: name_token.text().to_owned(), label, range, name_range, start_tag: range_of(&tag), end_tag, end_name_range })
 }
 
 /// What the analyzer calls when a result is ready (the app asks for a repaint).
@@ -295,6 +381,112 @@ mod tests {
         assert_eq!(&text[book.name_range.clone()], "book");
     }
 
+    /// The tag texts a caret at the `|` in `marked` is matched with: (the tag it is at, the other one).
+    fn matched(marked: &str) -> Option<(String, String)> {
+        let offset = marked.find('|').expect("a caret");
+        let text = marked.replacen('|', "", 1);
+        let m = analyze(&text, 1).matching_tag(offset)?;
+        Some((text[m.tag].to_owned(), text[m.partner].to_owned()))
+    }
+
+    fn pair(a: &str, b: &str) -> Option<(String, String)> {
+        Some((a.to_owned(), b.to_owned()))
+    }
+
+    #[test]
+    fn the_caret_in_a_tag_finds_the_other_tag_of_its_element() {
+        // In the start tag: in its name, in an attribute, at its `<` and `>` (the `|` is the caret).
+        assert_eq!(matched("<a><b i|d=\"1\">x</b></a>"), pair("<b id=\"1\">", "</b>"));
+        assert_eq!(matched("<a><b|>x</b></a>"), pair("<b>", "</b>"));
+        assert_eq!(matched("<a><|b>x</b></a>"), pair("<b>", "</b>"));
+        // In the end tag.
+        assert_eq!(matched("<a><b>x</b|></a>"), pair("</b>", "<b>"));
+        assert_eq!(matched("<a><b>x</|b></a>"), pair("</b>", "<b>"));
+        assert_eq!(matched("<a><b>x|</b></a>"), pair("</b>", "<b>"), "just before an end tag");
+        // Next to a tag: after the `>` just typed, before the `<`.
+        assert_eq!(matched("<a><b>|x</b></a>"), pair("<b>", "</b>"));
+        assert_eq!(matched("<a>x|<b>x</b></a>"), pair("<b>", "</b>"));
+        // Between two tags the one that ends at the caret wins over the one that starts there.
+        assert_eq!(matched("<a><b></b>|</a>"), pair("</b>", "<b>"));
+        assert_eq!(matched("<a>|<b></b></a>"), pair("<a>", "</a>"));
+        assert_eq!(matched("<a><b>|<c></c></b></a>"), pair("<b>", "</b>"));
+        assert_eq!(matched("<a><b></b><c>|</c></a>"), pair("<c>", "</c>"));
+        // The root, and a namespace prefix.
+        assert_eq!(matched("<r:a x:y='1'|>text</r:a>"), pair("<r:a x:y='1'>", "</r:a>"));
+        assert_eq!(matched("<?xml version=\"1.0\"?>\n<a>\n  <b/>\n</a|>\n"), pair("</a>", "<a>"));
+    }
+
+    #[test]
+    fn the_jump_keeps_the_place_in_the_name_where_it_can() {
+        let text = "<a><item id=\"1\">x</item></a>";
+        let m = analyze(text, 1).matching_tag(text.find("item").expect("there") + 1).expect("a match");
+        // Inside the name `item`: the same column of the other `item`; at its start and end too.
+        let name = text.find("item").expect("there");
+        for column in 0..=4 {
+            assert_eq!(m.jump_target(name + column), text.rfind("item").expect("there") + column);
+        }
+        // In an attribute: the start of the other name. From the end tag into a shorter start-tag name: not past it.
+        assert_eq!(m.jump_target(name + 8), text.rfind("item").expect("there"));
+        let text = "<a><b>x</bbbb></a>";
+        let m = analyze(text, 1).matching_tag(text.find("bbbb").expect("there") + 3).expect("a match");
+        assert_eq!(
+            m.jump_target(text.find("bbbb").expect("there") + 3),
+            text.find("<b>").expect("there") + 2,
+            "one letter is all the other name has"
+        );
+    }
+
+    #[test]
+    fn at_the_boundary_between_siblings_the_end_tag_that_ends_there_wins_over_the_start_tag_that_starts_there() {
+        assert_eq!(matched("<r><a></a>|<b></b></r>"), pair("</a>", "<a>"));
+        assert_eq!(matched("<r><a/><b></b>|<c></c></r>"), pair("</b>", "<b>"));
+        assert_eq!(matched("<r><a></a>|<b/></r>"), pair("</a>", "<a>"), "the empty-element tag after it has no other tag");
+        assert_eq!(matched("<r>|<a></a><b></b></r>"), pair("<r>", "</r>"), "the start tag that ends here");
+        assert_eq!(matched("<r><a></a><b>|</b></r>"), pair("<b>", "</b>"));
+        // The same after a nested element ends, and at the end of the text.
+        assert_eq!(matched("<r><a><x></x></a>|<b></b></r>"), pair("</a>", "<a>"));
+        assert_eq!(matched("<a></a>|"), pair("</a>", "<a>"));
+    }
+
+    #[test]
+    fn no_match_where_there_is_no_pair() {
+        assert_eq!(matched("<a><b/|></a>"), None, "an empty-element tag has no other tag");
+        assert_eq!(matched("<a>te|xt</a>"), None, "text");
+        assert_eq!(matched("<a><!-- <b>| --></a>"), None, "a comment");
+        assert_eq!(matched("<a><![CDATA[ <b> ]|]></a>"), None, "CDATA");
+        assert_eq!(matched("<a><b|></a>"), None, "an element that was never closed");
+        assert_eq!(matched("|"), None, "nothing");
+        assert_eq!(matched("<a>x</a>|"), pair("</a>", "<a>"), "after the last tag");
+        assert_eq!(matched("<a><b>x<c/>|</b></a>"), None, "the tag the caret is next to is an empty-element tag");
+        // A `>` in an attribute value does not end the tag.
+        assert_eq!(matched("<a><b x=\"y>z|\"></b></a>"), pair("<b x=\"y>z\">", "</b>"));
+        assert_eq!(matched("<?xml version=\"1.0\"|?>\n<a/>"), None);
+    }
+
+    #[test]
+    fn a_mismatched_end_tag_still_goes_with_its_element() {
+        // While a name is being changed the pair is still the pair, whatever the names say.
+        assert_eq!(matched("<a><bb|>x</b></a>"), pair("<bb>", "</b>"));
+        assert_eq!(matched("<a><b>x</c|></a>"), pair("</c>", "<b>"));
+    }
+
+    #[test]
+    fn the_other_tag_is_found_in_a_deep_and_a_wide_tree() {
+        let deep = format!("{}x{}", "<a>".repeat(2000), "</a>".repeat(2000));
+        let text = analyze(&deep, 1);
+        let middle = 3 * 1000 + 1; // inside the 1001st start tag
+        let m = text.matching_tag(middle).expect("a match");
+        assert_eq!((&deep[m.tag.clone()], m.partner.start), ("<a>", 3 * 2000 + 1 + 4 * 999));
+        let wide = format!("<r>{}</r>", "<i>x</i>".repeat(5000));
+        let analysis = analyze(&wide, 1);
+        let at = wide.rfind("</i>").expect("there") + 2;
+        let m = analysis.matching_tag(at).expect("a match");
+        assert_eq!((&wide[m.tag], &wide[m.partner]), ("</i>", "<i>"));
+        let end = wide.len() - 2;
+        let m = analysis.matching_tag(end).expect("the root's end tag");
+        assert_eq!((&wide[m.tag], &wide[m.partner]), ("</r>", "<r>"));
+    }
+
     #[test]
     fn problems_are_sorted_by_position_and_counted() {
         let a = analyze("<a><b></a>\n<c/>", 1);
@@ -341,6 +533,39 @@ mod tests {
             }
             for d in &a.diagnostics {
                 prop_assert!(d.span.end <= text.len());
+            }
+            for item in &a.outline {
+                prop_assert!(item.range.start <= item.start_tag.start && item.start_tag.end <= item.range.end);
+                prop_assert!(item.start_tag.start <= item.name_range.start && item.name_range.end <= item.start_tag.end);
+                if let Some(end_tag) = &item.end_tag {
+                    prop_assert!(item.start_tag.end <= end_tag.start && end_tag.end <= item.range.end);
+                    prop_assert!(text.is_char_boundary(end_tag.start) && text.is_char_boundary(end_tag.end));
+                }
+                if let (Some(end_tag), Some(name)) = (&item.end_tag, &item.end_name_range) {
+                    prop_assert!(end_tag.start <= name.start && name.end <= end_tag.end);
+                }
+                prop_assert_eq!(item.end_tag.is_some() || item.end_name_range.is_none(), true, "a name needs its tag");
+            }
+        }
+
+        /// The tag pairs are symmetrical, and the caret is next to the tag it is matched with: for any text, any offset (also one past the
+        /// end).
+        #[test]
+        fn matching_tags_are_symmetrical(
+            pieces in proptest::collection::vec(proptest::sample::select(&["<a>", "</a>", "<b x=\"1>\">", "</b>", "<c/>", "text", "<!--", "-->", "\n", "é", "<![CDATA[", "]]>"][..]), 0..40),
+            extra in 0usize..4,
+        ) {
+            let text = pieces.concat();
+            let analysis = analyze(&text, 1);
+            for offset in (0..text.len() + extra).filter(|o| text.is_char_boundary((*o).min(text.len()))) {
+                let Some(m) = analysis.matching_tag(offset) else { continue };
+                prop_assert!(m.tag.start <= offset && offset <= m.tag.end, "the caret is at its tag: {m:?} at {offset}");
+                prop_assert!(m.tag.start <= m.name.start && m.name.end <= m.tag.end);
+                prop_assert!(m.partner.start <= m.partner_name.start && m.partner_name.end <= m.partner.end);
+                prop_assert!(m.tag.end <= m.partner.start || m.partner.end <= m.tag.start, "the tags are two places");
+                // From inside the partner the match comes back the other way.
+                let back = analysis.matching_tag(m.partner.start + 1).expect("the partner has a partner");
+                prop_assert_eq!((back.tag, back.partner), (m.partner, m.tag));
             }
         }
     }

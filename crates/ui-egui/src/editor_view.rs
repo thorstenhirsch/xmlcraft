@@ -30,6 +30,8 @@ pub struct SyntaxTokens {
     pub info: Color32,
     /// The background of a search match.
     pub search_match: Color32,
+    /// The background of the names of the two tags of an element, when the caret is in or next to one of them.
+    pub tag_match: Color32,
 }
 
 impl SyntaxTokens {
@@ -52,6 +54,7 @@ impl SyntaxTokens {
                 warning: rgb(0x9A, 0x62, 0x00),
                 info: rgb(0x1B, 0x63, 0xE0),
                 search_match: Color32::from_rgba_unmultiplied(0xFF, 0xC8, 0x00, 0x50),
+                tag_match: Color32::from_rgba_unmultiplied(0x1B, 0x63, 0xE0, 0x18),
             },
             ThemeKind::Dark => Self {
                 punctuation: rgb(0x9A, 0x9A, 0xA3),
@@ -69,6 +72,7 @@ impl SyntaxTokens {
                 warning: rgb(0xE5, 0xB0, 0x4A),
                 info: rgb(0x7A, 0xB0, 0xFF),
                 search_match: rgb(0x38, 0x2E, 0x08), // dark enough that the lightest text keeps 4.5:1 (a translucent amber would not)
+                tag_match: rgb(0x1C, 0x2C, 0x48),
             },
         }
     }
@@ -133,6 +137,12 @@ pub enum Matches {
     Lines(Arc<Matcher>),
 }
 
+/// The part of `range` that is on the line `line` (a range across lines is highlighted on each of them), as bytes of the line.
+fn on_line(range: &Range<usize>, line: &Range<usize>) -> Option<Range<usize>> {
+    let (start, end) = (range.start.max(line.start), range.end.min(line.end));
+    (start < end).then(|| start - line.start..end - line.start)
+}
+
 /// Colours XML for the editor widget: the lexer's classes, mapped through [`SyntaxTokens`].
 pub struct XmlStyler {
     highlighter: Highlighter,
@@ -144,11 +154,20 @@ pub struct XmlStyler {
     reach: Vec<usize>,
     /// What the find bar looks for, highlighted where it is in view.
     matches: Option<Matches>,
+    /// The names of the two tags of the element the caret is at (byte ranges of the whole text), highlighted.
+    tag_match: Option<[Range<usize>; 2]>,
 }
 
 impl XmlStyler {
     pub fn new(kind: ThemeKind) -> Self {
-        Self { highlighter: Highlighter::new(), tokens: SyntaxTokens::for_kind(kind), problems: Vec::new(), reach: Vec::new(), matches: None }
+        Self {
+            highlighter: Highlighter::new(),
+            tokens: SyntaxTokens::for_kind(kind),
+            problems: Vec::new(),
+            reach: Vec::new(),
+            matches: None,
+            tag_match: None,
+        }
     }
 
     /// Switch to another theme's colours. The caller bumps the view's `highlight_version` so cached lines are laid out again.
@@ -166,6 +185,16 @@ impl XmlStyler {
     /// Highlight these matches; `None` for no highlights.
     pub fn set_matches(&mut self, matches: Option<Matches>) {
         self.matches = matches;
+    }
+
+    /// Highlight these two tag names (ranges of the whole text); `None` for none.
+    pub fn set_tag_match(&mut self, names: Option<[Range<usize>; 2]>) {
+        self.tag_match = names;
+    }
+
+    /// The tag names highlighted now.
+    pub fn tag_match(&self) -> Option<&[Range<usize>; 2]> {
+        self.tag_match.as_ref()
     }
 
     /// The problems to underline (replacing the last ones). Ranges are in bytes of the whole text; they may be empty (a problem at a
@@ -198,11 +227,10 @@ impl LineStyler for XmlStyler {
     }
 
     fn highlights(&mut self, buffer: &Buffer, line: usize) -> Vec<Highlight> {
-        let Some(matches) = &self.matches else { return Vec::new() };
         let Some(line_range) = buffer.line_range(line) else { return Vec::new() };
         let color = self.tokens.search_match;
-        match matches {
-            Matches::Ranges(matches) => {
+        let mut out: Vec<Highlight> = match &self.matches {
+            Some(Matches::Ranges(matches)) => {
                 // The matches are sorted and do not overlap: from the first that ends after the line starts to the last that starts before it ends.
                 let first = matches.partition_point(|m| m.end <= line_range.start);
                 matches
@@ -210,20 +238,22 @@ impl LineStyler for XmlStyler {
                     .unwrap_or_default()
                     .iter()
                     .take_while(|m| m.start < line_range.end || (m.start == line_range.end && m.is_empty()))
-                    .filter_map(|m| {
-                        // The part of the match on this line (a match across lines is highlighted on each of them), as bytes of the line.
-                        let (start, end) = (m.start.max(line_range.start), m.end.min(line_range.end));
-                        (start < end).then(|| Highlight { range: start - line_range.start..end - line_range.start, color })
-                    })
+                    .filter_map(|m| on_line(m, &line_range).map(|range| Highlight { range, color }))
                     .collect()
             }
-            Matches::Lines(matcher) if line_range.len() <= MAX_LINE_SEARCH => {
-                let Ok(text) = buffer.slice(line_range) else { return Vec::new() };
-                let (found, _) = matcher.find_all(&text, 0..text.len(), MAX_LINE_MATCHES);
-                found.into_iter().filter(|range| !range.is_empty()).map(|range| Highlight { range, color }).collect()
-            }
-            Matches::Lines(_) => Vec::new(),
-        }
+            Some(Matches::Lines(matcher)) if line_range.len() <= MAX_LINE_SEARCH => match buffer.slice(line_range.clone()) {
+                Ok(text) => {
+                    let (found, _) = matcher.find_all(&text, 0..text.len(), MAX_LINE_MATCHES);
+                    found.into_iter().filter(|range| !range.is_empty()).map(|range| Highlight { range, color }).collect()
+                }
+                Err(_) => Vec::new(),
+            },
+            Some(Matches::Lines(_)) | None => Vec::new(),
+        };
+        // The tag names come last, so they are painted over a match that has them inside.
+        let color = self.tokens.tag_match;
+        out.extend(self.tag_match.iter().flatten().filter_map(|name| on_line(name, &line_range).map(|range| Highlight { range, color })));
+        out
     }
 
     fn marks(&mut self, buffer: &Buffer, line: usize) -> Vec<Mark> {
@@ -415,13 +445,13 @@ mod tests {
     }
 
     #[test]
-    fn text_is_still_readable_on_a_search_match() {
+    fn text_is_still_readable_on_a_search_match_and_on_matching_tag_names() {
         use HighlightClass::*;
-        for kind in [ThemeKind::Light, ThemeKind::Dark] {
+        for (kind, which) in [ThemeKind::Light, ThemeKind::Dark].into_iter().flat_map(|k| [(k, "search match"), (k, "tag match")]) {
             let tokens = Tokens::for_kind(kind);
             let colors = editor_colors(&tokens);
             let syntax = SyntaxTokens::for_kind(kind);
-            let shown = composite(syntax.search_match, colors.background);
+            let shown = composite(if which == "search match" { syntax.search_match } else { syntax.tag_match }, colors.background);
             let mut readable = vec![colors.text];
             readable.extend(
                 [
@@ -443,9 +473,29 @@ mod tests {
             );
             for color in readable {
                 let ratio = contrast(color, shown);
-                assert!(ratio >= 4.5, "{color:?} on a match in {kind:?}: {ratio:.2}:1");
+                assert!(ratio >= 4.5, "{color:?} on a {which} in {kind:?}: {ratio:.2}:1");
             }
         }
+    }
+
+    #[test]
+    #[allow(clippy::single_range_in_vec_init)] // a list of ranges with one range in it is what is being compared
+    fn the_names_of_a_matching_pair_are_highlighted_over_the_matches() {
+        let buffer = Buffer::from_text("<a>\n<b>text</b>\n</a>");
+        let mut styler = XmlStyler::new(ThemeKind::Light);
+        let tokens = SyntaxTokens::for_kind(ThemeKind::Light);
+        styler.set_tag_match(Some([5..6, 13..14]));
+        let line = |styler: &mut XmlStyler, n| styler.highlights(&buffer, n).into_iter().map(|h| (h.range, h.color)).collect::<Vec<_>>();
+        assert!(line(&mut styler, 0).is_empty());
+        // Line 1 is bytes 4..16: the names are at 1 and 9 of the line.
+        assert_eq!(line(&mut styler, 1), [(1..2, tokens.tag_match), (9..10, tokens.tag_match)]);
+        // Together with search matches: the names come after, so they are painted on top.
+        styler.set_matches(Some(Matches::Ranges(Arc::new(vec![5..9]))));
+        let both = line(&mut styler, 1);
+        assert_eq!(both.iter().map(|(r, _)| r.clone()).collect::<Vec<_>>(), [1..5, 1..2, 9..10]);
+        assert_eq!(both[0].1, tokens.search_match);
+        styler.set_tag_match(None);
+        assert_eq!(line(&mut styler, 1).len(), 1);
     }
 
     #[test]

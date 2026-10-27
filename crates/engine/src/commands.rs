@@ -178,6 +178,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("edit.select_next_occurrence", "Select Next Occurrence", EDIT, Some(Shortcut::cmd("D")), Needs::Document, "plus").sep(),
     c("edit.select_all_occurrences", "Select All Occurrences", EDIT, Some(Shortcut::cmd_shift("L")), Needs::Document, "plus"),
     c("edit.go_to_line", "Go to Line…", EDIT, Some(Shortcut::cmd("G")), Needs::Document, "align-left").sep(),
+    c("edit.go_to_matching_tag", "Go to Matching Tag", EDIT, Some(Shortcut::cmd_shift("Backslash")), Needs::Document, "code-xml"),
     c("xml.check", "Check Well-formedness", XML, Some(Shortcut::key("F7")), Needs::Document, "file-check"),
     c("xml.pretty_print", "Pretty-print", XML, None, Needs::Document, "wand-sparkles").sep(),
     c("xml.minify", "Strip White Space", XML, None, Needs::Document, "align-left"),
@@ -280,7 +281,8 @@ mod tests {
                 "edit.find_previous",
                 "edit.select_next_occurrence",
                 "edit.select_all_occurrences",
-                "edit.go_to_line"
+                "edit.go_to_line",
+                "edit.go_to_matching_tag"
             ]
         );
         assert_eq!(in_menu("XML").map(|c| c.id).collect::<Vec<_>>(), ["xml.check", "xml.pretty_print", "xml.minify"]);

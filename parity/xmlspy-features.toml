@@ -143,11 +143,11 @@ title = "Matching tag highlight and jump"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["edit.go_to_matching_tag"]
+tools = ["xml_matching_tag"]
+evidence = ["crates/engine/src/analysis.rs::the_caret_in_a_tag_finds_the_other_tag_of_its_element", "crates/engine/src/analysis.rs::matching_tags_are_symmetrical", "crates/ui-egui/tests/tags.rs::the_names_of_the_pair_the_caret_is_at_are_highlighted", "crates/ui-egui/tests/tags.rs::the_command_goes_to_the_other_tag_and_back", "crates/automation/tests/documents.rs::the_matching_tag_is_found_from_a_position_in_text_a_file_or_a_document"]
+notes = "With the caret in or next to a start or end tag, the names of both tags are highlighted, and ⇧⌘\\ (Ctrl+Shift+\\) goes to the other one, to the same place in its name; `xml_matching_tag` answers the same for a position in a file or text. The pairing is the parser's, so a mismatched end tag still goes with its element while a name is being edited. It works from the analysis: after an edit the highlight is back when the new analysis arrives (about 30 ms), and nothing is matched past the first 50,000 elements of a document or in one over 32 MB. Still missing: highlighting the enclosing pair when the caret is in an element's content, and selecting both names."
 
 [[feature]]
 id = "editor.auto-close-tags"
