@@ -110,14 +110,39 @@ fn a_jump_asked_for_before_the_analysis_is_ready_waits_for_it() {
     wait(&mut h, "the jump", |app| app.session.active_document().is_some_and(|d| d.editor().primary().head() != open));
     // The end tag still says `book`: they are paired whatever the names say, and the caret is at the same column of the other name.
     assert_eq!(caret(&h), close + 2 + 2);
-    // A jump that was waiting is dropped when the text changes again before the analysis arrives.
+    // A jump that was waiting is dropped when the text changes again before the analysis arrives: the analysis is of the text before
+    // the first of these two edits, so the command waits, and the second edit overtakes it.
+    h.state_mut().session.active_document_mut().expect("a document").editor_mut().type_text("y");
     put_caret(&mut h, open);
     h.state_mut().execute("edit.go_to_matching_tag");
-    h.state_mut().session.active_document_mut().expect("a document").editor_mut().type_text("y");
+    h.state_mut().session.active_document_mut().expect("a document").editor_mut().type_text("z");
     let after_typing = caret(&h);
     for _ in 0..30 {
         h.run_steps(1);
         std::thread::sleep(Duration::from_millis(5));
     }
     assert_eq!(caret(&h), after_typing, "the caret is where typing left it");
+    assert!(h.state().status.is_empty(), "and nothing was said: {}", h.state().status);
+}
+
+#[test]
+fn a_jump_that_is_waiting_is_dropped_when_another_tab_is_shown() {
+    let mut h = shell_with(TEXT);
+    let first = h.state().session.active().expect("a document");
+    // The analysis is of the text before this edit: the command waits for a new one.
+    put_caret(&mut h, TEXT.find("book id").expect("there") + 1);
+    h.state_mut().session.active_document_mut().expect("a document").editor_mut().type_text("x");
+    let before = caret(&h);
+    h.state_mut().execute("edit.go_to_matching_tag");
+    // Before it arrives, another document is shown, with its caret somewhere.
+    h.state_mut().session.open(Some("/x/other.xml".into()), b"<x><y>text</y></x>", None).expect("opens");
+    put_caret(&mut h, 4);
+    for _ in 0..40 {
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(caret(&h), 4, "the jump was not made in the document that is shown");
+    h.state_mut().session.set_active(Some(first));
+    h.run_steps(2);
+    assert_eq!(caret(&h), before, "nor in the one that asked: it was dropped");
 }

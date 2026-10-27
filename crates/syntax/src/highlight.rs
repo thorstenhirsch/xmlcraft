@@ -245,7 +245,8 @@ mod tests {
         let buffer = Buffer::from_text("<a é=\"x\">");
         let mut h = Highlighter::new();
         assert_eq!(h.mode_at(&buffer, 999), Mode::Content, "past the end is the end");
-        assert_eq!(h.mode_at(&buffer, 5), Mode::Tag, "inside the é is the start of the é");
+        assert_eq!(h.mode_at(&buffer, 4), Mode::Tag, "inside the é (bytes 3 and 4) is the start of the é");
+        assert_eq!(h.mode_at(&buffer, 5), Mode::Tag, "just after it");
         assert_eq!(Highlighter::new().mode_at(&Buffer::from_text(""), 0), Mode::Content);
     }
 

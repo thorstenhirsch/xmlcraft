@@ -119,10 +119,18 @@ fn a_quote_typed_in_a_tag_is_paired_but_what_an_input_method_commits_is_not() {
     assert_eq!((text(&h).as_str(), carets(&h)), ("<a b=\"x\"", vec![(8, 8)]), "the closing quote is stepped over");
     // Backspace between the two quotes of an empty value takes both.
     let mut h = harness("");
-    h.get_by_label("XML editor").type_text("<a b=\"");
+    h.get_by_label("XML editor").type_text("<a b=");
+    h.get_by_label("XML editor").type_text("\"");
+    h.run_steps(2);
+    assert_eq!(text(&h), "<a b=\"\"", "the pair is there");
     h.key_press(Key::Backspace);
     h.run_steps(2);
-    assert_eq!(text(&h), "<a b=");
+    assert_eq!(text(&h), "<a b=", "and Backspace takes both");
+    // The same text arriving in one event is text, not typing: no pair.
+    let mut literal = harness("");
+    literal.get_by_label("XML editor").type_text("<a b=\"");
+    literal.run_steps(2);
+    assert_eq!(text(&literal), "<a b=\"");
     // A quote committed by an input method is text, and so is a paste.
     h.event(Event::Ime(ImeEvent::Commit("\"".to_owned())));
     h.run_steps(2);

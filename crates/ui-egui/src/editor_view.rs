@@ -187,6 +187,8 @@ impl XmlStyler {
         self.highlighter.reset();
         self.problems.clear();
         self.reach.clear();
+        self.folds.clear();
+        self.folds_valid_before = 0;
     }
 
     /// Highlight these matches; `None` for no highlights.
@@ -461,6 +463,30 @@ mod tests {
         styler.set_matches(Some(Matches::Lines(Arc::new(anchored))));
         assert!(ranges(&mut styler, 0).is_empty());
         assert_eq!(ranges(&mut styler, 3), [0..2]);
+    }
+
+    #[test]
+    fn fold_marks_are_offered_for_the_lines_the_analysis_is_still_right_about() {
+        use xmlcraft_engine::folding::FoldKind;
+        let range = |first, last| FoldRange { first_line: first, last_line: last, end_line: last + 1, level: 1, kind: FoldKind::Element };
+        let buffer = Buffer::from_text(&"x\n".repeat(10));
+        let mut styler = XmlStyler::new(ThemeKind::Light);
+        assert_eq!(styler.fold_at(&buffer, 1), None, "before there is an analysis");
+        styler.set_folds(vec![range(1, 3), range(6, 8)]);
+        assert_eq!(
+            (styler.fold_at(&buffer, 1), styler.fold_at(&buffer, 2), styler.fold_at(&buffer, 6)),
+            (Some(FoldRegion { last_line: 3 }), None, Some(FoldRegion { last_line: 8 }))
+        );
+        // The text changed from line 5 on: what was worked out for the lines above is still right.
+        styler.set_folds_valid_before(5);
+        assert_eq!((styler.fold_at(&buffer, 1).is_some(), styler.fold_at(&buffer, 6)), (true, None));
+        styler.set_folds_valid_before(0);
+        assert_eq!(styler.fold_at(&buffer, 1), None, "with no analysis at all, none");
+        // Another text was loaded: what was worked out for the last one is gone, whatever is said about its validity.
+        styler.set_folds(vec![range(1, 3)]);
+        styler.reset();
+        styler.set_folds_valid_before(usize::MAX);
+        assert_eq!(styler.fold_at(&buffer, 1), None);
     }
 
     /// `over` (a translucent colour) painted on `under`.

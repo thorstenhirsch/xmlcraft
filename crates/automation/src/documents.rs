@@ -551,10 +551,12 @@ fn doc_edit(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     json_result(json!({ "changed": changed, "document": describe(doc) }))
 }
 
-/// Put the caret at the `line` and `column` (from 1) of `args`, when they are given.
+/// Put the caret at the `line` and `column` (from 1) of `args`, when they are given (both or neither).
 fn place_caret(doc: &mut Document, args: &Value) -> Result<()> {
-    if args.get("line").is_none() && args.get("column").is_none() {
-        return Ok(());
+    match (args.get("line"), args.get("column")) {
+        (None, None) => return Ok(()),
+        (Some(_), Some(_)) => {}
+        _ => return Err(ToolError::InvalidArgs("line and column go together: give both, or neither for the caret".into())),
     }
     let at = offset_from(doc.editor().buffer(), args.get("line").and_then(Value::as_u64), args.get("column").and_then(Value::as_u64), "position")?;
     doc.editor_mut().place_caret(at, false);
@@ -577,15 +579,23 @@ fn doc_type(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     if text.chars().count() > MAX_TYPED {
         return fail(format!("at most {MAX_TYPED} characters can be typed at once (use doc_edit for more)"));
     }
+    // What is typed is checked first: a call that cannot be done does nothing. A line break of any kind is one Enter.
+    if let Some(c) = text.chars().find(|c| c.is_control() && !matches!(c, '\n' | '\t' | '\r')) {
+        return fail(format!("the control character U+{:04X} cannot be typed", u32::from(c)));
+    }
     place_caret(doc, args)?;
     let mut typed = 0usize;
-    for c in text.chars() {
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
         let editor = doc.editor_mut();
         match c {
-            '\n' => drop(editor.insert_newline()),
+            '\r' | '\n' => {
+                if c == '\r' && chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                let _ = editor.insert_newline();
+            }
             '\t' => drop(editor.indent()),
-            '\r' => continue,
-            c if c.is_control() => return fail(format!("the control character U+{:04X} cannot be typed", u32::from(c))),
             c => drop(editor.type_input(&c.to_string())),
         }
         typed += 1;

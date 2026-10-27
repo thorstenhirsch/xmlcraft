@@ -39,7 +39,11 @@ fn main() -> Result<(), String> {
             Some("goto") => {
                 let v = args.next().unwrap_or_default();
                 let (line, column) = v.split_once(':').ok_or("--goto LINE:COL")?;
-                goto = Some((line.parse().map_err(|_| "bad line")?, column.parse().map_err(|_| "bad column")?));
+                let (line, column): (usize, usize) = (line.parse().map_err(|_| "bad line")?, column.parse().map_err(|_| "bad column")?);
+                if line == 0 || column == 0 {
+                    return Err("--goto counts lines and columns from 1".into());
+                }
+                goto = Some((line, column));
             }
             Some("scale") => scale = args.next().and_then(|v| v.parse().ok()).ok_or("bad --scale")?,
             Some("width") => width = Some(args.next().and_then(|v| v.parse().ok()).ok_or("bad --width")?),
@@ -114,6 +118,9 @@ fn main() -> Result<(), String> {
         while harness.state().problems().is_none() && std::time::Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(20));
             harness.run_steps(1);
+        }
+        if command.is_some() && harness.state().problems().is_none() {
+            return Err("the analysis of the file did not arrive in five seconds: a command that needs it would not have run".into());
         }
         harness.run_steps(4);
         if let Some(id) = &command

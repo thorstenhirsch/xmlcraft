@@ -71,6 +71,16 @@ impl Shortcut {
         Self { command: false, shift: true, mac_ctrl: false, alt: false, key }
     }
 
+    /// The key as it is written in a menu: a name such as `OpenBracket` (what egui calls it) is the character.
+    fn key_label(&self) -> &'static str {
+        match self.key {
+            "OpenBracket" => "[",
+            "CloseBracket" => "]",
+            "Backslash" => "\\",
+            other => other,
+        }
+    }
+
     /// How the shortcut is written in menus: `⇧⌘S` on macOS, `Ctrl+Shift+S` elsewhere.
     pub fn label(&self, mac: bool) -> String {
         if mac {
@@ -87,7 +97,7 @@ impl Shortcut {
             if self.command {
                 s.push('⌘');
             }
-            s.push_str(self.key);
+            s.push_str(self.key_label());
             s
         } else {
             let mut parts = Vec::new();
@@ -100,7 +110,7 @@ impl Shortcut {
             if self.shift {
                 parts.push("Shift");
             }
-            parts.push(self.key);
+            parts.push(self.key_label());
             parts.join("+")
         }
     }
@@ -325,9 +335,18 @@ mod tests {
         assert_eq!(Shortcut::key("F8").label(false), "F8");
         assert_eq!(Shortcut { command: true, shift: false, mac_ctrl: true, alt: false, key: "I" }.label(true), "⌃⌘I");
         assert_eq!(Shortcut { command: true, shift: true, mac_ctrl: true, alt: false, key: "I" }.modifier_count(), 3);
-        assert_eq!(Shortcut::cmd_alt("[").label(true), "⌥⌘[");
-        assert_eq!(Shortcut::cmd_alt("[").label(false), "Ctrl+Alt+[");
-        assert_eq!(Shortcut::cmd_alt("[").modifier_count(), 2);
+        assert_eq!(Shortcut::cmd_alt("OpenBracket").label(true), "⌥⌘[");
+        assert_eq!(Shortcut::cmd_alt("OpenBracket").label(false), "Ctrl+Alt+[");
+        assert_eq!(Shortcut::cmd_alt("OpenBracket").modifier_count(), 2);
+        assert_eq!(Shortcut::cmd_alt("CloseBracket").label(true), "⌥⌘]");
+        assert_eq!(Shortcut::cmd_shift("Backslash").label(true), "⇧⌘\\");
+        assert_eq!(Shortcut::cmd_shift("Backslash").label(false), "Ctrl+Shift+\\");
+        // No menu shows the name egui gives a key.
+        for c in COMMANDS {
+            if let Some(s) = c.shortcut {
+                assert!(!s.label(true).contains("Bracket") && !s.label(false).contains("Backslash"), "{}: {}", c.id, s.label(false));
+            }
+        }
     }
 
     #[test]

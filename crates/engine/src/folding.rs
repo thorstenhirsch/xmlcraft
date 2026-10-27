@@ -93,7 +93,14 @@ fn range_of(node: &SyntaxNode, buffer: &Buffer, level: usize) -> Option<FoldRang
     };
     if kind != FoldKind::Element {
         let (first, last) = (buffer.line_of(span.start), line_of_last_char(buffer, span.end));
-        return (first < last).then_some(FoldRange { first_line: first, last_line: last, end_line: last, level, kind });
+        if first >= last {
+            return None;
+        }
+        // Something after it on its last line would be hidden with that line: the fold stops a line short of it.
+        let line = buffer.line_range(last)?;
+        let rest_is_blank = buffer.slice(span.end.min(line.end)..line.end).ok()?.trim().is_empty();
+        let hidden_to = if rest_is_blank { last } else { last - 1 };
+        return (hidden_to > first).then_some(FoldRange { first_line: first, last_line: hidden_to, end_line: last, level, kind });
     }
     let start_tag = node.children().find(|n| n.kind() == SyntaxKind::StartTag)?;
     let end_tag = node.children().find(|n| n.kind() == SyntaxKind::EndTag)?;
@@ -210,6 +217,14 @@ mod tests {
             [(1, 3, 3, 1, Doctype), (4, 5, 5, 1, Comment), (6, 10, 11, 1, Element), (7, 8, 8, 2, Cdata), (9, 10, 10, 2, ProcessingInstruction)]
         );
         assert_eq!(ranges("<!-- one line -->"), []);
+    }
+
+    #[test]
+    fn something_after_a_comment_on_its_last_line_stays_visible() {
+        assert_eq!(ranges("<!-- a\n b\n c --> <x/>\n"), [(0, 1, 2, 1, Comment)], "the line with `-->` and `<x/>` is shown");
+        assert_eq!(ranges("<!-- a\n b --> <x/>\n"), [], "nothing is left to hide");
+        assert_eq!(ranges("<!-- a\n b -->  \n"), [(0, 1, 1, 1, Comment)], "white space after it does not matter");
+        assert_eq!(ranges("<?pi\n a\n?><x/>"), [(0, 1, 2, 1, ProcessingInstruction)]);
     }
 
     #[test]

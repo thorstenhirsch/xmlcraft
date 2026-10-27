@@ -312,10 +312,9 @@ impl XmlCraftApp {
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
         view.styler.set_matches(matches);
         view.styler.set_tag_match(Self::matching_tag_names(view, doc.editor()));
-        // What can be folded is right for the lines above the first one that changed since the analysis.
-        if let Some(analysis) = &view.analysis {
-            view.styler.set_folds_valid_before(doc.editor().first_changed_line_since(analysis.version).unwrap_or(usize::MAX));
-        }
+        // What can be folded is right for the lines above the first one that changed since the analysis (and for none before there is one).
+        let valid_before = view.analysis.as_ref().map_or(0, |a| doc.editor().first_changed_line_since(a.version).unwrap_or(usize::MAX));
+        view.styler.set_folds_valid_before(valid_before);
         let salt = egui::Id::new(("xmlcraft-editor", id));
         if focus {
             let widget = ui.make_persistent_id(salt);

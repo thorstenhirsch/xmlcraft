@@ -402,7 +402,17 @@ fn typing_and_keys_work_as_the_keyboard_does() {
     assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], "<a>\n  <b/>", "a tab is an indent step");
     // Typing is undone like any other editing.
     ok(&mut a, "doc_undo", json!({ "id": id2 }));
-    assert!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"].as_str().is_some_and(|t| t.len() < "<a>\n  <b/>".len()));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], "<a>\n", "the typing after the Enter is one step (the Enter is its own)");
+    ok(&mut a, "doc_undo", json!({ "id": id2 }));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], "<a>");
+    // Line breaks of any kind are one Enter, and a call that cannot be done changes nothing.
+    let id3 = ok(&mut a, "doc_new", json!({ "text": "" }))["id"].as_u64().expect("id");
+    let typed = ok(&mut a, "doc_type", json!({ "id": id3, "text": "a\r\nb\rc\nd" }));
+    assert_eq!((ok(&mut a, "doc_text", json!({ "id": id3 }))["text"].as_str(), typed["typed"].as_u64()), (Some("a\nb\nc\nd"), Some(7)));
+    assert!(err(&mut a, "doc_type", json!({ "id": id3, "text": "xy\u{7}z", "line": 1, "column": 1 })).contains("control character"));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id3 }))["text"], "a\nb\nc\nd", "nothing was typed before the bad character was found");
+    assert!(err(&mut a, "doc_type", json!({ "id": id3, "text": "x", "line": 1 })).contains("go together"));
+    assert!(err(&mut a, "doc_key", json!({ "id": id3, "key": "Enter", "column": 1 })).contains("go together"));
     // Bad arguments say what is wrong.
     assert!(err(&mut a, "doc_type", json!({ "id": id2, "text": "a\u{7}b" })).contains("control character"));
     assert!(err(&mut a, "doc_type", json!({ "id": id2, "text": "" })).contains("doc_type"), "the schema wants something to type");

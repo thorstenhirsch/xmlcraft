@@ -43,7 +43,9 @@ impl FoldMap {
         let mut zones: Vec<(usize, usize)> = Vec::new();
         for fold in folds {
             let (start, end) = (fold.hidden.start, fold.hidden.end);
-            if start >= end || end > buffer.len() {
+            // Both ends are the ends of the text of a line: one that is not is something else, and hides the wrong lines.
+            let ends_a_line = |offset: usize| buffer.line_range(buffer.line_of(offset)).is_some_and(|r| r.end == offset);
+            if start >= end || end > buffer.len() || !ends_a_line(start) || !ends_a_line(end) {
                 continue;
             }
             let (first, last) = (buffer.line_of(start) + 1, buffer.line_of(end));
@@ -99,13 +101,15 @@ impl FoldMap {
     /// The line that is on `row`. A row past the last is the line after the last row's.
     pub fn line_of(&self, row: usize) -> usize {
         let at = self.rows_before.partition_point(|&rows| rows <= row);
-        row + self.before.get(at).copied().unwrap_or(0)
+        row.saturating_add(self.before.get(at).copied().unwrap_or(0))
     }
 
     /// How many lines are hidden right after `line`: more than none for the line a fold starts on.
     pub fn hidden_after(&self, line: usize) -> usize {
-        let at = self.lines.partition_point(|r| r.start <= line + 1);
-        at.checked_sub(1).and_then(|i| self.lines.get(i)).filter(|r| r.start == line + 1).map_or(0, Range::len)
+        let next = line.saturating_add(1);
+        let at = self.lines.partition_point(|r| r.start <= next);
+        // (the last possible line has no line after it to hide)
+        at.checked_sub(1).and_then(|i| self.lines.get(i)).filter(|r| r.start == next && line != usize::MAX).map_or(0, Range::len)
     }
 
     /// The hidden stretch of text that has `offset` in it, as (start, end]: the positions after `start` up to `end`.
@@ -318,10 +322,14 @@ mod tests {
         let map = FoldMap::new(&buffer, &[fold(&buffer, 1, 8), fold(&buffer, 3, 5), fold(&buffer, 8, 9)]);
         assert_eq!((0..10).filter(|l| map.is_hidden(*l)).collect::<Vec<_>>(), [2, 3, 4, 5, 6, 7, 8, 9]);
         assert_eq!(map.rows(), 2);
-        // Nothing to hide, past the end, and backwards.
+        // Nothing to hide, past the end, backwards, and ends that are not the ends of lines (bytes 1 and 7 are in the middle of lines).
         #[allow(clippy::reversed_empty_ranges)] // a fold that was left backwards is what is being tried
-        let odd = [Fold { hidden: 4..4 }, Fold { hidden: 0..9999 }, Fold { hidden: 9..3 }];
+        let odd = [Fold { hidden: 4..4 }, Fold { hidden: 0..9999 }, Fold { hidden: 9..3 }, Fold { hidden: 1..8 }, Fold { hidden: 2..7 }];
         assert!(FoldMap::new(&buffer, &odd).is_empty());
+        assert_eq!(FoldMap::new(&buffer, &[fold(&buffer, 0, 1)]).rows(), 9, "a good one is not");
+        // A past-the-end query is answered, not overflowed.
+        let map = FoldMap::new(&buffer, &[fold(&buffer, 0, 1)]);
+        assert_eq!((map.hidden_after(usize::MAX), map.line_of(usize::MAX) > 0, map.row_of(usize::MAX) > 0), (0, true, true));
         assert!(FoldMap::default().is_empty());
         assert_eq!(FoldMap::default().rows(), 0);
     }

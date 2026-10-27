@@ -207,16 +207,26 @@ impl History {
 
     /// Undo the last change; returns the selections from before it.
     pub fn undo(&mut self, buffer: &mut Buffer) -> Result<Option<Vec<Selection>>, TextError> {
-        Ok(self.undo_applied(buffer)?.map(|undone| undone.selections))
+        Ok(self.undo_with(buffer, false)?.map(|undone| undone.selections))
     }
 
     /// Redo the last undone change; returns the selections from after it.
     pub fn redo(&mut self, buffer: &mut Buffer) -> Result<Option<Vec<Selection>>, TextError> {
-        Ok(self.redo_applied(buffer)?.map(|undone| undone.selections))
+        Ok(self.redo_with(buffer, false)?.map(|undone| undone.selections))
     }
 
     /// [`History::undo`], and which edits it made.
     pub fn undo_applied(&mut self, buffer: &mut Buffer) -> Result<Option<Applied>, TextError> {
+        self.undo_with(buffer, true)
+    }
+
+    /// [`History::redo`], and which edits it made.
+    pub fn redo_applied(&mut self, buffer: &mut Buffer) -> Result<Option<Applied>, TextError> {
+        self.redo_with(buffer, true)
+    }
+
+    /// Undo; the edits it made are in the result only when `keep_edits` (copying them can be a lot of text).
+    fn undo_with(&mut self, buffer: &mut Buffer, keep_edits: bool) -> Result<Option<Applied>, TextError> {
         let Some(entry) = self.undo.pop() else { return Ok(None) };
         self.bytes = self.bytes.saturating_sub(entry.bytes());
         // Undoing replaces what the change wrote with what it replaced, so what comes back out must be exactly what it wrote.
@@ -225,22 +235,22 @@ impl History {
             self.clear();
             return Err(e);
         }
-        let applied = Applied { selections: entry.before.clone(), edits: entry.inverse.clone() };
+        let applied = Applied { selections: entry.before.clone(), edits: if keep_edits { entry.inverse.clone() } else { Vec::new() } };
         self.bytes = self.bytes.saturating_add(entry.bytes());
         self.redo.push(entry);
         self.closed = true;
         Ok(Some(applied))
     }
 
-    /// [`History::redo`], and which edits it made.
-    pub fn redo_applied(&mut self, buffer: &mut Buffer) -> Result<Option<Applied>, TextError> {
+    /// Redo; the edits it made are in the result only when `keep_edits`.
+    fn redo_with(&mut self, buffer: &mut Buffer, keep_edits: bool) -> Result<Option<Applied>, TextError> {
         let Some(entry) = self.redo.pop() else { return Ok(None) };
         self.bytes = self.bytes.saturating_sub(entry.bytes());
         if let Err(e) = self.apply_checked(buffer, &entry.forward, &entry.inverse) {
             self.clear();
             return Err(e);
         }
-        let applied = Applied { selections: entry.after.clone(), edits: entry.forward.clone() };
+        let applied = Applied { selections: entry.after.clone(), edits: if keep_edits { entry.forward.clone() } else { Vec::new() } };
         self.bytes = self.bytes.saturating_add(entry.bytes());
         self.undo.push(entry);
         self.closed = true;
@@ -251,7 +261,7 @@ impl History {
 /// What an undo or a redo did.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Applied {
-    /// The selections to go back to.
+    /// The selections the change had before it (for an undo) or after it (for a redo): where the carets go.
     pub selections: Vec<Selection>,
     /// The edits it made to the text, in the order they were made: each is in the coordinates of the text as it was just before it.
     pub edits: Vec<Edit>,
