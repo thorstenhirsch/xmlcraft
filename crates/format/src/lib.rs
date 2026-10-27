@@ -305,14 +305,15 @@ fn space_of(element: &SyntaxNode, text: &str) -> Option<Space> {
 }
 
 /// Inside the preserved element `root` (at `depth`): the elements that switch white space handling back to `default`, which are
-/// formatted after all (what is inside them that preserves again stays as it is). They are put on `work` with their own depth.
+/// formatted after all (what is inside them that preserves again stays as it is). They are put on `work` with their own depth. The walk
+/// does not go through an element that cannot be formatted (mixed content, say): its subtree is left alone, islands included.
 fn default_islands(root: &SyntaxNode, depth: usize, text: &str, work: &mut Vec<(SyntaxNode, usize)>) {
     let mut stack: Vec<(SyntaxNode, usize)> = vec![(root.clone(), depth)];
     while let Some((node, depth)) = stack.pop() {
         for child in node.children().filter(|n| n.kind() == SyntaxKind::Element) {
             if space_of(&child, text) == Some(Space::Default) {
                 work.push((child, depth + 1));
-            } else {
+            } else if Content::of(&child, text, false).is_some() {
                 stack.push((child, depth + 1));
             }
         }
@@ -355,6 +356,25 @@ mod tests {
         assert_eq!(pretty("<r><p>a <b>b</b> c</p><q/></r>"), "<r>\n  <p>a <b>b</b> c</p>\n  <q/>\n</r>");
         // Even element-only descendants of a mixed element stay as they are.
         assert_eq!(pretty("<p>a<l><i/><i/></l></p>"), "<p>a<l><i/><i/></l></p>");
+    }
+
+    #[test]
+    fn an_island_inside_mixed_content_is_left_alone_like_the_rest_of_it() {
+        // The mixed element's subtree is left alone, also where `xml:space="default"` inside it would switch formatting back on in a preserved
+        // region. (A property-test finding: the island was found by walking through the mixed element and then formatted.)
+        let src = "<a xml:space=\"preserve\"><a><a xml:space='default' y='2'><a></a></a>text</a></a>";
+        assert_eq!(pretty(src), src);
+        assert_eq!(mini(src), src);
+        // An element-only element between the preserved one and the island does not stop it.
+        assert_eq!(
+            pretty("<a xml:space=\"preserve\"><b><c xml:space='default'><d/></c></b></a>"),
+            "<a xml:space=\"preserve\"><b><c xml:space='default'>\n      <d/>\n    </c></b></a>"
+        );
+        // The preserved element itself may have text: an island directly inside it is still formatted.
+        assert_eq!(
+            pretty("<a xml:space=\"preserve\">text<c xml:space='default'><d/></c></a>"),
+            "<a xml:space=\"preserve\">text<c xml:space='default'>\n    <d/>\n  </c></a>"
+        );
     }
 
     #[test]
