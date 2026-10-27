@@ -166,8 +166,8 @@ pub struct Highlighter {
 /// its start, which is known exactly only by reading everything before it. For a text of 100 MB that is over a second, so a jump
 /// further than `lines` past what is known starts from an estimate instead: the lexer is run over the 256 KiB just before, from the
 /// state of content. That is right unless a construct that goes over lines (a comment, a CDATA section, a tag, a value, a processing
-/// instruction, a declaration) began before that and has not ended; the colours are wrong until it ends. It is corrected, as far as it
-/// is read, when the lines in between are looked at one by one.
+/// instruction, a declaration) began before that and has not ended; the colours are wrong until it ends. The estimate is dropped when
+/// reading from the top of the text (a jump of up to `lines` at a time) reaches it, and by an edit before it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FarJump {
     /// A line further than this past the last one whose state is known starts from an estimate.
@@ -267,11 +267,15 @@ impl Highlighter {
 
     /// The state at the start of `line`, far past what is known: from the island that has it, or one made for it.
     fn start_in_island(&mut self, buffer: &Buffer, line: usize, far: FarJump) -> LineStart {
+        // A line the text does not have is not worth an island (and `line` can be anything: it is the caller's).
+        if line >= buffer.line_count() {
+            return LineStart::default();
+        }
         // Islands that start in what is known now are not needed any more.
         let known = self.starts.len();
         self.islands.retain(|island| island.first >= known);
         let at = self.islands.partition_point(|island| island.first <= line);
-        let near = at.checked_sub(1).and_then(|i| self.islands.get(i).map(|island| (i, island.first + island.starts.len())));
+        let near = at.checked_sub(1).and_then(|i| self.islands.get(i).map(|island| (i, island.first.saturating_add(island.starts.len()))));
         let index = match near {
             // Near the end of an island: it goes on to the line.
             Some((i, end)) if line < end.saturating_add(far.lines) => i,
@@ -285,7 +289,7 @@ impl Highlighter {
         };
         // Lex forward to the line; an island that is run into on the way is replaced by what this one finds.
         while let Some(island) = self.islands.get(index) {
-            let next = island.first + island.starts.len();
+            let next = island.first.saturating_add(island.starts.len());
             if next > line {
                 break;
             }
@@ -468,6 +472,20 @@ mod tests {
         let after = 30 + 2 + 40_000 + 3;
         for line in [after, after + 5, after + 29] {
             assert_eq!(estimated.spans(&buffer, line), exact.spans(&buffer, line), "line {line}");
+        }
+    }
+
+    #[test]
+    fn a_line_the_text_does_not_have_is_no_trouble_in_a_far_jump() {
+        let buffer = Buffer::from_text(&simple_lines(50));
+        for lookbehind in [0, 1, 64] {
+            let mut estimated = Highlighter::new();
+            estimated.set_far_jump(Some(FarJump { lines: 2, lookbehind }));
+            for line in [50, 51, 1_000_000, usize::MAX - 1, usize::MAX, 20, usize::MAX] {
+                let spans = estimated.spans(&buffer, line);
+                assert!(line >= 50 && spans.is_empty() || line < 50 && !spans.is_empty(), "line {line}: {spans:?}");
+            }
+            assert_eq!(estimated.mode_at(&buffer, usize::MAX), Mode::Content);
         }
     }
 
