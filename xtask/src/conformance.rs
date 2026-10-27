@@ -425,8 +425,15 @@ mod tests {
 
     #[test]
     fn a_unreadable_baseline_is_an_error_not_an_empty_one() {
-        // A directory where the file should be: reading it fails with something other than "not found".
-        assert!(read_baseline(&std::env::temp_dir()).is_err());
+        // A file that is not text: reading it fails with something other than "not found", on every platform (reading a directory does
+        // not: Windows says different things for different kinds of directory).
+        let path = std::env::temp_dir().join(format!("xmlcraft-baseline-{}.txt", std::process::id()));
+        std::fs::write(&path, [0xFF, 0xFE, 0x00]).expect("writes");
+        let read = read_baseline(&path);
+        std::fs::remove_file(&path).expect("removes");
+        assert!(read.is_err(), "{read:?}");
+        // One that is not there is an empty baseline.
+        assert_eq!(read_baseline(&path).expect("a missing file is empty"), BTreeSet::new());
     }
 
     #[test]

@@ -153,7 +153,8 @@ fn bad_edits_and_bad_arguments_are_refused_with_a_reason() {
     // A column past the end of a line is the end of the line; a multi-line replace works.
     ok(&mut a, "doc_edit", json!({ "id": id, "edits": [{ "line": 1, "column": 99, "end_line": 2, "end_column": 1, "text": "-" }] }));
     assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], "ab-cd");
-    assert!(err(&mut a, "doc_open", json!({ "path": "/no/such/file.xml" })).contains("/no/such/file.xml"));
+    // The message names the file (the separators are the platform's: a root-relative path is written with backslashes on Windows).
+    assert!(err(&mut a, "doc_open", json!({ "path": "/no/such/file.xml" })).contains("file.xml"));
 }
 
 #[test]
