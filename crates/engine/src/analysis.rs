@@ -131,12 +131,15 @@ fn item_of(node: &xmlcraft_syntax::SyntaxNode, text: &str, depth: usize) -> Opti
 
 type Finished = Arc<Mutex<Vec<(u64, Analysis)>>>;
 
+/// What the worker calls when an analysis is ready (the app asks for a repaint), once one is set.
+type Notify = Arc<Mutex<Option<Box<dyn Fn() + Send>>>>;
+
 /// Runs [`analyze`] on a worker thread. `submit` returns at once; `poll` collects what has finished.
 pub struct Analyzer {
     #[cfg(not(target_arch = "wasm32"))]
     jobs: Sender<Job>,
     finished: Finished,
-    on_done: Arc<Mutex<Option<Box<dyn Fn() + Send>>>>,
+    on_done: Notify,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -155,7 +158,7 @@ impl Default for Analyzer {
 impl Analyzer {
     pub fn new() -> Self {
         let finished: Finished = Arc::new(Mutex::new(Vec::new()));
-        let on_done: Arc<Mutex<Option<Box<dyn Fn() + Send>>>> = Arc::new(Mutex::new(None));
+        let on_done: Notify = Arc::new(Mutex::new(None));
         #[cfg(not(target_arch = "wasm32"))]
         {
             let (jobs, queue) = channel::<Job>();
@@ -202,7 +205,7 @@ fn guarded(text: &str, version: u64) -> Analysis {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn worker(queue: Receiver<Job>, finished: Finished, notify: Arc<Mutex<Option<Box<dyn Fn() + Send>>>>) {
+fn worker(queue: Receiver<Job>, finished: Finished, notify: Notify) {
     while let Ok(first) = queue.recv() {
         // Everything that arrived while the last one ran: only the newest per document is worth doing.
         let mut latest: Vec<Job> = vec![first];
@@ -300,9 +303,10 @@ mod tests {
         analyzer.submit(1, 1, &buffer);
         analyzer.submit(1, 2, &Buffer::from_text("<a/>"));
         analyzer.submit(2, 5, &buffer);
-        let mut results = Vec::new();
-        while results.iter().any(|(d, a): &(u64, Analysis)| *d == 1 && a.version == 2).not() || results.iter().all(|(d, _): &(u64, Analysis)| *d != 2)
-        {
+        let mut results: Vec<(u64, Analysis)> = Vec::new();
+        let have_everything =
+            |results: &[(u64, Analysis)]| results.iter().any(|(d, a)| *d == 1 && a.version == 2) && results.iter().any(|(d, _)| *d == 2);
+        while !have_everything(&results) {
             rx.recv_timeout(std::time::Duration::from_secs(10)).expect("a result arrives");
             results.extend(analyzer.poll());
         }
@@ -311,15 +315,5 @@ mod tests {
         let two = results.iter().find(|(d, _)| *d == 2).map(|(_, a)| a).expect("document two");
         assert_eq!((two.version, two.is_well_formed()), (5, false));
         assert!(analyzer.poll().is_empty());
-    }
-
-    trait Not {
-        fn not(self) -> bool;
-    }
-
-    impl Not for bool {
-        fn not(self) -> bool {
-            !self
-        }
     }
 }

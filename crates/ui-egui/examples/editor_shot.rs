@@ -70,6 +70,9 @@ fn main() -> Result<(), String> {
     let mut editor = Editor::new(SAMPLE);
     let start = SAMPLE.find("Fish").unwrap_or(0);
     editor.set_selections(&[Selection { anchor: start, head: start + 4 }]);
+    // The problems the analysis finds in the sample (a bare `<`, an unknown entity), underlined as in the app.
+    let mut styler = XmlStyler::new(kind);
+    styler.set_problems(xmlcraft_engine::analysis::analyze(SAMPLE, 0).diagnostics.iter().map(|d| (d.span.clone(), d.severity())).collect());
     let mut harness = Harness::builder().with_size(size).with_pixels_per_point(scale).build_ui_state(
         |ui, state: &mut State| {
             // The app's own fonts (JetBrains Mono for code), installed before anything is laid out: they take effect next frame.
@@ -84,7 +87,7 @@ fn main() -> Result<(), String> {
                 .styler(&mut state.styler)
                 .show(ui);
         },
-        State { editor, view: ViewState::new(), styler: XmlStyler::new(kind), kind, fonts_installed: false },
+        State { editor, view: ViewState::new(), styler, kind, fonts_installed: false },
     );
     harness.run_steps(6);
     std::thread::sleep(std::time::Duration::from_millis(200));

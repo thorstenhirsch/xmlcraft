@@ -251,11 +251,11 @@ title = "Go to line"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
-commands = []
+status = "shipped"
+commands = ["edit.go_to_line"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/tests/analysis.rs::go_to_line_moves_the_caret", "crates/ui-egui/src/documents.rs::positions_are_a_line_and_maybe_a_column"]
+notes = "⌘G / Ctrl+G asks for `line` or `line:column` (counted from 1; past the end goes to the end) and puts the line near the top. No headless tool yet (the `doc_*` tools of M1.14)."
 
 [[feature]]
 id = "editor.pretty-print"
@@ -496,11 +496,11 @@ title = "Outline of the element tree with filter"
 area = "B"
 tier = "P0"
 milestone = "M1"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["view.outline"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/tests/analysis.rs::the_outline_lists_elements_filters_and_jumps", "crates/engine/src/analysis.rs::a_well_formed_document_has_no_problems_and_an_outline"]
+notes = "The element tree of the document being shown (name, and a hint from its id, name or key attribute), kept up to date while typing, with a filter and click to jump; capped at 50,000 items. Still missing: collapsing branches, following the caret, attributes and text nodes, drag and drop, the Info pane below it."
 
 [[feature]]
 id = "view.entry-helpers"
@@ -532,11 +532,11 @@ title = "Messages pane with clickable diagnostics grouped by file"
 area = "B"
 tier = "P0"
 milestone = "M1"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["view.messages"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/tests/analysis.rs::problems_are_listed_and_a_click_goes_to_them", "crates/ui-egui/tests/analysis.rs::a_well_formed_document_says_so"]
+notes = "Well-formedness errors and warnings of the document being shown, with line and column, a click selects the problem; counts in the pane header. Still missing: validity messages, several files, the Def link, the Fix button, next and previous error, the resolution trail."
 
 [[feature]]
 id = "view.tabs"
@@ -559,8 +559,8 @@ milestone = "M1"
 status = "partial"
 commands = []
 tools = []
-evidence = ["crates/ui-egui/src/chrome.rs::the_status_summary_describes_the_caret_and_the_file"]
-notes = "Caret line and column, selection size, encoding, line ending and indentation. No validity badge, schema association or clickable encoding and line-ending switchers yet."
+evidence = ["crates/ui-egui/src/chrome.rs::the_status_summary_describes_the_caret_and_the_file", "crates/ui-egui/tests/analysis.rs::a_well_formed_document_says_so"]
+notes = "Caret line and column, selection size, encoding, line ending and indentation, and a well-formedness badge (problems found, or Well-formed). No schema association or clickable encoding and line-ending switchers yet."
 
 [[feature]]
 id = "view.command-palette"
@@ -1003,11 +1003,11 @@ title = "Well-formedness check (F7)"
 area = "E"
 tier = "P0"
 milestone = "M1"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["xml.check"]
 tools = []
-evidence = []
-notes = "XML 1.0 5th edition."
+evidence = ["crates/engine/src/analysis.rs::problems_are_sorted_by_position_and_counted", "crates/ui-egui/tests/analysis.rs::f7_checks_now_and_opens_messages", "crates/ui-egui/tests/analysis.rs::the_analysis_follows_the_typing"]
+notes = "XML 1.0 5th edition and Namespaces, on a worker thread after every edit (squiggles, status badge, Messages) and at once with F7. Of the W3C xmlconf not-well-formed tests 64.7% are rejected: the DTD rules arrive in M2 (docs/gaps.md, gap 16). No headless tool yet (M1.14)."
 
 [[feature]]
 id = "validate.namespaces"
