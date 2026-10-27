@@ -134,10 +134,16 @@
       <Component Id="XmlcraftNotice">
         <File Id="XmlcraftNoticeFile" Source="$(var.BinDir)\NOTICE" KeyPath="yes" />
       </Component>
-      <Component Id="XmlcraftThirdPartyLicenses">
+      <!-- One file per component: Windows Installer only generates a component's GUID automatically (Guid="*") for a single
+           unversioned file. -->
+      <Component Id="XmlcraftInterLicense">
         <File Id="XmlcraftInterLicenseFile" Source="$(var.BinDir)\OFL-Inter.txt" KeyPath="yes" />
-        <File Id="XmlcraftJetBrainsLicenseFile" Source="$(var.BinDir)\OFL-JetBrainsMono.txt" />
-        <File Id="XmlcraftLucideLicenseFile" Source="$(var.BinDir)\LICENSE-lucide.txt" />
+      </Component>
+      <Component Id="XmlcraftJetBrainsLicense">
+        <File Id="XmlcraftJetBrainsLicenseFile" Source="$(var.BinDir)\OFL-JetBrainsMono.txt" KeyPath="yes" />
+      </Component>
+      <Component Id="XmlcraftLucideLicense">
+        <File Id="XmlcraftLucideLicenseFile" Source="$(var.BinDir)\LICENSE-lucide.txt" KeyPath="yes" />
       </Component>
     </ComponentGroup>
   </Fragment>
