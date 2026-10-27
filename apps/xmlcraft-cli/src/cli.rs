@@ -23,12 +23,14 @@ pub const USAGE: &str = "Usage:
   xmlcraft-cli check FILE... [--root DIR] [--json]
   xmlcraft-cli format FILE [--minify] [--indent N | --tabs] [--blank-lines keep|remove] [--check | --in-place] [--root DIR]
   xmlcraft-cli tools [--json]
+  xmlcraft-cli check-one FILE [--edit]
   xmlcraft-cli run <tool> [key=value ...] [--root DIR]
   xmlcraft-cli run --script FILE [--root DIR] [--keep-going]
   xmlcraft-cli mcp [--root DIR]
   xmlcraft-cli ui --control FILE <method> [key=value ...] [--out FILE.png]
   xmlcraft-cli --version | --help
 
+check-one holds the engine to its promises on one file (the fuzzer runs it); --edit also edits it every way and undoes it all.
 A key=value value is read as JSON when it is valid JSON (3, true, [\"a\"]), and as text otherwise.
 --root DIR confines every path a tool reads or writes to DIR.";
 
@@ -50,6 +52,10 @@ pub enum Command {
     },
     Tools {
         json: bool,
+    },
+    CheckOne {
+        file: PathBuf,
+        edit: bool,
     },
     Run {
         tool: String,
@@ -139,6 +145,14 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
             let json = take_flag(&mut rest, "--json");
             no_extra(&rest)?;
             Ok(Command::Tools { json })
+        }
+        "check-one" => {
+            let edit = take_flag(&mut rest, "--edit");
+            if let Some(flag) = rest.iter().find(|a| a.starts_with("--")) {
+                return Err(format!("unknown option {flag}"));
+            }
+            let [file] = <[String; 1]>::try_from(rest).map_err(|rest| format!("check-one takes one file, not {}", rest.len()))?;
+            Ok(Command::CheckOne { file: PathBuf::from(file), edit })
         }
         "check" => {
             let root = take_option(&mut rest, "--root")?.map(PathBuf::from);
@@ -259,6 +273,13 @@ pub fn execute(command: Command, out: &mut impl Write, err: &mut impl Write) -> 
             }
             0
         }
+        Command::CheckOne { file, edit } => match std::fs::read(&file) {
+            Err(e) => fail(err, &format!("{}: {e}", file.display())),
+            Ok(bytes) => match xmlcraft_engine::selfcheck::check(&bytes, edit) {
+                Ok(()) => 0,
+                Err(why) => fail(err, &format!("self-check failed: {why}")),
+            },
+        },
         Command::Check { files, root, json } => check(&files, root, json, out, err),
         Command::Format { file, options, root, mode } => format_file(&file, options, root, mode, out, err),
         Command::Run { tool, args, root } => {
@@ -509,6 +530,18 @@ mod tests {
     }
 
     #[test]
+    fn check_one_reads_a_file_and_says_nothing_when_all_is_well() {
+        assert_eq!(parse(&args("check-one a.xml --edit")), Ok(Command::CheckOne { file: "a.xml".into(), edit: true }));
+        let dir = tempfile::tempdir().expect("dir");
+        let path = dir.path().join("a.xml");
+        std::fs::write(&path, "<a><b>x</b></a>").expect("writes");
+        assert_eq!(run(Command::CheckOne { file: path.clone(), edit: true }), (0, String::new(), String::new()));
+        let (code, _, err) = run(Command::CheckOne { file: dir.path().join("missing.xml"), edit: false });
+        assert_eq!(code, 1);
+        assert!(err.contains("missing.xml"), "{err}");
+    }
+
+    #[test]
     fn script_options_parse() {
         assert_eq!(
             parse(&args("run --script s.json --keep-going --root r")),
@@ -541,6 +574,9 @@ mod tests {
             ("ui --control c.json", "ui needs a method"),
             ("mcp --root", "--root needs a value"),
             ("mcp extra", "unexpected argument"),
+            ("check-one", "check-one takes one file, not 0"),
+            ("check-one a.xml b.xml", "check-one takes one file, not 2"),
+            ("check-one --what a.xml", "unknown option --what"),
             ("check", "needs at least one file"),
             ("check --what a.xml", "unknown option --what"),
             ("format", "format takes one file, not 0"),

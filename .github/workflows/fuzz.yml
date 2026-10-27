@@ -1,0 +1,66 @@
+name: Fuzz
+
+# Mutation fuzzing of open, save, analyse, format and edit (`cargo xtask fuzz`), nightly and on demand. Seeds are synthetic documents plus
+# the small files of the W3C suite (fetched here). Findings are uploaded as an artifact; each real one becomes a small synthetic
+# regression test, and corpus-derived files are never committed.
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "How long to fuzz, in minutes"
+        default: "15"
+  schedule:
+    - cron: "17 3 * * *"
+
+# The token is only used to check out the code: no job writes to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUST_BACKTRACE: 1
+
+jobs:
+  fuzz:
+    name: fuzz (mutation)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          prefix-key: v1-rust-fuzz
+          key: ${{ hashFiles('Cargo.toml') }}
+          save-if: false
+
+      # The suite's files are seeds (the ratchet it also runs holds on main).
+      - name: Fetch the W3C suite (seeds)
+        run: cargo xtask conformance xmlconf --fetch
+
+      - name: Fuzz
+        env:
+          MINUTES: ${{ github.event.inputs.minutes || '15' }}
+        run: cargo xtask fuzz --time "$((MINUTES * 60))" --seed "${{ github.run_number }}"
+
+      - name: Upload findings
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-findings
+          path: fuzz-out/findings
+          if-no-files-found: ignore
