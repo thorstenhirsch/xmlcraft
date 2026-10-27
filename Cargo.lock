@@ -4646,6 +4646,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-editor"
+version = "0.0.1"
+dependencies = [
+ "proptest",
+ "unicode-segmentation",
+ "unicode-width",
+ "xmlcraft-text",
+]
+
+[[package]]
 name = "xmlcraft-engine"
 version = "0.0.1"
 
