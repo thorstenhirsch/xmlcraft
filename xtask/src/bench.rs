@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, bail};
 use xmlcraft_editor::Editor;
 use xmlcraft_engine::Session;
-use xmlcraft_syntax::Highlighter;
+use xmlcraft_syntax::{FarJump, Highlighter};
 use xmlcraft_text::Buffer;
 
 use crate::gates::root;
@@ -37,6 +37,7 @@ type Scenario = fn() -> Result<Measured>;
 const SCENARIOS: &[(&str, &str, Scenario)] = &[
     ("open_100mb", "open a 100 MB file: bytes to a document", open_100mb),
     ("scroll_100mb_far", "show 60 lines after a jump to a far place in a 100 MB document (cold)", scroll_100mb_far),
+    ("first_frame_100mb", "what the view reads of a 100 MB document before its first frame: its lines and the longest of them", first_frame_100mb),
     ("keystroke_1mb", "type a character in the middle of a 1 MB document and style the visible lines (p95)", keystroke_1mb),
     ("reparse_1mb", "analyse (parse, problems, outline, fold ranges) a 1 MB document", reparse_1mb),
     ("reparse_10mb", "analyse a 10 MB document", reparse_10mb),
@@ -121,6 +122,8 @@ fn scroll_100mb_far() -> Result<Measured> {
     let buffer = Buffer::from_text(&text);
     drop(text);
     let mut highlighter = Highlighter::new();
+    // As the editor does for a text this large.
+    highlighter.set_far_jump(FarJump::for_len(buffer.len()));
     let lines = buffer.line_count();
     // The first look at the end of the document: nothing is known about the lines before it.
     let started = Instant::now();
@@ -138,6 +141,15 @@ fn scroll_100mb_far() -> Result<Measured> {
         .collect();
     let later = percentile(&mut samples, 0.95);
     Ok(Measured { millis: millis(cold), what: "first jump to the end", note: format!("{spans} spans; later jumps p95 {later:.2} ms, {lines} lines") })
+}
+
+fn first_frame_100mb() -> Result<Measured> {
+    let text = document(100 * 1024 * 1024);
+    let buffer = Buffer::from_text(&text);
+    drop(text);
+    let started = Instant::now();
+    let (lines, longest) = (buffer.line_count(), buffer.longest_line_bytes());
+    Ok(Measured { millis: millis(started.elapsed()), what: "once", note: format!("{lines} lines, the longest {longest} bytes") })
 }
 
 fn keystroke_1mb() -> Result<Measured> {

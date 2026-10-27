@@ -323,11 +323,11 @@ title = "Open and edit files of 100 MB and more"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = "Large-file mode above 32 MB: streaming outline and validation, no syntax tree."
+evidence = ["crates/syntax/src/highlight.rs::a_far_jump_starts_from_an_estimate_and_is_right_when_nothing_goes_over_lines", "crates/syntax/src/highlight.rs::estimating_agrees_with_reading_everything_when_no_construct_goes_over_lines", "crates/text/src/buffer.rs::the_longest_line_is_found_across_the_chunks_of_the_rope"]
+notes = "A 100 MB file opens in 0.13 s, the first look at its end takes 0.23 ms and the first frame 30 ms, and a keystroke in a 1 MB one 0.04 ms (cargo xtask bench). Above 1 MiB the colour of a far place starts from an estimate (docs/gaps.md 18). Missing: the large-file mode of the plan above 32 MB (streaming outline and validation, no syntax tree, a notice in the window): such a document is still not analysed (gap 17)."
 
 [[feature]]
 id = "editor.ime"

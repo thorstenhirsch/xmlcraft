@@ -492,13 +492,12 @@ fn update_max_columns(editor: &Editor, view: &mut ViewState) {
     let buffer = editor.buffer();
     let tab = editor.settings().tab_width;
     if view.max_columns_known_for.is_none() && buffer.len() <= 32 * 1024 * 1024 {
-        let exact = buffer.len() <= EXACT_COLUMNS_UP_TO;
-        let mut widest = 0;
-        for line in 0..buffer.line_count() {
-            if let Some(range) = buffer.line_range(line) {
-                widest = widest.max(if exact { display_column(buffer, range.end, tab) } else { range.len() });
-            }
-        }
+        let widest = if buffer.len() <= EXACT_COLUMNS_UP_TO {
+            (0..buffer.line_count()).filter_map(|line| buffer.line_range(line)).map(|range| display_column(buffer, range.end, tab)).max().unwrap_or(0)
+        } else {
+            // One pass over the text, not a question for each of millions of lines: bytes (a tab or a wide character is more columns).
+            buffer.longest_line_bytes()
+        };
         view.max_columns = view.max_columns.max(widest);
     }
     if view.max_columns_known_for != Some(editor.version()) {

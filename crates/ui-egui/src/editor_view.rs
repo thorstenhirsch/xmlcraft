@@ -7,7 +7,7 @@ use std::sync::Arc;
 use xmlcraft_code_editor::{EditorColors, FoldRegion, Highlight, LineStyler, Mark, StyleSpan};
 use xmlcraft_editor::find::Matcher;
 use xmlcraft_engine::folding::FoldRange;
-use xmlcraft_syntax::{HighlightClass, Highlighter, Severity};
+use xmlcraft_syntax::{FarJump, HighlightClass, Highlighter, Severity};
 use xmlcraft_text::Buffer;
 
 use crate::theme::{ThemeKind, Tokens};
@@ -240,6 +240,8 @@ impl LineStyler for XmlStyler {
     }
 
     fn style_line(&mut self, buffer: &Buffer, line: usize, _text: &str) -> Vec<StyleSpan> {
+        // A very large text is coloured at a place far from what has been looked at from an estimate, not by reading all that is before.
+        self.highlighter.set_far_jump(FarJump::for_len(buffer.len()));
         self.highlighter
             .spans(buffer, line)
             .into_iter()

@@ -189,6 +189,23 @@ impl Buffer {
         0
     }
 
+    /// The length in bytes of the longest line, line break not counted (a `\r` before a `\n` is). One pass over the text's chunks, without
+    /// asking for each line: for a text with millions of lines that is what the view needs to size its horizontal scroll.
+    pub fn longest_line_bytes(&self) -> usize {
+        let (mut longest, mut current) = (0usize, 0usize);
+        for chunk in self.rope.chunks() {
+            let mut rest = chunk.as_bytes();
+            while let Some(at) = rest.iter().position(|b| *b == b'\n') {
+                current += at;
+                longest = longest.max(current);
+                current = 0;
+                rest = rest.get(at + 1..).unwrap_or_default();
+            }
+            current += rest.len();
+        }
+        longest.max(current)
+    }
+
     /// The number of lines, at least 1: an empty text and a text ending in a line break each have a last, empty line to type in.
     pub fn line_count(&self) -> usize {
         let counted = self.rope.line_len();
@@ -310,6 +327,21 @@ mod tests {
         let buffer = Buffer::from_text("a\né日\nz");
         assert_eq!((buffer.line_of(1), buffer.line_of(2), buffer.line_of(3), buffer.line_of(5), buffer.line_of(6)), (0, 1, 1, 1, 1));
         assert_eq!((buffer.line_of(7), buffer.line_of(8), buffer.line_of(9), buffer.line_of(999)), (1, 2, 2, 2));
+    }
+
+    #[test]
+    fn the_longest_line_is_found_across_the_chunks_of_the_rope() {
+        assert_eq!(Buffer::from_text("").longest_line_bytes(), 0);
+        assert_eq!(Buffer::from_text("abc").longest_line_bytes(), 3);
+        assert_eq!(Buffer::from_text("ab\nabcd\n\nx").longest_line_bytes(), 4);
+        assert_eq!(Buffer::from_text("a\r\nbb\r\n").longest_line_bytes(), 3, "the CR is before the break, so it is counted");
+        assert_eq!(Buffer::from_text("é日\nx").longest_line_bytes(), 5, "bytes, not characters");
+        // Lines that cross chunk boundaries (a rope has many) are counted whole.
+        let long = "x".repeat(100_000);
+        let text = format!("{long}\nshort\n{}\n{long}y", "z".repeat(150_000));
+        assert_eq!(Buffer::from_text(&text).longest_line_bytes(), 150_000);
+        let one = format!("{long}{long}");
+        assert_eq!(Buffer::from_text(&one).longest_line_bytes(), 200_000);
     }
 
     #[test]

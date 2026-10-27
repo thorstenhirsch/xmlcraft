@@ -125,10 +125,70 @@ fn classify(kind: TokenKind, before: Mode, after_open: bool) -> HighlightClass {
     }
 }
 
+/// The state at the start of `line`, guessed from the text just before it: inside a comment or a CDATA section when the last opener in
+/// the window before it has no closer after it, content otherwise.
+fn estimate_start(buffer: &Buffer, line: usize) -> LineStart {
+    let Some(at) = buffer.line_start(line) else { return LineStart::default() };
+    let from = buffer.line_start(buffer.line_of(at.saturating_sub(ESTIMATE_WINDOW))).unwrap_or(0);
+    let window = buffer.slice(from..at).unwrap_or_default();
+    // The last opener of a kind that has no closer after it; the later of the two kinds wins (a `<!--` inside a CDATA section is text).
+    let open = |opener: &str, closer: &str| match (window.rfind(opener), window.rfind(closer)) {
+        (Some(o), Some(c)) if o < c => None,
+        (Some(o), _) => Some(o),
+        (None, _) => None,
+    };
+    let mode = match (open("<!--", "-->"), open("<![CDATA[", "]]>")) {
+        (Some(comment), Some(cdata)) if comment > cdata => Mode::Comment(Return::Content),
+        (_, Some(_)) => Mode::Cdata,
+        (Some(_), None) => Mode::Comment(Return::Content),
+        (None, None) => Mode::Content,
+    };
+    LineStart { mode, after_open: false }
+}
+
 /// Colours the lines of a buffer, remembering the lexer's mode at the start of the lines it has looked at.
 #[derive(Clone, Debug, Default)]
 pub struct Highlighter {
     /// `starts[i]` is the state at the start of line `i`; known for the first `starts.len()` lines.
+    starts: Vec<LineStart>,
+    /// Stretches of lines past those, whose first line's state is an estimate (see [`FarJump`]), in the order of the text.
+    islands: Vec<Island>,
+    /// How a jump far past what is known is treated; none (the default): the lines before it are all read, so the answer is exact.
+    far_jump: Option<FarJump>,
+}
+
+/// How a very large text is coloured at a place far past what has been looked at. The colour of a line depends on where the lexer is at
+/// its start, which is known exactly only by reading everything before it. For a text of 100 MB that is over a second, so a jump
+/// further than `lines` past what is known starts from an estimate instead: the state is worked out from the text just before (an
+/// unclosed comment or CDATA section, within a window of 256 KiB), and is right unless a construct that goes over lines is longer than
+/// that. It is corrected, as far as it is read, when the lines in between are looked at one by one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FarJump {
+    /// A line further than this past the last one whose state is known starts from an estimate.
+    pub lines: usize,
+    /// Lines before the one asked for that the estimate starts at, so that scrolling up a little stays in the same stretch.
+    pub lookbehind: usize,
+}
+
+impl FarJump {
+    /// What a very large text is coloured with: a jump of more than 2000 lines is estimated, from 64 lines before the one asked for.
+    pub const LARGE_TEXT: FarJump = FarJump { lines: 2000, lookbehind: 64 };
+    /// A text longer than this (in bytes) is a very large text: reading a megabyte takes about 12 ms, which a jump can afford.
+    pub const LARGE_TEXT_FROM: usize = 1024 * 1024;
+
+    /// What to use for a text of `len` bytes: [`FarJump::LARGE_TEXT`] when it is a very large one, nothing (read everything) when not.
+    pub fn for_len(len: usize) -> Option<FarJump> {
+        (len > Self::LARGE_TEXT_FROM).then_some(Self::LARGE_TEXT)
+    }
+}
+
+/// The longest stretch of text before a line that an estimate looks at, in bytes.
+const ESTIMATE_WINDOW: usize = 256 * 1024;
+
+/// Lines whose start states were worked out from an estimate at the first of them.
+#[derive(Clone, Debug)]
+struct Island {
+    first: usize,
     starts: Vec<LineStart>,
 }
 
@@ -137,14 +197,29 @@ impl Highlighter {
         Self::default()
     }
 
+    /// Treat a jump far past what is known as [`FarJump`] says (for a very large text), or always read everything before (`None`).
+    pub fn set_far_jump(&mut self, far_jump: Option<FarJump>) {
+        if self.far_jump != far_jump {
+            self.far_jump = far_jump;
+            self.islands.clear();
+        }
+    }
+
     /// Forget everything from `line` on: an edit started there (or earlier).
     pub fn invalidate_from(&mut self, line: usize) {
         self.starts.truncate(line.saturating_add(1));
+        // Stretches that begin after the edit are about lines that moved; the one it is in is as good as far as the edit.
+        self.islands.retain(|island| island.first <= line);
+        if let Some(island) = self.islands.last_mut() {
+            island.starts.truncate(line.saturating_add(1) - island.first);
+        }
+        self.islands.retain(|island| !island.starts.is_empty());
     }
 
     /// Forget everything (a new document).
     pub fn reset(&mut self) {
         self.starts.clear();
+        self.islands.clear();
     }
 
     /// How many lines' start modes are known.
@@ -164,6 +239,11 @@ impl Highlighter {
         if self.starts.is_empty() {
             self.starts.push(LineStart::default());
         }
+        if let Some(far) = self.far_jump
+            && line >= self.starts.len().saturating_add(far.lines)
+        {
+            return self.start_in_island(buffer, line, far);
+        }
         while self.starts.len() <= line {
             let at = self.starts.len() - 1;
             let start = self.starts.get(at).copied().unwrap_or_default();
@@ -177,6 +257,43 @@ impl Highlighter {
             self.starts.push(next);
         }
         self.starts.get(line).copied().unwrap_or_default()
+    }
+
+    /// The state at the start of `line`, far past what is known: from the island that has it, or one made for it.
+    fn start_in_island(&mut self, buffer: &Buffer, line: usize, far: FarJump) -> LineStart {
+        // Islands that start in what is known now are not needed any more.
+        let known = self.starts.len();
+        self.islands.retain(|island| island.first >= known);
+        let at = self.islands.partition_point(|island| island.first <= line);
+        let near = at.checked_sub(1).and_then(|i| self.islands.get(i).map(|island| (i, island.first + island.starts.len())));
+        let index = match near {
+            // Near the end of an island: it goes on to the line.
+            Some((i, end)) if line < end.saturating_add(far.lines) => i,
+            _ => {
+                let first = line.saturating_sub(far.lookbehind).max(known);
+                let island = Island { first, starts: vec![estimate_start(buffer, first)] };
+                let insert_at = self.islands.partition_point(|other| other.first <= first);
+                self.islands.insert(insert_at, island);
+                insert_at
+            }
+        };
+        // Lex forward to the line; an island that is run into on the way is replaced by what this one finds.
+        while let Some(island) = self.islands.get(index) {
+            let next = island.first + island.starts.len();
+            if next > line {
+                break;
+            }
+            let last = island.starts.last().copied().unwrap_or_default();
+            let Some(text) = Self::line_with_break(buffer, next - 1) else { break };
+            let (mode, after_open) = lex_line(&text, last.mode, last.after_open, None);
+            if let Some(island) = self.islands.get_mut(index) {
+                island.starts.push(LineStart { mode, after_open });
+            }
+            while self.islands.get(index + 1).is_some_and(|other| other.first <= next) {
+                self.islands.remove(index + 1);
+            }
+        }
+        self.islands.get(index).and_then(|island| island.starts.get(line.saturating_sub(island.first))).copied().unwrap_or_default()
     }
 
     /// Where in the markup `offset` is, as the lexer sees it: in content, in a tag, in an attribute value (and which quote opened it), a
@@ -248,6 +365,88 @@ mod tests {
         assert_eq!(h.mode_at(&buffer, 4), Mode::Tag, "inside the é (bytes 3 and 4) is the start of the é");
         assert_eq!(h.mode_at(&buffer, 5), Mode::Tag, "just after it");
         assert_eq!(Highlighter::new().mode_at(&Buffer::from_text(""), 0), Mode::Content);
+    }
+
+    fn exact_and_estimated(far: FarJump) -> (Highlighter, Highlighter) {
+        let exact = Highlighter::new();
+        let mut estimated = Highlighter::new();
+        estimated.set_far_jump(Some(far));
+        (exact, estimated)
+    }
+
+    /// A text of `n` lines of single-line markup (nothing goes over lines).
+    fn simple_lines(n: usize) -> String {
+        (0..n).map(|i| format!("<a x=\"{i}\">t &amp; {i}<!-- c{i} --></a>")).collect::<Vec<_>>().join("\n")
+    }
+
+    const SMALL: FarJump = FarJump { lines: 10, lookbehind: 3 };
+
+    #[test]
+    fn a_far_jump_starts_from_an_estimate_and_is_right_when_nothing_goes_over_lines() {
+        let buffer = Buffer::from_text(&simple_lines(300));
+        let (mut exact, mut estimated) = exact_and_estimated(SMALL);
+        for line in [250, 249, 247, 120, 299, 5, 130] {
+            assert_eq!(estimated.spans(&buffer, line), exact.spans(&buffer, line), "line {line}");
+        }
+        // The estimate did not read what is in between: far fewer lines than the jumps cover are known in the prefix.
+        assert!(estimated.known_lines() < 20, "{}", estimated.known_lines());
+        assert!(exact.known_lines() >= 299);
+    }
+
+    #[test]
+    fn a_comment_or_a_cdata_section_that_goes_over_lines_is_found_in_the_text_before() {
+        let body = (0..60).map(|i| format!("  line {i} of text")).collect::<Vec<_>>().join("\n");
+        for (open, close, name) in [("<!--", "-->", "comment"), ("<![CDATA[", "]]>", "cdata")] {
+            let text = format!("{}\n{open}\n{body}\n{close}\n{}", simple_lines(100), simple_lines(100));
+            let buffer = Buffer::from_text(&text);
+            let (mut exact, mut estimated) = exact_and_estimated(SMALL);
+            // In the middle of it, at its closing line, and after it.
+            for line in [130, 161, 162, 163, 170] {
+                assert_eq!(estimated.spans(&buffer, line), exact.spans(&buffer, line), "{name} line {line}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_construct_longer_than_the_window_is_not_found_but_the_colours_are_right_again_after_it() {
+        let long = (0..40_000).map(|i| format!("text {i} text text")).collect::<Vec<_>>().join("\n");
+        assert!(long.len() > ESTIMATE_WINDOW * 2);
+        let text = format!("{}\n<!--\n{long}\n-->\n{}", simple_lines(30), simple_lines(30));
+        let buffer = Buffer::from_text(&text);
+        let (mut exact, mut estimated) = exact_and_estimated(SMALL);
+        let middle = 30 + 20_000;
+        assert_ne!(estimated.spans(&buffer, middle), exact.spans(&buffer, middle), "inside it the colour is a guess, and the guess is content");
+        // Lines after the comment have the lexer back in content, whatever it started from.
+        let after = 30 + 2 + 40_000 + 3;
+        for line in [after, after + 5, after + 29] {
+            assert_eq!(estimated.spans(&buffer, line), exact.spans(&buffer, line), "line {line}");
+        }
+    }
+
+    #[test]
+    fn an_edit_makes_the_estimates_after_it_forgotten() {
+        let mut buffer = Buffer::from_text(&simple_lines(200));
+        let (_, mut estimated) = exact_and_estimated(SMALL);
+        estimated.spans(&buffer, 150);
+        estimated.spans(&buffer, 180);
+        // A comment is opened at line 100: what was worked out for the lines after it is not right any more.
+        buffer.apply(&xmlcraft_text::Edit::insert(buffer.line_start(100).unwrap_or(0), "<!--\n")).expect("inserts");
+        estimated.invalidate_from(100);
+        let mut exact = Highlighter::new();
+        for line in [150, 180, 101] {
+            assert_eq!(estimated.spans(&buffer, line), exact.spans(&buffer, line), "line {line}");
+        }
+        assert!(estimated.known_lines() <= 101);
+        estimated.reset();
+        assert_eq!(estimated.known_lines(), 0);
+    }
+
+    #[test]
+    fn mode_at_works_in_a_far_place_too() {
+        let buffer = Buffer::from_text(&simple_lines(200));
+        let (mut exact, mut estimated) = exact_and_estimated(SMALL);
+        let offset = buffer.line_start(170).unwrap_or(0) + 6;
+        assert_eq!(estimated.mode_at(&buffer, offset), exact.mode_at(&buffer, offset));
     }
 
     #[test]
@@ -427,6 +626,21 @@ mod tests {
             let mut lexer = Lexer::new(&text[..offset]);
             for _ in lexer.by_ref() {}
             prop_assert_eq!(h.mode_at(&buffer, offset), lexer.mode());
+        }
+
+        /// With nothing that goes over lines, estimating gives what reading everything gives, for any lines in any order.
+        #[test]
+        fn estimating_agrees_with_reading_everything_when_no_construct_goes_over_lines(
+            lines in 1usize..120,
+            order in proptest::collection::vec(0usize..130, 1..30),
+            far_lines in 1usize..20,
+            lookbehind in 0usize..10,
+        ) {
+            let buffer = Buffer::from_text(&simple_lines(lines));
+            let (mut exact, mut estimated) = exact_and_estimated(FarJump { lines: far_lines, lookbehind });
+            for line in order {
+                prop_assert_eq!(estimated.spans(&buffer, line), exact.spans(&buffer, line), "line {}", line);
+            }
         }
 
         /// The highlighter never panics and its spans are inside the line, whatever the text and whatever was invalidated.
