@@ -48,6 +48,7 @@ pub fn normalize(carets: Vec<Caret>, primary: usize) -> (Vec<Caret>, usize) {
     let mut merged: Vec<Caret> = Vec::with_capacity(order.len());
     let mut primary_at = None;
     for (index, caret) in order {
+        let tail = merged.len().saturating_sub(1);
         let slot = match merged.last_mut() {
             Some(last) if last.end() > caret.start() || (last.end() == caret.start() && (last.is_empty() || caret.is_empty())) => {
                 let start = last.start().min(caret.start());
@@ -55,8 +56,11 @@ pub fn normalize(carets: Vec<Caret>, primary: usize) -> (Vec<Caret>, usize) {
                 let source = if caret.is_empty() && !last.is_empty() { *last } else { caret };
                 let forward = source.sel.head >= source.sel.anchor;
                 last.sel = if forward { Selection { anchor: start, head: end } } else { Selection { anchor: end, head: start } };
-                last.goal = source.goal;
-                merged.len() - 1
+                // The column a vertical move aims for is the primary caret's when it is one of the two, else the later one's.
+                if primary_at != Some(tail) {
+                    last.goal = caret.goal;
+                }
+                tail
             }
             _ => {
                 merged.push(caret);
@@ -123,6 +127,16 @@ mod tests {
         // Inside a backward selection.
         let (carets, _) = normalize(vec![Caret::new(8, 2), Caret::at(5)], 0);
         assert_eq!((carets[0].start(), carets[0].end(), carets[0].sel.head), (2, 8, 2));
+    }
+
+    #[test]
+    fn a_merged_caret_keeps_the_primary_carets_goal_column() {
+        let selection = Caret { sel: Selection { anchor: 1, head: 5 }, goal: Some(2) };
+        let empty = Caret { sel: Selection::caret(5), goal: Some(7) };
+        // The empty caret is the primary: its column survives. Then the selection is: its column survives. Then neither: the later's.
+        assert_eq!(normalize(vec![selection, empty], 1).0[0].goal, Some(7));
+        assert_eq!(normalize(vec![selection, empty], 0).0[0].goal, Some(2));
+        assert_eq!(normalize(vec![selection, empty, Caret::at(20)], 2).0[0].goal, Some(7));
     }
 
     #[test]
