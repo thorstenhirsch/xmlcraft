@@ -4,7 +4,7 @@
 use egui::{Event, Id, ImeEvent, Key, Modifiers, PointerButton};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use xmlcraft_code_editor::{CodeEditor, EditorColors, ViewState};
+use xmlcraft_code_editor::{CodeEditor, EditorColors, MAX_WINDOW, ViewState};
 use xmlcraft_editor::Editor;
 
 struct App {
@@ -14,8 +14,13 @@ struct App {
 }
 
 fn harness(text: &str) -> Harness<'static, App> {
+    harness_with_step(text, 0.25)
+}
+
+/// A harness whose frames are `step_dt` seconds apart (two clicks must come within 0.3 s to be a double click).
+fn harness_with_step(text: &str, step_dt: f32) -> Harness<'static, App> {
     let app = App { editor: Editor::new(text), view: ViewState::new(), read_only: false };
-    let mut h = Harness::builder().with_size(egui::vec2(640.0, 360.0)).build_ui_state(
+    let mut h = Harness::builder().with_size(egui::vec2(640.0, 360.0)).with_step_dt(step_dt).build_ui_state(
         |ui, app: &mut App| {
             CodeEditor::new(Id::new("editor"), &mut app.editor, &mut app.view, EditorColors::light()).blink(false).read_only(app.read_only).show(ui);
         },
@@ -29,6 +34,14 @@ fn harness(text: &str) -> Harness<'static, App> {
 
 fn text(h: &Harness<'_, App>) -> String {
     h.state().editor.text()
+}
+
+/// The text the last frame asked egui to put on the clipboard.
+fn copied(h: &Harness<'_, App>) -> Option<String> {
+    h.output().platform_output.commands.iter().find_map(|command| match command {
+        egui::OutputCommand::CopyText(text) => Some(text.clone()),
+        _ => None,
+    })
 }
 
 fn carets(h: &Harness<'_, App>) -> Vec<(usize, usize)> {
@@ -88,7 +101,7 @@ fn undo_and_redo_through_the_keyboard() {
 }
 
 #[test]
-fn clicking_places_the_caret_and_double_clicking_selects_a_word() {
+fn clicking_places_the_caret() {
     let mut h = harness("alpha beta\ngamma");
     let g = h.state().view.geometry().expect("drawn");
     // Between `be` and `ta` on the first line: column 8.
@@ -105,6 +118,23 @@ fn clicking_places_the_caret_and_double_clicking_selects_a_word() {
     h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(3);
     assert_eq!(carets(&h), vec![(16, 16)]);
+}
+
+#[test]
+fn double_clicking_selects_the_word_under_the_pointer() {
+    let mut h = harness_with_step("alpha beta\ngamma", 0.05);
+    let g = h.state().view.geometry().expect("drawn");
+    // On `beta` (columns 6 to 10): two clicks, each in a frame of its own, as a pointer delivers them.
+    let at = g.point(0, 8) + egui::vec2(0.0, g.row_height / 2.0);
+    h.hover_at(at);
+    for _ in 0..2 {
+        h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+        h.step();
+        h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+        h.step();
+    }
+    h.run_steps(2);
+    assert_eq!(carets(&h), vec![(6, 10)], "the word, not just a caret");
 }
 
 #[test]
@@ -130,9 +160,13 @@ fn copy_cut_and_paste_events() {
     h.state_mut().editor.set_selection(0, 5);
     h.run_steps(2);
     h.event(Event::Copy);
+    h.step();
+    assert!(copied(&h).as_deref() == Some("hello"), "copy hands egui the selection: {:?}", copied(&h));
     h.run_steps(2);
     assert_eq!(text(&h), "hello world");
     h.event(Event::Cut);
+    h.step();
+    assert!(copied(&h).as_deref() == Some("hello"), "cut hands egui the selection too: {:?}", copied(&h));
     h.run_steps(2);
     assert_eq!(text(&h), " world");
     h.event(Event::Paste("Goodbye".to_owned()));
@@ -199,11 +233,14 @@ fn only_the_lines_on_screen_are_laid_out() {
 #[test]
 fn a_very_long_line_is_laid_out_in_a_window() {
     let line = "<x a=\"1\"/>".repeat(100_000); // a megabyte on one line
-    let mut h = harness(&line);
+    // Timed from the first frame, which is where laying out the whole line would show.
     let started = std::time::Instant::now();
+    let mut h = harness(&line);
     h.run_steps(5);
     assert!(started.elapsed() < std::time::Duration::from_secs(10), "took {:?}", started.elapsed());
     assert_eq!(h.state().view.laid_out_lines(), 1);
+    let laid_out = h.state().view.laid_out_characters();
+    assert!(laid_out > 0 && laid_out <= MAX_WINDOW, "{laid_out} of {} characters laid out", line.chars().count());
     // The caret can still be moved and the text edited at both ends.
     h.key_press_modifiers(Modifiers::COMMAND, Key::End);
     h.run_steps(3);

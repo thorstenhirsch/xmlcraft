@@ -144,6 +144,11 @@ impl Editor {
         self.carets.get(self.primary).or_else(|| self.carets.last()).copied().unwrap_or(Caret::at(0))
     }
 
+    /// Where the primary caret is in [`Editor::carets`]: always a valid index.
+    pub fn primary_index(&self) -> usize {
+        self.primary.min(self.carets.len().saturating_sub(1))
+    }
+
     pub fn selections(&self) -> Vec<Selection> {
         self.carets.iter().map(|c| c.sel).collect()
     }

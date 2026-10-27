@@ -48,8 +48,8 @@ pub fn command_for(key: Key, modifiers: Modifiers, mac: bool, page: usize) -> Op
         Key::End => Command::Move(Motion::LineEnd, extend),
         Key::PageUp => Command::Move(Motion::PageUp(page), extend),
         Key::PageDown => Command::Move(Motion::PageDown(page), extend),
-        Key::Backspace if to_edge => Command::DeleteToLineStart,
         Key::Backspace if by_word => Command::DeleteWordBackward,
+        Key::Backspace if to_edge => Command::DeleteToLineStart,
         Key::Backspace => Command::Backspace,
         Key::Delete if by_word => Command::DeleteWordForward,
         Key::Delete => Command::Delete,
@@ -58,9 +58,10 @@ pub fn command_for(key: Key, modifiers: Modifiers, mac: bool, page: usize) -> Op
         Key::Tab => Command::Indent,
         Key::Escape => Command::KeepPrimaryCaret,
         Key::A if modifiers.command && !modifiers.alt => Command::SelectAll,
-        Key::Z if modifiers.command && modifiers.shift => Command::Redo,
-        Key::Z if modifiers.command => Command::Undo,
-        Key::Y if modifiers.command && !mac => Command::Redo,
+        // Without Alt: on Windows AltGr is Ctrl+Alt, and it types characters.
+        Key::Z if modifiers.command && !modifiers.alt && modifiers.shift => Command::Redo,
+        Key::Z if modifiers.command && !modifiers.alt => Command::Undo,
+        Key::Y if modifiers.command && !modifiers.alt && !mac => Command::Redo,
         Key::K if modifiers.ctrl && !mac && modifiers.shift => Command::DeleteToLineEnd,
         Key::K if modifiers.ctrl && mac => Command::DeleteToLineEnd,
         _ => return None,
@@ -106,6 +107,29 @@ mod tests {
         assert_eq!(command_for(Key::Home, ctrl, false, 10), Some(Command::Move(Motion::DocStart, false)));
         assert_eq!(command_for(Key::End, NONE, false, 10), Some(Command::Move(Motion::LineEnd, false)));
         assert_eq!(command_for(Key::Z, ctrl, false, 10), Some(Command::Undo));
+        // AltGr arrives as Ctrl+Alt and must not undo.
+        let altgr = mods(|m| {
+            m.ctrl = true;
+            m.alt = true;
+            m.command = true;
+        });
+        for key in [Key::Z, Key::Y] {
+            assert_eq!(command_for(key, altgr, false, 10), None, "{key:?}");
+        }
+        assert_eq!(
+            command_for(
+                Key::Z,
+                mods(|m| {
+                    m.ctrl = true;
+                    m.alt = true;
+                    m.command = true;
+                    m.shift = true;
+                }),
+                false,
+                10
+            ),
+            None
+        );
         assert_eq!(command_for(Key::Y, ctrl, false, 10), Some(Command::Redo));
         assert_eq!(command_for(Key::A, ctrl, false, 10), Some(Command::SelectAll));
         let ctrl_shift = mods(|m| {
@@ -129,6 +153,13 @@ mod tests {
         assert_eq!(command_for(Key::ArrowLeft, command, true, 10), Some(Command::Move(Motion::LineStart, false)));
         assert_eq!(command_for(Key::ArrowDown, command, true, 10), Some(Command::Move(Motion::DocEnd, false)));
         assert_eq!(command_for(Key::Backspace, command, true, 10), Some(Command::DeleteToLineStart));
+        let option_command = mods(|m| {
+            m.alt = true;
+            m.mac_cmd = true;
+            m.command = true;
+        });
+        assert_eq!(command_for(Key::Backspace, option_command, true, 10), Some(Command::DeleteWordBackward), "as Option-Command-Left moves by word");
+        assert_eq!(command_for(Key::ArrowLeft, option_command, true, 10), Some(Command::Move(Motion::WordLeft, false)));
         assert_eq!(command_for(Key::Z, command, true, 10), Some(Command::Undo));
         assert_eq!(command_for(Key::Y, command, true, 10), None, "Command-Y is not redo on a Mac");
         let shift_command = mods(|m| {

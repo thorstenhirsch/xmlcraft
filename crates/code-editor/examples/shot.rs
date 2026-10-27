@@ -29,12 +29,29 @@ fn main() -> Result<(), String> {
     let (mut size, mut scale, mut dark) = (egui::vec2(900.0, 420.0), 2.0f32, false);
     while let Some(a) = args.next() {
         match a.as_str() {
-            "--theme" => dark = args.next().as_deref() == Some("dark"),
-            "--scale" => scale = args.next().and_then(|v| v.parse().ok()).ok_or("bad --scale")?,
+            "--theme" => {
+                dark = match args.next().as_deref() {
+                    Some("dark") => true,
+                    Some("light") => false,
+                    other => return Err(format!("--theme is light or dark, not {}", other.unwrap_or("missing"))),
+                }
+            }
+            "--scale" => {
+                let scale_arg = args.next().unwrap_or_default();
+                scale = scale_arg
+                    .parse::<f32>()
+                    .ok()
+                    .filter(|s| s.is_finite() && (0.5..=8.0).contains(s))
+                    .ok_or(format!("--scale is a number from 0.5 to 8, not {scale_arg:?}"))?;
+            }
             "--size" => {
                 let v = args.next().unwrap_or_default();
-                let (w, h) = v.split_once('x').ok_or("--size WxH")?;
-                size = egui::vec2(w.parse().map_err(|_| "bad width")?, h.parse().map_err(|_| "bad height")?);
+                let dimension = |text: &str| text.parse::<f32>().ok().filter(|d| d.is_finite() && (100.0..=4096.0).contains(d));
+                let (w, h) = v
+                    .split_once('x')
+                    .and_then(|(w, h)| Some((dimension(w)?, dimension(h)?)))
+                    .ok_or(format!("--size is WxH with each from 100 to 4096, not {v:?}"))?;
+                size = egui::vec2(w, h);
             }
             _ => return Err(format!("unexpected argument {a}")),
         }
