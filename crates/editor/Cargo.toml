@@ -1,0 +1,19 @@
+[package]
+name = "xmlcraft-editor"
+description = "XmlCraft's headless editor model: carets, selections and editing commands over a text buffer, with undo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-text = { workspace = true }
+unicode-segmentation = { workspace = true }
+unicode-width = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
