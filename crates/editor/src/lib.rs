@@ -12,6 +12,7 @@
 
 mod caret;
 mod editor;
+pub mod find;
 pub mod motion;
 
 pub use caret::Caret;

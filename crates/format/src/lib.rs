@@ -85,16 +85,7 @@ pub fn minify(text: &str) -> Result<Vec<Edit>, FormatError> {
 /// `text` with `edits` applied. The edits must be ascending, disjoint and on character boundaries, as the functions of this crate
 /// return them; anything else is left out rather than applied wrongly.
 pub fn apply(text: &str, edits: &[Edit]) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut at = 0;
-    for edit in edits {
-        let (Some(before), Some(_)) = (text.get(at..edit.range.start), text.get(edit.range.clone())) else { continue };
-        out.push_str(before);
-        out.push_str(&edit.text);
-        at = edit.range.end;
-    }
-    out.push_str(text.get(at..).unwrap_or_default());
-    out
+    xmlcraft_text::apply_edits(text, edits)
 }
 
 #[derive(Clone, Copy)]

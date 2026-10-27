@@ -59,6 +59,11 @@ impl Shortcut {
         Self { command: false, shift: false, mac_ctrl: false, key }
     }
 
+    /// ⇧ and `key` (Shift+F3).
+    pub const fn shift_key(key: &'static str) -> Self {
+        Self { command: false, shift: true, mac_ctrl: false, key }
+    }
+
     /// How the shortcut is written in menus: `⇧⌘S` on macOS, `Ctrl+Shift+S` elsewhere.
     pub fn label(&self, mac: bool) -> String {
         if mac {
@@ -166,6 +171,12 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("edit.undo", "Undo", EDIT, Some(Shortcut::cmd("Z")), Needs::Undo, "undo-2").not_in_text(),
     c("edit.redo", "Redo", EDIT, Some(Shortcut::cmd_shift("Z")), Needs::Redo, "redo-2").not_in_text(),
     c("edit.select_all", "Select All", EDIT, Some(Shortcut::cmd("A")), Needs::Document, "align-left").sep().not_in_text(),
+    c("edit.find", "Find…", EDIT, Some(Shortcut::cmd("F")), Needs::Document, "search").sep(),
+    c("edit.replace", "Replace…", EDIT, Some(Shortcut::cmd_shift("H")), Needs::Document, "replace"),
+    c("edit.find_next", "Find Next", EDIT, Some(Shortcut::key("F3")), Needs::Document, "chevron-down"),
+    c("edit.find_previous", "Find Previous", EDIT, Some(Shortcut::shift_key("F3")), Needs::Document, "chevron-up"),
+    c("edit.select_next_occurrence", "Select Next Occurrence", EDIT, Some(Shortcut::cmd("D")), Needs::Document, "plus").sep(),
+    c("edit.select_all_occurrences", "Select All Occurrences", EDIT, Some(Shortcut::cmd_shift("L")), Needs::Document, "plus"),
     c("edit.go_to_line", "Go to Line…", EDIT, Some(Shortcut::cmd("G")), Needs::Document, "align-left").sep(),
     c("xml.check", "Check Well-formedness", XML, Some(Shortcut::key("F7")), Needs::Document, "file-check"),
     c("xml.pretty_print", "Pretty-print", XML, None, Needs::Document, "wand-sparkles").sep(),
@@ -257,7 +268,21 @@ mod tests {
             in_menu("File").map(|c| c.id).collect::<Vec<_>>(),
             ["file.new", "file.open", "file.save", "file.save_as", "file.revert", "file.close", "file.quit"]
         );
-        assert_eq!(in_menu("Edit").map(|c| c.id).collect::<Vec<_>>(), ["edit.undo", "edit.redo", "edit.select_all", "edit.go_to_line"]);
+        assert_eq!(
+            in_menu("Edit").map(|c| c.id).collect::<Vec<_>>(),
+            [
+                "edit.undo",
+                "edit.redo",
+                "edit.select_all",
+                "edit.find",
+                "edit.replace",
+                "edit.find_next",
+                "edit.find_previous",
+                "edit.select_next_occurrence",
+                "edit.select_all_occurrences",
+                "edit.go_to_line"
+            ]
+        );
         assert_eq!(in_menu("XML").map(|c| c.id).collect::<Vec<_>>(), ["xml.check", "xml.pretty_print", "xml.minify"]);
         assert_eq!(in_menu("Nope").count(), 0);
     }

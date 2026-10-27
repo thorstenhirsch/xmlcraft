@@ -269,9 +269,13 @@ impl XmlCraftApp {
         }
         let tokens = Tokens::get(ui.ctx());
         let colors = editor_colors(&tokens);
+        // The find bar is above the editor; what it looks for is shown in the text.
+        self.find_bar(ui);
         let Some(doc) = self.session.document_mut(index) else { return };
-        let id = doc.id();
+        let (id, version) = (doc.id(), doc.editor().version());
+        let matches = self.find.shown_matches(id, version);
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
+        view.styler.set_matches(matches);
         let salt = egui::Id::new(("xmlcraft-editor", id));
         if focus {
             let widget = ui.make_persistent_id(salt);

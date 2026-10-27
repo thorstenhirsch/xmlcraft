@@ -125,6 +125,16 @@ impl XmlCraftApp {
                     self.dialog = Some(crate::dialog::Dialog::GoToLine);
                 }
             }
+            "edit.find" => self.open_find(false),
+            "edit.replace" => self.open_find(true),
+            "edit.find_next" => self.find_step(xmlcraft_editor::find::Direction::NEXT),
+            "edit.find_previous" => self.find_step(xmlcraft_editor::find::Direction::PREVIOUS),
+            "edit.select_next_occurrence" => {
+                if let Some(doc) = self.session.active_document_mut() {
+                    doc.editor_mut().select_next_occurrence();
+                }
+            }
+            "edit.select_all_occurrences" => self.select_all_occurrences(),
             "xml.check" => self.check_now(),
             "xml.pretty_print" => self.reformat(false),
             "xml.minify" => self.reformat(true),

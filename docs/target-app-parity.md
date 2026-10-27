@@ -1,6 +1,6 @@
 # XmlCraft parity with Altova XMLSpy
 
-> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** M1.11 and M1.14: the formatter, the document and XML tools, CLI check and format; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
+> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** M1.8: find and replace, next occurrence; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
 
 The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -10,8 +10,8 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **6.6%** shipped, 12.5% with partial counted half (10 shipped + 18 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-27) |
-| Must-have (P0) features | 7.8% shipped, 20.3% weighted (5 shipped + 16 partial of 64) | measured |
+| **Feature breadth**, unweighted | **6.6%** shipped, 12.8% with partial counted half (10 shipped + 19 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-27) |
+| Must-have (P0) features | 7.8% shipped, 21.1% weighted (5 shipped + 17 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **64.7%** (658 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-27) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): no well-formedness error is reported on a well-formed document | measured (same run) |
 | W3C xsdtests (XSD 1.0) | not measured | arrives with M3 |
@@ -43,3 +43,4 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 - 2026-10-27: M1.5: first conformance numbers.
 - 2026-10-27: created.
 - 2026-10-27: M1.11 and M1.14: pretty-print and minify as minimal edits, the document and XML tools (`doc_*`, `xml_wellformed`, `xml_outline`, `xml_format`) and `xmlcraft-cli check` and `format`; 10 shipped and 18 partial.
+- 2026-10-27: M1.8: find and replace (bar, options, counter, highlights, `doc_find`/`doc_replace`) and ⌘D multi-cursor: find/replace is partial; 10 shipped and 19 partial.

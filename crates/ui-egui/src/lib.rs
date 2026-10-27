@@ -8,6 +8,7 @@ mod control;
 mod dialog;
 mod documents;
 pub mod editor_view;
+mod find_bar;
 mod home;
 mod i18n;
 mod icon_data;
@@ -103,6 +104,8 @@ pub struct XmlCraftApp {
     outline_filter: String,
     /// The Outline's rows for the filter and analysis they were worked out for, so a frame does not filter 50,000 names again.
     outline_rows: Option<side_panels::OutlineRows>,
+    /// The find and replace bar.
+    find: find_bar::FindBar,
     /// The text typed into Go to Line, and whether its field is still to be given the keyboard (once, when the dialog opens).
     goto_input: String,
     goto_focus: bool,
@@ -167,6 +170,7 @@ impl XmlCraftApp {
             analyzer: Analyzer::new(),
             outline_filter: String::new(),
             outline_rows: None,
+            find: find_bar::FindBar::default(),
             goto_input: String::new(),
             goto_focus: false,
             check_pending: None,

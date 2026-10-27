@@ -3,7 +3,9 @@
 use egui::Color32;
 use std::ops::Range;
 
-use xmlcraft_code_editor::{EditorColors, LineStyler, Mark, StyleSpan};
+use std::sync::Arc;
+use xmlcraft_code_editor::{EditorColors, Highlight, LineStyler, Mark, StyleSpan};
+use xmlcraft_editor::find::Matcher;
 use xmlcraft_syntax::{HighlightClass, Highlighter, Severity};
 use xmlcraft_text::Buffer;
 
@@ -26,6 +28,8 @@ pub struct SyntaxTokens {
     pub error: Color32,
     pub warning: Color32,
     pub info: Color32,
+    /// The background of a search match.
+    pub search_match: Color32,
 }
 
 impl SyntaxTokens {
@@ -47,6 +51,7 @@ impl SyntaxTokens {
                 error: rgb(0xC6, 0x28, 0x28),
                 warning: rgb(0x9A, 0x62, 0x00),
                 info: rgb(0x1B, 0x63, 0xE0),
+                search_match: Color32::from_rgba_unmultiplied(0xFF, 0xC8, 0x00, 0x50),
             },
             ThemeKind::Dark => Self {
                 punctuation: rgb(0x9A, 0x9A, 0xA3),
@@ -63,6 +68,7 @@ impl SyntaxTokens {
                 error: rgb(0xFF, 0x7B, 0x7B),
                 warning: rgb(0xE5, 0xB0, 0x4A),
                 info: rgb(0x7A, 0xB0, 0xFF),
+                search_match: rgb(0x38, 0x2E, 0x08), // dark enough that the lightest text keeps 4.5:1 (a translucent amber would not)
             },
         }
     }
@@ -112,6 +118,21 @@ pub fn editor_colors(tokens: &Tokens) -> EditorColors {
     }
 }
 
+/// The longest line searched for highlights when matches are looked for line by line.
+const MAX_LINE_SEARCH: usize = 64 * 1024;
+/// The most matches highlighted on one line when matches are looked for line by line.
+const MAX_LINE_MATCHES: usize = 1000;
+
+/// What the find bar has the editor highlight.
+#[derive(Clone)]
+pub enum Matches {
+    /// Every match of the whole text, as byte ranges in order: the ones the bar counts and goes to.
+    Ranges(Arc<Vec<Range<usize>>>),
+    /// A text too large to find every match in at once: what is on each line (up to [`MAX_LINE_SEARCH`] bytes long) is looked for when
+    /// the line is drawn, so a match across lines is not shown and a long line has none.
+    Lines(Arc<Matcher>),
+}
+
 /// Colours XML for the editor widget: the lexer's classes, mapped through [`SyntaxTokens`].
 pub struct XmlStyler {
     highlighter: Highlighter,
@@ -121,11 +142,13 @@ pub struct XmlStyler {
     /// For each problem, how far any problem up to it reaches (the largest end so far, at least one past its start): it never goes
     /// down, so the problems that can touch a line are found by searching, not by looking at every earlier one.
     reach: Vec<usize>,
+    /// What the find bar looks for, highlighted where it is in view.
+    matches: Option<Matches>,
 }
 
 impl XmlStyler {
     pub fn new(kind: ThemeKind) -> Self {
-        Self { highlighter: Highlighter::new(), tokens: SyntaxTokens::for_kind(kind), problems: Vec::new(), reach: Vec::new() }
+        Self { highlighter: Highlighter::new(), tokens: SyntaxTokens::for_kind(kind), problems: Vec::new(), reach: Vec::new(), matches: None }
     }
 
     /// Switch to another theme's colours. The caller bumps the view's `highlight_version` so cached lines are laid out again.
@@ -138,6 +161,11 @@ impl XmlStyler {
         self.highlighter.reset();
         self.problems.clear();
         self.reach.clear();
+    }
+
+    /// Highlight these matches; `None` for no highlights.
+    pub fn set_matches(&mut self, matches: Option<Matches>) {
+        self.matches = matches;
     }
 
     /// The problems to underline (replacing the last ones). Ranges are in bytes of the whole text; they may be empty (a problem at a
@@ -167,6 +195,35 @@ impl LineStyler for XmlStyler {
             .into_iter()
             .filter_map(|(range, class)| self.tokens.color(class).map(|color| StyleSpan { range, color }))
             .collect()
+    }
+
+    fn highlights(&mut self, buffer: &Buffer, line: usize) -> Vec<Highlight> {
+        let Some(matches) = &self.matches else { return Vec::new() };
+        let Some(line_range) = buffer.line_range(line) else { return Vec::new() };
+        let color = self.tokens.search_match;
+        match matches {
+            Matches::Ranges(matches) => {
+                // The matches are sorted and do not overlap: from the first that ends after the line starts to the last that starts before it ends.
+                let first = matches.partition_point(|m| m.end <= line_range.start);
+                matches
+                    .get(first..)
+                    .unwrap_or_default()
+                    .iter()
+                    .take_while(|m| m.start < line_range.end || (m.start == line_range.end && m.is_empty()))
+                    .filter_map(|m| {
+                        // The part of the match on this line (a match across lines is highlighted on each of them), as bytes of the line.
+                        let (start, end) = (m.start.max(line_range.start), m.end.min(line_range.end));
+                        (start < end).then(|| Highlight { range: start - line_range.start..end - line_range.start, color })
+                    })
+                    .collect()
+            }
+            Matches::Lines(matcher) if line_range.len() <= MAX_LINE_SEARCH => {
+                let Ok(text) = buffer.slice(line_range) else { return Vec::new() };
+                let (found, _) = matcher.find_all(&text, 0..text.len(), MAX_LINE_MATCHES);
+                found.into_iter().filter(|range| !range.is_empty()).map(|range| Highlight { range, color }).collect()
+            }
+            Matches::Lines(_) => Vec::new(),
+        }
     }
 
     fn marks(&mut self, buffer: &Buffer, line: usize) -> Vec<Mark> {
@@ -295,6 +352,99 @@ mod tests {
             expected.sort_by_key(|r| (r.start, r.end));
             found.sort_by_key(|r| (r.start, r.end));
             assert_eq!(found, expected, "line {line}");
+        }
+    }
+
+    #[test]
+    #[allow(clippy::single_range_in_vec_init)] // a list of ranges with one range in it is what is being compared
+    fn search_matches_are_highlighted_on_the_lines_that_have_them() {
+        let buffer = Buffer::from_text("<a b=\"ab\">\nxx\nab ab\nab\ncd\n");
+        let mut styler = XmlStyler::new(ThemeKind::Light);
+        fn ranges(styler: &mut XmlStyler, buffer: &Buffer, line: usize) -> Vec<Range<usize>> {
+            styler.highlights(buffer, line).into_iter().map(|h| h.range).collect()
+        }
+        assert!(ranges(&mut styler, &buffer, 0).is_empty(), "no matches, no highlights");
+        // The matches of the whole text (what the find bar counts): ranges of the text, in order.
+        let text = buffer.text();
+        let matches: Vec<Range<usize>> = text.match_indices("ab").map(|(i, s)| i..i + s.len()).collect();
+        styler.set_matches(Some(Matches::Ranges(Arc::new(matches))));
+        assert_eq!(ranges(&mut styler, &buffer, 0), [6..8]);
+        assert!(ranges(&mut styler, &buffer, 1).is_empty());
+        assert_eq!(ranges(&mut styler, &buffer, 2), [0..2, 3..5], "ranges are bytes of the line, not of the text");
+        assert!(ranges(&mut styler, &buffer, 99).is_empty(), "a line that does not exist has none");
+        let color = styler.highlights(&buffer, 2)[0].color;
+        assert_eq!(color, SyntaxTokens::for_kind(ThemeKind::Light).search_match);
+        // A match across lines is highlighted on each line it is on, and an empty match is not drawn.
+        let across = text.find("ab\nab").expect("there");
+        styler.set_matches(Some(Matches::Ranges(Arc::new(vec![0..0, across..across + 5]))));
+        assert_eq!(ranges(&mut styler, &buffer, 2), [3..5]);
+        assert_eq!(ranges(&mut styler, &buffer, 3), [0..2]);
+        assert!(ranges(&mut styler, &buffer, 0).is_empty());
+        styler.set_matches(None);
+        assert!(ranges(&mut styler, &buffer, 2).is_empty());
+    }
+
+    #[test]
+    #[allow(clippy::single_range_in_vec_init)] // a list of ranges with one range in it is what is being compared
+    fn a_text_too_large_to_find_everything_in_is_highlighted_line_by_line() {
+        use xmlcraft_editor::find::Query;
+        let long_line = format!("{}ab", "x".repeat(MAX_LINE_SEARCH));
+        let text = format!("ab ab\nxx\nab\nab\nab\n{long_line}\n");
+        let buffer = Buffer::from_text(&text);
+        let mut styler = XmlStyler::new(ThemeKind::Light);
+        styler.set_matches(Some(Matches::Lines(Arc::new(Matcher::new(&Query::text("ab")).expect("compiles")))));
+        let ranges = |styler: &mut XmlStyler, line| styler.highlights(&buffer, line).into_iter().map(|h| h.range).collect::<Vec<_>>();
+        assert_eq!(ranges(&mut styler, 0), [0..2, 3..5], "ranges are bytes of the line");
+        assert!(ranges(&mut styler, 1).is_empty());
+        assert_eq!(ranges(&mut styler, 2), [0..2]);
+        assert!(ranges(&mut styler, 5).is_empty(), "a line longer than the search limit has no highlights");
+        assert!(ranges(&mut styler, 99).is_empty());
+        // The anchors of a regular expression mean the line.
+        let anchored = Matcher::new(&Query { pattern: "^ab$".into(), regex: true, case_sensitive: true, whole_word: false }).expect("compiles");
+        styler.set_matches(Some(Matches::Lines(Arc::new(anchored))));
+        assert!(ranges(&mut styler, 0).is_empty());
+        assert_eq!(ranges(&mut styler, 3), [0..2]);
+    }
+
+    /// `over` (a translucent colour) painted on `under`.
+    fn composite(over: Color32, under: Color32) -> Color32 {
+        let [r, g, b, a] = over.to_srgba_unmultiplied();
+        let alpha = f32::from(a) / 255.0;
+        let mix = |top: u8, bottom: u8| (f32::from(top) * alpha + f32::from(bottom) * (1.0 - alpha)).round() as u8;
+        Color32::from_rgb(mix(r, under.r()), mix(g, under.g()), mix(b, under.b()))
+    }
+
+    #[test]
+    fn text_is_still_readable_on_a_search_match() {
+        use HighlightClass::*;
+        for kind in [ThemeKind::Light, ThemeKind::Dark] {
+            let tokens = Tokens::for_kind(kind);
+            let colors = editor_colors(&tokens);
+            let syntax = SyntaxTokens::for_kind(kind);
+            let shown = composite(syntax.search_match, colors.background);
+            let mut readable = vec![colors.text];
+            readable.extend(
+                [
+                    Punctuation,
+                    ElementName,
+                    AttributeName,
+                    AttributeValue,
+                    Reference,
+                    Comment,
+                    CdataMarkup,
+                    CdataText,
+                    ProcessingInstruction,
+                    Declaration,
+                    Literal,
+                    Error,
+                ]
+                .into_iter()
+                .filter_map(|class| syntax.color(class)),
+            );
+            for color in readable {
+                let ratio = contrast(color, shown);
+                assert!(ratio >= 4.5, "{color:?} on a match in {kind:?}: {ratio:.2}:1");
+            }
         }
     }
 

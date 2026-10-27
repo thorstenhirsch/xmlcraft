@@ -272,6 +272,72 @@ fn files_outside_the_root_are_out_of_reach_and_the_root_is_what_refuses_them() {
 }
 
 #[test]
+fn finding_and_replacing_text_and_patterns() {
+    let mut a = Automation::new();
+    let id = ok(&mut a, "doc_new", json!({ "text": "<book id=\"b1\"/>\n<Book id=\"b2\"/>\n<notebook/>" }))["id"].as_u64().expect("id");
+    let found = ok(&mut a, "doc_find", json!({ "id": id, "pattern": "book" }));
+    assert_eq!((found["count"].as_u64(), found["more"].as_bool()), (Some(2), Some(false)), "case-sensitive: `book` and the one in `notebook`");
+    assert_eq!(
+        (found["matches"][0]["line"].as_u64(), found["matches"][0]["column"].as_u64(), found["matches"][0]["text"].as_str()),
+        (Some(1), Some(2), Some("book"))
+    );
+    assert_eq!(ok(&mut a, "doc_find", json!({ "id": id, "pattern": "book", "case_sensitive": false }))["count"], 3);
+    assert_eq!(ok(&mut a, "doc_find", json!({ "id": id, "pattern": "book", "case_sensitive": false, "whole_word": true }))["count"], 2);
+    // The same on text and on a file, and the limit.
+    assert_eq!(ok(&mut a, "doc_find", json!({ "text": "aaa", "pattern": "a", "limit": 2 }))["more"], true);
+    // A regular expression with groups: the replacement is one undoable step.
+    let replaced = ok(&mut a, "doc_replace", json!({ "id": id, "pattern": "id=\"(\\w+)\"", "regex": true, "replacement": "key='$1'" }));
+    assert_eq!(replaced["replaced"], 2);
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], "<book key='b1'/>\n<Book key='b2'/>\n<notebook/>");
+    ok(&mut a, "doc_undo", json!({ "id": id }));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], "<book id=\"b1\"/>\n<Book id=\"b2\"/>\n<notebook/>");
+    // In a text search `$` is just a dollar sign.
+    ok(&mut a, "doc_replace", json!({ "id": id, "pattern": "notebook", "replacement": "$1" }));
+    assert!(ok(&mut a, "doc_text", json!({ "id": id }))["text"].as_str().is_some_and(|t| t.ends_with("<$1/>")));
+    // Bad patterns and arguments say what is wrong.
+    assert!(err(&mut a, "doc_find", json!({ "id": id, "pattern": "(", "regex": true })).contains("not valid"));
+    assert!(err(&mut a, "doc_find", json!({ "id": id, "pattern": "" })).contains("pattern"), "the schema wants a pattern");
+    assert!(err(&mut a, "doc_replace", json!({ "id": 99, "pattern": "a", "replacement": "b" })).contains("no document"));
+    assert!(err(&mut a, "doc_find", json!({ "pattern": "a" })).contains("exactly one"));
+    // Too many matches: nothing is replaced.
+    let many = ok(&mut a, "doc_new", json!({ "text": "x".repeat(10_001) }))["id"].as_u64().expect("id");
+    assert!(err(&mut a, "doc_replace", json!({ "id": many, "pattern": "x", "replacement": "y" })).contains("nothing was replaced"));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": many }))["text"].as_str().map(|t| t.chars().all(|c| c == 'x')), Some(true));
+    assert!(err(&mut a, "doc_replace", json!({ "id": many, "pattern": "x", "replacement": "y" })).contains("more than 10000 matches"));
+    // Few matches, but more to write than may be: the other reason says so.
+    let big = ok(&mut a, "doc_new", json!({ "text": "x".repeat(5000) }))["id"].as_u64().expect("id");
+    let refused = err(&mut a, "doc_replace", json!({ "id": big, "pattern": "x", "replacement": "y".repeat(4000) }));
+    assert!(refused.contains("16 MiB") && refused.contains("nothing was replaced"), "{refused}");
+}
+
+#[test]
+fn finding_in_a_file_says_when_it_was_not_read_exactly_and_when_a_match_is_cut() {
+    let dir = tempfile::tempdir().expect("dir");
+    // A file that is not valid UTF-8 is searched as it is read (the bad byte replaced), and the answer says so.
+    let bad = file(dir.path(), "bad.xml", b"<a>\xFF needle</a>");
+    let mut a = Automation::new();
+    let found = ok(&mut a, "doc_find", json!({ "path": bad, "pattern": "needle" }));
+    assert_eq!((found["count"].as_u64(), found["lossy"].as_bool()), (Some(1), Some(true)));
+    let clean = file(dir.path(), "clean.xml", b"<a>needle</a>");
+    let found = ok(&mut a, "doc_find", json!({ "path": clean, "pattern": "needle" }));
+    assert_eq!((found["count"].as_u64(), found["lossy"].as_bool()), (Some(1), Some(false)));
+    assert_eq!((found["matches"][0]["start"].as_u64(), found["matches"][0]["end"].as_u64()), (Some(3), Some(9)));
+    // A match longer than the text reported for it: the positions are the whole match, and the text says it was cut.
+    let long = format!("<a>{}</a>", "z".repeat(500));
+    let found = ok(&mut a, "doc_find", json!({ "text": long, "pattern": "z+", "regex": true }));
+    let m = &found["matches"][0];
+    assert_eq!((m["end"].as_u64().zip(m["start"].as_u64()).map(|(e, s)| e - s), m["text_truncated"].as_bool()), (Some(500), Some(true)));
+    assert_eq!(m["text"].as_str().map(|t| t.chars().count()), Some(200));
+    let found = ok(&mut a, "doc_find", json!({ "text": "<a>zz</a>", "pattern": "z+", "regex": true }));
+    assert_eq!(found["matches"][0]["text_truncated"], false);
+    // A file outside the root is not searched.
+    let inside = dir.path().join("inside");
+    std::fs::create_dir(&inside).expect("creates");
+    let mut confined = Automation::with_root(&inside).expect("root");
+    assert!(call(&mut confined, "doc_find", json!({ "path": clean, "pattern": "needle" })).is_err());
+}
+
+#[test]
 fn a_deleted_file_or_another_route_to_it_does_not_get_around_the_save_checks() {
     let dir = tempfile::tempdir().expect("dir");
     let path = file(dir.path(), "a.xml", b"<a/>");

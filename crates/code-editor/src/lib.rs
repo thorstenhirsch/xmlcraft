@@ -16,5 +16,5 @@ mod view;
 
 pub use colors::EditorColors;
 pub use keys::{Command, command_for};
-pub use layout::{LineLayout, LineStyler, MAX_WINDOW, Mark, StyleSpan};
+pub use layout::{Highlight, LineLayout, LineStyler, MAX_WINDOW, Mark, StyleSpan};
 pub use view::{CodeEditor, CodeEditorOutput, Geometry, ViewState};

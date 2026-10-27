@@ -72,10 +72,10 @@ area = "A"
 tier = "P0"
 milestone = "M1"
 status = "partial"
-commands = []
+commands = ["edit.select_next_occurrence", "edit.select_all_occurrences"]
 tools = []
-evidence = ["crates/editor/tests/model.rs::typing_matches_a_hand_rebuilt_string"]
-notes = "Every command works on several carets and a command-click adds one. Not yet: next occurrence (Cmd-D), Alt-click and the gestures' tests in the widget."
+evidence = ["crates/editor/tests/model.rs::typing_matches_a_hand_rebuilt_string", "crates/editor/src/find.rs::the_next_occurrence_is_added_one_at_a_time", "crates/ui-egui/tests/find.rs::control_d_adds_the_next_occurrence_and_typing_changes_all_of_them"]
+notes = "Every command works on several carets; a command-click adds one; ⌘D (Ctrl+D) selects the word and then adds the next occurrence, ⇧⌘L (Ctrl+Shift+L) a caret on every occurrence (or every match of the find bar), and Find can select all matches. Not yet: Alt-click and Alt-drag (column selection, a feature of its own), a headless tool for the two occurrence commands (they are registry commands only), and the gestures' tests in the widget."
 
 [[feature]]
 id = "editor.column-selection"
@@ -95,11 +95,11 @@ title = "Find and replace with regex, case, whole word and in-selection"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["edit.find", "edit.replace", "edit.find_next", "edit.find_previous"]
+tools = ["doc_find", "doc_replace"]
+evidence = ["crates/editor/src/find.rs::literal_search_agrees_with_the_standard_library", "crates/editor/src/find.rs::replacing_one_at_a_time_then_all", "crates/ui-egui/tests/find.rs::the_find_bar_finds_counts_and_steps_through_matches", "crates/ui-egui/tests/find.rs::replace_one_and_replace_all", "crates/automation/tests/documents.rs::finding_and_replacing_text_and_patterns"]
+notes = "⌘F opens a bar above the editor: text or a regular expression (groups in the replacement as $1), match case, whole word, a counter, next and previous (Enter, F3), Replace and Replace All (one undo step), every match highlighted in the text (up to 10,000 matches, in documents up to 4 MB; a match across lines is highlighted on each of its lines; above 4 MB the bar does not count, and the matches on each line drawn are highlighted, except a match across lines and any on a line longer than 64 KB), and `doc_find` / `doc_replace` headlessly. Replace All refuses more than 10,000 matches or 16 MiB of replacement text, and says so. Still missing: searching only the selection from the bar (the engine can), find history, a replace preview, and find in files (M6)."
 
 [[feature]]
 id = "editor.find-in-files"
