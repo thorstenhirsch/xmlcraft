@@ -15,6 +15,13 @@ pub struct StyleSpan {
     pub color: Color32,
 }
 
+/// A wavy underline under part of a line, as a byte range of the line's text (a problem the host found).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Mark {
+    pub range: Range<usize>,
+    pub color: Color32,
+}
+
 /// Supplies the colours of the text, line by line. The host implements it for its language.
 pub trait LineStyler {
     /// The text changed. Lines before `first_line` (0-based) are as they were, so whatever was worked out for them is still good.
@@ -23,6 +30,11 @@ pub trait LineStyler {
     /// The coloured parts of line `line` (its text without the line break), as byte ranges of that text. `buffer` is the whole text,
     /// for a styler that needs to look at the lines before.
     fn style_line(&mut self, buffer: &xmlcraft_text::Buffer, line: usize, text: &str) -> Vec<StyleSpan>;
+
+    /// The wavy underlines of line `line`, as byte ranges of its text. Asked for every visible line on every frame, so it must be cheap.
+    fn marks(&mut self, _buffer: &xmlcraft_text::Buffer, _line: usize) -> Vec<Mark> {
+        Vec::new()
+    }
 }
 
 /// Lines longer than this (in characters) are laid out in a window of this many characters.

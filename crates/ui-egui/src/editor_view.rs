@@ -1,8 +1,10 @@
 //! The editor's look: the colours of the text of XML, and the bridge from the lexer's classes to the widget's styler.
 
 use egui::Color32;
-use xmlcraft_code_editor::{EditorColors, LineStyler, StyleSpan};
-use xmlcraft_syntax::{HighlightClass, Highlighter};
+use std::ops::Range;
+
+use xmlcraft_code_editor::{EditorColors, LineStyler, Mark, StyleSpan};
+use xmlcraft_syntax::{HighlightClass, Highlighter, Severity};
 use xmlcraft_text::Buffer;
 
 use crate::theme::{ThemeKind, Tokens};
@@ -22,6 +24,8 @@ pub struct SyntaxTokens {
     pub declaration: Color32,
     pub literal: Color32,
     pub error: Color32,
+    pub warning: Color32,
+    pub info: Color32,
 }
 
 impl SyntaxTokens {
@@ -41,6 +45,8 @@ impl SyntaxTokens {
                 declaration: rgb(0x7A, 0x3E, 0xA8),
                 literal: rgb(0x9A, 0x4A, 0x0A),
                 error: rgb(0xC6, 0x28, 0x28),
+                warning: rgb(0x9A, 0x62, 0x00),
+                info: rgb(0x1B, 0x63, 0xE0),
             },
             ThemeKind::Dark => Self {
                 punctuation: rgb(0x9A, 0x9A, 0xA3),
@@ -55,7 +61,18 @@ impl SyntaxTokens {
                 declaration: rgb(0xC3, 0xA0, 0xE8),
                 literal: rgb(0xE5, 0xA9, 0x6E),
                 error: rgb(0xFF, 0x7B, 0x7B),
+                warning: rgb(0xE5, 0xB0, 0x4A),
+                info: rgb(0x7A, 0xB0, 0xFF),
             },
+        }
+    }
+
+    /// The colour of a problem of this severity.
+    pub fn severity(&self, severity: Severity) -> Color32 {
+        match severity {
+            Severity::Error => self.error,
+            Severity::Warning => self.warning,
+            Severity::Info => self.info,
         }
     }
 
@@ -99,11 +116,13 @@ pub fn editor_colors(tokens: &Tokens) -> EditorColors {
 pub struct XmlStyler {
     highlighter: Highlighter,
     tokens: SyntaxTokens,
+    /// The problems to underline: byte ranges of the whole text, sorted by start.
+    problems: Vec<(Range<usize>, Severity)>,
 }
 
 impl XmlStyler {
     pub fn new(kind: ThemeKind) -> Self {
-        Self { highlighter: Highlighter::new(), tokens: SyntaxTokens::for_kind(kind) }
+        Self { highlighter: Highlighter::new(), tokens: SyntaxTokens::for_kind(kind), problems: Vec::new() }
     }
 
     /// Switch to another theme's colours. The caller bumps the view's `highlight_version` so cached lines are laid out again.
@@ -114,6 +133,14 @@ impl XmlStyler {
     /// Start over (another document was loaded).
     pub fn reset(&mut self) {
         self.highlighter.reset();
+        self.problems.clear();
+    }
+
+    /// The problems to underline (replacing the last ones). Ranges are in bytes of the whole text; they may be empty (a problem at a
+    /// point).
+    pub fn set_problems(&mut self, mut problems: Vec<(Range<usize>, Severity)>) {
+        problems.sort_by_key(|(range, _)| (range.start, range.end));
+        self.problems = problems;
     }
 }
 
@@ -127,6 +154,23 @@ impl LineStyler for XmlStyler {
             .spans(buffer, line)
             .into_iter()
             .filter_map(|(range, class)| self.tokens.color(class).map(|color| StyleSpan { range, color }))
+            .collect()
+    }
+
+    fn marks(&mut self, buffer: &Buffer, line: usize) -> Vec<Mark> {
+        let Some(range) = buffer.line_range(line) else { return Vec::new() };
+        let text_len = buffer.len();
+        // Problems are sorted by start; those that start after the line's end cannot touch it.
+        let end = self.problems.partition_point(|(r, _)| r.start <= range.end);
+        self.problems
+            .iter()
+            .take(end)
+            .filter(|(r, _)| r.end.max(r.start + 1) > range.start && r.start <= text_len)
+            .map(|(r, severity)| {
+                let start = r.start.max(range.start) - range.start;
+                let finish = r.end.min(range.end).max(r.start.max(range.start)) - range.start;
+                Mark { range: start..finish.max(start), color: self.tokens.severity(*severity) }
+            })
             .collect()
     }
 }
@@ -175,6 +219,10 @@ mod tests {
                 assert!(ratio >= 4.5, "{class:?} in {kind:?}: {ratio:.2}:1");
             }
             assert_eq!(syntax.color(Plain), None);
+            for severity in [Severity::Error, Severity::Warning, Severity::Info] {
+                let ratio = contrast(syntax.severity(severity), background);
+                assert!(ratio >= 4.5, "{severity:?} in {kind:?}: {ratio:.2}:1");
+            }
         }
     }
 
@@ -194,5 +242,21 @@ mod tests {
         styler.text_changed(1);
         let third = styler.style_line(&edited, 2, "");
         assert!(third.is_empty(), "`-->` outside a comment is plain text, not colour: {third:?}");
+    }
+
+    #[test]
+    fn problems_become_marks_on_the_lines_they_touch() {
+        let buffer = Buffer::from_text("<a>\n<b>text</b>\n</a>");
+        let mut styler = XmlStyler::new(ThemeKind::Light);
+        styler.set_problems(vec![(8..12, Severity::Warning), (0..0, Severity::Error), (2..9, Severity::Error)]);
+        let tokens = SyntaxTokens::for_kind(ThemeKind::Light);
+        let first = styler.marks(&buffer, 0);
+        assert_eq!(first.iter().map(|m| m.range.clone()).collect::<Vec<_>>(), [0..0, 2..3], "a point, and the start of a long one");
+        assert_eq!(first[1].color, tokens.error);
+        let second = styler.marks(&buffer, 1);
+        // Line 1 is bytes 4..16: the long problem (2..9) covers its first five bytes; the warning (8..12) the next four.
+        assert_eq!(second.iter().map(|m| m.range.clone()).collect::<Vec<_>>(), [0..5, 4..8]);
+        assert!(styler.marks(&buffer, 2).is_empty());
+        assert!(styler.marks(&buffer, 99).is_empty(), "a line that does not exist has no marks");
     }
 }

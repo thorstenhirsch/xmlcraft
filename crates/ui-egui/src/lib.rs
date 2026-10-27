@@ -25,6 +25,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use xmlcraft_engine::Session;
+use xmlcraft_engine::analysis::Analyzer;
 
 use crate::dialog::Dialog;
 use crate::documents::DocView;
@@ -96,6 +97,12 @@ pub struct XmlCraftApp {
     palette_selected: usize,
     /// The open documents and the commands that act on them.
     pub session: Session,
+    /// Works out each document's problems and outline in the background.
+    analyzer: Analyzer,
+    /// The text typed into the Outline's filter box.
+    outline_filter: String,
+    /// The text typed into Go to Line.
+    goto_input: String,
     /// What the editor keeps for each open document (layout caches, colouring), by document id.
     views: HashMap<u64, DocView>,
     /// The question being asked, if any.
@@ -135,6 +142,8 @@ impl XmlCraftApp {
         let prefs = Prefs::load(cc.storage.and_then(|s| s.get_string(STORAGE_KEY)).as_deref());
         let mut app = Self::with_prefs(prefs);
         app.ctx = Some(cc.egui_ctx.clone());
+        let repaint = cc.egui_ctx.clone();
+        app.analyzer.on_done(move || repaint.request_repaint());
         app
     }
 
@@ -150,6 +159,9 @@ impl XmlCraftApp {
             palette_last_query: String::new(),
             palette_selected: 0,
             session: Session::new(),
+            analyzer: Analyzer::new(),
+            outline_filter: String::new(),
+            goto_input: String::new(),
             views: HashMap::new(),
             dialog: None,
             pickers: Pickers::default(),
@@ -231,6 +243,7 @@ impl eframe::App for XmlCraftApp {
         self.handle_shortcuts(ctx);
         self.process_picks(ctx);
         self.handle_dropped_files(ctx);
+        self.pump_analysis();
         // Getting the window back: another program may have changed the files in the meantime.
         let focused = ctx.input(|i| i.viewport().focused.unwrap_or(true));
         if focused && !self.was_focused {

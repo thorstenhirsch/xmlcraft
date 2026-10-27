@@ -221,6 +221,20 @@ pub fn status_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                         for part in document_summary(doc).into_iter().rev() {
                             ui.label(egui::RichText::new(part).font(theme::regular(11.5)).color(t.text_muted));
                         }
+                        // Whether the document is well-formed: a click shows the list.
+                        let syntax = crate::editor_view::SyntaxTokens::for_kind(t.kind);
+                        let (text, color) = match app.active_analysis() {
+                            None => (tl!("Checking…").to_owned(), t.text_faint),
+                            Some(a) if a.skipped.is_some() => (tl!("Not checked").to_owned(), t.text_faint),
+                            Some(a) if a.error_count() > 0 => {
+                                (crate::i18n::fmt(tl!("{count} errors"), &[("count", &a.error_count().to_string())]), syntax.error)
+                            }
+                            Some(_) => (tl!("Well-formed").to_owned(), t.text_muted),
+                        };
+                        let badge = ui.add(egui::Label::new(egui::RichText::new(text).font(theme::medium(11.5)).color(color)).sense(Sense::click()));
+                        if badge.clicked() {
+                            app.bottom_open = true;
+                        }
                     }
                 });
             });

@@ -630,8 +630,10 @@ impl Host for crate::XmlCraftApp {
                     "lines": d.editor().buffer().line_count(),
                     "caret": { "line": pos.line + 1, "column": pos.col + 1 },
                     "selected": d.editor().has_selection(),
+                    "version": d.editor().version(),
                 })
             }).collect::<Vec<_>>(),
+            "problems": self.problems().map(|(errors, warnings)| json!({ "errors": errors, "warnings": warnings })),
             "dialog": self.dialog.as_ref().map(|d| format!("{d:?}").split([' ', '{']).next().unwrap_or("").to_lowercase()),
             "mode": format!("{:?}", self.mode).to_lowercase(),
             "panes": { "outline": self.left_open, "entry_helpers": self.right.is_some(), "messages": self.bottom_open },
