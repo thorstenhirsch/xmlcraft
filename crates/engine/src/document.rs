@@ -160,6 +160,12 @@ impl Document {
     /// that has no analysis of the text (a window has: it links with `Analysis::linked_names`); the text is analysed now. Returns whether
     /// names are linked.
     pub fn link_tag_names(&mut self) -> bool {
+        self.link_tag_names_by(crate::analysis::analyze_guarded)
+    }
+
+    /// [`Self::link_tag_names`] with the analysis done by `analyse` (the fuzzer's self-check passes the unguarded one, so that a panic in
+    /// the analysis is seen and not turned into "no pairs").
+    pub fn link_tag_names_by(&mut self, analyse: impl FnOnce(&str, u64) -> crate::analysis::Analysis) -> bool {
         let editor = &mut self.editor;
         let [caret] = editor.carets() else {
             editor.unlink_names();
@@ -178,7 +184,7 @@ impl Document {
             editor.unlink_names();
             return false;
         }
-        let analysis = crate::analysis::analyze_guarded(&editor.text(), editor.version());
+        let analysis = analyse(&editor.text(), editor.version());
         match analysis.skipped.is_none().then(|| analysis.linked_names(at)).flatten() {
             Some([a, b]) => editor.link_names(a, b),
             None => {

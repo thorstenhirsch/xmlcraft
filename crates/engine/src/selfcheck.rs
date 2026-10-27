@@ -4,7 +4,8 @@
 //! A panic, an abort or a hang is for the caller to notice (the fuzzer runs this in a child process). What is checked here are the
 //! promises that a wrong answer breaks without any crash:
 //!
-//! - a document nobody edited is saved as the bytes it was opened from, unless it was flagged lossy;
+//! - a document nobody edited is saved as the bytes it was opened from (one that is flagged lossy, because its bytes were not valid in
+//!   its encoding, is not: saving it would make that permanent);
 //! - the ranges the analysis reports (outline, problems, folds) are inside the text and on character boundaries;
 //! - formatting a well-formed document keeps it well-formed, changes nothing but white space, is idempotent, and is undone by one undo;
 //! - with `edit`: after a run of every kind of editing (typing, deleting, indenting, commenting, selecting, folding, replacing, undo and
@@ -15,17 +16,19 @@ use std::ops::Range;
 
 use xmlcraft_editor::find::{Matcher, Query};
 use xmlcraft_editor::{Editor, Motion};
+use xmlcraft_text::Buffer;
 
 use crate::Document;
-use crate::analysis::{Analysis, analyze_guarded};
+use crate::analysis::{Analysis, analyze};
 use crate::folding::{FoldAction, apply};
 
 /// How many editing steps `edit` mode takes.
 const STEPS: usize = 160;
 
-/// Check `bytes`; with `edit`, edit the document too. `Err` says which promise was broken.
+/// Check `bytes`; with `edit`, edit the document too (up to 64 KiB of text). `Err` says which promise was broken; a document too large
+/// to open is one.
 pub fn check(bytes: &[u8], edit: bool) -> Result<(), String> {
-    let Ok(doc) = Document::from_bytes(1, None, bytes, None) else { return Ok(()) };
+    let doc = Document::from_bytes(1, None, bytes, None).map_err(|e| e.to_string())?;
     let original = doc.editor().text();
     if !doc.is_lossy() {
         match doc.to_bytes() {
@@ -34,7 +37,8 @@ pub fn check(bytes: &[u8], edit: bool) -> Result<(), String> {
             Err(e) => return Err(format!("saving a document nobody edited failed: {e}")),
         }
     }
-    let analysis = analyze_guarded(&original, 1);
+    // The analysis that is not guarded: a panic in it is the fuzzer's to see, not a "skipped" for the window.
+    let analysis = analyze(&original, 1);
     check_analysis(&original, &analysis)?;
     if analysis.skipped.is_none() && analysis.error_count() == 0 {
         check_formatting(bytes, &original)?;
@@ -87,12 +91,13 @@ fn check_analysis(text: &str, analysis: &Analysis) -> Result<(), String> {
     Ok(())
 }
 
+/// `text` without the four characters XML calls white space (a no-break space is text).
 fn without_white_space(text: &str) -> String {
-    text.chars().filter(|c| !c.is_whitespace()).collect()
+    text.chars().filter(|c| !matches!(c, ' ' | '\t' | '\r' | '\n')).collect()
 }
 
 fn is_well_formed(text: &str) -> bool {
-    let analysis = analyze_guarded(text, 1);
+    let analysis = analyze(text, 1);
     analysis.skipped.is_none() && analysis.error_count() == 0
 }
 
@@ -147,11 +152,16 @@ const TYPED: &[&str] =
     &["<", ">", "/", "\"", "'", "&", ";", "a", "Z", "1", " ", "-", "!", "?", "[", "]", "=", ":", "é", "日", "\u{1F600}", "\t", "ab"];
 const PASTED: &[&str] = &["<x/>", "<a>\r\n</a>", "text", "<!-- c -->", "<![CDATA[ x ]]>", "&amp;", "\n\n", "é日"];
 
+/// Whether `offset` is a place in the text a caret can be: inside it or at its end, and not in the middle of a character.
+fn is_a_place_in(buffer: &Buffer, offset: usize) -> bool {
+    offset == buffer.len() || (offset < buffer.len() && buffer.char_at(offset).is_some())
+}
+
 fn carets_are_in_the_text(editor: &Editor) -> Result<(), String> {
     let buffer = editor.buffer();
     for caret in editor.carets() {
         for offset in [caret.sel.anchor, caret.sel.head] {
-            if offset > buffer.len() || (offset < buffer.len() && buffer.char_at(offset).is_none()) {
+            if !is_a_place_in(buffer, offset) {
                 return Err(format!("a caret at {offset} is not on a character boundary of the {} bytes of text", buffer.len()));
             }
         }
@@ -159,9 +169,17 @@ fn carets_are_in_the_text(editor: &Editor) -> Result<(), String> {
     Ok(())
 }
 
+/// The longest document `edit` mode edits: the history keeps 64 MiB and then drops its oldest steps, and a run of steps that each touch
+/// much of a large document would pass that, so undoing all of it could not give back the original. 160 steps of at most this much
+/// (twice, for the inverses) stay well within.
+const STRESS_UP_TO: usize = 64 * 1024;
+
 /// A run of editing steps, chosen by the bytes themselves; then undo and redo all of it.
 fn stress(bytes: &[u8]) -> Result<(), String> {
     let Ok(mut doc) = Document::from_bytes(3, None, bytes, None) else { return Ok(()) };
+    if doc.editor().buffer().len() > STRESS_UP_TO {
+        return Ok(());
+    }
     let original = doc.editor().text();
     let mut rng = Rng(fxhash(bytes) | 1);
     for step in 0..STEPS {
@@ -183,7 +201,7 @@ fn stress(bytes: &[u8]) -> Result<(), String> {
             13 => drop(doc.editor_mut().undo()),
             14 => drop(doc.editor_mut().redo()),
             15 => {
-                let analysis = analyze_guarded(&doc.editor().text(), doc.editor().version());
+                let analysis = analyze(&doc.editor().text(), doc.editor().version());
                 let action = match rng.below(5) {
                     0 => FoldAction::Fold,
                     1 => FoldAction::Unfold,
@@ -195,7 +213,7 @@ fn stress(bytes: &[u8]) -> Result<(), String> {
             }
             16..=17 => {
                 // Typing in a tag name: both names change.
-                doc.link_tag_names();
+                doc.link_tag_names_by(analyze);
                 let _ = doc.editor_mut().type_input(TYPED.get(rng.below(TYPED.len())).copied().unwrap_or("a"));
             }
             18 => {
@@ -282,7 +300,7 @@ mod tests {
     #[test]
     fn broken_ranges_and_folds_are_reported() {
         let text = "<a>\n<b/>\n</a>";
-        let mut analysis = analyze_guarded(text, 1);
+        let mut analysis = analyze(text, 1);
         assert_eq!(check_analysis(text, &analysis), Ok(()));
         analysis.folds.push(crate::folding::FoldRange {
             first_line: 1,
@@ -292,7 +310,7 @@ mod tests {
             kind: crate::folding::FoldKind::Element,
         });
         assert!(check_analysis(text, &analysis).is_err(), "a fold past the last line");
-        let mut analysis = analyze_guarded("<é/>", 1);
+        let mut analysis = analyze("<é/>", 1);
         if let Some(item) = analysis.outline.first_mut() {
             item.name_range = 2..3;
         }
@@ -300,7 +318,11 @@ mod tests {
     }
 
     #[test]
-    fn the_carets_are_checked_for_boundaries() {
+    fn a_place_for_a_caret_is_inside_the_text_or_at_its_end_and_not_inside_a_character() {
+        let buffer = Buffer::from_text("aé日");
+        // `a` 0, `é` 1..3, `日` 3..6.
+        let places: Vec<usize> = (0..=8).filter(|offset| is_a_place_in(&buffer, *offset)).collect();
+        assert_eq!(places, [0, 1, 3, 6]);
         let mut editor = Editor::new("é");
         editor.set_selection(1, 1);
         assert_eq!(carets_are_in_the_text(&editor), Ok(()), "the editor puts a caret on a boundary itself");
@@ -309,6 +331,7 @@ mod tests {
     #[test]
     fn white_space_is_all_that_formatting_may_change() {
         assert_eq!(without_white_space(" <a>\r\n\t<b/> </a>\n"), "<a><b/></a>");
+        assert_eq!(without_white_space("a\u{A0}b\u{2003}"), "a\u{A0}b\u{2003}", "a no-break space and an em space are text, not white space");
     }
 
     proptest::proptest! {

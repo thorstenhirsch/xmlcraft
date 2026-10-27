@@ -16,9 +16,10 @@ on:
 permissions:
   contents: read
 
+# A manual run must not cancel the nightly one (and lose its findings): runs queue instead.
 concurrency:
   group: fuzz-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -55,7 +56,18 @@ jobs:
       - name: Fuzz
         env:
           MINUTES: ${{ github.event.inputs.minutes || '15' }}
-        run: cargo xtask fuzz --time "$((MINUTES * 60))" --seed "${{ github.run_number }}"
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          # The input is typed by a person: only a short number of minutes goes into the arithmetic.
+          case "$MINUTES" in
+            ''|*[!0-9]*) echo "minutes must be a whole number, not '$MINUTES'" >&2; exit 1 ;;
+          esac
+          if [ "${#MINUTES}" -gt 3 ] || [ "$MINUTES" -lt 1 ]; then
+            echo "minutes must be between 1 and 999" >&2
+            exit 1
+          fi
+          cargo xtask fuzz --time "$((10#$MINUTES * 60))" --seed "$RUN_NUMBER"
 
       - name: Upload findings
         if: always()

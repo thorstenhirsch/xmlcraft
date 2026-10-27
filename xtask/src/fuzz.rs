@@ -17,16 +17,60 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 
 use crate::gates::root;
 
-fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
-    args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).map(String::as_str)
+/// What the command line asks for. Every option takes a value, and an unknown, a repeated or a valueless one is an error (a missing
+/// `--time` value must not quietly mean five minutes).
+#[derive(Debug, PartialEq, Eq)]
+struct Options {
+    time: Duration,
+    iterations: usize,
+    seed: u64,
+    jobs: usize,
+    timeout: Duration,
+}
+
+/// The most jobs: each is a process at a time, and a typo should not start thousands of threads.
+const MAX_JOBS: usize = 64;
+
+impl Options {
+    fn parse(args: &[String]) -> Result<Self> {
+        let mut given: std::collections::BTreeMap<&str, &str> = std::collections::BTreeMap::new();
+        let mut rest = args.iter();
+        while let Some(name) = rest.next() {
+            let name = name.as_str();
+            if !matches!(name, "--time" | "--iterations" | "--seed" | "--jobs" | "--timeout") {
+                bail!("unknown option {name}: fuzz takes [--time S] [--iterations N] [--seed N] [--jobs N] [--timeout S]");
+            }
+            let Some(value) = rest.next() else { bail!("{name} needs a value") };
+            if given.insert(name, value).is_some() {
+                bail!("{name} is given twice");
+            }
+        }
+        let number = |name: &str, default: u64, least: u64, most: u64| -> Result<u64> {
+            let Some(text) = given.get(name) else { return Ok(default) };
+            let n: u64 = text.parse().map_err(|_| anyhow::anyhow!("{name} needs a number, not {text:?}"))?;
+            if !(least..=most).contains(&n) {
+                bail!("{name} must be between {least} and {most}, not {n}");
+            }
+            Ok(n)
+        };
+        // Half the cores by default: a saturated machine turns slow inputs into false hangs.
+        let default_jobs = std::thread::available_parallelism().map_or(2, |n| (n.get() / 2).max(1)).min(MAX_JOBS) as u64;
+        Ok(Self {
+            time: Duration::from_secs(number("--time", 300, 1, 7 * 24 * 3600)?),
+            iterations: usize::try_from(number("--iterations", u64::MAX, 1, u64::MAX)?).unwrap_or(usize::MAX),
+            seed: number("--seed", 1, 0, u64::MAX)?,
+            jobs: usize::try_from(number("--jobs", default_jobs, 1, MAX_JOBS as u64)?).unwrap_or(1),
+            timeout: Duration::from_secs(number("--timeout", 10, 1, 3600)?),
+        })
+    }
 }
 
 fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -260,36 +304,71 @@ fn reason(stderr: &str) -> String {
         .to_string()
 }
 
-fn run_one(exe: &Path, file: &Path, timeout: Duration) -> (Outcome, String) {
-    let child = child_command(exe).args(["check-one", &file.to_string_lossy(), "--edit"]).stdout(Stdio::null()).stderr(Stdio::piped()).spawn();
-    let Ok(mut child) = child else { return (Outcome::Ok, String::new()) };
+/// What makes two failures the same bug: a panic is where it happened; a broken promise is which one, whatever offsets, steps and sizes
+/// its message names (they change as the input is cut down, and a cut-down input is the point).
+fn class(what: &str) -> String {
+    if what.contains("panicked at") {
+        return what.to_owned();
+    }
+    let mut out = String::with_capacity(what.len());
+    let mut in_number = false;
+    for c in what.chars() {
+        if c.is_ascii_digit() {
+            if !in_number {
+                out.push('#');
+            }
+            in_number = true;
+        } else {
+            in_number = false;
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Running the child went wrong in a way that says nothing about the input (it did not start, it could not be waited for, its work file
+/// could not be written): the run stops with this, instead of counting every input as passed.
+type Infrastructure = anyhow::Error;
+
+/// Run the child on `file` (its standard error goes to `stderr_file`, so that a child that writes much cannot block on a full pipe and
+/// look like a hang).
+fn run_one(exe: &Path, file: &Path, stderr_file: &Path, timeout: Duration) -> Result<(Outcome, String), Infrastructure> {
+    let stderr = std::fs::File::create(stderr_file).with_context(|| format!("creating {}", stderr_file.display()))?;
+    let mut child = child_command(exe)
+        .args(["check-one", &file.to_string_lossy(), "--edit"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::from(stderr))
+        .spawn()
+        .with_context(|| format!("starting {}", exe.display()))?;
     let start = Instant::now();
     loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                if status.success() {
-                    return (Outcome::Ok, String::new());
-                }
-                let mut err = String::new();
-                if let Some(mut e) = child.stderr.take() {
-                    use std::io::Read;
-                    let _ = e.read_to_string(&mut err);
-                }
-                return (Outcome::Crash, format!("{status}; {}", reason(&err)));
+        match child.try_wait().context("waiting for the child")? {
+            Some(status) if status.success() => return Ok((Outcome::Ok, String::new())),
+            Some(status) => {
+                let err = std::fs::read(stderr_file).map(|bytes| String::from_utf8_lossy(&bytes).into_owned()).unwrap_or_default();
+                return Ok((Outcome::Crash, format!("{status}; {}", reason(&err))));
             }
-            Ok(None) if start.elapsed() > timeout => {
+            None if start.elapsed() > timeout => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return (Outcome::Hang, format!("over {} s", timeout.as_secs()));
+                return Ok((Outcome::Hang, format!("over {} s", timeout.as_secs())));
             }
-            Ok(None) => std::thread::sleep(Duration::from_millis(5)),
-            Err(e) => return (Outcome::Ok, e.to_string()),
+            None => std::thread::sleep(Duration::from_millis(5)),
         }
     }
 }
 
-/// Remove chunks while the input still fails with the same outcome and message.
-fn minimize(exe: &Path, probe: &Path, data: Vec<u8>, outcome: Outcome, what: &str, timeout: Duration) -> Vec<u8> {
+/// Remove chunks while the input still fails the same way (the same class of failure).
+fn minimize(
+    exe: &Path,
+    probe: &Path,
+    stderr_file: &Path,
+    data: Vec<u8>,
+    outcome: Outcome,
+    what: &str,
+    timeout: Duration,
+) -> Result<Vec<u8>, Infrastructure> {
+    let wanted = class(what);
     let mut best = data;
     let mut chunk = best.len() / 2;
     let mut tries = 0;
@@ -300,11 +379,9 @@ fn minimize(exe: &Path, probe: &Path, data: Vec<u8>, outcome: Outcome, what: &st
             let mut candidate = best.clone();
             candidate.drain(i..(i + chunk).min(candidate.len()));
             tries += 1;
-            if std::fs::write(probe, &candidate).is_err() {
-                break;
-            }
-            let (o, w) = run_one(exe, probe, timeout);
-            if o == outcome && (outcome == Outcome::Hang || w == what) {
+            std::fs::write(probe, &candidate).with_context(|| format!("writing {}", probe.display()))?;
+            let (o, w) = run_one(exe, probe, stderr_file, timeout)?;
+            if o == outcome && (outcome == Outcome::Hang || class(&w) == wanted) {
                 best = candidate;
                 progressed = true;
             } else {
@@ -315,7 +392,7 @@ fn minimize(exe: &Path, probe: &Path, data: Vec<u8>, outcome: Outcome, what: &st
             chunk /= 2;
         }
     }
-    best
+    Ok(best)
 }
 
 fn cli_path() -> PathBuf {
@@ -323,15 +400,77 @@ fn cli_path() -> PathBuf {
     target.join("release").join(if cfg!(windows) { "xmlcraft-cli.exe" } else { "xmlcraft-cli" })
 }
 
-pub fn run(args: &[String]) -> Result<()> {
-    let time = Duration::from_secs(flag(args, "--time").unwrap_or("300").parse()?);
-    let iterations: usize = flag(args, "--iterations").map(str::parse).transpose()?.unwrap_or(usize::MAX);
-    let seed: u64 = flag(args, "--seed").unwrap_or("1").parse()?;
-    // Half the cores by default: a saturated machine turns slow inputs into false hangs.
-    let jobs: usize =
-        flag(args, "--jobs").map(str::parse).transpose()?.unwrap_or_else(|| std::thread::available_parallelism().map_or(2, |n| (n.get() / 2).max(1)));
-    let timeout = Duration::from_secs(flag(args, "--timeout").unwrap_or("10").parse()?);
+/// One distinct failure: hangs are told apart by the seed they came from, crashes by their class.
+fn finding_key(outcome: Outcome, what: &str, seed_file: &str) -> String {
+    if outcome == Outcome::Hang { format!("Hang:{seed_file}") } else { format!("{outcome:?}:{}", class(what)) }
+}
 
+/// Everything one job needs, so that the loop reads as what it does.
+struct Job<'a> {
+    index: usize,
+    exe: &'a Path,
+    seeds: &'a [(String, Vec<u8>)],
+    work: &'a Path,
+    findings: &'a Path,
+    options: &'a Options,
+    start: Instant,
+    done: &'a AtomicUsize,
+    /// Set when a job cannot go on, so that the others stop too.
+    stop: &'a AtomicBool,
+    found: &'a Mutex<Vec<(Outcome, String, String)>>,
+    solo: &'a Mutex<()>,
+}
+
+impl Job<'_> {
+    fn run(&self) -> Result<(), Infrastructure> {
+        let (file, stderr_file) = (self.work.join(format!("job{}.xml", self.index)), self.work.join(format!("job{}.err", self.index)));
+        // Each job minimises in a file of its own: a shared one would mix up what two jobs are probing.
+        let probe = self.work.join(format!("probe{}.xml", self.index));
+        let mut rng = Rng(self.options.seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(self.index as u64 + 1) | 1);
+        while self.start.elapsed() < self.options.time && !self.stop.load(Ordering::Relaxed) {
+            if self.done.fetch_add(1, Ordering::Relaxed) >= self.options.iterations {
+                break;
+            }
+            let Some((name, base)) = self.seeds.get(rng.below(self.seeds.len())) else { break };
+            let other = self.seeds.get(rng.below(self.seeds.len())).map(|s| s.1.as_slice()).unwrap_or_default();
+            let data = mutate(&mut rng, base, other);
+            std::fs::write(&file, &data).with_context(|| format!("writing {}", file.display()))?;
+            let (outcome, what) = run_one(self.exe, &file, &stderr_file, self.options.timeout)?;
+            if outcome == Outcome::Ok || locked(self.found).iter().any(|(o, w, s)| finding_key(*o, w, s) == finding_key(outcome, &what, name)) {
+                continue;
+            }
+            // A hang under full load may just be a slow machine: confirm it alone, with three times the time, before recording it.
+            // Hangs are not minimised (each probe costs a full timeout) and are kept as they are.
+            let small = if outcome == Outcome::Hang {
+                let _guard = locked(self.solo);
+                if run_one(self.exe, &file, &stderr_file, self.options.timeout * 3)?.0 != Outcome::Hang {
+                    continue;
+                }
+                data.clone()
+            } else {
+                minimize(self.exe, &probe, &stderr_file, data.clone(), outcome, &what, self.options.timeout)?
+            };
+            // Another job may have found the same while this one minimised.
+            {
+                let mut seen = locked(self.found);
+                if seen.iter().any(|(o, w, s)| finding_key(*o, w, s) == finding_key(outcome, &what, name)) {
+                    continue;
+                }
+                seen.push((outcome, what.clone(), name.clone()));
+            }
+            let id = format!("{:?}-{:016x}", outcome, fxhash(&small)).to_lowercase();
+            let note = serde_json::json!({ "outcome": format!("{outcome:?}"), "detail": what, "seed_file": name, "bytes": small.len(), "original_bytes": data.len() });
+            std::fs::write(self.findings.join(format!("{id}.xml")), &small).with_context(|| format!("writing the finding {id}.xml"))?;
+            std::fs::write(self.findings.join(format!("{id}.json")), serde_json::to_string_pretty(&note)?)
+                .with_context(|| format!("writing the finding {id}.json"))?;
+            println!("  {outcome:?} from {name}: {what} → fuzz-out/findings/{id}.xml ({} bytes)", small.len());
+        }
+        Ok(())
+    }
+}
+
+pub fn run(args: &[String]) -> Result<()> {
+    let options = Options::parse(args)?;
     let status = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
         .current_dir(root())
         .args(["build", "--release", "-q", "-p", "xmlcraft-cli"])
@@ -349,80 +488,62 @@ pub fn run(args: &[String]) -> Result<()> {
     let findings = out.join("findings");
     std::fs::create_dir_all(&work)?;
     std::fs::create_dir_all(&findings)?;
-    let seeds = Arc::new(seeds());
-    println!("fuzz: {} seeds, {jobs} jobs, {} s, timeout {} s, seed {seed}", seeds.len(), time.as_secs(), timeout.as_secs());
+    let seeds = seeds();
+    println!(
+        "fuzz: {} seeds, {} jobs, {} s, timeout {} s, seed {}",
+        seeds.len(),
+        options.jobs,
+        options.time.as_secs(),
+        options.timeout.as_secs(),
+        options.seed
+    );
 
-    let done = Arc::new(AtomicUsize::new(0));
-    let found: Arc<Mutex<Vec<(Outcome, String, String)>>> = Arc::default();
+    let done = AtomicUsize::new(0);
+    let found: Mutex<Vec<(Outcome, String, String)>> = Mutex::default();
     // Held while confirming a hang; the other jobs keep running, so this only serialises confirmations with each other.
-    let solo = Arc::new(Mutex::new(()));
+    let solo = Mutex::new(());
+    let infrastructure: Mutex<Vec<Infrastructure>> = Mutex::default();
+    let stop = AtomicBool::new(false);
     let start = Instant::now();
-    std::thread::scope(|s| {
-        for job in 0..jobs {
-            let (seeds, done, found, exe, work, findings, solo) =
-                (seeds.clone(), done.clone(), found.clone(), exe.clone(), work.clone(), findings.clone(), solo.clone());
-            s.spawn(move || {
-                let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(job as u64 + 1) | 1);
-                let file = work.join(format!("job{job}.xml"));
-                // Each job minimises in a file of its own: a shared one would mix up what two jobs are probing.
-                let probe = work.join(format!("probe{job}.xml"));
-                while start.elapsed() < time {
-                    let n = done.fetch_add(1, Ordering::Relaxed);
-                    if n >= iterations {
-                        break;
-                    }
-                    let Some((name, base)) = seeds.get(rng.below(seeds.len())) else { break };
-                    let other = seeds.get(rng.below(seeds.len())).map(|s| s.1.as_slice()).unwrap_or_default();
-                    let data = mutate(&mut rng, base, other);
-                    if std::fs::write(&file, &data).is_err() {
-                        continue;
-                    }
-                    let (outcome, what) = run_one(&exe, &file, timeout);
-                    if outcome == Outcome::Ok {
-                        continue;
-                    }
-                    // One finding per distinct failure (hangs: one per seed).
-                    let key = |o: Outcome, w: &str, s: &str| if o == Outcome::Hang { format!("Hang:{s}") } else { format!("{o:?}:{w}") };
-                    if locked(&found).iter().any(|(o, w, s)| key(*o, w, s) == key(outcome, &what, name)) {
-                        continue;
-                    }
-                    // A hang under full load may just be a slow machine: confirm it alone, with three times the time, before recording
-                    // it. Hangs are not minimised (each probe costs a full timeout).
-                    let small = if outcome == Outcome::Hang {
-                        let _guard = locked(&solo);
-                        if run_one(&exe, &file, timeout * 3).0 != Outcome::Hang {
-                            continue;
-                        }
-                        data.clone()
-                    } else {
-                        minimize(&exe, &probe, data.clone(), outcome, &what, timeout)
-                    };
-                    // Another job may have found the same while this one minimised.
-                    {
-                        let mut seen = locked(&found);
-                        if seen.iter().any(|(o, w, s)| key(*o, w, s) == key(outcome, &what, name)) {
-                            continue;
-                        }
-                        seen.push((outcome, what.clone(), name.clone()));
-                    }
-                    let id = format!("{:?}-{:016x}", outcome, fxhash(&small)).to_lowercase();
-                    let _ = std::fs::write(findings.join(format!("{id}.xml")), &small);
-                    let note = serde_json::json!({ "outcome": format!("{outcome:?}"), "detail": what, "seed_file": name, "bytes": small.len(), "original_bytes": data.len() });
-                    let _ = std::fs::write(findings.join(format!("{id}.json")), serde_json::to_string_pretty(&note).unwrap_or_default());
-                    println!("  {outcome:?} from {name}: {what} → fuzz-out/findings/{id}.xml ({} bytes)", small.len());
+    std::thread::scope(|scope| {
+        for index in 0..options.jobs {
+            let job = Job {
+                index,
+                exe: &exe,
+                seeds: &seeds,
+                work: &work,
+                findings: &findings,
+                options: &options,
+                start,
+                done: &done,
+                stop: &stop,
+                found: &found,
+                solo: &solo,
+            };
+            let (infrastructure, stop) = (&infrastructure, &stop);
+            scope.spawn(move || {
+                if let Err(e) = job.run() {
+                    stop.store(true, Ordering::Relaxed);
+                    locked(infrastructure).push(e);
                 }
             });
         }
     });
-    let n = done.load(Ordering::Relaxed).min(iterations);
+    if let Some(e) = locked(&infrastructure).pop() {
+        return Err(e.context("the fuzzer could not run its checks (nothing is known about the inputs it did not get to)"));
+    }
+    let runs = done.load(Ordering::Relaxed).min(options.iterations);
     let found = locked(&found);
     let crashes = found.iter().filter(|f| f.0 == Outcome::Crash).count();
     let hangs = found.len() - crashes;
     println!(
-        "fuzz: {n} runs in {:.0} s ({:.1}/s): {crashes} distinct crash(es), {hangs} hang(s)",
+        "fuzz: {runs} runs in {:.0} s ({:.1}/s): {crashes} distinct crash(es), {hangs} hang(s)",
         start.elapsed().as_secs_f64(),
-        n as f64 / start.elapsed().as_secs_f64().max(0.001)
+        runs as f64 / start.elapsed().as_secs_f64().max(0.001)
     );
+    if runs == 0 {
+        bail!("no input was run: the time was too short or there were no seeds");
+    }
     if crashes > 0 {
         bail!("{crashes} crash(es): see fuzz-out/findings/");
     }
@@ -457,6 +578,65 @@ mod tests {
         for (i, seed) in synthetic_seeds().iter().enumerate() {
             xmlcraft_engine::selfcheck::check(seed, true).unwrap_or_else(|e| panic!("synthetic seed {i}: {e}"));
         }
+    }
+
+    fn options(line: &str) -> Result<Options> {
+        Options::parse(&line.split_whitespace().map(str::to_owned).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn the_options_are_all_checked() {
+        let parsed = options("--time 60 --iterations 5 --seed 9 --jobs 3 --timeout 20").expect("valid");
+        assert_eq!(parsed, Options { time: Duration::from_secs(60), iterations: 5, seed: 9, jobs: 3, timeout: Duration::from_secs(20) });
+        let defaults = options("").expect("defaults");
+        assert_eq!(
+            (defaults.time, defaults.seed, defaults.timeout, defaults.iterations),
+            (Duration::from_secs(300), 1, Duration::from_secs(10), usize::MAX)
+        );
+        assert!((1..=MAX_JOBS).contains(&defaults.jobs));
+        for (line, needle) in [
+            ("--time", "needs a value"),
+            ("--time x", "needs a number"),
+            ("--time 0", "between 1 and"),
+            ("--jobs 0", "between 1 and 64"),
+            ("--jobs 65", "between 1 and 64"),
+            ("--timeout 0", "between 1 and"),
+            ("--iterations 0", "between 1 and"),
+            ("--what 3", "unknown option --what"),
+            ("3", "unknown option 3"),
+            ("--seed 1 --seed 2", "given twice"),
+        ] {
+            let err = options(line).expect_err(line).to_string();
+            assert!(err.contains(needle), "{line:?}: {err}");
+        }
+    }
+
+    #[test]
+    fn failures_are_the_same_bug_when_their_class_is_the_same() {
+        let a = "exit status: 1; xmlcraft-cli: self-check failed: step 12 (kind 4): a caret at 55 is not on a character boundary of the 300 bytes of text";
+        let b =
+            "exit status: 1; xmlcraft-cli: self-check failed: step 3 (kind 4): a caret at 7 is not on a character boundary of the 12 bytes of text";
+        assert_eq!(class(a), class(b));
+        assert_ne!(class(a), class("exit status: 1; xmlcraft-cli: self-check failed: undoing every step did not give back the original text"));
+        // A panic is where it happened: two places are two bugs.
+        let p1 = "exit status: 101; thread 'main' panicked at crates/x/src/y.rs:10:5:";
+        let p2 = "exit status: 101; thread 'main' panicked at crates/x/src/y.rs:11:5:";
+        assert_ne!(class(p1), class(p2));
+        assert_eq!(finding_key(Outcome::Hang, "over 10 s", "a.xml"), "Hang:a.xml");
+        assert_eq!(finding_key(Outcome::Crash, a, "a.xml"), finding_key(Outcome::Crash, b, "other.xml"));
+    }
+
+    #[test]
+    fn a_child_that_cannot_start_stops_the_run_instead_of_passing_every_input() {
+        let dir = tempfile::tempdir().expect("dir");
+        let file = dir.path().join("a.xml");
+        std::fs::write(&file, b"<a/>").expect("writes");
+        let missing = dir.path().join("no-such-program");
+        let err = run_one(&missing, &file, &dir.path().join("err"), Duration::from_secs(1)).expect_err("cannot start");
+        assert!(format!("{err:#}").contains("starting"), "{err:#}");
+        // A work file that cannot be written is an error too.
+        let err = run_one(&missing, &file, &dir.path().join("no-such-directory/err"), Duration::from_secs(1)).expect_err("cannot write");
+        assert!(format!("{err:#}").contains("creating"), "{err:#}");
     }
 
     #[test]

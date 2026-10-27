@@ -3,6 +3,8 @@
 //! - `check FILE… [--root DIR] [--json]`: check the files for well-formedness; the problems are printed as `file:line:column: severity: message`.
 //! - `format FILE [--minify] [--indent N | --tabs] [--blank-lines keep|remove] [--check | --in-place] [--root DIR]`: pretty-print (or minify) a
 //!   file; the result goes to standard output unless `--in-place`.
+//! - `check-one FILE [--edit]`: hold the engine to its promises on one file (what the fuzzer runs): exit 1 and the broken promise on standard
+//!   error when one breaks; a file larger than the engine opens is an error too.
 //! - `tools [--json]`: the tools and their input schemas.
 //! - `run <tool> [key=value …] [--root DIR]`: call one tool. A value is read as JSON when it is (`3`, `true`, `["a"]`), else as text.
 //! - `run --script FILE [--root DIR] [--keep-going]`: run a JSON list of steps.
@@ -273,13 +275,24 @@ pub fn execute(command: Command, out: &mut impl Write, err: &mut impl Write) -> 
             }
             0
         }
-        Command::CheckOne { file, edit } => match std::fs::read(&file) {
-            Err(e) => fail(err, &format!("{}: {e}", file.display())),
-            Ok(bytes) => match xmlcraft_engine::selfcheck::check(&bytes, edit) {
-                Ok(()) => 0,
-                Err(why) => fail(err, &format!("self-check failed: {why}")),
-            },
-        },
+        Command::CheckOne { file, edit } => {
+            // The size first: the file is not read into memory only to be refused.
+            let max = xmlcraft_engine::MAX_OPEN_BYTES;
+            match std::fs::metadata(&file) {
+                Err(e) => return fail(err, &format!("{}: {e}", file.display())),
+                Ok(meta) if meta.len() > max as u64 => {
+                    return fail(err, &format!("{}: {} bytes are more than the {max} bytes XmlCraft opens", file.display(), meta.len()));
+                }
+                Ok(_) => {}
+            }
+            match std::fs::read(&file) {
+                Err(e) => fail(err, &format!("{}: {e}", file.display())),
+                Ok(bytes) => match xmlcraft_engine::selfcheck::check(&bytes, edit) {
+                    Ok(()) => 0,
+                    Err(why) => fail(err, &format!("self-check failed: {why}")),
+                },
+            }
+        }
         Command::Check { files, root, json } => check(&files, root, json, out, err),
         Command::Format { file, options, root, mode } => format_file(&file, options, root, mode, out, err),
         Command::Run { tool, args, root } => {
@@ -539,6 +552,13 @@ mod tests {
         let (code, _, err) = run(Command::CheckOne { file: dir.path().join("missing.xml"), edit: false });
         assert_eq!(code, 1);
         assert!(err.contains("missing.xml"), "{err}");
+        // A file larger than the engine opens is refused by its size, without being read (a sparse file costs nothing here).
+        let big = dir.path().join("big.xml");
+        let file = std::fs::File::create(&big).expect("creates");
+        file.set_len(xmlcraft_engine::MAX_OPEN_BYTES as u64 + 1).expect("sets the length");
+        let (code, _, err) = run(Command::CheckOne { file: big, edit: false });
+        assert_eq!(code, 1);
+        assert!(err.contains("more than the"), "{err}");
     }
 
     #[test]
