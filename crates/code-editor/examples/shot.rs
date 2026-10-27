@@ -6,7 +6,7 @@
 
 use egui::{Color32, Id};
 use egui_kittest::Harness;
-use xmlcraft_code_editor::{CodeEditor, EditorColors, StyleSpan, ViewState};
+use xmlcraft_code_editor::{CodeEditor, EditorColors, LineStyler, StyleSpan, ViewState};
 use xmlcraft_editor::Editor;
 use xmlcraft_text::Selection;
 
@@ -62,48 +62,52 @@ fn main() -> Result<(), String> {
     let author = SAMPLE.find("Kafka").unwrap_or(0) + 5;
     editor.set_selections(&[Selection { anchor: title, head: author }, Selection::caret(SAMPLE.find("Moby").unwrap_or(0))]);
     let colors = if dark { EditorColors::dark() } else { EditorColors::light() };
-    // A stand-in for the real colouring (M1.7): tags and attribute values, by simple rules.
-    let tag = if dark { Color32::from_rgb(0x7A, 0xB0, 0xFF) } else { Color32::from_rgb(0x1B, 0x63, 0xE0) };
-    let value = if dark { Color32::from_rgb(0xE0, 0xA6, 0x6B) } else { Color32::from_rgb(0xB0, 0x5A, 0x12) };
-    let comment = if dark { Color32::from_rgb(0x7F, 0x8C, 0x98) } else { Color32::from_rgb(0x6A, 0x73, 0x7D) };
-    let highlighter = move |_line: usize, text: &str| -> Vec<StyleSpan> {
-        let mut spans = Vec::new();
-        if text.trim_start().starts_with("<!--") {
-            spans.push(StyleSpan { range: 0..text.len(), color: comment });
-            return spans;
-        }
-        let mut in_tag = false;
-        let mut quote_start = None;
-        for (i, c) in text.char_indices() {
-            match c {
-                '<' => {
-                    in_tag = true;
-                    spans.push(StyleSpan { range: i..i + 1, color: tag });
-                }
-                '>' => {
-                    in_tag = false;
-                    spans.push(StyleSpan { range: i..i + 1, color: tag });
-                }
-                '"' if in_tag => match quote_start.take() {
-                    Some(start) => spans.push(StyleSpan { range: start..i + 1, color: value }),
-                    None => quote_start = Some(i),
-                },
-                _ if in_tag && quote_start.is_none() => spans.push(StyleSpan { range: i..i + c.len_utf8(), color: tag }),
-                _ => {}
-            }
-        }
-        spans
+    // A stand-in for the real colouring (the shell's XML styler): tags and attribute values, by simple rules.
+    let palette = if dark {
+        [Color32::from_rgb(0x7A, 0xB0, 0xFF), Color32::from_rgb(0xE0, 0xA6, 0x6B), Color32::from_rgb(0x7F, 0x8C, 0x98)]
+    } else {
+        [Color32::from_rgb(0x1B, 0x63, 0xE0), Color32::from_rgb(0xB0, 0x5A, 0x12), Color32::from_rgb(0x6A, 0x73, 0x7D)]
     };
+    struct Simple([Color32; 3]);
+    impl LineStyler for Simple {
+        fn text_changed(&mut self, _first_line: usize) {}
+
+        fn style_line(&mut self, _buffer: &xmlcraft_text::Buffer, _line: usize, text: &str) -> Vec<StyleSpan> {
+            let [tag, value, comment] = self.0;
+            let mut spans = Vec::new();
+            if text.trim_start().starts_with("<!--") {
+                spans.push(StyleSpan { range: 0..text.len(), color: comment });
+                return spans;
+            }
+            let (mut in_tag, mut quote_start) = (false, None);
+            for (i, c) in text.char_indices() {
+                match c {
+                    '<' | '>' => {
+                        in_tag = c == '<';
+                        spans.push(StyleSpan { range: i..i + 1, color: tag });
+                    }
+                    '"' if in_tag => match quote_start.take() {
+                        Some(start) => spans.push(StyleSpan { range: start..i + 1, color: value }),
+                        None => quote_start = Some(i),
+                    },
+                    _ if in_tag && quote_start.is_none() => spans.push(StyleSpan { range: i..i + c.len_utf8(), color: tag }),
+                    _ => {}
+                }
+            }
+            spans
+        }
+    }
     struct State {
         editor: Editor,
         view: ViewState,
+        styler: Simple,
     }
     let mut harness = Harness::builder().with_size(size).with_pixels_per_point(scale).build_ui_state(
-        move |ui, state: &mut State| {
+        |ui, state: &mut State| {
             ui.visuals_mut().override_text_color = None;
-            CodeEditor::new(Id::new("shot"), &mut state.editor, &mut state.view, colors).blink(false).highlighter(&highlighter).show(ui);
+            CodeEditor::new(Id::new("shot"), &mut state.editor, &mut state.view, colors).blink(false).styler(&mut state.styler).show(ui);
         },
-        State { editor, view: ViewState::new() },
+        State { editor, view: ViewState::new(), styler: Simple(palette) },
     );
     harness.run_steps(6);
     std::thread::sleep(std::time::Duration::from_millis(200));

@@ -75,6 +75,9 @@ fn map_offset(edits: &[Edit], offset: usize, bias: Bias) -> usize {
     offset.saturating_add_signed(shift)
 }
 
+/// How many recent changes the editor remembers the first line of.
+const CHANGE_LOG: usize = 64;
+
 pub struct Editor {
     buffer: Buffer,
     history: History,
@@ -84,6 +87,8 @@ pub struct Editor {
     version: u64,
     time: f64,
     reveal: bool,
+    /// For recent versions, the first line whose text changed (lines before it are as they were).
+    changes: std::collections::VecDeque<(u64, usize)>,
 }
 
 impl Default for Editor {
@@ -109,6 +114,7 @@ impl Editor {
             version: 0,
             time: 0.0,
             reveal: false,
+            changes: std::collections::VecDeque::new(),
         }
     }
 
@@ -179,6 +185,26 @@ impl Editor {
         self.time = seconds;
     }
 
+    /// The first line whose text changed since `version` (0-based), or `None` if nothing did. Whatever is derived from the lines above it
+    /// (colouring, folds) is still good. After more changes than the editor remembers, or an undo, the answer is the first line.
+    pub fn first_changed_line_since(&self, version: u64) -> Option<usize> {
+        if version >= self.version {
+            return None;
+        }
+        let oldest = self.changes.front().map_or(self.version, |(v, _)| *v);
+        if oldest > version + 1 {
+            return Some(0);
+        }
+        self.changes.iter().filter(|(v, _)| *v > version).map(|(_, line)| *line).min().or(Some(0))
+    }
+
+    fn log_change(&mut self, first_line: usize) {
+        self.changes.push_back((self.version, first_line));
+        while self.changes.len() > CHANGE_LOG {
+            self.changes.pop_front();
+        }
+    }
+
     /// Whether a change asked for the primary caret to be scrolled into view; reading it clears it.
     pub fn take_reveal(&mut self) -> bool {
         std::mem::take(&mut self.reveal)
@@ -198,6 +224,7 @@ impl Editor {
         self.carets = vec![Caret::at(0)];
         self.primary = 0;
         self.version += 1;
+        self.log_change(0);
         self.reveal = true;
     }
 
@@ -333,6 +360,7 @@ impl Editor {
             return false;
         }
         let before = self.selections_for_history();
+        let first_changed = edits.iter().map(|e| e.range.start).min().unwrap_or(0);
         // Last first: the offsets of the edits that come earlier in the text stay valid while the later ones are applied.
         let ordered: Vec<Edit> = edits.into_iter().rev().collect();
         let Ok(inverse) = self.buffer.apply_all(&ordered) else { return false };
@@ -340,6 +368,8 @@ impl Editor {
         let after = self.selections_for_history();
         self.history.record(ordered, inverse, before, after, kind, self.time);
         self.version += 1;
+        // The text before the first edit is unchanged, so that offset is on the same line as before.
+        self.log_change(self.buffer.line_of(first_changed.min(self.buffer.len())));
         true
     }
 
@@ -625,6 +655,8 @@ impl Editor {
         match result {
             Ok(Some(selections)) => {
                 self.version += 1;
+                // Which lines an undo touched is not known here: everything counts as changed.
+                self.log_change(0);
                 self.set_selections(&selections);
                 true
             }
@@ -971,6 +1003,35 @@ mod tests {
         assert!(!e.apply_edits(&[Edit::delete(0..5), Edit::delete(3..6)]), "overlapping edits are refused");
         assert!(!e.apply_edits(&[Edit::delete(0..99)]), "so is a range outside the text");
         assert_eq!(e.text(), "<a><b/></a>");
+    }
+
+    #[test]
+    fn the_first_changed_line_is_remembered_per_version() {
+        let mut e = Editor::new("a\nb\nc\nd");
+        let v0 = e.version();
+        assert_eq!(e.first_changed_line_since(v0), None);
+        e.set_selection(5, 5);
+        e.type_text("x");
+        let v1 = e.version();
+        assert_eq!(e.first_changed_line_since(v0), Some(2));
+        e.set_selection(2, 2);
+        e.type_text("y");
+        assert_eq!(e.first_changed_line_since(v1), Some(1), "only the changes since v1");
+        assert_eq!(e.first_changed_line_since(v0), Some(1), "the earliest of both");
+        e.set_selection(0, 0);
+        e.delete_forward();
+        assert_eq!(e.first_changed_line_since(e.version() - 1), Some(0));
+        let v = e.version();
+        e.undo();
+        assert_eq!(e.first_changed_line_since(v), Some(0), "undo: everything counts");
+        // Far more changes than are remembered: the answer is the whole document.
+        let start = e.version();
+        for _ in 0..200 {
+            e.set_selection(7, 7);
+            e.type_text("z");
+        }
+        assert_eq!(e.first_changed_line_since(start), Some(0));
+        assert_eq!(e.first_changed_line_since(e.version()), None);
     }
 
     #[test]

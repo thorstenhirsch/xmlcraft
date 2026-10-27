@@ -4676,6 +4676,7 @@ version = "0.0.1"
 dependencies = [
  "proptest",
  "rowan",
+ "xmlcraft-text",
 ]
 
 [[package]]
@@ -4703,7 +4704,11 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "serde_json",
+ "xmlcraft-code-editor",
+ "xmlcraft-editor",
  "xmlcraft-engine",
+ "xmlcraft-syntax",
+ "xmlcraft-text",
 ]
 
 [[package]]

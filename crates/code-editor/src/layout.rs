@@ -15,6 +15,16 @@ pub struct StyleSpan {
     pub color: Color32,
 }
 
+/// Supplies the colours of the text, line by line. The host implements it for its language.
+pub trait LineStyler {
+    /// The text changed. Lines before `first_line` (0-based) are as they were, so whatever was worked out for them is still good.
+    fn text_changed(&mut self, first_line: usize);
+
+    /// The coloured parts of line `line` (its text without the line break), as byte ranges of that text. `buffer` is the whole text,
+    /// for a styler that needs to look at the lines before.
+    fn style_line(&mut self, buffer: &xmlcraft_text::Buffer, line: usize, text: &str) -> Vec<StyleSpan>;
+}
+
 /// Lines longer than this (in characters) are laid out in a window of this many characters.
 pub const MAX_WINDOW: usize = 4096;
 

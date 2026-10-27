@@ -4,13 +4,35 @@
 use egui::{Event, Id, ImeEvent, Key, Modifiers, PointerButton};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use xmlcraft_code_editor::{CodeEditor, EditorColors, MAX_WINDOW, ViewState};
+use xmlcraft_code_editor::{CodeEditor, EditorColors, LineStyler, MAX_WINDOW, StyleSpan, ViewState};
 use xmlcraft_editor::Editor;
+
+/// Records what the widget asks of a styler, and colours the first byte of every line.
+#[derive(Default)]
+struct Recorder {
+    changed: Vec<usize>,
+    styled: std::collections::BTreeSet<usize>,
+}
+
+impl LineStyler for Recorder {
+    fn text_changed(&mut self, first_line: usize) {
+        self.changed.push(first_line);
+        self.styled.clear();
+    }
+
+    fn style_line(&mut self, _buffer: &xmlcraft_text::Buffer, line: usize, text: &str) -> Vec<StyleSpan> {
+        self.styled.insert(line);
+        if text.is_empty() { Vec::new() } else { vec![StyleSpan { range: 0..1, color: egui::Color32::RED }] }
+    }
+}
 
 struct App {
     editor: Editor,
     view: ViewState,
     read_only: bool,
+    recorder: Recorder,
+    /// Whether the recorder is attached as the styler this frame.
+    styled: bool,
 }
 
 fn harness(text: &str) -> Harness<'static, App> {
@@ -19,10 +41,16 @@ fn harness(text: &str) -> Harness<'static, App> {
 
 /// A harness whose frames are `step_dt` seconds apart (two clicks must come within 0.3 s to be a double click).
 fn harness_with_step(text: &str, step_dt: f32) -> Harness<'static, App> {
-    let app = App { editor: Editor::new(text), view: ViewState::new(), read_only: false };
+    let app = App { editor: Editor::new(text), view: ViewState::new(), read_only: false, recorder: Recorder::default(), styled: true };
     let mut h = Harness::builder().with_size(egui::vec2(640.0, 360.0)).with_step_dt(step_dt).build_ui_state(
         |ui, app: &mut App| {
-            CodeEditor::new(Id::new("editor"), &mut app.editor, &mut app.view, EditorColors::light()).blink(false).read_only(app.read_only).show(ui);
+            let editor =
+                CodeEditor::new(Id::new("editor"), &mut app.editor, &mut app.view, EditorColors::light()).blink(false).read_only(app.read_only);
+            if app.styled {
+                editor.styler(&mut app.recorder).show(ui)
+            } else {
+                editor.show(ui)
+            };
         },
         app,
     );
@@ -247,4 +275,56 @@ fn a_very_long_line_is_laid_out_in_a_window() {
     h.get_by_label("XML editor").type_text("!");
     h.run_steps(3);
     assert!(text(&h).ends_with("/>!"));
+}
+
+#[test]
+fn the_styler_hears_about_edits_and_styles_only_what_is_on_screen() {
+    let text = (0..100_000).map(|i| format!("<l n=\"{i}\"/>")).collect::<Vec<_>>().join("\n");
+    let mut h = harness(&text);
+    h.run_steps(3);
+    assert!(h.state().recorder.changed.is_empty(), "nothing has changed yet: {:?}", h.state().recorder.changed);
+    let styled = h.state().recorder.styled.clone();
+    assert!(styled.len() > 5 && styled.len() < 60, "{} lines styled", styled.len());
+    assert_eq!(styled.iter().next().copied(), Some(0));
+    // An edit on the third line: the styler is told, once, and the lines are styled again.
+    let third = text.lines().take(2).map(|l| l.len() + 1).sum::<usize>();
+    h.state_mut().editor.set_selection(third, third);
+    h.run_steps(2);
+    h.get_by_label("XML editor").type_text("x");
+    h.run_steps(3);
+    assert_eq!(h.state().recorder.changed, vec![2]);
+    assert!(h.state().recorder.styled.contains(&2), "the edited line is styled again");
+}
+
+#[test]
+fn a_reset_view_tells_the_styler_the_whole_text_changed() {
+    let mut h = harness("<a>\n<b/>\n</a>");
+    assert!(h.state().recorder.changed.is_empty());
+    // Another document in the same view, with an editor whose version counts from zero again: nothing in the edit history says the text
+    // changed, so only the reset can tell the styler its state from the old document is stale from the first line.
+    h.state_mut().editor = Editor::new("<x>\n<y/>\n</x>");
+    h.state_mut().view.reset();
+    h.run_steps(2);
+    assert_eq!(h.state().recorder.changed.first(), Some(&0), "{:?}", h.state().recorder.changed);
+    // Told once: the next frames have nothing to report.
+    let told = h.state().recorder.changed.len();
+    h.run_steps(3);
+    assert_eq!(h.state().recorder.changed.len(), told);
+}
+
+#[test]
+fn a_styler_attached_again_hears_what_changed_while_it_was_away() {
+    let mut h = harness("<a>\n<b/>\n</a>");
+    h.state_mut().styled = false;
+    h.run_steps(2);
+    // An edit on the second line while no styler is attached.
+    let second = "<a>\n".len();
+    h.state_mut().editor.set_selection(second, second);
+    h.run_steps(2);
+    h.get_by_label("XML editor").type_text("x");
+    h.run_steps(3);
+    assert!(h.state().recorder.changed.is_empty(), "no styler, nobody to tell");
+    h.state_mut().styled = true;
+    h.run_steps(3);
+    assert_eq!(h.state().recorder.changed, vec![1], "the edit made while it was detached");
 }
