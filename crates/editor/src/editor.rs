@@ -453,7 +453,7 @@ impl Editor {
             if !c.is_empty() {
                 return Some(Edit::delete(c.start()..c.end()));
             }
-            if pairs.contains(&c.head()) {
+            if pairs.binary_search(&c.head()).is_ok() {
                 return Some(Edit::delete(c.head().saturating_sub(1)..c.head().saturating_add(1)));
             }
             let from = prev_grapheme(&this.buffer, c.head());
