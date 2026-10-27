@@ -77,6 +77,27 @@ pub fn pretty_print(text: &str, options: &FormatOptions) -> Result<Vec<Edit>, Fo
     run(text, Mode::Pretty(*options))
 }
 
+/// [`pretty_print`] for a document whose line ending is whichever it has most of: `options.eol` is the ending to write when the text
+/// has no line break, and the one that most of the line breaks of the *result* use otherwise. That is not always the one most of the
+/// breaks of `text` use: formatting drops blank lines, and with them the votes for their ending. Choosing it from the result is what
+/// makes formatting the result again change nothing, however the text mixes endings.
+pub fn pretty_print_settled(text: &str, options: &FormatOptions) -> Result<Vec<Edit>, FormatError> {
+    let counts = |text: &str| xmlcraft_text::eol::LineEndings::count(text);
+    let own = counts(text);
+    let mut options = *options;
+    if own.total() > 0 {
+        options.eol = own.dominant();
+    }
+    let edits = pretty_print(text, &options)?;
+    // The ending most of the result's breaks use, when that is another one: write that one.
+    let result = counts(&apply(text, &edits));
+    if result.total() > 0 && result.dominant() != options.eol {
+        options.eol = result.dominant();
+        return pretty_print(text, &options);
+    }
+    Ok(edits)
+}
+
 /// The edits that remove the white space between nodes where it is insignificant (see the crate docs).
 pub fn minify(text: &str) -> Result<Vec<Edit>, FormatError> {
     run(text, Mode::Minify)

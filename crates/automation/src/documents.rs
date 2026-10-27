@@ -1051,7 +1051,7 @@ fn xml_format(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         Some("remove") => BlankLines::Remove,
         _ => BlankLines::Keep,
     };
-    let edits = if minify { xmlcraft_format::minify(&source.text) } else { xmlcraft_format::pretty_print(&source.text, &options) };
+    let edits = if minify { xmlcraft_format::minify(&source.text) } else { xmlcraft_format::pretty_print_settled(&source.text, &options) };
     let edits = edits.map_err(|FormatError::NotWellFormed { message, offset }| {
         let (line, column) = position_json(&Buffer::from_text(&source.text), offset);
         ToolError::Failed(format!("the document is not well-formed, so it is left as it is (line {line}, column {column}: {message})"))

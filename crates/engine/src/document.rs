@@ -279,7 +279,8 @@ impl Document {
     }
 
     /// How the document is pretty-printed: with the indentation its new lines use and the line ending its text has most of now (the
-    /// one it was opened with, when the text has no line break).
+    /// one it was opened with, when the text has no line break). Use it with [`xmlcraft_format::pretty_print_settled`], which writes the
+    /// ending most of the result's breaks will have.
     pub fn format_options(&self) -> FormatOptions {
         let settings = self.editor.settings();
         let indent = if settings.use_tabs { Indent::Tab } else { Indent::Spaces(settings.indent_size) };
@@ -291,7 +292,7 @@ impl Document {
     /// Pretty-print the text: only the white space between nodes changes (see `xmlcraft-format`), as one undoable edit. Returns whether
     /// anything changed. A document that is not well-formed is refused and left as it is.
     pub fn pretty_print(&mut self) -> Result<bool, FormatError> {
-        let edits = xmlcraft_format::pretty_print(&self.editor.text(), &self.format_options())?;
+        let edits = xmlcraft_format::pretty_print_settled(&self.editor.text(), &self.format_options())?;
         Ok(self.editor.apply_edits(&edits) && !edits.is_empty())
     }
 
@@ -741,6 +742,14 @@ mod tests {
         let mut d = open(b"<a>text</a>");
         d.editor_mut().set_selection(5, 5);
         assert!(!d.link_tag_names());
+    }
+
+    #[test]
+    fn pretty_printing_a_document_that_mixes_line_endings_settles_in_one_pass() {
+        // Found by the fuzzer: five breaks of each ending, the CRLF ones in a comment; the blank lines that go are LF.
+        let mut d = open(b"<?l?><!--\r\n\r\n\r\n\r\n\r\n-->\n<foo xmlns:a=\"r\">\n\n<a a=\"\"/>\n\n</foo>");
+        assert_eq!(d.pretty_print(), Ok(true));
+        assert_eq!(d.pretty_print(), Ok(false), "{:?}", d.editor().text());
     }
 
     #[test]

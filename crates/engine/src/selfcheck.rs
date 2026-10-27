@@ -268,6 +268,8 @@ mod tests {
         b"<a xml:space=\"preserve\">  <b/>  mixed <c/> content  </a>",
         b"<r:a xmlns:r=\"urn:x\" r:b=\"1\"><r:c/></r:a>",
         b"\xFF\xFF\xFF not xml at all",
+        // Found by the fuzzer: mixed line endings, which pretty-printing used to change twice.
+        b"<?l?><!--\r\n\r\n\r\n\r\n\r\n-->\n<foo xmlns:a=\"r\">\n\n<a a=\"\"/>\n\n</foo>",
     ];
 
     #[test]
