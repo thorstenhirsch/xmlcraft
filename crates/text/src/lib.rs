@@ -7,11 +7,15 @@
 //!   Offsets are **byte offsets** into that UTF-8; columns are counted in characters.
 //! - [`Edit`]s change it; every edit is checked (a range outside the text, or inside a character, is an [`TextError`], never a
 //!   panic) and returns its own inverse, which is how [`History`] undoes.
+//! - [`encoding`] turns file bytes into text and back without losing a byte: the encoding, the byte-order mark and the line endings
+//!   are remembered, so saving an unedited file writes it back exactly (CLAUDE.md, "The text is the model").
 //!
 //! A line ends at `\n`; a `\r` before it is part of the line ending, not of the line (so `\r\n` files work). A file with only `\r`
-//! line endings (classic Mac OS) is therefore one long line; the app will be able to offer to convert it.
+//! line endings (classic Mac OS) is therefore one long line; [`eol::LineEndings`] reports it so the app can offer to convert.
 
 mod buffer;
+pub mod encoding;
+pub mod eol;
 mod history;
 
 pub use buffer::{Buffer, Edit, Position, TextError};
