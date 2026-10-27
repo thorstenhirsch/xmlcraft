@@ -42,4 +42,5 @@ Signing runs only when its secrets exist; otherwise the artifact ships unsigned 
 ## Revision history
 
 - 2026-10-27: created.
-- 2026-10-27: workflows and scripts written (M0.11); first dry run pending.
+- 2026-10-27: workflows and scripts written (M0.11).
+- 2026-10-27: first dry run (40425116751): macOS and Linux built; both Windows jobs failed at `wix build` (WIX0367). Second dry run (40454851007), after #4: all six targets built and verified. The Windows ARM64 workflow installed and ran the arm64 MSI; the other artifacts are built and verified but not yet installed on their platforms.
