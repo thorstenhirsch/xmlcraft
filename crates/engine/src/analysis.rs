@@ -90,8 +90,9 @@ impl Analysis {
         // are the last ones that start at or before it.
         let started = self.outline.get(..self.outline.partition_point(|item| item.start_tag.start <= offset))?;
         let starts = started.iter().rev().take(2).map(|item| (item, true));
-        // An end tag that touches the offset belongs to the innermost element that holds it; what the walk back passes over has ended.
-        let end = started.iter().rev().find(|item| item.range.start <= offset && offset <= item.range.end).map(|item| (item, false));
+        // An end tag that touches the offset belongs to the innermost element the offset is past the start of and not past the end of;
+        // what the walk back passes over has ended. (An element that starts at the offset has not begun: the one before it may end here.)
+        let end = started.iter().rev().find(|item| item.range.start < offset && offset <= item.range.end).map(|item| (item, false));
         starts
             .chain(end)
             .filter_map(|(item, is_start)| {
@@ -433,6 +434,18 @@ mod tests {
             text.find("<b>").expect("there") + 2,
             "one letter is all the other name has"
         );
+    }
+
+    #[test]
+    fn at_the_boundary_between_siblings_the_end_tag_that_ends_there_wins_over_the_start_tag_that_starts_there() {
+        assert_eq!(matched("<r><a></a>|<b></b></r>"), pair("</a>", "<a>"));
+        assert_eq!(matched("<r><a/><b></b>|<c></c></r>"), pair("</b>", "<b>"));
+        assert_eq!(matched("<r><a></a>|<b/></r>"), pair("</a>", "<a>"), "the empty-element tag after it has no other tag");
+        assert_eq!(matched("<r>|<a></a><b></b></r>"), pair("<r>", "</r>"), "the start tag that ends here");
+        assert_eq!(matched("<r><a></a><b>|</b></r>"), pair("<b>", "</b>"));
+        // The same after a nested element ends, and at the end of the text.
+        assert_eq!(matched("<r><a><x></x></a>|<b></b></r>"), pair("</a>", "<a>"));
+        assert_eq!(matched("<a></a>|"), pair("</a>", "<a>"));
     }
 
     #[test]

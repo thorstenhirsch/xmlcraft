@@ -209,12 +209,21 @@ impl XmlCraftApp {
             self.tag_jump_pending = None; // the text changed: the caret is not where it was asked in
             return;
         }
+        if self.session.active_document().map(Document::id) != Some(id) {
+            self.tag_jump_pending = None; // another tab is shown now: the jump would move the caret of that one
+            return;
+        }
         let Some(analysis) = self.views.get(&id).and_then(|v| v.analysis.as_ref()).filter(|a| a.version == version) else { return };
         self.tag_jump_pending = None;
         let head = doc.editor().primary().head();
         let name = doc.name().to_owned();
-        if analysis.skipped.is_some() {
-            self.status = fmt(tl!("{name} is too large to look for matching tags in"), &[("name", &name)]);
+        if let Some(why) = analysis.skipped {
+            self.status = match why {
+                Skipped::TooLarge => fmt(tl!("{name} is too large to look for matching tags in"), &[("name", &name)]),
+                Skipped::Failed => {
+                    fmt(tl!("Looking for the matching tag in {name} failed. This is a bug; the document is unchanged."), &[("name", &name)])
+                }
+            };
         } else if let Some(found) = analysis.matching_tag(head) {
             let at = found.jump_target(head);
             self.jump_to(at..at);
