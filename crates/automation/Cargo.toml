@@ -1,0 +1,31 @@
+[package]
+name = "xmlcraft-automation"
+description = "Agent control for XmlCraft: headless tools with JSON Schemas, an opt-in MCP server, and the UI control channel's transport"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = ["mcp"]
+# The Model Context Protocol server (newline-delimited JSON-RPC over stdio). Opt-in at run time: nothing starts it.
+mcp = []
+
+[dependencies]
+xmlcraft-engine = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# The control file holding the port and token is written atomically and readable by its owner only.
+craft-atomic = { workspace = true }
+# The control channel's token.
+getrandom = "0.4"
+
+[dev-dependencies]
+tempfile = "3"

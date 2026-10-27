@@ -199,7 +199,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
  "x11rb",
 ]
 
@@ -720,6 +720,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-atomic"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=ea4c823abb46fa9d21361604ed1c6d21c54e9ca8#ea4c823abb46fa9d21361604ed1c6d21c54e9ca8"
+dependencies = [
+ "rustix 1.1.5",
+]
+
+[[package]]
 name = "craft-quit"
 version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=ea4c823abb46fa9d21361604ed1c6d21c54e9ca8#ea4c823abb46fa9d21361604ed1c6d21c54e9ca8"
@@ -1141,7 +1149,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2904,7 +2912,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3262,7 +3270,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.5",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4037,7 +4045,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4383,7 +4391,31 @@ dependencies = [
  "eframe",
  "egui",
  "log",
+ "xmlcraft-automation",
  "xmlcraft-ui-egui",
+]
+
+[[package]]
+name = "xmlcraft-automation"
+version = "0.0.1"
+dependencies = [
+ "craft-atomic",
+ "getrandom 0.4.3",
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "xmlcraft-engine",
+]
+
+[[package]]
+name = "xmlcraft-cli"
+version = "0.0.1"
+dependencies = [
+ "base64",
+ "serde_json",
+ "tempfile",
+ "xmlcraft-automation",
 ]
 
 [[package]]
@@ -4394,6 +4426,7 @@ version = "0.0.1"
 name = "xmlcraft-ui-egui"
 version = "0.0.1"
 dependencies = [
+ "base64",
  "craft-quit",
  "craft-ui",
  "eframe",
@@ -4402,6 +4435,7 @@ dependencies = [
  "egui_kittest",
  "image",
  "log",
+ "png 0.18.1",
  "serde",
  "serde_json",
  "xmlcraft-engine",

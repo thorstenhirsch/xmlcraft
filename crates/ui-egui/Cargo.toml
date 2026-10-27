@@ -21,6 +21,9 @@ eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "
 serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
+# Control-channel screenshots: PNG-encoded, then base64 in the JSON reply.
+png = "0.18"
+base64 = "0.22"
 
 [dev-dependencies]
 egui_kittest = { workspace = true, features = ["eframe", "wgpu"] }

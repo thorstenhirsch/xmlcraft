@@ -167,10 +167,8 @@ pub fn mode_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                 ui.add_space(10.0);
                 // The editing views of the active document. Only the text view exists in the first release; Grid, Schema and
                 // Browser views appear here only when they ship.
-                for (mode, label) in [(Mode::Text, tl!("Text"))] {
-                    if widgets::mode_tab(ui, label, app.mode == mode).clicked() {
-                        app.mode = mode;
-                    }
+                if widgets::mode_tab(ui, tl!("Text"), app.mode == Mode::Text).clicked() {
+                    app.mode = Mode::Text;
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;

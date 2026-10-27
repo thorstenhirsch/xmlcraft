@@ -544,11 +544,11 @@ title = "Multiple documents as tabs"
 area = "B"
 tier = "P0"
 milestone = "M0"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/tests/shell.rs::a_document_tab_replaces_the_home_view"]
+notes = "The strip, tab drawing, close, unsaved dot and the home view exist and are tested; there are no documents to put in them until the editor milestone (M1.12). No scrolling or drag-reorder yet."
 
 [[feature]]
 id = "view.status-bar"
@@ -568,11 +568,11 @@ title = "Command palette (find tools and commands)"
 area = "B"
 tier = "P1"
 milestone = "M0"
-status = "planned"
-commands = []
+status = "shipped"
+commands = ["view.palette"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/tests/commands.rs::typing_in_the_palette_narrows_it_and_enter_runs_the_first_hit", "crates/ui-egui/tests/commands.rs::clicking_a_hit_runs_it"]
+notes = "Lists every registered command with its shortcut; substring then in-order-letters matching, keyboard and mouse. No tools or recent files in it yet."
 
 [[feature]]
 id = "view.themes"
@@ -580,11 +580,11 @@ title = "Light, dark and system themes"
 area = "B"
 tier = "P1"
 milestone = "M0"
-status = "planned"
-commands = []
+status = "shipped"
+commands = ["view.theme.system", "view.theme.light", "view.theme.dark"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/tests/commands.rs::toggles_flip_and_choices_select", "crates/ui-egui/src/theme.rs::following_the_system_draws_what_the_system_says"]
+notes = "System, Light and Dark, following the operating system's choice live; contrast of every text colour is tested at WCAG AA. No custom accent or syntax themes yet."
 
 [[feature]]
 id = "view.docking"
@@ -1717,11 +1717,11 @@ title = "Desktop shell with the PdfCraft look: tab strip, mode bar, panes"
 area = "K"
 tier = "P0"
 milestone = "M0"
-status = "planned"
+status = "shipped"
 commands = []
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/tests/shell.rs::the_shell_shows_its_chrome_and_panes", "crates/ui-egui/tests/snapshots.rs::the_home_shell"]
+notes = "Tab strip with the integrated macOS title bar, mode bar, Outline, Entry Helpers and Messages panes (empty until their milestones), status bar and a home card, in PdfCraft's theme. Not yet: scrolling or draggable tabs, app-drawn window buttons on GNOME/Wayland, Preferences."
 
 [[feature]]
 id = "app.settings"
@@ -1729,11 +1729,11 @@ title = "Persistent settings"
 area = "K"
 tier = "P0"
 milestone = "M0"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/src/lib.rs::preferences_round_trip", "crates/ui-egui/src/lib.rs::hostile_preference_values_are_repaired"]
+notes = "Theme, pane visibility and pane sizes persist between runs, and damaged or hostile values are repaired on load. No Preferences window yet, and no editor or schema settings."
 
 [[feature]]
 id = "app.single-instance"
@@ -1765,11 +1765,11 @@ title = "Command-line tool"
 area = "K"
 tier = "P0"
 milestone = "M0"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["app_info", "command_list"]
+evidence = ["apps/xmlcraft-cli/src/cli.rs::run_prints_the_tools_json_and_reports_failures_on_stderr", "apps/xmlcraft-cli/src/cli.rs::a_script_runs_and_its_exit_code_says_whether_every_step_worked"]
+notes = "xmlcraft-cli tools, run (one tool or a script, with --root) and ui work. There are no document tools yet, so nothing useful can be done with a file from it."
 
 [[feature]]
 id = "app.automation-tools"
@@ -1777,11 +1777,11 @@ title = "Headless automation tools for every feature"
 area = "K"
 tier = "P0"
 milestone = "M0"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "AGENTS.md section 3."
+tools = ["app_info", "command_list"]
+evidence = ["crates/automation/src/lib.rs::arguments_are_checked_against_the_schema_before_the_tool_runs", "crates/automation/src/file_access.rs::a_link_inside_the_root_cannot_lead_out_of_it"]
+notes = "The framework is in place: JSON Schema checked arguments, panics caught, --root confinement including symbolic links. Only two tools exist; each feature adds its own as it ships."
 
 [[feature]]
 id = "app.mcp-server"
@@ -1789,11 +1789,11 @@ title = "Opt-in MCP server"
 area = "K"
 tier = "P1"
 milestone = "M0"
-status = "planned"
+status = "shipped"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["app_info", "command_list"]
+evidence = ["crates/automation/src/mcp.rs::a_tool_call_returns_text_and_structured_content", "crates/automation/src/mcp.rs::serve_reads_lines_until_the_input_closes_and_survives_bad_input"]
+notes = "xmlcraft-cli mcp serves the tool table over stdio (initialize, ping, tools/list, tools/call). Opt-in: nothing starts it. Resources are not offered."
 
 [[feature]]
 id = "app.control-channel"
@@ -1801,11 +1801,11 @@ title = "Opt-in UI control channel"
 area = "K"
 tier = "P1"
 milestone = "M0"
-status = "planned"
-commands = []
+status = "shipped"
+commands = ["view.palette"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/tests/control.rs::clicking_by_label_does_what_the_user_would", "crates/automation/src/control.rs::a_connection_that_never_authenticates_is_closed_at_the_deadline", "crates/automation/src/control.rs::the_control_file_round_trips_and_is_private"]
+notes = "xmlcraft --control FILE: loopback only, random token in an owner-only file, authentication deadline and connection limits. ui.state, inspect, click, focus, type, key, move, command, commands, resize, quit and screenshot. No drag or scroll yet."
 
 [[feature]]
 id = "app.accessibility"

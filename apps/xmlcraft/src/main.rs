@@ -5,6 +5,7 @@
 mod logging;
 
 use std::cell::Cell;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use xmlcraft_ui_egui::XmlCraftApp;
@@ -26,8 +27,10 @@ const USAGE: &str = "XmlCraft, an open-source XML editor.
 Usage: xmlcraft [OPTIONS] [FILE...]
 
 Options:
-  --version     Print the version and exit
-  -h, --help    Print this help and exit
+  --version        Print the version and exit
+  -h, --help       Print this help and exit
+  --control FILE   Start the opt-in control channel: listens on loopback only and writes its port and a random token to FILE
+                   (owner-only), so `xmlcraft-cli ui --control FILE ...` can see and drive this window. Off unless given.
 
 Environment:
   XMLCRAFT_RENDERER=wgpu|gl   Choose the renderer (default: wgpu, then OpenGL if wgpu cannot start)
@@ -55,10 +58,16 @@ fn main() -> eframe::Result {
         }
     }));
     let mut files = Vec::new();
-    for arg in std::env::args().skip(1) {
+    let mut control: Option<PathBuf> = None;
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
         match arg.as_str() {
             "--version" => return print_and_exit(&format!("xmlcraft {VERSION}")),
             "-h" | "--help" => return print_and_exit(USAGE),
+            "--control" => match args.next() {
+                Some(file) => control = Some(PathBuf::from(file)),
+                None => return print_and_fail("--control needs a file name"),
+            },
             flag if flag.starts_with('-') => log::warn!("ignoring the unknown option {flag}"),
             _ => files.push(arg),
         }
@@ -70,18 +79,29 @@ fn main() -> eframe::Result {
     // Set once the app is created, which is after the renderer has started.
     let started = Rc::new(Cell::new(false));
     let first = if choice == RendererChoice::Gl { eframe::Renderer::Glow } else { eframe::Renderer::Wgpu };
-    let result = eframe::run_native(APP_NAME, native_options(first), app_creator(Rc::clone(&started)));
-    match result {
+    let result = eframe::run_native(APP_NAME, native_options(first), app_creator(Rc::clone(&started), control.clone()));
+    let result = match result {
         // Only a renderer that couldn't start: without a window or display at all, OpenGL can't help either, and winit's own
         // error says more.
         Err(e @ eframe::Error::Wgpu(_)) if retry_with_gl(choice, started.get()) => {
             // Old or unusual GPUs and drivers can't give wgpu a device; OpenGL usually still works there, so that's better than
             // quitting.
             log::error!("the GPU renderer (wgpu) didn't start: {e}. Starting with OpenGL instead; set XMLCRAFT_RENDERER=gl to skip wgpu.");
-            eframe::run_native(APP_NAME, native_options(eframe::Renderer::Glow), app_creator(started))
+            eframe::run_native(APP_NAME, native_options(eframe::Renderer::Glow), app_creator(started, control.clone()))
         }
         other => other,
+    };
+    // The control file names a port nobody listens on any more. (On macOS the process usually ends before this: the app removes it
+    // itself when the window closes.)
+    if let Some(file) = &control {
+        let _ = std::fs::remove_file(file);
     }
+    result
+}
+
+fn print_and_fail(message: &str) -> eframe::Result {
+    let _ = std::io::Write::write_fmt(&mut std::io::stderr(), format_args!("xmlcraft: {message}\n"));
+    std::process::exit(2)
 }
 
 fn print_and_exit(text: &str) -> eframe::Result {
@@ -136,7 +156,7 @@ fn native_options(renderer: eframe::Renderer) -> eframe::NativeOptions {
     eframe::NativeOptions { viewport, renderer, ..Default::default() }
 }
 
-fn app_creator<'a>(started: Rc<Cell<bool>>) -> eframe::AppCreator<'a> {
+fn app_creator<'a>(started: Rc<Cell<bool>>, control: Option<PathBuf>) -> eframe::AppCreator<'a> {
     Box::new(move |cc| {
         started.set(true);
         // winit's Quit (⌘Q) ends the process without asking about unsaved changes. This menu's Quit closes the window instead, so
@@ -145,8 +165,23 @@ fn app_creator<'a>(started: Rc<Cell<bool>>) -> eframe::AppCreator<'a> {
         if let Err(e) = craft_quit::install_app_menu(&cc.egui_ctx, APP_NAME) {
             log::warn!("couldn't install the app menu, so ⌘Q quits without asking to save: {e}");
         }
-        Ok(Box::new(XmlCraftApp::new(cc)))
+        let mut app = XmlCraftApp::new(cc);
+        if let Some(file) = &control {
+            open_control_channel(&mut app, &cc.egui_ctx, file)?;
+            app.set_control_file(file.clone());
+        }
+        Ok(Box::new(app))
     })
+}
+
+/// Start the opt-in control channel: listen on loopback, then write the port and token to `file` (owner-only). The token is never
+/// logged.
+fn open_control_channel(app: &mut XmlCraftApp, ctx: &egui::Context, file: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let client = app.attach_control(ctx);
+    let endpoint = xmlcraft_automation::control::serve(move |method: &str, params| client.send(method, params))?;
+    xmlcraft_automation::control::write_endpoint_file(file, &endpoint)?;
+    log::info!("control channel on 127.0.0.1:{} (token in {})", endpoint.port, file.display());
+    Ok(())
 }
 
 #[cfg(test)]

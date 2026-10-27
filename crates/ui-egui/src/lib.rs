@@ -4,6 +4,7 @@
 
 mod chrome;
 mod commands;
+mod control;
 mod home;
 mod i18n;
 mod icon_data;
@@ -12,6 +13,7 @@ mod motion;
 mod palette;
 mod side_panels;
 pub mod theme;
+pub use control::{ControlClient, Reply as ControlReply};
 mod widgets;
 
 use serde::{Deserialize, Serialize};
@@ -92,6 +94,10 @@ pub struct XmlCraftApp {
     viewport_commands: Vec<egui::ViewportCommand>,
     /// What the status bar says instead of "Ready": the last command's trouble, if any.
     pub status: String,
+    /// The opt-in control channel (`--control`), when one is attached.
+    control: Option<control::Control>,
+    /// The file that tells clients where the control channel is; removed when the window closes for good.
+    control_file: Option<std::path::PathBuf>,
     /// On macOS the tab strip is the title bar.
     pub integrated_titlebar: bool,
     side_panels: SidePanels,
@@ -123,6 +129,8 @@ impl XmlCraftApp {
             session: Session::new(),
             viewport_commands: Vec::new(),
             status: String::new(),
+            control: None,
+            control_file: None,
             integrated_titlebar: cfg!(target_os = "macos"),
             side_panels: prefs.side_panels,
             applied: None,
@@ -137,6 +145,37 @@ impl XmlCraftApp {
             bottom_open: self.bottom_open,
             side_panels: self.side_panels,
         }
+    }
+
+    /// Attach the opt-in control channel (`--control`): the returned client sends requests that the app answers at the start of
+    /// each frame. Called once, before the first frame.
+    pub fn attach_control(&mut self, ctx: &egui::Context) -> ControlClient {
+        let (control, client) = control::attach(ctx);
+        self.control = Some(control);
+        client
+    }
+
+    /// Remember the control file, so it is removed when the app closes (it names a port nobody listens on after that).
+    pub fn set_control_file(&mut self, file: std::path::PathBuf) {
+        self.control_file = Some(file);
+    }
+
+    /// Remove the control file, once. Called when a close request is about to go through; on macOS the process ends in
+    /// `terminate:` without returning to `main`, so the app cannot leave this to its caller.
+    pub fn release_control_file(&mut self) {
+        if let Some(file) = self.control_file.take() {
+            let _ = std::fs::remove_file(file);
+        }
+    }
+
+    /// Whether closing the window now would lose work.
+    pub fn has_unsaved_changes(&self) -> bool {
+        self.tabs.iter().any(|t| t.dirty)
+    }
+
+    /// The colours currently installed, once a frame has applied them.
+    pub fn applied_theme(&self) -> Option<ThemeKind> {
+        self.applied
     }
 
     /// Close the tab at `index`; the neighbour to its left (or the home view) becomes active.
@@ -169,9 +208,16 @@ impl XmlCraftApp {
 impl eframe::App for XmlCraftApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.sync_theme(ctx);
+        if let Some(mut control) = self.control.take() {
+            control.tick(ctx, self);
+            self.control = Some(control);
+        }
         self.handle_shortcuts(ctx);
         for command in self.viewport_commands.drain(..) {
             ctx.send_viewport_cmd(command);
+        }
+        if ctx.input(|i| i.viewport().close_requested()) && !self.has_unsaved_changes() {
+            self.release_control_file();
         }
         // Last, so it sees any `CancelClose` above: on macOS a close quits through `terminate:` (the Touch Bar crash).
         craft_quit::on_close_request(ctx);
@@ -281,5 +327,29 @@ mod tests {
         app.close_tab(usize::MAX);
         assert_eq!(app.tabs.len(), 1);
         assert_eq!(XmlCraftApp::with_prefs(Prefs::default()).tabs.len(), 0);
+    }
+
+    #[test]
+    fn the_control_file_is_removed_once_and_only_by_the_app_that_owns_it() {
+        let dir = std::env::temp_dir().join(format!("xmlcraft-control-file-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let file = dir.join("control.json");
+        std::fs::write(&file, "{}").expect("file");
+        let mut app = XmlCraftApp::with_prefs(Prefs::default());
+        app.release_control_file();
+        assert!(file.exists(), "an app with no control file removes nothing");
+        app.set_control_file(file.clone());
+        app.release_control_file();
+        assert!(!file.exists());
+        app.release_control_file();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unsaved_changes_are_noticed() {
+        let mut app = app_with_tabs(2);
+        assert!(!app.has_unsaved_changes());
+        app.tabs[1].dirty = true;
+        assert!(app.has_unsaved_changes());
     }
 }

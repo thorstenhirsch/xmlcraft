@@ -2,7 +2,7 @@
 resolver = "3"
 members = ["crates/*", "apps/*", "xtask"]
 exclude = ["vendor"]
-default-members = ["crates/*", "apps/xmlcraft", "xtask"]
+default-members = ["crates/*", "apps/xmlcraft", "apps/xmlcraft-cli", "xtask"]
 
 [workspace.package]
 version = "0.0.1"
@@ -23,6 +23,7 @@ craft-window = { git = "https://github.com/storytold/craft-libs", version = "0.1
 
 # internal
 xmlcraft-engine = { path = "crates/engine", version = "0.0.1" }
+xmlcraft-automation = { path = "crates/automation", version = "0.0.1" }
 xmlcraft-ui-egui = { path = "crates/ui-egui", version = "0.0.1" }
 
 # foundation

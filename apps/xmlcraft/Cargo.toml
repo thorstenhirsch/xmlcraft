@@ -12,6 +12,8 @@ workspace = true
 
 [dependencies]
 xmlcraft-ui-egui = { workspace = true }
+# `--control FILE`: the opt-in control channel's transport (the app side of it is in xmlcraft-ui-egui).
+xmlcraft-automation = { workspace = true, default-features = false }
 # wgpu draws; OpenGL (glow) is the fallback when wgpu can't start on an old or unusual GPU or driver, and can be chosen with
 # XMLCRAFT_RENDERER=gl.
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "glow", "accesskit", "wayland", "x11", "persistence", "links"] }

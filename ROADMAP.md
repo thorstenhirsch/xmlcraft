@@ -18,11 +18,13 @@ XmlCraft is a clean-room, open-source XML editor in the spirit of Altova XMLSpy,
 
 ## Headline numbers
 
-- **Feature breadth: 0%** (0 shipped of 152 counted features; 64 P0, 48 P1, 25 P2, 15 P3; 10 out of scope), from `cargo xtask parity`.
+- **Feature breadth: 3.3% shipped** (5 shipped and 4 partial of 152 counted features; 64 P0, 48 P1, 25 P2, 15 P3; 10 out of scope), from `cargo xtask parity`. Everything shipped so far is the application shell and agent control; nothing edits XML yet.
 - Conformance numbers (W3C xmlconf and xsdtests) start with M1 and M3; nothing is measured yet.
 
 ## Progress log
 
+- 2026-10-27: M0.9 automation, CLI and control channel: `xmlcraft-automation` (JSON-Schema checked tool table, `--root` confinement that follows symbolic links, scripts, an opt-in MCP server, the control channel transport with token, deadline and connection limits), `xmlcraft-cli` (`tools`, `run`, `mcp`, `ui`), the egui control plugin (`xmlcraft --control FILE`; state, inspect, click, type, key, command, screenshot, quit), accessibility-tree text snapshots. Driven against the real window end to end.
+- 2026-10-27: M0.10 CI: `ci.yml` on Linux, Windows and macOS (first run found a lint only the newer CI compiler reports; fixed). Repo `thorstenhirsch/xmlcraft` created by the owner; history rebased onto its initial commit.
 - 2026-10-27: M0.8 engine and commands: `xmlcraft-engine` with the command registry (ids, labels, menus, shortcuts, kinds, when-enabled), a session and the panic guard; the app runs every command through one guarded `execute`, handles registry shortcuts, builds its Menu from the registry, and has the ⌘K palette.
 - 2026-10-27: M0.6 + M0.7 app shell: vendored `winit` and `egui-wgpu` (PdfCraft's patches, with a test that the build really resolves them), `xmlcraft-ui-egui` (PdfCraft's theme tokens, fonts, icons, tab strip, mode bar, panes and rail with Outline, Entry Helpers and Messages, status bar, home card, persisted preferences) and the `xmlcraft` app (renderer fallback, panic hook, logger). A headless `shot` example renders the real shell; `tests/shell.rs` drives it.
 - 2026-10-27: M0.5 parity: `cargo xtask parity` and `parity/xmlspy-features.toml` (162 features across 11 areas, all `planned` except 10 out-of-scope `na`), with consistency, evidence and registry checks and tests.

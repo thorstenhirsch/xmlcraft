@@ -1,0 +1,47 @@
+Button "Home" [toggled=true]
+Button "Open" [disabled]
+Button "Display theme: Light" [toggled=false]
+Button "Menu"
+Button "Text" [toggled=true]
+Button "Find tools and commands"
+Label value="Ready"
+Label value="XmlCraft 0.0.1"
+Button "Entry Helpers" [toggled=true]
+Pane "Outline"
+Label value="Outline"
+Button "Close" [toggled=false]
+Label value="No document open"
+Label value="The element tree of the open file appears here."
+Splitter "Resize panels"
+Pane "Entry Helpers"
+Label value="Entry Helpers"
+Button "Close" [toggled=false]
+Label value="What the schema allows at the cursor appears here."
+Label value="ELEMENTS"
+Label value="Nothing to show"
+Label value="ATTRIBUTES"
+Label value="Nothing to show"
+Label value="ENTITIES"
+Label value="Nothing to show"
+Splitter "Resize panels"
+Pane "Messages"
+Label value="Messages"
+Button "Close" [toggled=false]
+Label value="No messages"
+Label value="Well-formedness and validation results appear here."
+Splitter "Resize panels"
+Image
+Label value="XmlCraft"
+Label value="An open-source, clean-room XML editor"
+Label value="Pre-alpha"
+Label value="The window and its panes are in place. Editing, schemas and validation arrive milestone by milestone."
+Image
+TextInput value=""
+Button "Quit"
+Button "Find tools and commands…"
+Button "Outline"
+Button "Entry Helpers"
+Button "Messages"
+Button "Use system theme"
+Button "Light theme"
+Button "Dark theme"

@@ -90,6 +90,24 @@ fn quoted_after(src: &str, prefixes: &[&str]) -> HashSet<String> {
     out
 }
 
+/// Quoted values of a struct field in a source file: `name: "app_info"` → `app_info`. Whole field names only.
+fn quoted_field(src: &str, field: &str) -> HashSet<String> {
+    let pat = format!("{field}:");
+    let mut out = HashSet::new();
+    let mut from = 0;
+    while let Some(i) = src[from..].find(&pat).map(|i| i + from) {
+        from = i + pat.len();
+        let boundary = src[..i].chars().next_back().is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
+        if boundary
+            && let Some(body) = src[from..].trim_start().strip_prefix('"')
+            && let Some(end) = body.find('"')
+        {
+            out.insert(body[..end].to_string());
+        }
+    }
+    out
+}
+
 fn valid_id(id: &str) -> bool {
     let Some((area, name)) = id.split_once('.') else { return false };
     !area.is_empty()
@@ -179,7 +197,7 @@ pub fn run(args: &[String]) -> Result<()> {
     // empty registry (and any `shipped` or `partial` feature that names a command or tool is reported).
     let read = |p: &str| std::fs::read_to_string(repo.join(p)).unwrap_or_default();
     let commands = quoted_after(&read("crates/engine/src/commands.rs"), &["c", "ct"]);
-    let tools = quoted_after(&read("crates/automation/src/tools.rs"), &["t"]);
+    let tools = quoted_field(&read("crates/automation/src/tools.rs"), "name");
     let errors = validate(&file.features, &commands, &tools, &repo);
 
     // Progress: per tier and per area. N/A tier and `na` status are excluded from percentages.
@@ -277,7 +295,7 @@ mod tests {
         assert!(file.features.len() > 100, "the checklist should cover the whole feature set");
         let read = |p: &str| std::fs::read_to_string(root().join(p)).unwrap_or_default();
         let commands = quoted_after(&read("crates/engine/src/commands.rs"), &["c", "ct"]);
-        let tools = quoted_after(&read("crates/automation/src/tools.rs"), &["t"]);
+        let tools = quoted_field(&read("crates/automation/src/tools.rs"), "name");
         let errors = validate(&file.features, &commands, &tools, &root());
         assert!(errors.is_empty(), "{errors:#?}");
     }
@@ -296,6 +314,13 @@ mod tests {
             "c(\"file.open\", \"Open…\", FILE, None), ct(\"edit.undo\", \"Undo\"), t(\"doc_open\", \"Open\"), t(\n    \"doc_save\",), format(x)";
         assert_eq!(quoted_after(src, &["c", "ct"]), HashSet::from(["file.open".to_string(), "edit.undo".to_string()]));
         assert_eq!(quoted_after(src, &["t"]), HashSet::from(["doc_open".to_string(), "doc_save".to_string()]));
+    }
+
+    #[test]
+    fn tool_names_are_read_from_the_name_fields_of_the_table() {
+        let src = "ToolDef { name: \"app_info\", title: \"x\" }, ToolDef {\n  name:   \"command_list\", other_name: \"no\", name: 3 }";
+        assert_eq!(quoted_field(src, "name"), HashSet::from(["app_info".to_string(), "command_list".to_string()]));
+        assert!(quoted_field("", "name").is_empty());
     }
 
     #[test]

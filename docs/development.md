@@ -23,6 +23,15 @@ cargo test --profile low-disk -p xmlcraft-text --lib
 
 The profile inherits the normal development settings and disables incremental compilation for this profile only. The development profile keeps only line tables for workspace code and no debug information for dependencies, so backtraces show file and line numbers but not local variables; for a debugger, build with `CARGO_PROFILE_DEV_DEBUG=true`. Remove only the low-disk artifacts with `cargo clean --profile low-disk`.
 
+## Match CI's compiler
+
+CI builds with the newest stable Rust, whose clippy can report lints an older local toolchain does not (the first CI run failed on one). Install the same toolchain next to yours and use it for the gate:
+
+```sh
+rustup toolchain install 1.99.1 --profile minimal --component clippy --component rustfmt --target wasm32-unknown-unknown
+RUSTUP_TOOLCHAIN=1.99.1 cargo xtask ci
+```
+
 ## Quality gates
 
 ```sh

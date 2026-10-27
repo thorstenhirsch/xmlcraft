@@ -1,6 +1,6 @@
 # XmlCraft parity with Altova XMLSpy
 
-> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** first measurement: feature breadth 0% of 152 counted (checklist created) · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
+> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** after M0.9: the shell, palette, themes, MCP server and control channel ship; feature breadth 3.3% of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
 
 The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -10,8 +10,8 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **0%** (0 shipped + 0 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-27) |
-| Must-have (P0) features | 0% (0 of 64) | measured |
+| **Feature breadth**, unweighted | **3.3%** shipped, 4.6% with partial counted half (5 shipped + 4 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-27) |
+| Must-have (P0) features | 1.6% shipped, 4.7% weighted (1 shipped + 4 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | not measured | arrives with M1 |
 | W3C xmlconf, valid and invalid | not measured | arrives with M2 |
 | W3C xsdtests (XSD 1.0) | not measured | arrives with M3 |
