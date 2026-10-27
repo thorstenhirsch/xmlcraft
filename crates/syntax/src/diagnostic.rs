@@ -132,12 +132,30 @@ impl Diagnostic {
         self.code.severity()
     }
 
-    /// The English message.
+    /// The English message: the code's template with each `{N}` replaced by argument `N`. It is filled in one pass, so an argument that
+    /// looks like a placeholder stays as it is, and a placeholder without an argument stays visible.
     pub fn message(&self) -> String {
-        let mut out = self.code.template().to_owned();
-        for (i, arg) in self.args.iter().enumerate() {
-            out = out.replace(&format!("{{{i}}}"), arg);
+        let mut out = String::new();
+        let mut rest = self.code.template();
+        while let Some(open) = rest.find('{') {
+            let (head, tail) = rest.split_at(open);
+            out.push_str(head);
+            let filled = tail
+                .strip_prefix('{')
+                .and_then(|t| t.split_once('}'))
+                .and_then(|(index, after)| Some((self.args.get(index.parse::<usize>().ok()?)?, after)));
+            match filled {
+                Some((arg, after)) => {
+                    out.push_str(arg);
+                    rest = after;
+                }
+                None => {
+                    out.push('{');
+                    rest = tail.strip_prefix('{').unwrap_or_default();
+                }
+            }
         }
+        out.push_str(rest);
         out
     }
 }
@@ -147,13 +165,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn keys_are_unique_and_every_placeholder_is_a_known_argument() {
+    fn keys_are_unique_and_templates_use_at_most_two_arguments_without_gaps() {
         let mut seen = std::collections::HashSet::new();
         for code in Code::ALL {
             assert!(seen.insert(code.key()), "duplicate key {}", code.key());
             assert!(code.key().contains('.') && code.key().is_ascii());
             let template = code.template();
             assert!(!template.contains("{2}"), "{} uses an argument no code supplies", code.key());
+            // The arguments used start at `{0}` and have no gaps.
+            let used: Vec<usize> = template.match_indices('{').filter_map(|(i, _)| template.get(i + 1..)?.split_once('}')?.0.parse().ok()).collect();
+            let count = used.iter().max().map_or(0, |max| max + 1);
+            assert!((0..count).all(|n| used.contains(&n)), "{} skips an argument", code.key());
         }
     }
 
@@ -166,5 +188,13 @@ mod tests {
         assert_eq!(Code::NestingTooDeep.severity(), Severity::Warning);
         // A missing argument leaves the placeholder visible rather than failing.
         assert_eq!(Diagnostic::new(Code::UnclosedElement, 0..1, vec![]).message(), "The element <{0}> is not closed.");
+    }
+
+    #[test]
+    fn arguments_that_look_like_placeholders_stay_literal() {
+        let d = Diagnostic::new(Code::MismatchedEndTag, 0..1, vec!["{1}".into(), "b".into()]);
+        assert_eq!(d.message(), "The end tag </b> does not match the start tag <{1}>.");
+        let d = Diagnostic::new(Code::MismatchedEndTag, 0..1, vec!["a".into(), "{0}".into()]);
+        assert_eq!(d.message(), "The end tag </{0}> does not match the start tag <a>.");
     }
 }
