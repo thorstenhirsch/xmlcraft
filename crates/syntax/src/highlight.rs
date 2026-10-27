@@ -179,6 +179,19 @@ impl Highlighter {
         self.starts.get(line).copied().unwrap_or_default()
     }
 
+    /// Where in the markup `offset` is, as the lexer sees it: in content, in a tag, in an attribute value (and which quote opened it), a
+    /// comment and so on. Lexes from the start of the line `offset` is on, using the modes of the lines before it that are known. An
+    /// offset past the end is the end; one inside a character is the character's start.
+    pub fn mode_at(&mut self, buffer: &Buffer, offset: usize) -> Mode {
+        // An offset inside a character is the character's start.
+        let offset = if offset >= buffer.len() || buffer.char_at(offset).is_some() { offset.min(buffer.len()) } else { buffer.prev_char(offset) };
+        let line = buffer.line_of(offset);
+        let start = self.start_of(buffer, line);
+        let Some(line_start) = buffer.line_start(line) else { return start.mode };
+        let Ok(before) = buffer.slice(line_start..offset) else { return start.mode };
+        lex_line(&before, start.mode, start.after_open, None).0
+    }
+
     /// The coloured parts of `line` (byte ranges of the line's text without its break).
     pub fn spans(&mut self, buffer: &Buffer, line: usize) -> Vec<Span> {
         let start = self.start_of(buffer, line);
@@ -203,6 +216,38 @@ mod tests {
 
     fn classes(line: &str) -> Vec<(&str, HighlightClass)> {
         highlight_line(line, Mode::Content).0.into_iter().map(|(r, c)| (&line[r], c)).collect()
+    }
+
+    fn mode_at_caret(text: &str) -> Mode {
+        let offset = text.find('|').expect("a caret");
+        let buffer = Buffer::from_text(&text.replacen('|', "", 1));
+        Highlighter::new().mode_at(&buffer, offset)
+    }
+
+    #[test]
+    fn the_mode_at_an_offset_says_where_in_the_markup_it_is() {
+        use crate::lexer::{Quote, Return};
+        assert_eq!(mode_at_caret("|<a b=\"c\">"), Mode::Content);
+        assert_eq!(mode_at_caret("<a| b=\"c\">"), Mode::Tag);
+        assert_eq!(mode_at_caret("<a b=|\"c\">"), Mode::Tag);
+        assert_eq!(mode_at_caret("<a b=\"|c\">"), Mode::AttrValue(Quote::Double));
+        assert_eq!(mode_at_caret("<a b='c|'>"), Mode::AttrValue(Quote::Single));
+        assert_eq!(mode_at_caret("<a b=\"c\"|>"), Mode::Tag);
+        assert_eq!(mode_at_caret("<a b=\"c\">|text"), Mode::Content);
+        assert_eq!(mode_at_caret("<!-- a| -->"), Mode::Comment(Return::Content));
+        assert_eq!(mode_at_caret("<![CDATA[ a| ]]>"), Mode::Cdata);
+        // Earlier lines count: a value and a comment that go on from line to line.
+        assert_eq!(mode_at_caret("<a b=\"x\n|y\">"), Mode::AttrValue(Quote::Double));
+        assert_eq!(mode_at_caret("<!--\n\n|-->"), Mode::Comment(Return::Content));
+        assert_eq!(mode_at_caret("<a\n  b=|\n>"), Mode::Tag);
+        // The end of the text, and offsets that are not positions in it.
+        assert_eq!(mode_at_caret("<a b=\"|"), Mode::AttrValue(Quote::Double));
+        let buffer = Buffer::from_text("<a é=\"x\">");
+        let mut h = Highlighter::new();
+        assert_eq!(h.mode_at(&buffer, 999), Mode::Content, "past the end is the end");
+        assert_eq!(h.mode_at(&buffer, 4), Mode::Tag, "inside the é (bytes 3 and 4) is the start of the é");
+        assert_eq!(h.mode_at(&buffer, 5), Mode::Tag, "just after it");
+        assert_eq!(Highlighter::new().mode_at(&Buffer::from_text(""), 0), Mode::Content);
     }
 
     #[test]
@@ -360,6 +405,28 @@ mod tests {
                 offset += line.len();
             }
             prop_assert_eq!(whole, by_line);
+        }
+
+        /// The mode at any offset is the mode the lexer is in after lexing everything before it, from the top.
+        #[test]
+        fn the_mode_at_an_offset_is_what_lexing_the_text_before_it_gives(
+            pieces in proptest::collection::vec(proptest::sample::select(PIECES), 0..60),
+            fraction in 0.0f64..=1.0,
+            invalidate in 0usize..8,
+        ) {
+            let text = pieces.concat();
+            let buffer = Buffer::from_text(&text);
+            let mut h = Highlighter::new();
+            // Some lines known, some forgotten: the answer does not depend on what was cached.
+            let _ = h.spans(&buffer, 3);
+            h.invalidate_from(invalidate);
+            let mut offset = (text.len() as f64 * fraction) as usize;
+            while !text.is_char_boundary(offset) {
+                offset -= 1;
+            }
+            let mut lexer = Lexer::new(&text[..offset]);
+            for _ in lexer.by_ref() {}
+            prop_assert_eq!(h.mode_at(&buffer, offset), lexer.mode());
         }
 
         /// The highlighter never panics and its spans are inside the line, whatever the text and whatever was invalidated.

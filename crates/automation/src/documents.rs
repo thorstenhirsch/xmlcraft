@@ -135,6 +135,39 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             handler: doc_set_text,
         },
         ToolDef {
+            name: "doc_type",
+            title: "Type text",
+            description: "Type text into an open document as the keyboard does, with the typing aids: a quote typed after `=` in a tag writes the pair and the closing \
+                          quote is stepped over. Typed at the caret, or at `line` and `column` (from 1) when they are given. A line feed is Enter and a tab is Tab. \
+                          Returns what was typed and where the caret is. Use doc_edit to replace text without the aids.",
+            input_schema: object(
+                json!({ "id": id.clone(), "text": { "type": "string", "minLength": 1 }, "line": { "type": "integer", "minimum": 1 }, "column": { "type": "integer", "minimum": 1 } }),
+                &["id", "text"],
+            ),
+            read_only: false,
+            destructive: false,
+            handler: doc_type,
+        },
+        ToolDef {
+            name: "doc_key",
+            title: "Press a key",
+            description: "Press Backspace, Delete, Enter, Tab or Shift+Tab in an open document, `times` times (default 1), at the caret or at `line` and `column` (from 1). \
+                          Backspace between the quotes of an empty attribute value takes both. Returns where the caret is.",
+            input_schema: object(
+                json!({
+                    "id": id.clone(),
+                    "key": { "type": "string", "enum": ["Backspace", "Delete", "Enter", "Tab", "Shift+Tab"] },
+                    "times": { "type": "integer", "minimum": 1, "maximum": 1000 },
+                    "line": { "type": "integer", "minimum": 1 },
+                    "column": { "type": "integer", "minimum": 1 },
+                }),
+                &["id", "key"],
+            ),
+            read_only: false,
+            destructive: false,
+            handler: doc_key,
+        },
+        ToolDef {
             name: "doc_undo",
             title: "Undo or redo",
             description: "Undo (or, with redo: true, redo) the last change of a document. Returns whether anything was undone.",
@@ -483,6 +516,78 @@ fn doc_edit(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     }
     let changed = doc.editor_mut().apply_edits(&edits);
     json_result(json!({ "changed": changed, "document": describe(doc) }))
+}
+
+/// Put the caret at the `line` and `column` (from 1) of `args`, when they are given (both or neither).
+fn place_caret(doc: &mut Document, args: &Value) -> Result<()> {
+    match (args.get("line"), args.get("column")) {
+        (None, None) => return Ok(()),
+        (Some(_), Some(_)) => {}
+        _ => return Err(ToolError::InvalidArgs("line and column go together: give both, or neither for the caret".into())),
+    }
+    let at = offset_from(doc.editor().buffer(), args.get("line").and_then(Value::as_u64), args.get("column").and_then(Value::as_u64), "position")?;
+    doc.editor_mut().place_caret(at, false);
+    Ok(())
+}
+
+/// Where the carets of `doc` are, as the tools write positions.
+fn carets_json(doc: &Document) -> Vec<Value> {
+    let buffer = doc.editor().buffer();
+    doc.editor().carets().iter().map(|c| range_json(buffer, &(c.start()..c.end()))).collect()
+}
+
+/// The most characters `doc_type` types in one call.
+const MAX_TYPED: usize = 100_000;
+
+fn doc_type(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    let text = text_arg(args, "text").unwrap_or_default();
+    if text.chars().count() > MAX_TYPED {
+        return fail(format!("at most {MAX_TYPED} characters can be typed at once (use doc_edit for more)"));
+    }
+    // What is typed is checked first: a call that cannot be done does nothing. A line break of any kind is one Enter.
+    if let Some(c) = text.chars().find(|c| c.is_control() && !matches!(c, '\n' | '\t' | '\r')) {
+        return fail(format!("the control character U+{:04X} cannot be typed", u32::from(c)));
+    }
+    place_caret(doc, args)?;
+    let mut typed = 0usize;
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        let editor = doc.editor_mut();
+        match c {
+            '\r' | '\n' => {
+                if c == '\r' && chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                let _ = editor.insert_newline();
+            }
+            '\t' => drop(editor.indent()),
+            c => drop(editor.type_input(&c.to_string())),
+        }
+        typed += 1;
+    }
+    json_result(json!({ "typed": typed, "carets": carets_json(doc), "document": describe(doc) }))
+}
+
+fn doc_key(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    let key = text_arg(args, "key").unwrap_or_default();
+    let times = args.get("times").and_then(Value::as_u64).map_or(1, |t| usize::try_from(t).unwrap_or(1)).min(1000);
+    place_caret(doc, args)?;
+    for _ in 0..times {
+        let editor = doc.editor_mut();
+        match key {
+            "Backspace" => drop(editor.backspace()),
+            "Delete" => drop(editor.delete_forward()),
+            "Enter" => drop(editor.insert_newline()),
+            "Tab" => drop(editor.indent()),
+            "Shift+Tab" => drop(editor.outdent()),
+            other => return fail(format!("{other}: no such key (Backspace, Delete, Enter, Tab, Shift+Tab)")),
+        }
+    }
+    json_result(json!({ "carets": carets_json(doc), "document": describe(doc) }))
 }
 
 fn doc_set_text(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {

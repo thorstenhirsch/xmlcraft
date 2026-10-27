@@ -6,6 +6,8 @@
 //!   every command can be tested by calling it.
 //! - [`Editor`] owns a buffer, its undo history and one or more [`Caret`]s. Every command (typing, deleting, moving, indenting, cut and
 //!   paste, undo) acts on all carets at once; those that change text are one undoable step.
+//! - [`Editor::type_input`] is what typing a key does when the editor knows XML: the quotes of an attribute value are paired and stepped
+//!   over (and a Backspace between an empty pair removes both). Its tags and quotes are read with the lexer of `xmlcraft-syntax` (L1).
 //! - [`motion`] has the pure movement functions: by character cluster, by word, by line, by display column.
 //!
 //! The view (`xmlcraft-code-editor`) turns key presses and mouse gestures into calls on the editor and draws what it holds.
@@ -14,6 +16,7 @@ mod caret;
 mod editor;
 pub mod find;
 pub mod motion;
+mod typing;
 
 pub use caret::Caret;
 pub use editor::{Editor, Motion, Settings};

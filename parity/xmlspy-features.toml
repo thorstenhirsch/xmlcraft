@@ -179,11 +179,11 @@ title = "Auto-pair quotes and brackets"
 area = "A"
 tier = "P1"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["doc_type", "doc_key"]
+evidence = ["crates/editor/src/typing.rs::a_quote_after_an_equals_sign_is_paired_and_the_closing_one_stepped_over", "crates/editor/src/typing.rs::a_quote_anywhere_else_is_only_a_character", "crates/editor/src/typing.rs::backspace_between_an_empty_pair_takes_both_quotes", "crates/editor/src/typing.rs::what_is_typed_after_an_edit_elsewhere_is_read_from_the_new_text", "crates/code-editor/tests/widget.rs::a_quote_typed_in_a_tag_is_paired_but_what_an_input_method_commits_is_not", "crates/automation/tests/documents.rs::typing_and_keys_work_as_the_keyboard_does"]
+notes = "In a tag, a quote typed after `=` (and before something that is not a name or a quote) writes both quotes with the caret between, the closing quote typed next steps over the one that is there, and Backspace between an empty pair removes both; the place is read with the lexer, so a quote in text, a comment or a value opened by the other quote is only a character. An input method's text and a paste are never paired. Typed with the keyboard through `doc_type` and `doc_key` headlessly. Not yet: pairs for brackets (`<!--`, `[`, `(` in a DOCTYPE), wrapping a selection in quotes, and a Preferences switch (the editor setting `auto_pair` exists)."
 
 [[feature]]
 id = "editor.tag-rename-sync"

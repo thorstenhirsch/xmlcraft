@@ -6,6 +6,7 @@
 
 use std::ops::Range;
 
+use xmlcraft_syntax::Highlighter;
 use xmlcraft_text::eol::{self, Eol};
 use xmlcraft_text::{Buffer, Edit, EditKind, History, Selection};
 
@@ -25,11 +26,13 @@ pub struct Settings {
     pub use_tabs: bool,
     /// What new line breaks are written as (the document's dominant line ending).
     pub eol: Eol,
+    /// Typing a quote after `=` in a tag writes the pair and steps over the closing one ([`Editor::type_input`]).
+    pub auto_pair: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { tab_width: 4, indent_size: 2, use_tabs: false, eol: Eol::Lf }
+        Self { tab_width: 4, indent_size: 2, use_tabs: false, eol: Eol::Lf, auto_pair: true }
     }
 }
 
@@ -54,14 +57,14 @@ pub enum Motion {
 
 /// Where an offset at the exact place of an insertion goes when it is mapped through the edits.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Bias {
+pub(crate) enum Bias {
     Before,
     After,
 }
 
 /// `offset` (in the text before `edits`) in the text after them. `edits` are ascending and do not overlap. An offset inside a replaced
 /// range moves to the end of what replaced it.
-fn map_offset(edits: &[Edit], offset: usize, bias: Bias) -> usize {
+pub(crate) fn map_offset(edits: &[Edit], offset: usize, bias: Bias) -> usize {
     let mut shift: isize = 0;
     for edit in edits {
         if offset > edit.range.start && offset < edit.range.end {
@@ -79,7 +82,10 @@ fn map_offset(edits: &[Edit], offset: usize, bias: Bias) -> usize {
 const CHANGE_LOG: usize = 64;
 
 pub struct Editor {
-    buffer: Buffer,
+    pub(crate) buffer: Buffer,
+    /// Where in the markup an offset is (inside a tag, a value, a comment…), for the typing aids. Knows the modes of the lines it has been
+    /// asked about, and forgets those after a change.
+    pub(crate) lexer: Highlighter,
     history: History,
     carets: Vec<Caret>,
     primary: usize,
@@ -107,6 +113,7 @@ impl Editor {
     pub fn with_settings(text: &str, settings: Settings) -> Self {
         Self {
             buffer: Buffer::from_text(text),
+            lexer: Highlighter::new(),
             history: History::new(),
             carets: vec![Caret::at(0)],
             primary: 0,
@@ -205,6 +212,7 @@ impl Editor {
     }
 
     fn log_change(&mut self, first_line: usize) {
+        self.lexer.invalidate_from(first_line);
         self.changes.push_back((self.version, first_line));
         while self.changes.len() > CHANGE_LOG {
             self.changes.pop_front();
@@ -365,7 +373,7 @@ impl Editor {
 
     /// Apply `edits` (ascending, not overlapping) as one undoable step and set the carets; `carets` are in the text after the edits.
     /// Returns whether the text changed.
-    fn commit(&mut self, edits: Vec<Edit>, carets: Vec<Caret>, kind: EditKind) -> bool {
+    pub(crate) fn commit(&mut self, edits: Vec<Edit>, carets: Vec<Caret>, kind: EditKind) -> bool {
         let primary = self.primary.min(carets.len().saturating_sub(1));
         if edits.is_empty() || edits.iter().all(|e| e.range.is_empty() && e.text.is_empty()) {
             self.set_carets_raw(carets, primary);
@@ -438,11 +446,15 @@ impl Editor {
         })
     }
 
-    /// Backspace: the selection, or the character cluster before the caret.
+    /// Backspace: the selection, or the character cluster before the caret; between the quotes of an empty attribute value, both quotes.
     pub fn backspace(&mut self) -> bool {
-        self.replace_at_carets(EditKind::Delete, |this, c| {
+        let pairs = self.carets_in_empty_quotes();
+        self.replace_at_carets(EditKind::Delete, move |this, c| {
             if !c.is_empty() {
                 return Some(Edit::delete(c.start()..c.end()));
+            }
+            if pairs.binary_search(&c.head()).is_ok() {
+                return Some(Edit::delete(c.head().saturating_sub(1)..c.head().saturating_add(1)));
             }
             let from = prev_grapheme(&this.buffer, c.head());
             (from < c.head()).then(|| Edit::delete(from..c.head()))
@@ -698,7 +710,7 @@ fn line_ending_of(text: &str, fallback: Eol) -> Eol {
 
 /// Merge edits that overlap (only deletions can: a word deletion by one caret may reach into the range another deletes). The input
 /// need not be sorted; the output is ascending and disjoint.
-fn coalesce(mut edits: Vec<Edit>) -> Vec<Edit> {
+pub(crate) fn coalesce(mut edits: Vec<Edit>) -> Vec<Edit> {
     edits.sort_by_key(|e| (e.range.start, e.range.end));
     let mut out: Vec<Edit> = Vec::with_capacity(edits.len());
     for edit in edits {

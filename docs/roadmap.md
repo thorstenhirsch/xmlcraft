@@ -1,13 +1,13 @@
 # XmlCraft roadmap: milestones and what's next
 
-> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** M1.1–M1.8, M1.9a, M1.11–M1.14 done · **Target:** Altova XMLSpy (feature set described in its public documentation)
+> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** M1.1–M1.8, M1.9a–b, M1.11–M1.14 done · **Target:** Altova XMLSpy (feature set described in its public documentation)
 
 Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is done when its **exit criteria** are met and measured, not when its tasks are merged. [ROADMAP.md](../ROADMAP.md) is the one-page summary.
 
 | Milestone | Scope | Version | Status |
 |---|---|---|---|
 | **M0** Bootstrap | Workspace, policies, xtask gates, assets, app shell with the PdfCraft look, automation/CLI skeleton, CI, packaging for all six targets | 0.0.x | **in progress** (M0.1–M0.11 done, M0.6 folded into M0.7; the release dry run builds and verifies all six targets (run 40454851007, after the Windows MSI fix in #4); installing and launching each artifact is checked only for Windows ARM64, by the `windows-arm64` workflow) |
-| **M1** Text editor and XML syntax | Rope buffer, encodings, lossless CST, well-formedness, the code-editor widget (highlighting, folding, multi-cursor, find/replace, XML typing aids), formatting, outline, large files | 0.0.x | **in progress** (M1.1 buffer and undo, M1.2 encodings and line endings, M1.3 lexer, M1.4 syntax tree and well-formedness, M1.5 xmlconf harness (the streaming Reader moved to when validation needs it, M2.9) done; headless editor model (M1.6a), the egui code-editor widget (M1.6b), XML colouring (M1.7), the document lifecycle in the app (M1.12) and problems, outline, Messages, F7 and Go to Line (M1.13) done; find and replace (M1.8), the formatter (M1.11), the tools and CLI (M1.14) and matching tags (M1.9a) done; folding and auto-pairing (M1.9b–c) and typing aids (M1.10), then large files (M1.15)) |
+| **M1** Text editor and XML syntax | Rope buffer, encodings, lossless CST, well-formedness, the code-editor widget (highlighting, folding, multi-cursor, find/replace, XML typing aids), formatting, outline, large files | 0.0.x | **in progress** (M1.1 buffer and undo, M1.2 encodings and line endings, M1.3 lexer, M1.4 syntax tree and well-formedness, M1.5 xmlconf harness (the streaming Reader moved to when validation needs it, M2.9) done; headless editor model (M1.6a), the egui code-editor widget (M1.6b), XML colouring (M1.7), the document lifecycle in the app (M1.12) and problems, outline, Messages, F7 and Go to Line (M1.13) done; find and replace (M1.8), the formatter (M1.11), the tools and CLI (M1.14) and matching tags (M1.9a) and auto-pairing (M1.9b) done; folding (M1.9c) and typing aids (M1.10), then large files (M1.15)) |
 | **M2** Catalogs, resolver and DTD | OASIS catalogs, bundled-schema crate, resolver with disk cache and network fetcher, the shared grammar model, DTD parsing and validation, Entry Helpers | 0.0.x | not started |
 | **M3** XSD engine and validation UX | XSD regex and datatypes, schema compilation, XSD 1.0 validation, identity constraints, the W3C xsdtests ratchet, schema-aware completion and Entry Helpers | 0.0.x | not started |
 | **M4** Generators and bundled set | Schema inference (XSD and DTD), sample XML generation, the full bundled schema set, Home page, About — **MVP release** | **0.1.0** | not started |
@@ -45,3 +45,4 @@ Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is 
 - 2026-10-27: M1.11 and M1.14: `xmlcraft-format` (pretty-print and minify as minimal edits of the white space between nodes), the document and XML tools of the automation table and `xmlcraft-cli check` / `format`.
 - 2026-10-27: M1.8: find and replace (`xmlcraft-editor::find`, the find bar, `doc_find`, `doc_replace`) and ⌘D next occurrence.
 - 2026-10-27: M1.9a: matching tag highlight and jump (`Analysis::matching_tag`, ⇧⌘\, `xml_matching_tag`).
+- 2026-10-27: M1.9b: auto-pairing of attribute quotes (`Editor::type_input`, `Highlighter::mode_at`, `doc_type`, `doc_key`).
