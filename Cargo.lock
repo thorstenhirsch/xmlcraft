@@ -4736,6 +4736,7 @@ version = "0.0.1"
 dependencies = [
  "proptest",
  "regex",
+ "rowan",
  "unicode-segmentation",
  "unicode-width",
  "xmlcraft-syntax",

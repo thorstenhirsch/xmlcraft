@@ -338,6 +338,113 @@ fn finding_in_a_file_says_when_it_was_not_read_exactly_and_when_a_match_is_cut()
 }
 
 #[test]
+fn comments_and_selections_work_on_the_structure() {
+    let mut a = Automation::new();
+    let text = "<lib>\n  <book id=\"b1\">\n    <t>x</t>\n  </book>\n</lib>\n";
+    let id = ok(&mut a, "doc_new", json!({ "text": text }))["id"].as_u64().expect("id");
+    // Growing from the middle of the value: the word, the value with its quotes, the attribute, the tag.
+    let grown = |a: &mut Automation, times: u64| {
+        let r = ok(a, "doc_expand_selection", json!({ "id": id, "line": 2, "column": 14, "times": times }));
+        let c = &r["carets"][0];
+        (c["start"].as_u64().unwrap_or(0), c["end"].as_u64().unwrap_or(0), r["grew"].as_bool())
+    };
+    let book = text.find("<book").expect("there") as u64;
+    assert_eq!(grown(&mut a, 1), (book + 10, book + 12, Some(true)), "the word `b1`");
+    assert_eq!(grown(&mut a, 2), (book + 9, book + 13, Some(true)), "`\"b1\"`");
+    assert_eq!(grown(&mut a, 3), (book + 6, book + 13, Some(true)), "the attribute `id=\"b1\"`");
+    assert_eq!(grown(&mut a, 4), (book, book + 14, Some(true)), "the start tag");
+    // Going back: the selection steps back through what it was.
+    let r = ok(&mut a, "doc_shrink_selection", json!({ "id": id }));
+    assert_eq!((r["shrank"].as_bool(), r["carets"][0]["start"].as_u64()), (Some(true), Some(book + 6)), "back to the attribute");
+    // A selection set another way cannot be shrunk.
+    ok(&mut a, "doc_select", json!({ "id": id, "line": 1, "column": 1 }));
+    assert_eq!(ok(&mut a, "doc_shrink_selection", json!({ "id": id }))["shrank"], false);
+    // Comments: lines of a selection, one block; again to bring them back; `--` is refused with nothing changed.
+    let done = ok(&mut a, "doc_toggle_comment", json!({ "id": id, "line": 2, "column": 1, "end_line": 4, "end_column": 10 }));
+    assert_eq!(done["changed"], true);
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], "<lib>\n  <!-- <book id=\"b1\">\n    <t>x</t>\n  </book> -->\n</lib>\n");
+    let refused = err(&mut a, "doc_toggle_comment", json!({ "id": id, "line": 1, "column": 1, "end_line": 5, "end_column": 1 }));
+    assert!(refused.contains("--") && refused.contains("nothing was changed"), "{refused}");
+    let placed = ok(&mut a, "doc_select", json!({ "id": id, "line": 3, "column": 2 }));
+    err(&mut a, "doc_toggle_comment", json!({ "id": id, "line": 1, "column": 1, "end_line": 5, "end_column": 1 }));
+    let still = ok(&mut a, "doc_shrink_selection", json!({ "id": id })); // changes nothing: it only says where the selection is
+    assert_eq!(still["carets"], placed["carets"], "a refused call leaves the selection where it was");
+    ok(&mut a, "doc_toggle_comment", json!({ "id": id, "line": 2, "column": 1, "end_line": 4, "end_column": 5 }));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], text);
+    // Bad arguments.
+    assert!(err(&mut a, "doc_select", json!({ "id": id, "line": 1, "column": 1, "end_line": 2 })).contains("go together"));
+    assert!(err(&mut a, "doc_select", json!({ "id": id, "line": 99, "column": 1 })).contains("no line 99"));
+    assert!(err(&mut a, "doc_select", json!({ "id": id, "line": 1 })).contains("doc_select"), "the schema wants a column");
+}
+
+#[test]
+fn what_can_be_folded_is_listed_and_folding_it_hides_lines() {
+    let text = "<lib>\n  <book>\n    <t>x</t>\n  </book>\n  <book>\n    <t>y</t>\n  </book>\n</lib>\n";
+    let mut a = Automation::new();
+    let listed = ok(&mut a, "xml_folds", json!({ "text": text }));
+    let folds = listed["folds"].as_array().expect("a list");
+    let summary: Vec<(u64, u64, u64, u64, &str)> = folds
+        .iter()
+        .map(|f| {
+            (
+                f["first_line"].as_u64().unwrap_or(0),
+                f["last_line"].as_u64().unwrap_or(0),
+                f["end_line"].as_u64().unwrap_or(0),
+                f["level"].as_u64().unwrap_or(0),
+                f["kind"].as_str().unwrap_or(""),
+            )
+        })
+        .collect();
+    assert_eq!(summary, [(1, 7, 8, 1, "element"), (2, 3, 4, 2, "element"), (5, 6, 7, 2, "element")], "lines count from 1");
+    // Folding: at a line, everything, a level, and open again. The text itself never changes.
+    let id = ok(&mut a, "doc_new", json!({ "text": text }))["id"].as_u64().expect("id");
+    let folded = ok(&mut a, "doc_fold", json!({ "id": id, "action": "fold", "line": 3, "column": 5 }));
+    assert_eq!(
+        (folded["changed"].as_bool(), folded["visible_lines"].as_u64()),
+        (Some(true), Some(8)),
+        "line 3 is hidden; there are 9 lines in all (the last is empty)"
+    );
+    assert_eq!(folded["folded"][0]["first_line"], 2);
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], text);
+    let all = ok(&mut a, "doc_fold", json!({ "id": id, "action": "fold_all" }));
+    assert_eq!(all["visible_lines"], 3, "line 1, the root's end tag on line 8 and the empty last line");
+    let level2 = ok(&mut a, "doc_fold", json!({ "id": id, "action": "level", "level": 2 }));
+    assert_eq!(level2["folded"].as_array().map(Vec::len), Some(2));
+    assert_eq!(level2["visible_lines"], 7, "one line of each book is hidden");
+    let open = ok(&mut a, "doc_fold", json!({ "id": id, "action": "unfold_all" }));
+    assert_eq!((open["changed"].as_bool(), open["visible_lines"].as_u64()), (Some(true), Some(9)));
+    // `unfold` at a line a fold hides works without the caret having to go there (which would open the fold by itself).
+    ok(&mut a, "doc_fold", json!({ "id": id, "action": "fold", "line": 3, "column": 5 }));
+    ok(&mut a, "doc_fold", json!({ "id": id, "action": "fold", "line": 2, "column": 1 }));
+    assert_eq!(
+        ok(&mut a, "doc_fold", json!({ "id": id, "action": "fold", "line": 2, "column": 1 }))["changed"],
+        false,
+        "folded already: the outer one"
+    );
+    let opened = ok(&mut a, "doc_fold", json!({ "id": id, "action": "unfold", "line": 3, "column": 1 }));
+    assert_eq!(
+        (opened["changed"].as_bool(), opened["folded"].as_array().map(Vec::len)),
+        (Some(true), Some(1)),
+        "line 3 is in the first book, which is folded; it opens: {opened}"
+    );
+    assert_eq!(listed["truncated"], false);
+    let wide = format!("<r>\n{}</r>", "<i>\n x\n</i>\n".repeat(50_010));
+    let capped = ok(&mut a, "xml_folds", json!({ "text": wide }));
+    assert_eq!((capped["count"].as_u64(), capped["truncated"].as_bool()), (Some(50_000), Some(true)), "the list says it is not all of it");
+    // Opening everything needs no analysis: it works on a text that is too large to have one, where folding says why it cannot.
+    let huge = ok(&mut a, "doc_new", json!({ "text": "x\n".repeat(17_000_000) }))["id"].as_u64().expect("id");
+    assert_eq!(ok(&mut a, "doc_fold", json!({ "id": huge, "action": "unfold_all" }))["changed"], false);
+    assert!(err(&mut a, "doc_fold", json!({ "id": huge, "action": "fold_all" })).contains("too large"));
+    ok(&mut a, "doc_close", json!({ "id": huge, "discard": true }));
+    // Bad arguments say what is wrong.
+    assert!(err(&mut a, "doc_fold", json!({ "id": id, "action": "fold", "line": 2 })).contains("go together"));
+    assert!(err(&mut a, "doc_fold", json!({ "id": id, "action": "level" })).contains("level is missing"));
+    assert!(err(&mut a, "doc_fold", json!({ "id": id, "action": "squash" })).contains("doc_fold"), "the schema lists the actions");
+    assert!(err(&mut a, "doc_fold", json!({ "id": id, "action": "fold", "line": 99, "column": 1 })).contains("no line 99"));
+    assert!(err(&mut a, "xml_folds", json!({})).contains("exactly one"));
+}
+
+#[test]
 fn typing_and_keys_work_as_the_keyboard_does() {
     let mut a = Automation::new();
     let id = ok(&mut a, "doc_new", json!({ "text": "<a b=/>" }))["id"].as_u64().expect("id");
@@ -355,13 +462,16 @@ fn typing_and_keys_work_as_the_keyboard_does() {
     assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], "<a />", "two characters before the caret");
     // Enter and Tab are keys too, and a line feed or a tab in the typed text are those keys.
     let id2 = ok(&mut a, "doc_new", json!({ "text": "" }))["id"].as_u64().expect("id");
-    ok(&mut a, "doc_type", json!({ "id": id2, "text": "<a>\n\t<b/>" }));
-    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], "<a>\n  <b/>", "a tab is an indent step");
-    // Typing is undone like any other editing.
-    ok(&mut a, "doc_undo", json!({ "id": id2 }));
-    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], "<a>\n", "the typing after the Enter is one step (the Enter is its own)");
-    ok(&mut a, "doc_undo", json!({ "id": id2 }));
-    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], "<a>");
+    ok(&mut a, "doc_type", json!({ "id": id2, "text": "<a>" }));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], "<a></a>", "the end tag is written with the start tag");
+    // Enter between them: a line for the content, and the end tag on its own; then a tab is another indent step.
+    ok(&mut a, "doc_type", json!({ "id": id2, "text": "\n\t<b/>" }));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], "<a>\n    <b/>\n</a>");
+    // Typing is undone like any other editing: the typing after the Enter is one step, the Enter another, and `<a>` with its end tag the first.
+    for (undone, expected) in [("the typing", "<a>\n  \n</a>"), ("the Enter", "<a></a>"), ("the start tag and its end tag", "")] {
+        ok(&mut a, "doc_undo", json!({ "id": id2 }));
+        assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], expected, "after undoing {undone}");
+    }
     // Line breaks of any kind are one Enter, and a call that cannot be done changes nothing.
     let id3 = ok(&mut a, "doc_new", json!({ "text": "" }))["id"].as_u64().expect("id");
     let typed = ok(&mut a, "doc_type", json!({ "id": id3, "text": "a\r\nb\rc\nd" }));

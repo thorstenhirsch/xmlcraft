@@ -4,7 +4,7 @@
 use egui::{Event, Id, ImeEvent, Key, Modifiers, PointerButton};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use xmlcraft_code_editor::{CodeEditor, EditorColors, LineStyler, MAX_WINDOW, StyleSpan, ViewState};
+use xmlcraft_code_editor::{CodeEditor, EditorColors, FoldRegion, LineStyler, MAX_WINDOW, StyleSpan, ViewState};
 use xmlcraft_editor::Editor;
 
 /// Records what the widget asks of a styler, and colours the first byte of every line.
@@ -12,6 +12,8 @@ use xmlcraft_editor::Editor;
 struct Recorder {
     changed: Vec<usize>,
     styled: std::collections::BTreeSet<usize>,
+    /// The lines that can be folded: (the line, the last line it would hide).
+    foldable: Vec<(usize, usize)>,
 }
 
 impl LineStyler for Recorder {
@@ -24,6 +26,10 @@ impl LineStyler for Recorder {
         self.styled.insert(line);
         if text.is_empty() { Vec::new() } else { vec![StyleSpan { range: 0..1, color: egui::Color32::RED }] }
     }
+
+    fn fold_at(&mut self, _buffer: &xmlcraft_text::Buffer, line: usize) -> Option<FoldRegion> {
+        self.foldable.iter().find(|(first, _)| *first == line).map(|(_, last)| FoldRegion { last_line: *last })
+    }
 }
 
 struct App {
@@ -33,6 +39,8 @@ struct App {
     recorder: Recorder,
     /// Whether the recorder is attached as the styler this frame.
     styled: bool,
+    /// The lines whose fold marks were clicked, in order.
+    fold_clicks: Vec<usize>,
 }
 
 fn harness(text: &str) -> Harness<'static, App> {
@@ -41,16 +49,20 @@ fn harness(text: &str) -> Harness<'static, App> {
 
 /// A harness whose frames are `step_dt` seconds apart (two clicks must come within 0.3 s to be a double click).
 fn harness_with_step(text: &str, step_dt: f32) -> Harness<'static, App> {
-    let app = App { editor: Editor::new(text), view: ViewState::new(), read_only: false, recorder: Recorder::default(), styled: true };
+    let app = App {
+        editor: Editor::new(text),
+        view: ViewState::new(),
+        read_only: false,
+        recorder: Recorder::default(),
+        styled: true,
+        fold_clicks: Vec::new(),
+    };
     let mut h = Harness::builder().with_size(egui::vec2(640.0, 360.0)).with_step_dt(step_dt).build_ui_state(
         |ui, app: &mut App| {
             let editor =
                 CodeEditor::new(Id::new("editor"), &mut app.editor, &mut app.view, EditorColors::light()).blink(false).read_only(app.read_only);
-            if app.styled {
-                editor.styler(&mut app.recorder).show(ui)
-            } else {
-                editor.show(ui)
-            };
+            let output = if app.styled { editor.styler(&mut app.recorder).show(ui) } else { editor.show(ui) };
+            app.fold_clicks.extend(output.fold_clicked);
         },
         app,
     );
@@ -79,19 +91,19 @@ fn carets(h: &Harness<'_, App>) -> Vec<(usize, usize)> {
 #[test]
 fn typing_inserts_text_at_the_caret() {
     let mut h = harness("");
-    h.get_by_label("XML editor").type_text("<a>");
+    h.get_by_label("XML editor").type_text("abc");
     h.run_steps(2);
-    assert_eq!(text(&h), "<a>");
+    assert_eq!(text(&h), "abc");
     assert_eq!(carets(&h), vec![(3, 3)]);
     h.key_press(Key::Enter);
     h.run_steps(2);
     h.get_by_label("XML editor").type_text("x");
     h.run_steps(2);
-    assert_eq!(text(&h), "<a>\nx");
+    assert_eq!(text(&h), "abc\nx");
     h.key_press(Key::Backspace);
     h.key_press(Key::Backspace);
     h.run_steps(2);
-    assert_eq!(text(&h), "<a>");
+    assert_eq!(text(&h), "abc");
 }
 
 #[test]
@@ -126,6 +138,34 @@ fn a_quote_typed_in_a_tag_is_paired_but_what_an_input_method_commits_is_not() {
     h.event(Event::Paste("'".to_owned()));
     h.run_steps(2);
     assert_eq!(text(&h), "<a b=\"'");
+}
+
+#[test]
+fn typing_a_start_tag_writes_its_end_tag_and_enter_splits_the_pair() {
+    let mut h = harness("");
+    for key in ["<", "a", ">"] {
+        h.get_by_label("XML editor").type_text(key);
+    }
+    h.run_steps(2);
+    assert_eq!((text(&h).as_str(), carets(&h)), ("<a></a>", vec![(3, 3)]), "the end tag follows, the caret between");
+    h.key_press(Key::Enter);
+    h.run_steps(2);
+    assert_eq!((text(&h).as_str(), carets(&h)), ("<a>\n  \n</a>", vec![(6, 6)]), "a line for the content, the end tag on its own");
+    // `</` completes the end tag of the element that is open.
+    let mut h = harness("<a><b>x");
+    h.state_mut().editor.set_selection(7, 7);
+    h.run_steps(2);
+    for key in ["<", "/"] {
+        h.get_by_label("XML editor").type_text(key);
+    }
+    h.run_steps(2);
+    assert_eq!(text(&h), "<a><b>x</b>");
+    // The text of an input method is text: no end tag.
+    let mut h = harness("");
+    h.get_by_label("XML editor").type_text("<a");
+    h.event(Event::Ime(ImeEvent::Commit(">".to_owned())));
+    h.run_steps(2);
+    assert_eq!(text(&h), "<a>");
 }
 
 #[test]
@@ -180,6 +220,83 @@ fn clicking_places_the_caret() {
     h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(3);
     assert_eq!(carets(&h), vec![(16, 16)]);
+}
+
+fn click(h: &mut Harness<'_, App>, at: egui::Pos2) {
+    h.hover_at(at);
+    h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(3);
+}
+
+/// Twelve lines `a0` … `a11`.
+fn twelve() -> String {
+    (0..12).map(|i| format!("a{i}")).collect::<Vec<_>>().join("\n")
+}
+
+#[test]
+fn hidden_lines_have_no_row_and_a_click_goes_to_the_line_on_the_row() {
+    let mut h = harness(&twelve());
+    h.state_mut().editor.fold_lines(2, 6); // lines 3 to 6 are hidden
+    h.run_steps(3);
+    assert_eq!(h.state().view.laid_out_lines(), 8, "twelve lines, four of them hidden");
+    // Laid out again from scratch, the lines that are drawn are the ones that are not hidden.
+    h.state_mut().view.reset();
+    h.state_mut().recorder.styled.clear();
+    h.run_steps(3);
+    assert_eq!(h.state().recorder.styled.iter().copied().collect::<Vec<_>>(), [0, 1, 2, 7, 8, 9, 10, 11]);
+    let g = h.state().view.geometry().expect("drawn");
+    // Rows 0, 1, 2 are lines 0, 1, 2 and row 3 is line 7 (bytes 21 and on): a click on the second letter of row 3.
+    click(&mut h, g.point(3, 1) + egui::vec2(0.0, g.row_height / 2.0));
+    assert_eq!(carets(&h), vec![(22, 22)]);
+    // Typing goes where the caret is, below the fold.
+    h.get_by_label("XML editor").type_text("X");
+    h.run_steps(2);
+    assert_eq!(h.state().editor.text().lines().nth(7), Some("aX7"));
+    assert_eq!(h.state().editor.folds().len(), 1, "the fold is still there");
+    // Keys move over it: Up from line 7 goes to the line that stands for the fold, not into it.
+    h.key_press(Key::ArrowUp);
+    h.run_steps(2);
+    assert_eq!(h.state().editor.buffer().line_of(carets(&h)[0].1), 2);
+}
+
+#[test]
+fn the_mark_of_a_fold_opens_it_when_clicked() {
+    let mut h = harness(&twelve());
+    h.state_mut().editor.fold_lines(2, 6);
+    h.run_steps(3);
+    let g = h.state().view.geometry().expect("drawn");
+    // Line 2 is `a2`: its text ends at column 2 and the mark follows a little later.
+    click(&mut h, g.point(2, 4) + egui::vec2(0.0, g.row_height / 2.0));
+    assert!(h.state().editor.folds().is_empty(), "the fold is open");
+    assert_eq!(h.state().view.laid_out_lines(), 12);
+}
+
+#[test]
+fn the_gutter_has_a_mark_where_something_can_be_folded_and_a_click_on_it_is_reported_or_opens() {
+    let mut h = harness(&twelve());
+    h.state_mut().recorder.foldable = vec![(2, 6)];
+    h.run_steps(3);
+    let g = h.state().view.geometry().expect("drawn");
+    // The strip at the right of the gutter (16 points wide) is left of the text margin (8 points).
+    let strip = |row: usize| g.point(row, 0) + egui::vec2(-8.0 - 8.0, g.row_height / 2.0);
+    click(&mut h, strip(2));
+    assert_eq!(h.state().fold_clicks, [2], "the host is asked to fold it");
+    assert!(h.state().editor.folds().is_empty(), "the widget does not know how far a fold goes");
+    // A line without a mark: a click there does nothing (it does not select the line, as a click on the numbers does).
+    click(&mut h, strip(4));
+    assert_eq!(h.state().fold_clicks, [2]);
+    assert_eq!(carets(&h), vec![(0, 0)]);
+    // The host folds it; the mark now says "folded", and a click on it opens the fold itself.
+    h.state_mut().editor.fold_lines(2, 6);
+    h.run_steps(3);
+    click(&mut h, strip(2));
+    assert!(h.state().editor.folds().is_empty());
+    assert_eq!(h.state().fold_clicks, [2], "not reported: it was an opening");
+    // A click on the numbers part of the gutter still selects the line.
+    let numbers = g.point(1, 0) + egui::vec2(-8.0 - 16.0 - 12.0, g.row_height / 2.0);
+    click(&mut h, numbers);
+    assert_eq!(carets(&h), vec![(3, 6)], "line 1 with its break");
 }
 
 #[test]

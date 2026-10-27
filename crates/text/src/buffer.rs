@@ -195,9 +195,13 @@ impl Buffer {
         if self.is_empty() || self.rope.byte(self.len() - 1) == b'\n' { counted + 1 } else { counted }
     }
 
-    /// The line `offset` is on (an offset past the end counts as the end).
+    /// The line `offset` is on (an offset past the end counts as the end, and one inside a character is where the character starts).
     pub fn line_of(&self, offset: usize) -> usize {
-        self.rope.line_of_byte(offset.min(self.len()))
+        let mut offset = offset.min(self.len());
+        while offset > 0 && !self.rope.is_char_boundary(offset) {
+            offset -= 1;
+        }
+        self.rope.line_of_byte(offset)
     }
 
     /// The byte offset of the start of `line`, or `None` past the last line.
@@ -298,6 +302,14 @@ mod tests {
 
     fn b(s: &str) -> Buffer {
         Buffer::from_text(s)
+    }
+
+    #[test]
+    fn the_line_of_an_offset_inside_a_character_is_the_line_of_the_character() {
+        // `a`, a line break, then `é` (two bytes at 2..4) and `日` (three at 4..7), then another line.
+        let buffer = Buffer::from_text("a\né日\nz");
+        assert_eq!((buffer.line_of(1), buffer.line_of(2), buffer.line_of(3), buffer.line_of(5), buffer.line_of(6)), (0, 1, 1, 1, 1));
+        assert_eq!((buffer.line_of(7), buffer.line_of(8), buffer.line_of(9), buffer.line_of(999)), (1, 2, 2, 2));
     }
 
     #[test]

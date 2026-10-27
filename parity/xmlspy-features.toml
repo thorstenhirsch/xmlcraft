@@ -119,11 +119,11 @@ title = "Folding of elements, comments, CDATA and DOCTYPE; fold all and to level
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["edit.fold", "edit.unfold", "edit.fold_all", "edit.unfold_all", "edit.fold_level_1", "edit.fold_level_2", "edit.fold_level_3"]
+tools = ["xml_folds", "doc_fold"]
+evidence = ["crates/engine/src/folding.rs::an_element_with_content_on_lines_of_its_own_folds_down_to_its_end_tag", "crates/engine/src/folding.rs::fold_and_unfold_work_on_the_innermost_range_at_the_caret", "crates/editor/src/folds.rs::the_caret_moves_over_a_fold_not_into_it", "crates/editor/src/folds.rs::the_map_agrees_with_a_list_of_the_visible_lines", "crates/code-editor/tests/widget.rs::hidden_lines_have_no_row_and_a_click_goes_to_the_line_on_the_row", "crates/ui-egui/tests/folding.rs::the_fold_commands_fold_and_unfold_what_the_caret_is_in", "crates/automation/tests/documents.rs::what_can_be_folded_is_listed_and_folding_it_hides_lines"]
+notes = "Elements whose content is on lines of their own (the end tag line stays visible), and comments, CDATA sections, processing instructions and DOCTYPEs over several lines, fold into the line that stands for them, which ends in a … mark. Marks in the gutter fold and open, and so does a click on the …; Fold and Unfold (⌥⌘[ and ⌥⌘]) work on the innermost range at the caret, Fold All, Unfold All and Fold Level 1 to 3 on all. The caret moves over a fold instead of into it, typing at the end of its line keeps it, an edit that touches it, an undo into it and a jump to a match, a message or the outline open it, and folds move with the text (also through undo and redo). `xml_folds` lists what can be folded and `doc_fold` folds headlessly. The ranges come from the analysis, so a command given just after an edit waits for it (about 30 ms) and the marks of ranges that reach past the edit are absent until it arrives. Not yet: folds kept when a file is reopened, folding by indentation in other languages, the text of the fold shown in the mark (it shows only …), a fold level beyond 3 from the menu."
 
 [[feature]]
 id = "editor.bookmarks"
@@ -155,11 +155,11 @@ title = "Auto-close tags on > and complete end tags on </"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["doc_type"]
+evidence = ["crates/editor/src/typing.rs::a_greater_than_that_ends_a_start_tag_writes_the_end_tag", "crates/editor/src/typing.rs::a_greater_than_anywhere_else_is_a_character", "crates/editor/src/typing.rs::a_slash_after_a_less_than_completes_the_end_tag_of_the_open_element", "crates/code-editor/tests/widget.rs::typing_a_start_tag_writes_its_end_tag_and_enter_splits_the_pair", "crates/automation/tests/documents.rs::typing_and_keys_work_as_the_keyboard_does"]
+notes = "Typing `>` that ends a start tag writes the end tag too, with the caret between (not for `/>`, an end tag, a declaration, a value, a comment, or where the end tag is already there); typing `/` after `<` writes the name of the element that is open and the `>`. Each caret decides for itself; `Settings::auto_close` turns both off. What an input method commits and what is pasted are not typing. The element for `</` comes from parsing the text before the caret (not for more than 8 MiB of it). Not yet: closing a `<!--` or a `<![CDATA[`, and completing the end tag from a schema (M2+)."
 
 [[feature]]
 id = "editor.auto-indent"
@@ -167,11 +167,11 @@ title = "Smart indentation on Enter"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "Splits <a>|</a> onto indented lines."
+tools = ["doc_key", "doc_type"]
+evidence = ["crates/editor/src/typing.rs::enter_indents_after_a_start_tag_and_splits_a_pair", "crates/editor/src/typing.rs::enter_follows_the_documents_line_ending_and_indent_style", "crates/code-editor/tests/widget.rs::typing_a_start_tag_writes_its_end_tag_and_enter_splits_the_pair", "crates/engine/src/document.rs::new_lines_use_the_files_line_ending_and_its_indentation"]
+notes = "Enter keeps the indentation of the line; after a start tag (`<a>`, not `</a>`, `<b/>`, a comment or a declaration) the new line is one level deeper, in the document's own indentation and line ending, and between a start tag and an end tag (`<a>|</a>`) the content gets a line and the end tag goes to a line of its own. `Settings::smart_indent` turns it off. Not yet: moving an end tag back one level when it is typed, and re-indenting a pasted block."
 
 [[feature]]
 id = "editor.auto-pairing"
@@ -203,11 +203,11 @@ title = "Toggle comment on selection"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["edit.toggle_comment"]
+tools = ["doc_toggle_comment"]
+evidence = ["crates/editor/src/structure.rs::lines_are_commented_out_and_back_in", "crates/editor/src/structure.rs::a_selection_over_lines_is_one_comment", "crates/editor/src/structure.rs::what_cannot_be_in_a_comment_is_refused_and_nothing_changes", "crates/ui-egui/tests/structure.rs::control_slash_comments_the_line_out_and_in_and_says_when_it_cannot", "crates/automation/tests/documents.rs::comments_and_selections_work_on_the_structure"]
+notes = "⌘/ (Ctrl+/) wraps the lines the carets touch in `<!-- -->` (one comment for a selection over lines, from its first character that is not blank to the end of its last line) or, when they are exactly one comment, takes the markers off; the caret stays in its text and it is one undo step. A text with `--` in it cannot go into a comment: that is refused and nothing changes. Not yet: toggling a part of a line, and commenting out with CDATA."
 
 [[feature]]
 id = "editor.expand-selection"
@@ -215,11 +215,11 @@ title = "Expand and shrink selection by syntax node"
 area = "A"
 tier = "P2"
 milestone = "M1"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["edit.expand_selection", "edit.shrink_selection"]
+tools = ["doc_expand_selection", "doc_shrink_selection", "doc_select"]
+evidence = ["crates/editor/src/structure.rs::a_selection_grows_by_what_the_tree_says", "crates/editor/src/structure.rs::shrinking_goes_back_the_way_it_grew_until_something_else_happens", "crates/editor/src/structure.rs::the_selections_of_several_carets_grow_each_by_itself", "crates/ui-egui/tests/structure.rs::the_selection_grows_and_shrinks_with_the_shortcuts", "crates/automation/tests/documents.rs::comments_and_selections_work_on_the_structure"]
+notes = "⌥⌘→ (Ctrl+Alt+→) grows each selection to the smallest thing of the syntax tree that holds it and is bigger: the word, the token, the value without and with its quotes, the attribute, the tag, the content of the element, the element, the one around it; ⌥⌘← goes back the way it grew (not after an edit or a selection made another way). It parses the whole text when asked (not above 8 MiB), so it works on a document that is not well-formed too. Not yet: growing over several siblings at once, and the same through a schema."
 
 [[feature]]
 id = "editor.soft-wrap"

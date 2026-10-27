@@ -11,6 +11,7 @@ use xmlcraft_text::eol::{self, Eol};
 use xmlcraft_text::{Buffer, Edit, EditKind, History, Selection};
 
 use crate::caret::{Caret, normalize};
+use crate::folds::{Fold, FoldMap};
 use crate::motion::{
     clamp, display_column, first_non_blank, next_grapheme, offset_at_column, prev_grapheme, smart_home, word_left, word_range_at, word_right,
 };
@@ -28,11 +29,16 @@ pub struct Settings {
     pub eol: Eol,
     /// Typing a quote after `=` in a tag writes the pair and steps over the closing one ([`Editor::type_input`]).
     pub auto_pair: bool,
+    /// Typing `>` that ends a start tag writes the end tag, and `</` is completed ([`Editor::type_input`]).
+    pub auto_close: bool,
+    /// Enter between a start tag and its end tag puts the end tag on a line of its own, and after a start tag indents one more level
+    /// ([`Editor::insert_newline`]).
+    pub smart_indent: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { tab_width: 4, indent_size: 2, use_tabs: false, eol: Eol::Lf, auto_pair: true }
+        Self { tab_width: 4, indent_size: 2, use_tabs: false, eol: Eol::Lf, auto_pair: true, auto_close: true, smart_indent: true }
     }
 }
 
@@ -86,9 +92,17 @@ pub struct Editor {
     /// Where in the markup an offset is (inside a tag, a value, a comment…), for the typing aids. Knows the modes of the lines it has been
     /// asked about, and forgets those after a change.
     pub(crate) lexer: Highlighter,
+    /// Stretches of lines that are hidden, in the order of the text (see [`crate::Fold`]).
+    pub(crate) folds: Vec<Fold>,
+    /// Which lines the folds hide, for the current text and folds.
+    pub(crate) fold_map: FoldMap,
+    /// What the selection was before each expansion of it ([`Editor::expand_selection`]), for [`Editor::shrink_selection`].
+    pub(crate) expansions: Vec<crate::structure::Expansion>,
+    /// An expansion or a shrinking of the selection is setting the carets: that is not a change of them to forget the expansions for.
+    pub(crate) expanding: bool,
     history: History,
-    carets: Vec<Caret>,
-    primary: usize,
+    pub(crate) carets: Vec<Caret>,
+    pub(crate) primary: usize,
     settings: Settings,
     version: u64,
     time: f64,
@@ -114,6 +128,10 @@ impl Editor {
         Self {
             buffer: Buffer::from_text(text),
             lexer: Highlighter::new(),
+            folds: Vec::new(),
+            fold_map: FoldMap::default(),
+            expansions: Vec::new(),
+            expanding: false,
             history: History::new(),
             carets: vec![Caret::at(0)],
             primary: 0,
@@ -241,6 +259,9 @@ impl Editor {
         self.settings.eol = line_ending_of(text, self.settings.eol);
         self.buffer = Buffer::from_text(text);
         self.history.clear();
+        self.folds.clear();
+        self.fold_map = FoldMap::default();
+        self.expansions.clear();
         self.carets = vec![Caret::at(0)];
         self.primary = 0;
         self.version += 1;
@@ -255,7 +276,7 @@ impl Editor {
     }
 
     /// Make `carets` the carets; `primary` is the index in the list of the primary one.
-    fn set_carets_raw(&mut self, carets: Vec<Caret>, primary: usize) {
+    pub(crate) fn set_carets_raw(&mut self, carets: Vec<Caret>, primary: usize) {
         let carets: Vec<Caret> = carets.into_iter().map(|c| Caret { sel: self.sanitized(c.sel), goal: c.goal }).collect();
         let (carets, primary) = normalize(carets, primary);
         if carets.is_empty() {
@@ -266,6 +287,12 @@ impl Editor {
             self.primary = primary;
         }
         self.reveal = true;
+        // The carets were set some other way than by growing or shrinking the selection: the way back is not theirs.
+        if !self.expanding {
+            self.expansions.clear();
+        }
+        // A caret that lands in a fold (a jump to a match, a message, the outline) opens it.
+        self.reveal_carets();
     }
 
     /// One selection, nothing else.
@@ -327,7 +354,19 @@ impl Editor {
     }
 
     pub fn move_carets(&mut self, motion: Motion, extend: bool) {
-        let carets: Vec<Caret> = self.carets.iter().map(|c| self.moved(*c, motion, extend)).collect();
+        let carets: Vec<Caret> = self
+            .carets
+            .iter()
+            .map(|c| {
+                let mut moved = self.moved(*c, motion, extend);
+                // A movement that ends in a fold goes past it, or back to the line that stands for it: it does not open it.
+                moved.sel.head = self.out_of_folds(moved.sel.head, moved.sel.head >= c.head());
+                if !extend {
+                    moved.sel.anchor = moved.sel.head;
+                }
+                moved
+            })
+            .collect();
         self.set_carets_raw(carets, self.primary);
     }
 
@@ -337,16 +376,16 @@ impl Editor {
         let head = caret.head();
         let mut goal = None;
         let mut vertical = |lines: isize| -> usize {
-            let line = buf.line_of(head);
+            let row = self.row_of_line(buf.line_of(head));
             let column = caret.goal.unwrap_or_else(|| display_column(buf, head, tab));
             goal = Some(column);
-            let target = line as isize + lines;
+            let target = row as isize + lines;
             if target < 0 {
                 0
-            } else if target as usize >= buf.line_count() {
+            } else if target as usize >= self.visible_rows() {
                 buf.len()
             } else {
-                offset_at_column(buf, target as usize, column, tab)
+                offset_at_column(buf, self.line_of_row(target as usize), column, tab)
             }
         };
         let to = match motion {
@@ -384,6 +423,7 @@ impl Editor {
         // Last first: the offsets of the edits that come earlier in the text stay valid while the later ones are applied.
         let ordered: Vec<Edit> = edits.into_iter().rev().collect();
         let Ok(inverse) = self.buffer.apply_all(&ordered) else { return false };
+        self.remap_folds(&ordered);
         self.set_carets_raw(carets, primary);
         let after = self.selections_for_history();
         self.history.record(ordered, inverse, before, after, kind, self.time);
@@ -433,17 +473,51 @@ impl Editor {
         self.commit(planned, carets, EditKind::Other)
     }
 
-    /// Enter: a line break (the document's) followed by the indentation of the line the caret is on, up to the caret.
+    /// Enter: a line break (the document's) followed by the indentation of the line the caret is on, up to the caret. With
+    /// [`Settings::smart_indent`]: after a start tag the new line is indented one level more, and between a start tag and its end tag
+    /// (`<a>|</a>`) there is a line for the content and the end tag goes to a line of its own.
     pub fn insert_newline(&mut self) -> bool {
-        let eol = self.settings.eol.as_str();
-        self.replace_at_carets(EditKind::Other, |this, c| {
-            let buf = &this.buffer;
-            let line = buf.line_of(c.start());
-            let line_start = buf.line_start(line).unwrap_or(0);
-            let indent_end = first_non_blank(buf, line).min(c.start());
-            let indent = buf.slice(line_start..indent_end).unwrap_or_default();
-            Some(Edit::replace(c.start()..c.end(), format!("{eol}{indent}")))
-        })
+        let eol = self.settings.eol.as_str().to_owned();
+        let unit = self.indent_unit();
+        let smart = self.settings.smart_indent;
+        let carets: Vec<Caret> = self.carets.clone();
+        // What to write for each caret, and where the caret is in it.
+        let writes: Vec<(String, usize)> = carets
+            .iter()
+            .map(|c| {
+                let line = self.buffer.line_of(c.start());
+                let line_start = self.buffer.line_start(line).unwrap_or(0);
+                let indent_end = first_non_blank(&self.buffer, line).min(c.start());
+                let indent = self.buffer.slice(line_start..indent_end).unwrap_or_default();
+                // After the end of a start tag, the new line is one level in from the line the tag begins on (a tag over several lines
+                // has its attributes on lines of their own).
+                let start_tag = if smart { self.after_start_tag(c.start()) } else { None };
+                let before_end_tag = start_tag.is_some()
+                    && c.is_empty()
+                    && self.buffer.slice(c.end()..self.buffer.next_char(self.buffer.next_char(c.end()))).is_ok_and(|s| s == "</");
+                let tag_indent = start_tag.map(|at| {
+                    let tag_line = self.buffer.line_of(at);
+                    let from = self.buffer.line_start(tag_line).unwrap_or(0);
+                    self.buffer.slice(from..first_non_blank(&self.buffer, tag_line).min(at)).unwrap_or_default()
+                });
+                if let (true, Some(base)) = (before_end_tag, &tag_indent) {
+                    let caret = eol.len() + base.len() + unit.len();
+                    (format!("{eol}{base}{unit}{eol}{base}"), caret)
+                } else if let Some(base) = &tag_indent {
+                    let text = format!("{eol}{base}{unit}");
+                    let caret = text.len();
+                    (text, caret)
+                } else {
+                    let text = format!("{eol}{indent}");
+                    let caret = text.len();
+                    (text, caret)
+                }
+            })
+            .collect();
+        let edits = coalesce(carets.iter().zip(&writes).map(|(c, (text, _))| Edit::replace(c.start()..c.end(), text.clone())).collect());
+        let after: Vec<Caret> =
+            carets.iter().zip(&writes).map(|(c, (_, caret))| Caret::at(map_offset(&edits, c.start(), Bias::Before) + caret)).collect();
+        self.commit(edits, after, EditKind::Other)
     }
 
     /// Backspace: the selection, or the character cluster before the caret; between the quotes of an empty attribute value, both quotes.
@@ -603,7 +677,7 @@ impl Editor {
     }
 
     /// The carets as they are after `edits`: each selection keeps its extent (its start stays put when an edit begins exactly there).
-    fn mapped_carets(&self, edits: &[Edit]) -> Vec<Caret> {
+    pub(crate) fn mapped_carets(&self, edits: &[Edit]) -> Vec<Caret> {
         self.carets
             .iter()
             .map(|c| {
@@ -666,22 +740,23 @@ impl Editor {
     // --- history and outside edits -------------------------------------------------------------------------------------------
 
     pub fn undo(&mut self) -> bool {
-        let result = self.history.undo(&mut self.buffer);
+        let result = self.history.undo_applied(&mut self.buffer);
         self.after_history(result)
     }
 
     pub fn redo(&mut self) -> bool {
-        let result = self.history.redo(&mut self.buffer);
+        let result = self.history.redo_applied(&mut self.buffer);
         self.after_history(result)
     }
 
-    fn after_history(&mut self, result: Result<Option<Vec<Selection>>, xmlcraft_text::TextError>) -> bool {
+    fn after_history(&mut self, result: Result<Option<xmlcraft_text::Applied>, xmlcraft_text::TextError>) -> bool {
         match result {
-            Ok(Some(selections)) => {
+            Ok(Some(applied)) => {
                 self.version += 1;
                 // Which lines an undo touched is not known here: everything counts as changed.
                 self.log_change(0);
-                self.set_selections(&selections);
+                self.remap_folds(&applied.edits);
+                self.set_selections(&applied.selections);
                 true
             }
             _ => false,
@@ -828,10 +903,10 @@ mod tests {
 
     #[test]
     fn newline_keeps_the_indentation_up_to_the_caret() {
-        let mut e = Editor::new("  <a>\n");
+        let mut e = Editor::new("  abc\n");
         e.set_selection(5, 5);
         e.insert_newline();
-        assert_eq!(at(&e), ("  <a>\n  \n".to_owned(), vec![(8, 8)]));
+        assert_eq!(at(&e), ("  abc\n  \n".to_owned(), vec![(8, 8)]));
         let mut e = ed("\t\tx", 1);
         e.insert_newline();
         assert_eq!(at(&e), ("\t\n\t\tx".to_owned(), vec![(3, 3)]), "only the indentation before the caret is copied");

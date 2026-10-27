@@ -38,7 +38,7 @@ const SCENARIOS: &[(&str, &str, Scenario)] = &[
     ("open_100mb", "open a 100 MB file: bytes to a document", open_100mb),
     ("scroll_100mb_far", "show 60 lines after a jump to a far place in a 100 MB document (cold)", scroll_100mb_far),
     ("keystroke_1mb", "type a character in the middle of a 1 MB document and style the visible lines (p95)", keystroke_1mb),
-    ("reparse_1mb", "analyse (parse, problems, outline) a 1 MB document", reparse_1mb),
+    ("reparse_1mb", "analyse (parse, problems, outline, fold ranges) a 1 MB document", reparse_1mb),
     ("reparse_10mb", "analyse a 10 MB document", reparse_10mb),
     ("format_1mb", "pretty-print a 1 MB document", format_1mb),
     ("find_all_10mb", "find every match of a word in a 10 MB document", find_all_10mb),
@@ -173,7 +173,7 @@ fn reparse(bytes: usize, runs: usize) -> Result<Measured> {
         started.elapsed()
     });
     let analysis = last.context("the analysis ran")?;
-    Ok(Measured { millis: median, what: "median", note: format!("{} outline items", analysis.outline.len()) })
+    Ok(Measured { millis: median, what: "median", note: format!("{} outline items, {} fold ranges", analysis.outline.len(), analysis.folds.len()) })
 }
 
 fn reparse_1mb() -> Result<Measured> {

@@ -23,6 +23,8 @@ const GUTTER_PADDING: f32 = 10.0;
 const TEXT_MARGIN: f32 = 8.0;
 /// Extra blank lines below the last, so the end of the document can be scrolled up.
 const BOTTOM_LINES: f32 = 3.0;
+/// The width of the strip at the right of the gutter that holds the fold marks, in points.
+const FOLD_STRIP: f32 = 16.0;
 
 /// Text being composed through an input method: shown at the caret, not yet part of the document.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -63,8 +65,8 @@ pub struct Geometry {
 }
 
 impl Geometry {
-    /// The screen position of the left end of the top of row `row` (counting from the first line of the document) at display column
-    /// `column`. Exact for text without wide characters.
+    /// The screen position of the left end of the top of row `row` (counting from the first row of the view: with folds, the lines that
+    /// are hidden have no row) at display column `column`. Exact for text without wide characters.
     pub fn point(&self, row: usize, column: usize) -> Pos2 {
         pos2(self.text_x + column as f32 * self.column_width, self.origin.y + row as f32 * self.row_height)
     }
@@ -92,6 +94,9 @@ pub struct ViewState {
     styled_version: u64,
     /// The styler must be told the whole text changed (set by [`Self::reset`], cleared when a styler is next drawn with).
     restyle_all: bool,
+    /// The line whose fold mark was clicked this frame, when it is a mark of something that can be folded (the host folds it: it knows
+    /// how far it goes).
+    fold_clicked: Option<usize>,
 }
 
 impl ViewState {
@@ -142,6 +147,8 @@ pub struct CodeEditorOutput {
     pub changed: bool,
     /// The carets moved or the selection changed during this frame.
     pub selection_changed: bool,
+    /// The mark of something that can be folded was clicked, on this line (0-based): the host folds it. (A mark of a fold is opened here.)
+    pub fold_clicked: Option<usize>,
 }
 
 /// The editor widget. `show` it every frame.
@@ -233,14 +240,16 @@ impl<'a> CodeEditor<'a> {
 
         // --- geometry ---
         let line_count = editor.buffer().line_count();
+        // The view works in rows: the lines that are not hidden by a fold.
+        let rows = editor.visible_rows();
         let gutter_w = if gutter { gutter_width(line_count, column_w) } else { 0.0 };
         update_max_columns(editor, view);
         let content_w = gutter_w + TEXT_MARGIN + (view.max_columns as f32 + 8.0) * column_w;
-        let content_h = (line_count as f32 + BOTTOM_LINES) * row_h;
+        let content_h = (rows as f32 + BOTTOM_LINES) * row_h;
 
         let mut scroll = ScrollArea::both().id_salt(id.with("scroll")).auto_shrink([false, false]);
         if let Some(line) = view.scroll_to_line.take() {
-            scroll = scroll.vertical_scroll_offset(line.min(line_count.saturating_sub(1)) as f32 * row_h);
+            scroll = scroll.vertical_scroll_offset(editor.row_of_line(line.min(line_count.saturating_sub(1))) as f32 * row_h);
         }
         let reveal = editor.take_reveal();
         let mut response_slot: Option<Response> = None;
@@ -256,8 +265,10 @@ impl<'a> CodeEditor<'a> {
             let painter = ui.painter_at(screen_view);
             painter.rect_filled(screen_view, 0.0, colors.background);
 
-            let first = ((viewport.min.y / row_h).floor().max(0.0) as usize).min(line_count.saturating_sub(1));
-            let last = (((viewport.max.y / row_h).ceil().max(0.0) as usize) + 1).min(line_count);
+            let first = ((viewport.min.y / row_h).floor().max(0.0) as usize).min(rows.saturating_sub(1));
+            let last = (((viewport.max.y / row_h).ceil().max(0.0) as usize) + 1).min(rows);
+            // The rows on screen and the lines on them.
+            let shown: Vec<(usize, usize)> = (first..last).map(|row| (row, editor.line_of_row(row))).collect();
             view.frame += 1;
             // A shorter borrow of the styler for this frame (a trait object's lifetime can only be shortened at a coercion).
             let styler_ref: Option<&mut dyn LineStyler> = match styler.as_mut() {
@@ -284,8 +295,8 @@ impl<'a> CodeEditor<'a> {
             let carets: Vec<_> = editor.carets().to_vec();
             let caret_lines: Vec<usize> = carets.iter().map(|c| editor.buffer().line_of(c.head())).collect();
             let has_focus = ui.memory(|m| m.has_focus(id));
-            for line in first..last {
-                let y = rect.min.y + line as f32 * row_h;
+            for &(row, line) in &shown {
+                let y = rect.min.y + row as f32 * row_h;
                 if caret_lines.contains(&line) && carets.iter().all(|c| c.is_empty()) {
                     painter.rect_filled(Rect::from_min_max(pos2(screen_view.min.x, y), pos2(screen_view.max.x, y + row_h)), 0.0, colors.current_line);
                 }
@@ -294,10 +305,12 @@ impl<'a> CodeEditor<'a> {
             let selection_color = if has_focus { colors.selection } else { colors.selection_inactive };
             let text_clip = Rect::from_min_max(pos2(screen_view.min.x + gutter_w, screen_view.min.y), screen_view.max);
             let text_painter = painter.with_clip_rect(text_clip);
-            let mut layouts: Vec<(usize, Arc<LineLayout>)> = Vec::with_capacity(last.saturating_sub(first));
-            for line in first..last {
+            let mut layouts: Vec<(usize, usize, Arc<LineLayout>)> = Vec::with_capacity(shown.len());
+            // The "…" of each fold on screen, to be clicked.
+            let mut placeholders: Vec<(Rect, usize)> = Vec::new();
+            for &(row, line) in &shown {
                 let layout = layout_line(view, editor.buffer(), line, &frame);
-                let y = rect.min.y + line as f32 * row_h;
+                let y = rect.min.y + row as f32 * row_h;
                 let line_start = editor.buffer().line_start(line).unwrap_or(0);
                 let line_range = editor.buffer().line_range_with_break(line).unwrap_or(line_start..line_start);
                 // Backgrounds the host asked for (search matches): under the selection and the text, and only where the line is laid out.
@@ -337,7 +350,15 @@ impl<'a> CodeEditor<'a> {
                     let x1 = (text_x + layout.x_of_byte(range.end)).max(x0 + column_w);
                     wavy_underline(&text_painter, x0, x1, y + row_h - 2.0, mark.color);
                 }
-                layouts.push((line, layout));
+                // A line that stands for a fold ends in a mark that says so (and opens it when clicked).
+                if editor.hidden_lines_after(line) > 0 {
+                    let text_end = text_x + layout.x_of_byte(editor.buffer().line_range(line).map_or(0, |r| r.len()));
+                    let mark = Rect::from_min_size(pos2(text_end + column_w * 0.6, y + 3.0), vec2(column_w * 3.0, (row_h - 6.0).max(1.0)));
+                    text_painter.rect_filled(mark, 3.0, colors.fold_mark_background);
+                    text_painter.text(mark.center(), Align2::CENTER_CENTER, "…", font.clone(), colors.fold_mark_text);
+                    placeholders.push((mark, line));
+                }
+                layouts.push((row, line, layout));
             }
             view.cache.retain(|_, c| c.frame == view.frame);
 
@@ -349,10 +370,10 @@ impl<'a> CodeEditor<'a> {
             for (index, caret) in carets.iter().enumerate() {
                 let line = editor.buffer().line_of(caret.head());
                 let is_primary = index == primary_index;
-                let Some((_, layout)) = layouts.iter().find(|(l, _)| *l == line) else { continue };
+                let Some((row, _, layout)) = layouts.iter().find(|(_, l, _)| *l == line) else { continue };
                 let line_start = editor.buffer().line_start(line).unwrap_or(0);
                 let x = text_x + layout.x_of_byte(caret.head().saturating_sub(line_start));
-                let y = rect.min.y + line as f32 * row_h;
+                let y = rect.min.y + *row as f32 * row_h;
                 let caret_rect = Rect::from_min_max(pos2(x, y + 1.0), pos2(x + 2.0, y + row_h - 1.0));
                 if is_primary {
                     primary_rect = Some(caret_rect);
@@ -365,6 +386,17 @@ impl<'a> CodeEditor<'a> {
                 draw_preedit(&text_painter, preedit, caret_rect, &font, &colors, row_h, column_w);
             }
 
+            // A click on the mark of a fold opens it.
+            if let Some(pos) = ui.input(|i| i.pointer.interact_pos())
+                && let Some((_, line)) = placeholders.iter().find(|(mark, _)| mark.contains(pos))
+            {
+                ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
+                if ui.input(|i| i.pointer.primary_clicked()) && response.hovered() {
+                    editor.unfold_line(*line);
+                    view.last_input = now;
+                }
+            }
+
             // The gutter, over the text, fixed to the left of the view.
             if gutter {
                 let gutter_rect = Rect::from_min_max(screen_view.min, pos2(screen_view.min.x + gutter_w, screen_view.max.y));
@@ -373,10 +405,23 @@ impl<'a> CodeEditor<'a> {
                     [pos2(gutter_rect.max.x - 0.5, gutter_rect.min.y), pos2(gutter_rect.max.x - 0.5, gutter_rect.max.y)],
                     Stroke::new(1.0, colors.gutter_border),
                 );
-                for line in first..last {
-                    let y = rect.min.y + line as f32 * row_h;
+                for &(row, line) in &shown {
+                    let y = rect.min.y + row as f32 * row_h;
                     let color = if caret_lines.contains(&line) { colors.gutter_text_current } else { colors.gutter_text };
-                    painter.text(pos2(gutter_rect.max.x - GUTTER_PADDING, y + row_h / 2.0), Align2::RIGHT_CENTER, line + 1, font.clone(), color);
+                    painter.text(
+                        pos2(gutter_rect.max.x - FOLD_STRIP - GUTTER_PADDING * 0.5, y + row_h / 2.0),
+                        Align2::RIGHT_CENTER,
+                        line + 1,
+                        font.clone(),
+                        color,
+                    );
+                    // The mark of a fold (pointing right: it can be opened) or of something that can be folded (pointing down).
+                    let folded = editor.hidden_lines_after(line) > 0;
+                    let foldable = folded || frame.styler.borrow_mut().as_mut().is_some_and(|styler| styler.fold_at(editor.buffer(), line).is_some());
+                    if foldable {
+                        let center = pos2(gutter_rect.max.x - FOLD_STRIP / 2.0 - 1.0, y + row_h / 2.0);
+                        fold_chevron(&painter, center, folded, if folded { colors.gutter_text_current } else { colors.fold_mark });
+                    }
                 }
             }
 
@@ -399,7 +444,7 @@ impl<'a> CodeEditor<'a> {
             } else if reveal {
                 // The caret's line is not laid out (it is off screen): scroll to its line, then it will be drawn and revealed.
                 let line = editor.buffer().line_of(editor.primary().head());
-                let y = rect.min.y + line as f32 * row_h;
+                let y = rect.min.y + editor.row_of_line(line) as f32 * row_h;
                 ui.scroll_to_rect(Rect::from_min_max(pos2(rect.min.x, y), pos2(rect.min.x + 1.0, y + row_h)), None);
             }
             if has_focus && blink {
@@ -411,13 +456,29 @@ impl<'a> CodeEditor<'a> {
         ui.spacing_mut().scroll.fade = fade;
         let response = response_slot.unwrap_or_else(|| ui.interact(ui.min_rect(), id, Sense::hover()));
         response.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, "XML editor"));
-        CodeEditorOutput { response, changed: editor.version() != version_before, selection_changed: editor.selections() != selection_before }
+        CodeEditorOutput {
+            response,
+            changed: editor.version() != version_before,
+            selection_changed: editor.selections() != selection_before,
+            fold_clicked: view.fold_clicked.take(),
+        }
     }
 }
 
 fn gutter_width(line_count: usize, column_w: f32) -> f32 {
     let digits = line_count.max(1).to_string().len().max(3);
-    digits as f32 * column_w + GUTTER_PADDING * 2.0
+    digits as f32 * column_w + GUTTER_PADDING * 1.5 + FOLD_STRIP
+}
+
+/// The mark of a fold in the gutter: a chevron that points right when the lines after it are hidden, down when it can hide them.
+fn fold_chevron(painter: &egui::Painter, center: Pos2, folded: bool, color: Color32) {
+    let r = 3.5;
+    let points = if folded {
+        [pos2(center.x - r * 0.6, center.y - r), pos2(center.x + r * 0.6, center.y), pos2(center.x - r * 0.6, center.y + r)]
+    } else {
+        [pos2(center.x - r, center.y - r * 0.6), pos2(center.x, center.y + r * 0.6), pos2(center.x + r, center.y - r * 0.6)]
+    };
+    painter.add(egui::Shape::line(points.to_vec(), Stroke::new(1.4, color)));
 }
 
 /// Up to this size the first look at a document measures every line in display columns; past it a line counts its bytes, which is
@@ -509,7 +570,8 @@ fn layout_line(view: &mut ViewState, buffer: &Buffer, line: usize, frame: &Frame
 /// The buffer offset under a point in the screen, snapped to a character boundary.
 fn offset_at(view: &mut ViewState, editor: &Editor, frame: &Frame<'_>, origin: Pos2, gutter_w: f32, row_h: f32, pos: Pos2) -> usize {
     let buffer = editor.buffer();
-    let line = (((pos.y - origin.y) / row_h).floor().max(0.0) as usize).min(buffer.line_count().saturating_sub(1));
+    let row = (((pos.y - origin.y) / row_h).floor().max(0.0) as usize).min(editor.visible_rows().saturating_sub(1));
+    let line = editor.line_of_row(row).min(buffer.line_count().saturating_sub(1));
     let layout = layout_line(view, buffer, line, frame);
     let x = pos.x - origin.x - gutter_w - TEXT_MARGIN;
     let line_start = buffer.line_start(line).unwrap_or(0);
@@ -545,7 +607,15 @@ fn handle_pointer(
         view.last_input = now;
         editor.break_undo_group();
         let offset = offset_at(view, editor, frame, origin, gutter_w, row_h, pos);
-        if in_gutter {
+        if in_gutter && pos.x >= view_rect.min.x + gutter_w - FOLD_STRIP {
+            // The strip at the right of the gutter is for the marks of folds: a click there is not a click on the line.
+            let line = editor.buffer().line_of(offset);
+            if editor.hidden_lines_after(line) > 0 {
+                editor.unfold_line(line);
+            } else if frame.styler.borrow_mut().as_mut().is_some_and(|styler| styler.fold_at(editor.buffer(), line).is_some()) {
+                view.fold_clicked = Some(line);
+            }
+        } else if in_gutter {
             editor.select_line_at(offset, modifiers.command);
         } else if modifiers.shift {
             editor.extend_selection_to(offset);

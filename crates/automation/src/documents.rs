@@ -8,7 +8,8 @@ use std::path::PathBuf;
 
 use serde_json::{Value, json};
 use xmlcraft_editor::find::{MAX_MATCHES, Matcher, Query};
-use xmlcraft_engine::analysis::{Analysis, Skipped, analyze};
+use xmlcraft_engine::analysis::{Analysis, Skipped, analyze, analyze_guarded};
+use xmlcraft_engine::folding::{FoldAction, FoldRange};
 use xmlcraft_engine::{Document, SaveError};
 use xmlcraft_format::{BlankLines, FormatError, Indent};
 use xmlcraft_syntax::{Diagnostic, Severity};
@@ -168,6 +169,93 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             handler: doc_key,
         },
         ToolDef {
+            name: "doc_fold",
+            title: "Fold or unfold",
+            description: "Fold or unfold stretches of lines of an open document (see xml_folds for what can be folded). `fold` folds the innermost range at the caret (or at \
+                          `line` and `column`, from 1) that is not folded; `unfold` opens the innermost folded one; `fold_all` and `unfold_all`; `level` folds the ranges \
+                          of that level and nothing else. The text does not change; the result lists what is folded (`first_line` stands for the lines after it up to \
+                          `last_line`) and how many lines are shown.",
+            input_schema: object(
+                json!({
+                    "id": id.clone(),
+                    "action": { "type": "string", "enum": ["fold", "unfold", "fold_all", "unfold_all", "level"] },
+                    "level": { "type": "integer", "minimum": 1, "description": "For `level`: 1 is the root element" },
+                    "line": { "type": "integer", "minimum": 1 },
+                    "column": { "type": "integer", "minimum": 1 },
+                }),
+                &["id", "action"],
+            ),
+            read_only: false,
+            destructive: false,
+            handler: doc_fold,
+        },
+        ToolDef {
+            name: "doc_select",
+            title: "Select text",
+            description: "Put the caret of an open document at `line` and `column` (from 1), or select from there to `end_line` and `end_column`. Returns where the selection is.",
+            input_schema: object(
+                json!({
+                    "id": id.clone(),
+                    "line": { "type": "integer", "minimum": 1 },
+                    "column": { "type": "integer", "minimum": 1 },
+                    "end_line": { "type": "integer", "minimum": 1 },
+                    "end_column": { "type": "integer", "minimum": 1 },
+                }),
+                &["id", "line", "column"],
+            ),
+            read_only: false,
+            destructive: false,
+            handler: doc_select,
+        },
+        ToolDef {
+            name: "doc_expand_selection",
+            title: "Expand the selection",
+            description: "Grow the selection of an open document, `times` times (default 1), by what the syntax says: the word, the value, the attribute, the tag, the content of the element, \
+                          the element and the one around it. Starts from `line` and `column` (and `end_line`, `end_column`) when they are given. Returns where the selection is and whether it grew.",
+            input_schema: object(
+                json!({
+                    "id": id.clone(),
+                    "times": { "type": "integer", "minimum": 1, "maximum": 100 },
+                    "line": { "type": "integer", "minimum": 1 },
+                    "column": { "type": "integer", "minimum": 1 },
+                    "end_line": { "type": "integer", "minimum": 1 },
+                    "end_column": { "type": "integer", "minimum": 1 },
+                }),
+                &["id"],
+            ),
+            read_only: false,
+            destructive: false,
+            handler: doc_expand_selection,
+        },
+        ToolDef {
+            name: "doc_shrink_selection",
+            title: "Shrink the selection",
+            description: "Go back one step of doc_expand_selection (not after the text changed or the selection was set another way). Returns where the selection is and whether it shrank.",
+            input_schema: object(json!({ "id": id.clone() }), &["id"]),
+            read_only: false,
+            destructive: false,
+            handler: doc_shrink_selection,
+        },
+        ToolDef {
+            name: "doc_toggle_comment",
+            title: "Comment out or in",
+            description: "Wrap the lines of the selection of an open document in `<!-- -->`, or take the markers off when they are one comment. The selection is the one in the document, or \
+                          `line`, `column` (and `end_line`, `end_column`) when given. Refused, with nothing changed, when the text has `--` in it.",
+            input_schema: object(
+                json!({
+                    "id": id.clone(),
+                    "line": { "type": "integer", "minimum": 1 },
+                    "column": { "type": "integer", "minimum": 1 },
+                    "end_line": { "type": "integer", "minimum": 1 },
+                    "end_column": { "type": "integer", "minimum": 1 },
+                }),
+                &["id"],
+            ),
+            read_only: false,
+            destructive: false,
+            handler: doc_toggle_comment,
+        },
+        ToolDef {
             name: "doc_undo",
             title: "Undo or redo",
             description: "Undo (or, with redo: true, redo) the last change of a document. Returns whether anything was undone.",
@@ -288,6 +376,17 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             read_only: true,
             destructive: false,
             handler: xml_matching_tag,
+        },
+        ToolDef {
+            name: "xml_folds",
+            title: "What can be folded",
+            description: "The stretches of lines that can be folded in an open document (`id`), a file (`path`) or text: elements whose content is on lines of their own, \
+                          and comments, CDATA sections, processing instructions and DOCTYPEs over several lines. Each has the line that stands for it (`first_line`), the \
+                          last line it hides (`last_line`), the line it ends on, its level (1 is the root element) and its kind. Lines count from 1.",
+            input_schema: object(source_properties(), &[]),
+            read_only: true,
+            destructive: false,
+            handler: xml_folds,
         },
         ToolDef {
             name: "xml_outline",
@@ -530,6 +629,62 @@ fn place_caret(doc: &mut Document, args: &Value) -> Result<()> {
     Ok(())
 }
 
+/// Put the selection at `line`/`column` (to `end_line`/`end_column` when those are given), when they are given.
+fn place_selection(doc: &mut Document, args: &Value) -> Result<()> {
+    match (args.get("end_line"), args.get("end_column")) {
+        (None, None) => return place_caret(doc, args),
+        (Some(_), Some(_)) => {}
+        _ => return Err(ToolError::InvalidArgs("end_line and end_column go together: give both, or neither".into())),
+    }
+    let buffer = doc.editor().buffer();
+    let from = offset_from(buffer, args.get("line").and_then(Value::as_u64), args.get("column").and_then(Value::as_u64), "start")?;
+    let to = offset_from(buffer, args.get("end_line").and_then(Value::as_u64), args.get("end_column").and_then(Value::as_u64), "end")?;
+    doc.editor_mut().set_selection(from, to);
+    Ok(())
+}
+
+fn doc_select(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    place_selection(doc, args)?;
+    json_result(json!({ "carets": carets_json(doc) }))
+}
+
+fn doc_expand_selection(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    place_selection(doc, args)?;
+    let times = args.get("times").and_then(Value::as_u64).map_or(1, |t| usize::try_from(t).unwrap_or(1)).min(100);
+    let mut grew = false;
+    for _ in 0..times {
+        grew |= doc.editor_mut().expand_selection();
+    }
+    json_result(json!({ "grew": grew, "carets": carets_json(doc) }))
+}
+
+fn doc_shrink_selection(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    let shrank = doc.editor_mut().shrink_selection();
+    json_result(json!({ "shrank": shrank, "carets": carets_json(doc) }))
+}
+
+fn doc_toggle_comment(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    let before = doc.editor().selections();
+    place_selection(doc, args)?;
+    let changed = match doc.editor_mut().toggle_comment() {
+        Ok(changed) => changed,
+        Err(refused) => {
+            // Nothing is changed: not the text, and not where the selection was either.
+            doc.editor_mut().set_selections(&before);
+            return Err(ToolError::Failed(format!("{refused}: nothing was changed")));
+        }
+    };
+    json_result(json!({ "changed": changed, "carets": carets_json(doc), "document": describe(doc) }))
+}
+
 /// Where the carets of `doc` are, as the tools write positions.
 fn carets_json(doc: &Document) -> Vec<Value> {
     let buffer = doc.editor().buffer();
@@ -588,6 +743,74 @@ fn doc_key(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         }
     }
     json_result(json!({ "carets": carets_json(doc), "document": describe(doc) }))
+}
+
+fn fold_json(range: &FoldRange) -> Value {
+    json!({
+        "first_line": range.first_line + 1, "last_line": range.last_line + 1, "end_line": range.end_line + 1,
+        "level": range.level, "kind": range.kind.name(),
+    })
+}
+
+fn xml_folds(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let source = source(a, args)?;
+    let analysis = analysis_of(&source)?;
+    let folds: Vec<Value> = analysis.folds.iter().map(fold_json).collect();
+    json_result(json!({
+        "folds": folds, "count": folds.len(), "truncated": analysis.folds_truncated,
+        "well_formed": analysis.is_well_formed(), "lossy": source.lossy,
+    }))
+}
+
+fn doc_fold(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    let action = match text_arg(args, "action").unwrap_or_default() {
+        "fold" => FoldAction::Fold,
+        "unfold" => FoldAction::Unfold,
+        "fold_all" => FoldAction::FoldAll,
+        "unfold_all" => FoldAction::UnfoldAll,
+        "level" => match args.get("level").and_then(Value::as_u64) {
+            Some(level) => FoldAction::Level(usize::try_from(level).unwrap_or(usize::MAX)),
+            None => return Err(ToolError::InvalidArgs("level: the level is missing".into())),
+        },
+        other => return fail(format!("{other}: no such action (fold, unfold, fold_all, unfold_all, level)")),
+    };
+    // `line` and `column` say which line to fold or unfold at; the caret is not moved (a caret in a hidden line would open the fold).
+    let line = match (args.get("line"), args.get("column")) {
+        (None, None) => doc.editor().buffer().line_of(doc.editor().primary().head()),
+        (Some(_), Some(_)) => {
+            let at =
+                offset_from(doc.editor().buffer(), args.get("line").and_then(Value::as_u64), args.get("column").and_then(Value::as_u64), "position")?;
+            doc.editor().buffer().line_of(at)
+        }
+        _ => return Err(ToolError::InvalidArgs("line and column go together: give both, or neither for the caret's line".into())),
+    };
+    // Opening everything needs no analysis (and works on a text too large to have one).
+    let (ranges, truncated) = if action == FoldAction::UnfoldAll {
+        (Vec::new(), false)
+    } else {
+        let analysis = analyze_guarded(&doc.editor().text(), 0);
+        if analysis.skipped.is_some() {
+            return fail("the text is too large to analyse, or the analysis failed: nothing was folded");
+        }
+        (analysis.folds, analysis.folds_truncated)
+    };
+    let changed = xmlcraft_engine::folding::apply_at(doc.editor_mut(), &ranges, action, line);
+    let buffer = doc.editor().buffer();
+    let folded: Vec<Value> = doc
+        .editor()
+        .folds()
+        .iter()
+        .map(|f| {
+            let (first, last) = (buffer.line_of(f.hidden.start), buffer.line_of(f.hidden.end));
+            json!({ "first_line": first + 1, "last_line": last + 1 })
+        })
+        .collect();
+    json_result(json!({
+        "changed": changed, "folded": folded, "visible_lines": doc.editor().visible_rows(), "truncated": truncated,
+        "carets": carets_json(doc), "document": describe(doc),
+    }))
 }
 
 fn doc_set_text(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
