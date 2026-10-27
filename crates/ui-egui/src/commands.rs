@@ -118,8 +118,12 @@ impl XmlCraftApp {
                 }
             }
             "edit.go_to_line" => {
-                self.goto_input.clear();
-                self.dialog = Some(crate::dialog::Dialog::GoToLine);
+                // Not over a question that is being asked: its answer would be lost.
+                if self.dialog.is_none() {
+                    self.goto_input.clear();
+                    self.goto_focus = true;
+                    self.dialog = Some(crate::dialog::Dialog::GoToLine);
+                }
             }
             "xml.check" => self.check_now(),
             "edit.select_all" => {

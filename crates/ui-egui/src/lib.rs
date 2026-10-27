@@ -101,8 +101,13 @@ pub struct XmlCraftApp {
     analyzer: Analyzer,
     /// The text typed into the Outline's filter box.
     outline_filter: String,
-    /// The text typed into Go to Line.
+    /// The Outline's rows for the filter and analysis they were worked out for, so a frame does not filter 50,000 names again.
+    outline_rows: Option<side_panels::OutlineRows>,
+    /// The text typed into Go to Line, and whether its field is still to be given the keyboard (once, when the dialog opens).
     goto_input: String,
+    goto_focus: bool,
+    /// A check (F7) is waiting for the analysis of this version of this document, to report its result.
+    check_pending: Option<(u64, u64)>,
     /// What the editor keeps for each open document (layout caches, colouring), by document id.
     views: HashMap<u64, DocView>,
     /// The question being asked, if any.
@@ -161,7 +166,10 @@ impl XmlCraftApp {
             session: Session::new(),
             analyzer: Analyzer::new(),
             outline_filter: String::new(),
+            outline_rows: None,
             goto_input: String::new(),
+            goto_focus: false,
+            check_pending: None,
             views: HashMap::new(),
             dialog: None,
             pickers: Pickers::default(),
@@ -243,13 +251,14 @@ impl eframe::App for XmlCraftApp {
         self.handle_shortcuts(ctx);
         self.process_picks(ctx);
         self.handle_dropped_files(ctx);
-        self.pump_analysis();
         // Getting the window back: another program may have changed the files in the meantime.
         let focused = ctx.input(|i| i.viewport().focused.unwrap_or(true));
         if focused && !self.was_focused {
             self.check_disk_changes();
         }
         self.was_focused = focused;
+        // After everything above that can change a text, so that this frame asks for the analysis of the text it will draw.
+        self.pump_analysis();
         for command in self.viewport_commands.drain(..) {
             ctx.send_viewport_cmd(command);
         }

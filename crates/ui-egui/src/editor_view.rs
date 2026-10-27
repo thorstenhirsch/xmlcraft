@@ -118,11 +118,14 @@ pub struct XmlStyler {
     tokens: SyntaxTokens,
     /// The problems to underline: byte ranges of the whole text, sorted by start.
     problems: Vec<(Range<usize>, Severity)>,
+    /// For each problem, how far any problem up to it reaches (the largest end so far, at least one past its start): it never goes
+    /// down, so the problems that can touch a line are found by searching, not by looking at every earlier one.
+    reach: Vec<usize>,
 }
 
 impl XmlStyler {
     pub fn new(kind: ThemeKind) -> Self {
-        Self { highlighter: Highlighter::new(), tokens: SyntaxTokens::for_kind(kind), problems: Vec::new() }
+        Self { highlighter: Highlighter::new(), tokens: SyntaxTokens::for_kind(kind), problems: Vec::new(), reach: Vec::new() }
     }
 
     /// Switch to another theme's colours. The caller bumps the view's `highlight_version` so cached lines are laid out again.
@@ -134,12 +137,21 @@ impl XmlStyler {
     pub fn reset(&mut self) {
         self.highlighter.reset();
         self.problems.clear();
+        self.reach.clear();
     }
 
     /// The problems to underline (replacing the last ones). Ranges are in bytes of the whole text; they may be empty (a problem at a
     /// point).
     pub fn set_problems(&mut self, mut problems: Vec<(Range<usize>, Severity)>) {
         problems.sort_by_key(|(range, _)| (range.start, range.end));
+        let mut farthest = 0;
+        self.reach = problems
+            .iter()
+            .map(|(range, _)| {
+                farthest = farthest.max(range.end.max(range.start.saturating_add(1)));
+                farthest
+            })
+            .collect();
         self.problems = problems;
     }
 }
@@ -160,11 +172,14 @@ impl LineStyler for XmlStyler {
     fn marks(&mut self, buffer: &Buffer, line: usize) -> Vec<Mark> {
         let Some(range) = buffer.line_range(line) else { return Vec::new() };
         let text_len = buffer.len();
-        // Problems are sorted by start; those that start after the line's end cannot touch it.
+        // Problems are sorted by start: those that start after the line's end cannot touch it, and neither can the ones before the first
+        // that reaches into it.
         let end = self.problems.partition_point(|(r, _)| r.start <= range.end);
+        let first = self.reach.partition_point(|reach| *reach <= range.start);
         self.problems
+            .get(first..end)
+            .unwrap_or_default()
             .iter()
-            .take(end)
             .filter(|(r, _)| r.end.max(r.start + 1) > range.start && r.start <= text_len)
             .map(|(r, severity)| {
                 let start = r.start.max(range.start) - range.start;
@@ -245,6 +260,45 @@ mod tests {
     }
 
     #[test]
+    fn marks_found_by_search_are_the_ones_a_look_at_every_problem_finds() {
+        // Many problems of every length, some far longer than a line: the search must not miss one that starts early and reaches far.
+        let text: String = (0..300).map(|i| format!("<line n=\"{i}\"/>\n")).collect();
+        let buffer = Buffer::from_text(&text);
+        let len = text.len();
+        let mut problems = Vec::new();
+        let mut seed = 12345u64;
+        for _ in 0..2000 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let start = (seed >> 33) as usize % len;
+            let length = match (seed >> 20) % 5 {
+                0 => 0,
+                1 => 3,
+                2 => 40,
+                3 => 900,
+                _ => 6000,
+            };
+            problems.push((start..(start + length).min(len), if seed & 1 == 0 { Severity::Error } else { Severity::Warning }));
+        }
+        let mut styler = XmlStyler::new(ThemeKind::Light);
+        styler.set_problems(problems.clone());
+        for line in 0..buffer.line_count() {
+            let range = buffer.line_range(line).expect("a line");
+            let mut expected: Vec<Range<usize>> = problems
+                .iter()
+                .filter(|(r, _)| r.start <= range.end && r.end.max(r.start + 1) > range.start)
+                .map(|(r, _)| {
+                    let start = r.start.max(range.start) - range.start;
+                    start..(r.end.min(range.end).max(r.start.max(range.start)) - range.start).max(start)
+                })
+                .collect();
+            let mut found: Vec<Range<usize>> = styler.marks(&buffer, line).into_iter().map(|m| m.range).collect();
+            expected.sort_by_key(|r| (r.start, r.end));
+            found.sort_by_key(|r| (r.start, r.end));
+            assert_eq!(found, expected, "line {line}");
+        }
+    }
+
+    #[test]
     fn problems_become_marks_on_the_lines_they_touch() {
         let buffer = Buffer::from_text("<a>\n<b>text</b>\n</a>");
         let mut styler = XmlStyler::new(ThemeKind::Light);
@@ -254,7 +308,7 @@ mod tests {
         assert_eq!(first.iter().map(|m| m.range.clone()).collect::<Vec<_>>(), [0..0, 2..3], "a point, and the start of a long one");
         assert_eq!(first[1].color, tokens.error);
         let second = styler.marks(&buffer, 1);
-        // Line 1 is bytes 4..16: the long problem (2..9) covers its first five bytes; the warning (8..12) the next four.
+        // Line 1 is bytes 4..15 (the line break is not part of it): the long problem (2..9) covers its first five bytes; the warning (8..12) the next four.
         assert_eq!(second.iter().map(|m| m.range.clone()).collect::<Vec<_>>(), [0..5, 4..8]);
         assert!(styler.marks(&buffer, 2).is_empty());
         assert!(styler.marks(&buffer, 99).is_empty(), "a line that does not exist has no marks");

@@ -221,6 +221,12 @@ impl Editor {
         self.history.break_group();
     }
 
+    /// Make sure [`Editor::version`] is above `floor`, so that a text replacing this editor's (a reload) never has a version an earlier
+    /// text had: results that are about versions (analyses) cannot then be taken for the new text's.
+    pub fn raise_version_above(&mut self, floor: u64) {
+        self.version = self.version.max(floor.saturating_add(1));
+    }
+
     /// Replace the whole text (loading a file): history is cleared and the caret goes to the start. New line breaks use the text's
     /// dominant line ending (the current one when the text has no line break).
     pub fn load(&mut self, text: &str) {

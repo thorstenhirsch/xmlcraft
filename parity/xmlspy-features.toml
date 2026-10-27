@@ -255,7 +255,7 @@ status = "shipped"
 commands = ["edit.go_to_line"]
 tools = []
 evidence = ["crates/ui-egui/tests/analysis.rs::go_to_line_moves_the_caret", "crates/ui-egui/src/documents.rs::positions_are_a_line_and_maybe_a_column"]
-notes = "⌘G / Ctrl+G asks for `line` or `line:column` (counted from 1; past the end goes to the end) and puts the line near the top. No headless tool yet (the `doc_*` tools of M1.14)."
+notes = "⌘G / Ctrl+G asks for `line` or `line:column` (counted from 1; past the end goes to the end) and puts the line near the top. There is no headless tool for it by design: there is no caret without a window, and the document tools already address text by line and column (`doc_text`, `doc_edit`, from M1.14)."
 
 [[feature]]
 id = "editor.pretty-print"
@@ -1015,11 +1015,11 @@ title = "Namespace well-formedness"
 area = "E"
 tier = "P0"
 milestone = "M1"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["xml.check"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/syntax/tests/parse.rs::namespace_problems", "crates/syntax/tests/oracle.rs::known_documents_have_the_verdict_the_specifications_give"]
+notes = "Namespaces in XML 1.0 is checked with the well-formedness check (unbound and reserved prefixes, empty bindings, NCName parts of qualified names, duplicate expanded attribute names) and underlined as the text is typed. The xmlconf namespace tests that apply are in the ratchet (docs/target-app-parity.md); xmllint reports these as non-fatal, here they are errors by design."
 
 [[feature]]
 id = "validate.dtd"

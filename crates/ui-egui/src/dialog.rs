@@ -165,7 +165,8 @@ impl XmlCraftApp {
                 let edit = ui
                     .add(egui::TextEdit::singleline(&mut self.goto_input).id(id).hint_text(tl!("Line or line:column")).desired_width(f32::INFINITY));
                 crate::widgets::name_for_assistive_technology(ui, &edit, tl!("Line or line:column"));
-                if !edit.has_focus() && !edit.lost_focus() {
+                // Given the keyboard once, when the dialog opens: asking every frame would take it back from Go and Cancel after a Tab.
+                if std::mem::take(&mut self.goto_focus) {
                     edit.request_focus();
                 }
                 if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
@@ -221,6 +222,8 @@ impl XmlCraftApp {
                 if !self.go_to_line(&input) {
                     self.status = fmt(tl!("'{text}' is not a line number"), &[("text", input.trim())]);
                 }
+                // A quit that was waiting for this question to be out of the way goes on.
+                self.continue_quit(ctx);
             }
             // Anything else is a way out. A quit that was waiting for this answer is off; one that was only waiting for another question
             // to be out of the way goes on.
