@@ -16,7 +16,7 @@ use crate::chars::{is_name_start_char, is_xml_char, is_xml_space};
 use crate::diagnostic::{Code, Diagnostic, Severity};
 use crate::kinds::{SyntaxKind, SyntaxNode};
 use crate::lexer::{Lexer, Token, TokenKind};
-use crate::ns::{NsScope, XML_NAMESPACE, XMLNS_NAMESPACE, split_qname};
+use crate::ns::{NsScope, XML_NAMESPACE, XMLNS_NAMESPACE, is_ncname, split_qname};
 
 /// Caps that keep a hostile or huge document from costing more than it is worth.
 #[derive(Clone, Debug)]
@@ -208,16 +208,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// The kind of the first token that is not whitespace, looking at most a few dozen tokens ahead.
-    fn next_significant(&mut self) -> Option<TokenKind> {
-        for i in 0..64 {
-            match self.peek_nth(i) {
-                Some(t) if t.kind == TokenKind::Whitespace => {}
-                Some(t) => return Some(t.kind),
-                None => return None,
-            }
-        }
-        None
+    /// Whether the first thing after the whitespace that starts at the next token is `=`. It reads the text rather than looking ahead
+    /// in the tokens, so any amount of whitespace costs neither a limit nor memory.
+    fn next_is_eq(&mut self) -> bool {
+        let Some(token) = self.peek() else { return false };
+        self.src.get(token.start..).is_some_and(|rest| rest.trim_start_matches(is_xml_space).starts_with('='))
     }
 
     fn slice(&self, range: &Range<usize>) -> &'a str {
@@ -307,8 +302,9 @@ impl<'a> Parser<'a> {
     fn text(&mut self, token: Token) {
         let text = self.slice(&token.range());
         if self.open.is_empty() {
-            let bom = token.start == 0 && text == "\u{FEFF}";
-            if !bom && !text.chars().all(is_xml_space) {
+            // A byte-order mark that survived decoding is allowed in front of the whitespace before the root.
+            let text = if token.start == 0 { text.strip_prefix('\u{FEFF}').unwrap_or(text) } else { text };
+            if !text.chars().all(is_xml_space) {
                 self.outside_root(token.range());
             }
         }
@@ -429,7 +425,7 @@ impl<'a> Parser<'a> {
         };
         let name_text = self.slice(&name.range());
         let mut value = None;
-        if self.next_significant() == Some(TokenKind::Eq) {
+        if self.next_is_eq() {
             self.skip_whitespace();
             self.bump(); // =
             self.skip_whitespace();
@@ -791,7 +787,7 @@ impl<'a> Parser<'a> {
                     self.bump();
                     let name_text = self.slice(&t.range()).to_owned();
                     let mut value = None;
-                    if self.next_significant() == Some(TokenKind::Eq) {
+                    if self.next_is_eq() {
                         self.skip_whitespace();
                         self.bump();
                         self.skip_whitespace();
@@ -1036,11 +1032,15 @@ impl<'a> Parser<'a> {
     }
 
     fn declare(&mut self, prefix: Option<&str>, attr: &Attr) {
+        let span = attr.name.clone();
+        if prefix.is_some_and(|p| !is_ncname(p)) {
+            let name = self.slice(&span).to_owned();
+            self.diag(Code::InvalidQName, span, vec![name]);
+            return;
+        }
         let Some(value) = attr.value.clone() else { return };
         let uri = decode_references(self.slice(&value));
-        let span = attr.name.clone();
         match prefix {
-            Some("") => self.diag(Code::InvalidQName, span, vec!["xmlns:".to_owned()]),
             Some("xmlns") => self.diag(Code::ReservedPrefix, span, vec!["xmlns".to_owned()]),
             Some("xml") => {
                 if uri != XML_NAMESPACE {

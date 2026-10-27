@@ -21,6 +21,8 @@ fn well_formed_documents_have_no_problems() {
         "<a></a>",
         "  \n<a/>\n  ",
         "\u{FEFF}<a/>",
+        "\u{FEFF}\n<a/>",
+        "\u{FEFF} \t<a/>",
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<a b=\"1\" c='2'>t<!--c--><![CDATA[x<y]]><?pi data?>&amp;&#65;&#x41;</a>\n<!-- after -->\n",
         "<a xmlns=\"urn:x\" xmlns:p=\"urn:p\" p:b=\"1\"><p:c/></a>",
         "<a xmlns=\"urn:x\"><b xmlns=\"\"/></a>",
@@ -82,6 +84,16 @@ fn tag_and_attribute_problems() {
     assert_eq!(problems("<a <b/></a>"), [p(Code::UnterminatedTag, "a")]);
     assert_eq!(problems("<a b=\"1\" c></a>"), [p(Code::AttrWithoutValue, "c")]);
     assert_eq!(problems("<a b=\"&\"/>"), [p(Code::BareAmpersand, "&")]);
+}
+
+#[test]
+fn whitespace_before_an_equals_sign_has_no_limit() {
+    // An attribute and the `=` of its value, or of an XML declaration field, may be any number of lines apart.
+    let blank = "\n".repeat(500);
+    assert_eq!(problems(&format!("<a b{blank}= \"1\"/>")), vec![]);
+    assert_eq!(problems(&format!("<a b {blank} =\n{blank}'1' c=\"2\"/>")), vec![]);
+    assert_eq!(problems(&format!("<?xml version{blank}=\"1.0\"?><a/>")), vec![]);
+    assert_eq!(problems(&format!("<a b{blank}/>")), [p(Code::AttrWithoutValue, "b")]);
 }
 
 #[test]
@@ -161,6 +173,18 @@ fn namespace_problems() {
     assert_eq!(problems("<a:b:c/>"), [p(Code::InvalidQName, "a:b:c")]);
     assert_eq!(problems("<:a/>"), [p(Code::InvalidQName, ":a")]);
     assert_eq!(problems("<a b:=\"1\"/>"), [p(Code::InvalidQName, "b:")]);
+    // Both parts of a qualified name must be NCNames, and so must the prefix of a declaration, whether or not it has a value.
+    assert_eq!(problems("<a xmlns:p=\"urn:x\"><p:1/></a>"), [p(Code::InvalidQName, "p:1")]);
+    assert_eq!(problems("<a xmlns:p=\"urn:x\" p:-b=\"1\"/>"), [p(Code::InvalidQName, "p:-b")]);
+    assert_eq!(problems("<a xmlns:1p=\"urn:x\"/>"), [p(Code::InvalidQName, "xmlns:1p")]);
+    assert_eq!(problems("<a xmlns:p:q=\"urn:x\"/>"), [p(Code::InvalidQName, "xmlns:p:q")]);
+    assert_eq!(problems("<a xmlns:=\"urn:x\"/>"), [p(Code::InvalidQName, "xmlns:")]);
+    assert_eq!(problems("<a xmlns:1p/>"), [p(Code::AttrWithoutValue, "xmlns:1p"), p(Code::InvalidQName, "xmlns:1p")]);
+    assert_eq!(
+        problems("<a xmlns:p:q=\"urn:x\"><p:q/></a>"),
+        [p(Code::InvalidQName, "xmlns:p:q"), p(Code::UnboundPrefix, "p")],
+        "a refused declaration binds nothing"
+    );
     assert_eq!(
         problems("<a xmlns:p=\"a&amp;b\" xmlns:q=\"a&#38;b\" p:x=\"1\" q:x=\"2\"/>"),
         [p(Code::DuplicateExpandedAttribute, "q:x")],

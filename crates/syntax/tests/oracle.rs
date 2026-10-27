@@ -38,6 +38,7 @@ const KNOWN: &[(&str, bool)] = &[
     ("<a>text</a>", true),
     ("  \n<a/>\n  ", true),
     ("\u{FEFF}<a/>", true),
+    ("\u{FEFF}\n<a/>", true),
     ("<?xml version=\"1.0\" encoding=\"UTF-8\"?><a/>", true),
     ("<a b=\"1\" c='2'>t<!--c--><![CDATA[x<y]]><?pi data?>&amp;&#65;&#x41;</a>", true),
     ("<a xmlns=\"urn:x\" xmlns:p=\"urn:p\" p:b=\"1\"><p:c/></a>", true),
