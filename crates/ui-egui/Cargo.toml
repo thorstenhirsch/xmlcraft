@@ -27,7 +27,7 @@ serde_json = { workspace = true }
 log = { workspace = true }
 # Control-channel screenshots: PNG-encoded, then base64 in the JSON reply.
 png = "0.18"
-base64 = "0.22"
+base64 = "0.23"
 
 [dev-dependencies]
 egui_kittest = { workspace = true, features = ["eframe", "wgpu"] }
