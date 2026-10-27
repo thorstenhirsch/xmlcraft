@@ -672,8 +672,16 @@ fn doc_shrink_selection(a: &mut Automation, args: &Value) -> Result<Vec<Content>
 fn doc_toggle_comment(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let index = index_of(a, id_arg(args)?)?;
     let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    let before = doc.editor().selections();
     place_selection(doc, args)?;
-    let changed = doc.editor_mut().toggle_comment().map_err(|refused| ToolError::Failed(format!("{refused}: nothing was changed")))?;
+    let changed = match doc.editor_mut().toggle_comment() {
+        Ok(changed) => changed,
+        Err(refused) => {
+            // Nothing is changed: not the text, and not where the selection was either.
+            doc.editor_mut().set_selections(&before);
+            return Err(ToolError::Failed(format!("{refused}: nothing was changed")));
+        }
+    };
     json_result(json!({ "changed": changed, "carets": carets_json(doc), "document": describe(doc) }))
 }
 

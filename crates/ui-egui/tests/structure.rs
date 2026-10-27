@@ -36,8 +36,10 @@ fn control_slash_comments_the_line_out_and_in_and_says_when_it_cannot() {
     h.run_steps(2);
     assert_eq!(text(&h), "<a>\n  <b/>\n  <!-- c -->\n</a>");
     // A line that is a comment already is brought back; one with a comment and more is refused, and the text stays.
-    put_caret(&mut h, 14);
+    let end_of_comment = text(&h).find("-->").expect("there") + 3;
+    put_caret(&mut h, end_of_comment);
     h.state_mut().session.active_document_mut().expect("a document").editor_mut().type_text(" <d/>");
+    assert!(text(&h).contains("<!-- c --> <d/>"), "the comment is whole, with more after it: {}", text(&h));
     let before = text(&h);
     h.key_press_modifiers(Modifiers::COMMAND, Key::Slash);
     h.run_steps(2);

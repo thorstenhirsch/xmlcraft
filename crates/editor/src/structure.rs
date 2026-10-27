@@ -116,7 +116,9 @@ impl Editor {
         if !grew {
             return false;
         }
+        self.expanding = true;
         self.set_selections(&after);
+        self.expanding = false;
         // `set_selections` may have moved carets (it keeps them apart): what is remembered is what they are now.
         let after = self.selections();
         self.expansions.push(Expansion { version: self.version(), before, after });
@@ -134,7 +136,9 @@ impl Editor {
         }
         let before = top.before.clone();
         self.expansions.pop();
+        self.expanding = true;
         self.set_selections(&before);
+        self.expanding = false;
         true
     }
 }
@@ -143,8 +147,8 @@ impl Editor {
 /// (with one space before it). `None` if it is not exactly one comment.
 fn comment_markers(text: &str) -> Option<(usize, usize)> {
     let inner = text.strip_prefix("<!--")?.strip_suffix("-->")?;
-    if inner.contains("--") {
-        return None; // two comments, or one that is not well-formed: not something to take the markers off
+    if inner.contains("--") || inner.ends_with('-') {
+        return None; // two comments, or one that is not well-formed (`--->`): not something to take the markers off
     }
     let open = 4 + usize::from(inner.starts_with(' '));
     let rest = inner.get(open - 4..)?;
@@ -292,6 +296,14 @@ mod tests {
     }
 
     #[test]
+    fn a_comment_that_is_not_well_formed_is_not_taken_apart() {
+        let mut e = at("<!--x--->|");
+        assert_eq!(e.toggle_comment(), Err(CommentRefused::DoubleHyphen), "a body that ends in a hyphen cannot be closed");
+        assert_eq!(e.text(), "<!--x--->");
+        assert_eq!(toggled("<!--x- -->|"), "x-|", "a space before the markers is fine");
+    }
+
+    #[test]
     fn commenting_is_one_undo_step() {
         let mut e = at("<a>\n<b/>\n</a>");
         e.set_selection(0, e.text().len());
@@ -369,6 +381,13 @@ mod tests {
         // After an edit, or a selection that was made another way, the way back is not known.
         e.expand_selection();
         e.set_selection(0, 0);
+        assert!(!e.shrink_selection());
+        // Going somewhere else and coming back to the very selection the expansion made does not make the way back its own again.
+        let mut e = at("<a>hel|lo</a>");
+        e.expand_selection();
+        let grown = e.selections();
+        e.set_selection(0, 0);
+        e.set_selections(&grown);
         assert!(!e.shrink_selection());
         let mut e = at("<a>hel|lo</a>");
         e.expand_selection();

@@ -365,6 +365,10 @@ fn comments_and_selections_work_on_the_structure() {
     assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], "<lib>\n  <!-- <book id=\"b1\">\n    <t>x</t>\n  </book> -->\n</lib>\n");
     let refused = err(&mut a, "doc_toggle_comment", json!({ "id": id, "line": 1, "column": 1, "end_line": 5, "end_column": 1 }));
     assert!(refused.contains("--") && refused.contains("nothing was changed"), "{refused}");
+    let placed = ok(&mut a, "doc_select", json!({ "id": id, "line": 3, "column": 2 }));
+    err(&mut a, "doc_toggle_comment", json!({ "id": id, "line": 1, "column": 1, "end_line": 5, "end_column": 1 }));
+    let still = ok(&mut a, "doc_shrink_selection", json!({ "id": id })); // changes nothing: it only says where the selection is
+    assert_eq!(still["carets"], placed["carets"], "a refused call leaves the selection where it was");
     ok(&mut a, "doc_toggle_comment", json!({ "id": id, "line": 2, "column": 1, "end_line": 4, "end_column": 5 }));
     assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], text);
     // Bad arguments.

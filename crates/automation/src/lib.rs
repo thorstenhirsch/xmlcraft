@@ -107,6 +107,8 @@ impl Automation {
         let empty = Value::Object(serde_json::Map::new());
         let args = if args.is_null() { &empty } else { args };
         schema::validate(&def.input_schema, args).map_err(|e| ToolError::InvalidArgs(format!("{name}: {e}")))?;
+        // The schema takes `2.0` for an integer, so the handlers must too: they read integers with `as_u64`.
+        let args = &integral(args);
         match xmlcraft_engine::guard(|| (def.handler)(self, args)) {
             Ok(result) => result,
             Err(message) => {
@@ -117,10 +119,40 @@ impl Automation {
     }
 }
 
+/// `value` with every number that is a whole number written as an integer (`2.0` is `2`), so the handlers' `as_u64` reads what the
+/// schema's "integer" lets through.
+fn integral(value: &Value) -> Value {
+    match value {
+        Value::Number(n) if !(n.is_i64() || n.is_u64()) => match n.as_f64() {
+            Some(f) if f.is_finite() && f.fract() == 0.0 && f.abs() < 9.0e15 => {
+                // Whole and below 2^53, so the conversions lose nothing.
+                if f >= 0.0 { Value::from(f as u64) } else { Value::from(f as i64) }
+            }
+            _ => value.clone(),
+        },
+        Value::Array(items) => Value::Array(items.iter().map(integral).collect()),
+        Value::Object(map) => Value::Object(map.iter().map(|(k, v)| (k.clone(), integral(v))).collect()),
+        other => other.clone(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn whole_numbers_written_as_floats_are_integers_to_the_handlers() {
+        assert_eq!(
+            integral(&json!({"a": 2.0, "b": [3.0, 1.5, -4.0], "c": {"d": 7.0}, "e": "x", "f": 5})),
+            json!({"a": 2, "b": [3, 1.5, -4], "c": {"d": 7}, "e": "x", "f": 5})
+        );
+        assert!(integral(&json!(1.0e300)).is_f64(), "too big to be an integer stays as it is");
+        let mut a = Automation::new();
+        let id = json_of(a.call("doc_new", &json!({ "text": "ab\ncd" })).expect("opens"))["id"].clone();
+        let selected = a.call("doc_select", &json!({ "id": id, "line": 2.0, "column": 2.0 })).expect("2.0 is an integer");
+        assert_eq!(json_of(selected)["carets"][0]["start"], 4);
+    }
 
     fn json_of(content: Vec<Content>) -> Value {
         match content.into_iter().next() {
