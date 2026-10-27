@@ -65,7 +65,11 @@ fn document() -> impl Strategy<Value = String> {
     (
         proptest::option::of(Just("<?xml version=\"1.0\"?>".to_owned())),
         space(),
-        proptest::option::of(Just("<!-- before -->".to_owned())),
+        proptest::option::of(prop_oneof![
+            Just("<!-- before -->".to_owned()),
+            Just("<!DOCTYPE a [\n   <!ELEMENT a ANY>\n\t<!ENTITY e   \"x  y\">\n]>".to_owned()),
+            Just("<!DOCTYPE a SYSTEM \"a.dtd\">".to_owned()),
+        ]),
         space(),
         (name(), attrs(), proptest::collection::vec((element(), space()), 0..4)).prop_map(|(name, attrs, kids)| {
             let mut s = format!("<{name}{attrs}>");
@@ -112,8 +116,14 @@ fn without_space(text: &str) -> String {
     text.chars().filter(|c| !matches!(c, ' ' | '\t' | '\r' | '\n')).collect()
 }
 
-/// Elements whose content must come out byte for byte: those with text of their own, and those that preserve space.
+/// What must come out byte for byte: the DOCTYPE, the elements with text of their own, and those that preserve space.
 fn untouchable(text: &str) -> Vec<String> {
+    let tree = parse(text).syntax();
+    let doctypes = tree.descendants().filter(|n| n.kind() == SyntaxKind::Doctype).map(|n| n.text().to_string()).collect::<Vec<_>>();
+    doctypes.into_iter().chain(untouchable_elements(text)).collect()
+}
+
+fn untouchable_elements(text: &str) -> Vec<String> {
     let tree = parse(text).syntax();
     tree.descendants()
         .filter(|n| n.kind() == SyntaxKind::Element)
@@ -127,7 +137,12 @@ fn untouchable(text: &str) -> Vec<String> {
                 let start_tag = element.children().find(|n| n.kind() == SyntaxKind::StartTag).map(|t| t.text().to_string()).unwrap_or_default();
                 start_tag.contains("xml:space=\"preserve\"")
             };
-            mixed || preserve
+            // Inside a preserved element an `xml:space="default"` element is formatted again, so only one without any is byte for byte.
+            let island = {
+                let whole = element.text().to_string();
+                whole.contains("xml:space='default'") || whole.contains("xml:space=\"default\"")
+            };
+            (mixed || preserve) && !(preserve && island)
         })
         .map(|element| element.text().to_string())
         .collect()

@@ -118,11 +118,15 @@ fn run(text: &str, mode: Mode) -> Result<Vec<Edit>, FormatError> {
         let is_document = node.kind() == SyntaxKind::Document;
         let Some(content) = Content::of(&node, text, is_document) else { continue };
         content.gaps(text, depth, mode, &mut edits);
+        // The root element is at depth 0, whatever the document around it holds.
+        let child_depth = if is_document { 0 } else { depth + 1 };
         for child in content.elements {
-            // An element with `xml:space="preserve"` keeps its content as it is, and so does everything inside it.
-            if !preserves_space(&child, text) {
-                // The root element is at depth 0, whatever the document around it holds.
-                work.push((child, if is_document { 0 } else { depth + 1 }));
+            if space_of(&child, text) == Some(Space::Preserve) {
+                // An element with `xml:space="preserve"` keeps its content as it is, and so does everything inside it, except an
+                // element inside that says `xml:space="default"` again.
+                default_islands(&child, child_depth, text, &mut work);
+            } else {
+                work.push((child, child_depth));
             }
         }
     }
@@ -276,19 +280,43 @@ fn is_space(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\r' | '\n')
 }
 
-/// Whether the start tag of `element` says `xml:space="preserve"`.
-fn preserves_space(element: &SyntaxNode, text: &str) -> bool {
-    let Some(tag) = element.children().find(|n| n.kind() == SyntaxKind::StartTag) else { return false };
-    tag.children().filter(|n| n.kind() == SyntaxKind::Attribute).any(|attribute| {
-        let name = attribute.children_with_tokens().filter_map(SyntaxElement::into_token).find(|t| t.kind() == SyntaxKind::Name);
-        let value = attribute.children().find(|n| n.kind() == SyntaxKind::AttrValue);
-        match (name, value) {
-            (Some(name), Some(value)) if name.text() == "xml:space" => {
-                text.get(range_of(&value)).is_some_and(|v| v.trim_matches(['"', '\'']).trim() == "preserve")
-            }
-            _ => false,
+/// What an `xml:space` attribute says.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Space {
+    Preserve,
+    Default,
+}
+
+/// What the start tag of `element` says with `xml:space` (`None`: nothing, or something that is neither value).
+fn space_of(element: &SyntaxNode, text: &str) -> Option<Space> {
+    let tag = element.children().find(|n| n.kind() == SyntaxKind::StartTag)?;
+    tag.children().filter(|n| n.kind() == SyntaxKind::Attribute).find_map(|attribute| {
+        let name = attribute.children_with_tokens().filter_map(SyntaxElement::into_token).find(|t| t.kind() == SyntaxKind::Name)?;
+        let value = attribute.children().find(|n| n.kind() == SyntaxKind::AttrValue)?;
+        if name.text() != "xml:space" {
+            return None;
+        }
+        match text.get(range_of(&value))?.trim_matches(['"', '\'']).trim() {
+            "preserve" => Some(Space::Preserve),
+            "default" => Some(Space::Default),
+            _ => None,
         }
     })
+}
+
+/// Inside the preserved element `root` (at `depth`): the elements that switch white space handling back to `default`, which are
+/// formatted after all (what is inside them that preserves again stays as it is). They are put on `work` with their own depth.
+fn default_islands(root: &SyntaxNode, depth: usize, text: &str, work: &mut Vec<(SyntaxNode, usize)>) {
+    let mut stack: Vec<(SyntaxNode, usize)> = vec![(root.clone(), depth)];
+    while let Some((node, depth)) = stack.pop() {
+        for child in node.children().filter(|n| n.kind() == SyntaxKind::Element) {
+            if space_of(&child, text) == Some(Space::Default) {
+                work.push((child, depth + 1));
+            } else {
+                stack.push((child, depth + 1));
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -330,12 +358,17 @@ mod tests {
     }
 
     #[test]
-    fn xml_space_preserve_protects_the_subtree_until_it_is_switched_off() {
+    fn xml_space_preserve_protects_the_subtree_until_default_switches_it_back_on() {
         let src = "<a><pre xml:space=\"preserve\"><b/>\n   <c/></pre><d/></a>";
         assert_eq!(pretty(src), "<a>\n  <pre xml:space=\"preserve\"><b/>\n   <c/></pre>\n  <d/>\n</a>");
         assert_eq!(mini(src), "<a><pre xml:space=\"preserve\"><b/>\n   <c/></pre><d/></a>");
         // A single-quoted value counts, and so does a preserve on the root.
         assert_eq!(pretty("<a xml:space='preserve'><b/>\n  <c/></a>"), "<a xml:space='preserve'><b/>\n  <c/></a>");
+        // Inside a preserved subtree an element that says `default` is formatted again (at its own depth), and a preserve inside it holds.
+        assert_eq!(
+            pretty("<a><pre xml:space=\"preserve\"><x xml:space=\"default\"><y/><p xml:space=\"preserve\"><q/> <r/></p></x></pre></a>"),
+            "<a>\n  <pre xml:space=\"preserve\"><x xml:space=\"default\">\n      <y/>\n      <p xml:space=\"preserve\"><q/> <r/></p>\n    </x></pre>\n</a>"
+        );
         // `default` is not `preserve`.
         assert_eq!(pretty("<a xml:space=\"default\"><b/><c/></a>"), "<a xml:space=\"default\">\n  <b/>\n  <c/>\n</a>");
     }
@@ -414,8 +447,12 @@ mod tests {
         let depth = 5000;
         let src = format!("{}{}", "<a>".repeat(depth), "</a>".repeat(depth));
         // Past the tree's depth cap the elements stop nesting; the formatter leaves what it cannot place and does not crash.
-        let edits = pretty_print(&src, &FormatOptions::default());
-        assert!(edits.is_ok() || edits.is_err());
+        // Past the tree's depth cap the elements stop nesting: the document is still well-formed (it only has a warning), and what is
+        // done to it keeps it so, with every element still there.
+        let edits = pretty_print(&src, &FormatOptions::default()).expect("a deep document is well-formed");
+        let out = apply(&src, &edits);
+        assert!(!parse(&out).has_errors());
+        assert_eq!(out.matches("<a>").count(), depth);
         let wide = format!("<r>{}</r>", "<x/>".repeat(20_000));
         let out = pretty(&wide);
         assert_eq!(out.lines().count(), 20_002);

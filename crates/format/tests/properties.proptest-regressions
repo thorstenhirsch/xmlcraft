@@ -8,3 +8,6 @@ cc ce82e40e6b149bf50f95aca6098ff56477707c7c6364c5e88d6be6c5332eadd9 # shrinks to
 cc 35dc9c9804ad53a8454a77dc6834d93e189d6b3489523751ee144aeb43bde7b0 # shrinks to src = "<a xml:space='default' y='2'><a><e/>&amp;</a></a>"
 cc 5ee7f7c78b96ff15b92a07a7d9193c7f355a947c23056ee2ca2651e147c77c49 # shrinks to src = "<a xml:space=\"preserve\"><a></a> </a>"
 cc 90dc6623fc6438fe59e0f3f1ea7c6ceaff13c3299e08ec953c24c75b24fe78c4 # shrinks to src = "<a><a xml:space=\"preserve\"><a></a></a></a>", options = FormatOptions { indent: Spaces(2), eol: Lf, blank_lines: Keep }
+cc 89088e6fda49db409a4b84146e31f61353509148ec68bf7cea6dcf067c882df3 # shrinks to src = "<a xml:space=\"preserve\"><a xml:space='default' y='2'><e/> </a></a>"
+cc 2d32667da37d0ccd1d9f8d1a77a986bd13dd263fb3148433b840ec67e91aaf18 # shrinks to src = "<a xml:space=\"preserve\"><a xml:space='default' y='2'><a></a></a></a>", options = FormatOptions { indent: Spaces(2), eol: Lf, blank_lines: Keep }
+cc 995cf1b109a14ee7b217e3983415eaf2b50b08c57d8f7b56e6f6e659590219fa # shrinks to src = "<a><a xml:space=\"preserve\">text<a xml:space='default' y='2'><e/> </a></a></a>"
