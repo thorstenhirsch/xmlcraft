@@ -128,11 +128,14 @@ fn the_caret_moves_over_folded_lines_and_typing_below_them_works() {
     h.state_mut().session.active_document_mut().expect("a document").editor_mut().type_text("!");
     h.run_steps(2);
     assert_eq!(hidden(&h), [2, 3]);
-    // A find jump into it opens it.
+    // A find that lands in it opens it (the find command, typing in its bar, and the first match that is selected).
+    h.state_mut().execute("edit.find");
+    h.run_steps(3);
+    h.get_by_label("Find").type_text("<u>");
+    h.run_steps(3);
+    assert!(hidden(&h).is_empty(), "the match is in a fold: it is open");
     let at = editor(&h).text().find("<u>").expect("there");
-    h.state_mut().session.active_document_mut().expect("a document").editor_mut().set_selection(at, at + 3);
-    h.run_steps(2);
-    assert!(hidden(&h).is_empty());
+    assert_eq!(editor(&h).primary().start(), at);
 }
 
 #[test]

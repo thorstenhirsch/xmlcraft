@@ -125,22 +125,27 @@ fn range_of(node: &SyntaxNode, buffer: &Buffer, level: usize) -> Option<FoldRang
     let end_start = usize::from(end_tag.text_range().start());
     let end_end = usize::from(end_tag.text_range().end());
     let first = line_of_last_char(buffer, tag_end);
-    let end_line = buffer.line_of(end_start);
-    if end_line <= first {
+    // The end tag is on the lines from where it starts to where it ends (nearly always one).
+    let (end_starts, end_ends) = (buffer.line_of(end_start), line_of_last_char(buffer, end_end));
+    if end_starts <= first {
         return None;
     }
-    // Lines of the end tag's line before it and after it: when it stands alone on its line, that line stays visible.
-    let line = buffer.line_range(end_line)?;
-    let before_is_blank = buffer.slice(line.start..end_start).ok()?.trim().is_empty();
-    let after_is_blank = buffer.slice(end_end.min(line.end)..line.end).ok()?.trim().is_empty();
-    let last = if before_is_blank && after_is_blank {
-        end_line - 1
-    } else if after_is_blank {
-        end_line
-    } else {
+    // When it stands alone on its lines, they stay visible; with something before it on its first line, that is hidden with the content;
+    // with something after it on its last line nothing of them can be hidden.
+    let first_line_of_tag = buffer.line_range(end_starts)?;
+    let last_line_of_tag = buffer.line_range(end_ends)?;
+    let before_is_blank = buffer.slice(first_line_of_tag.start..end_start).ok()?.trim().is_empty();
+    let after_is_blank = buffer.slice(end_end.min(last_line_of_tag.end)..last_line_of_tag.end).ok()?.trim().is_empty();
+    let last = if !after_is_blank {
         return None; // something follows the end tag on its line: hiding the line would hide that too
+    } else if before_is_blank {
+        end_starts - 1
+    } else if end_starts == end_ends {
+        end_starts
+    } else {
+        return None; // an end tag over lines that does not start its first one: it cannot be hidden in part
     };
-    (last > first).then_some(FoldRange { first_line: first, last_line: last, end_line, level, kind })
+    (last > first).then_some(FoldRange { first_line: first, last_line: last, end_line: end_ends, level, kind })
 }
 
 /// What to do to the folds of a document.
@@ -176,20 +181,12 @@ pub fn apply_at(editor: &mut Editor, ranges: &[FoldRange], action: FoldAction, l
             Some(range) => editor.unfold_line(range.first_line),
             None => false,
         },
-        FoldAction::FoldAll => {
-            let mut changed = false;
-            for range in ranges {
-                changed |= editor.fold_lines(range.first_line, range.last_line);
-            }
-            changed
-        }
+        FoldAction::FoldAll => editor.fold_many(&ranges.iter().map(|r| (r.first_line, r.last_line)).collect::<Vec<_>>()),
         FoldAction::UnfoldAll => editor.unfold_all(),
         FoldAction::Level(level) => {
-            let mut changed = editor.unfold_all();
-            for range in ranges.iter().filter(|r| r.level == level) {
-                changed |= editor.fold_lines(range.first_line, range.last_line);
-            }
-            changed
+            let opened = editor.unfold_all();
+            let wanted: Vec<(usize, usize)> = ranges.iter().filter(|r| r.level == level).map(|r| (r.first_line, r.last_line)).collect();
+            editor.fold_many(&wanted) || opened
         }
     }
 }
@@ -240,6 +237,16 @@ mod tests {
             [(1, 3, 3, 1, Doctype), (4, 5, 5, 1, Comment), (6, 10, 11, 1, Element), (7, 8, 8, 2, Cdata), (9, 10, 10, 2, ProcessingInstruction)]
         );
         assert_eq!(ranges("<!-- one line -->"), []);
+    }
+
+    #[test]
+    fn an_end_tag_over_lines_belongs_to_the_lines_it_is_on() {
+        // `</a` and `>` on two lines: the lines of the end tag stay visible and a caret on either finds the range.
+        let (found, _) = fold_ranges(&parse("<a>\n x\n</a\n>\n").syntax(), "<a>\n x\n</a\n>\n");
+        assert_eq!(found.iter().map(|r| (r.first_line, r.last_line, r.end_line)).collect::<Vec<_>>(), [(0, 1, 3)]);
+        assert!(found[0].contains(3), "the continuation line is in it");
+        // Something after the `>`: nothing to fold.
+        assert_eq!(ranges("<a>\n x\n</a\n> <!--c-->\n"), []);
     }
 
     #[test]

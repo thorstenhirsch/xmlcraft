@@ -664,11 +664,17 @@ fn doc_fold(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         }
         _ => return Err(ToolError::InvalidArgs("line and column go together: give both, or neither for the caret's line".into())),
     };
-    let analysis = analyze_guarded(&doc.editor().text(), 0);
-    if analysis.skipped.is_some() {
-        return fail("the text is too large to analyse, or the analysis failed: nothing was folded");
-    }
-    let changed = xmlcraft_engine::folding::apply_at(doc.editor_mut(), &analysis.folds, action, line);
+    // Opening everything needs no analysis (and works on a text too large to have one).
+    let (ranges, truncated) = if action == FoldAction::UnfoldAll {
+        (Vec::new(), false)
+    } else {
+        let analysis = analyze_guarded(&doc.editor().text(), 0);
+        if analysis.skipped.is_some() {
+            return fail("the text is too large to analyse, or the analysis failed: nothing was folded");
+        }
+        (analysis.folds, analysis.folds_truncated)
+    };
+    let changed = xmlcraft_engine::folding::apply_at(doc.editor_mut(), &ranges, action, line);
     let buffer = doc.editor().buffer();
     let folded: Vec<Value> = doc
         .editor()
@@ -680,7 +686,7 @@ fn doc_fold(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         })
         .collect();
     json_result(json!({
-        "changed": changed, "folded": folded, "visible_lines": doc.editor().visible_rows(), "truncated": analysis.folds_truncated,
+        "changed": changed, "folded": folded, "visible_lines": doc.editor().visible_rows(), "truncated": truncated,
         "carets": carets_json(doc), "document": describe(doc),
     }))
 }
