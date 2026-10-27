@@ -8,17 +8,32 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use xmlcraft_editor::{Editor, Settings};
-use xmlcraft_text::encoding::{Detected, EncodeError, Encoding, Unmappable, decode, encode_chunks, sniff};
+use xmlcraft_syntax::{Lexer, TokenKind};
+use xmlcraft_text::Edit;
+use xmlcraft_text::encoding::{
+    Detected, EncodeError, Encoding, Unmappable, declared_encoding_span, decode, encode_chunks, sniff, unmappable_characters,
+};
 use xmlcraft_text::eol::LineEndings;
 
 /// Files larger than this are not opened (until large-file mode, M1.15).
 pub const MAX_OPEN_BYTES: usize = 256 * 1024 * 1024;
+
+/// How much of the start of the text is looked at for the XML declaration.
+const DECLARATION_HEAD: usize = 4096;
+
+/// How many unmappable characters are collected; more than this is not a few stray characters.
+const MAX_UNMAPPABLE: usize = 100_000;
 
 /// What a file looked like when it was last read or written, to notice that something else changed it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FileStamp {
     pub len: u64,
     pub modified: Option<SystemTime>,
+    /// When the file's inode last changed, as (seconds, nanoseconds): any write moves it, even one that keeps the size and puts the
+    /// modification time back. Only where the platform has it (Unix).
+    pub changed: Option<(i64, i64)>,
+    /// Which file it is, as (device, inode), so that two paths to one file are known to be one. Only where the platform has it (Unix).
+    pub file_id: Option<(u64, u64)>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -38,7 +53,8 @@ impl std::error::Error for OpenError {}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SaveError {
-    /// A character the file's encoding cannot hold. Writing it as a character reference, or another encoding, is the user's choice.
+    /// A character the file's encoding cannot hold. Writing it as a character reference (where XML allows one), or another encoding, is
+    /// the user's choice: [`Document::apply_character_references`] and [`Document::set_encoding`].
     Unmappable(EncodeError),
     /// Reading the file replaced bytes that were not valid; saving over it would make that permanent.
     Lossy,
@@ -62,24 +78,28 @@ pub struct Document {
     editor: Editor,
     encoding: Detected,
     lossy: bool,
-    saved_version: u64,
-    /// Set by anything that changes what would be written without changing the text (another encoding).
-    forced_dirty: bool,
+    /// The editor's text state ([`Editor::state_id`]) when the file was last read or written: undoing back to it makes the document
+    /// clean again.
+    saved_state: u64,
+    /// The encoding and byte-order mark the file has: another one makes the document dirty until it is the same again.
+    saved_encoding: (Encoding, bool),
     stamp: Option<FileStamp>,
 }
 
 impl Document {
     /// A new, empty document that has no file yet.
     pub fn untitled(id: u64, number: usize) -> Self {
+        let editor = Editor::new("");
+        let encoding = Detected::utf8();
         Self {
             id,
             name: format!("Untitled-{number}"),
             path: None,
-            editor: Editor::new(""),
-            encoding: Detected::utf8(),
+            saved_state: editor.state_id(),
+            saved_encoding: (encoding.encoding, encoding.bom),
+            editor,
+            encoding,
             lossy: false,
-            saved_version: 0,
-            forced_dirty: false,
             stamp: None,
         }
     }
@@ -95,7 +115,8 @@ impl Document {
         let mut editor = Editor::with_settings("", settings);
         editor.load(&decoded.text);
         let name = path.as_deref().and_then(Path::file_name).map_or_else(|| "Untitled".to_owned(), |n| n.to_string_lossy().into_owned());
-        Ok(Self { id, name, path, saved_version: editor.version(), editor, encoding, lossy: decoded.lossy, forced_dirty: false, stamp })
+        let saved_encoding = (encoding.encoding, encoding.bom);
+        Ok(Self { id, name, path, saved_state: editor.state_id(), saved_encoding, editor, encoding, lossy: decoded.lossy, stamp })
     }
 
     pub fn id(&self) -> u64 {
@@ -119,9 +140,9 @@ impl Document {
         &mut self.editor
     }
 
-    /// Whether the text, or how it would be written, differs from what was last saved.
+    /// Whether the text, or how it would be written, differs from what was last saved. Undoing back to the saved text is clean again.
     pub fn is_dirty(&self) -> bool {
-        self.forced_dirty || self.editor.version() != self.saved_version
+        self.editor.state_id() != self.saved_state || (self.encoding.encoding, self.encoding.bom) != self.saved_encoding
     }
 
     /// How the file is encoded, with its byte-order mark and what its XML declaration says.
@@ -143,19 +164,93 @@ impl Document {
         LineEndings::count_chunks(self.editor.buffer().chunks())
     }
 
-    /// Write the file in another encoding from now on (with or without a byte-order mark). The document counts as changed.
-    pub fn set_encoding(&mut self, encoding: Encoding, bom: bool) {
-        if self.encoding.encoding != encoding || self.encoding.bom != bom {
-            self.encoding.encoding = encoding;
-            self.encoding.bom = bom && (encoding.is_utf8() || encoding.is_utf16());
-            self.forced_dirty = true;
+    /// Write the file in another encoding from now on (with or without a byte-order mark; only UTF-8 and UTF-16 have one). The XML
+    /// declaration is brought in line as an edit of the text: a different `encoding` is replaced by the new name, a declaration that
+    /// lacks one gets it (and a document with no declaration gets one) when the new encoding cannot be told from the file's bytes.
+    /// Undoing that edit leaves the declaration as it was, not the encoding. Returns whether anything changed.
+    pub fn set_encoding(&mut self, encoding: Encoding, bom: bool) -> bool {
+        let bom = bom && (encoding.is_utf8() || encoding.is_utf16());
+        if self.encoding.encoding == encoding && self.encoding.bom == bom {
+            return false;
+        }
+        self.encoding.encoding = encoding;
+        self.encoding.bom = bom;
+        self.sync_declaration();
+        true
+    }
+
+    /// Make the XML declaration say what the encoding is (see [`Self::set_encoding`]).
+    fn sync_declaration(&mut self) {
+        let buffer = self.editor.buffer();
+        let mut end = buffer.len().min(DECLARATION_HEAD);
+        while end < buffer.len() && !buffer.is_boundary(end) {
+            end += 1;
+        }
+        let Ok(head) = buffer.slice(0..end) else { return };
+        let encoding = self.encoding.encoding;
+        // A plain `UTF-16` names either byte order.
+        let label = if encoding.is_utf16() { "UTF-16" } else { encoding.name() };
+        // The bytes alone tell UTF-8, and UTF-16 with a byte-order mark; anything else needs the declaration.
+        let must_declare = !(encoding.is_utf8() || (encoding.is_utf16() && self.encoding.bom));
+        let edit = if let Some(span) = declared_encoding_span(&head) {
+            let now = Detected { encoding, bom: self.encoding.bom, declared: head.get(span.clone()).map(str::to_owned) };
+            (!now.declaration_matches()).then(|| Edit::replace(span, label.to_owned()))
+        } else if has_declaration(&head) {
+            version_end(&head).filter(|_| must_declare).map(|at| Edit::insert(at, format!(" encoding=\"{label}\"")))
+        } else if must_declare {
+            Some(Edit::insert(0, format!("<?xml version=\"1.0\" encoding=\"{label}\"?>{}", self.editor.settings().eol.as_str())))
+        } else {
+            None
+        };
+        if let Some(edit) = edit {
+            self.editor.apply_edits(&[edit]);
+        }
+        let buffer = self.editor.buffer();
+        let mut end = buffer.len().min(DECLARATION_HEAD);
+        while end < buffer.len() && !buffer.is_boundary(end) {
+            end += 1;
+        }
+        if let Ok(head) = buffer.slice(0..end) {
+            self.encoding.declared = declared_encoding_span(&head).and_then(|span| head.get(span).map(str::to_owned));
         }
     }
 
-    /// The bytes of the file: the text in the document's encoding. With `Unmappable::Refuse`, a character the encoding cannot hold is an
-    /// error; with `CharRefs` it is written as a character reference.
-    pub fn to_bytes(&self, policy: Unmappable) -> Result<Vec<u8>, SaveError> {
-        encode_chunks(self.editor.buffer().chunks(), self.encoding.encoding, self.encoding.bom, policy).map_err(SaveError::Unmappable)
+    /// The characters the file's encoding cannot hold (the first ones, if there are very many), with where they are in the text.
+    pub fn unmappable_characters(&self) -> Vec<EncodeError> {
+        unmappable_characters(self.editor.buffer().chunks(), self.encoding.encoding, MAX_UNMAPPABLE)
+    }
+
+    /// Write every character the encoding cannot hold as a character reference (`&#x65E5;`), as one undoable edit of the text, so that
+    /// the text is what the file will hold. A reference is only right in character data and attribute values: in a comment, a CDATA
+    /// section, a processing instruction or a name it would be literal or invalid, so then nothing changes and the first character that
+    /// cannot take one is the error (the user can choose another encoding instead). Returns how many were replaced.
+    pub fn apply_character_references(&mut self) -> Result<usize, SaveError> {
+        let found = self.unmappable_characters();
+        let Some(first) = found.first() else { return Ok(0) };
+        if found.len() >= MAX_UNMAPPABLE {
+            return Err(SaveError::Unmappable(*first)); // too many to be a few stray characters: another encoding is the answer
+        }
+        let text = self.editor.text();
+        let mut tokens = Lexer::new(&text);
+        let mut current = tokens.next();
+        let mut edits = Vec::with_capacity(found.len());
+        for e in &found {
+            while current.as_ref().is_some_and(|t| t.end <= e.offset) {
+                current = tokens.next();
+            }
+            let allowed = current.as_ref().is_some_and(|t| t.start <= e.offset && matches!(t.kind, TokenKind::Text | TokenKind::AttrText));
+            if !allowed {
+                return Err(SaveError::Unmappable(*e));
+            }
+            edits.push(Edit::replace(e.offset..e.offset + e.ch.len_utf8(), format!("&#x{:X};", u32::from(e.ch))));
+        }
+        if self.editor.apply_edits(&edits) { Ok(edits.len()) } else { Err(SaveError::Unmappable(*first)) }
+    }
+
+    /// The bytes of the file: the text in the document's encoding. A character the encoding cannot hold is an error (see
+    /// [`Self::apply_character_references`] and [`Self::set_encoding`]); nothing is ever replaced silently.
+    pub fn to_bytes(&self) -> Result<Vec<u8>, SaveError> {
+        encode_chunks(self.editor.buffer().chunks(), self.encoding.encoding, self.encoding.bom, Unmappable::Refuse).map_err(SaveError::Unmappable)
     }
 
     /// Whether saving over the file the document came from is allowed.
@@ -169,8 +264,8 @@ impl Document {
         self.name = path.file_name().map_or_else(|| self.name.clone(), |n| n.to_string_lossy().into_owned());
         self.path = Some(path);
         self.stamp = stamp;
-        self.saved_version = self.editor.version();
-        self.forced_dirty = false;
+        self.saved_state = self.editor.state_id();
+        self.saved_encoding = (self.encoding.encoding, self.encoding.bom);
         self.lossy = false;
         self.editor.break_undo_group();
     }
@@ -182,6 +277,24 @@ impl Document {
         *self = fresh;
         Ok(())
     }
+}
+
+/// Whether the text starts with an XML declaration (`<?xml` and white space).
+fn has_declaration(head: &str) -> bool {
+    head.strip_prefix("<?xml").and_then(|rest| rest.chars().next()).is_some_and(|c| matches!(c, ' ' | '\t' | '\r' | '\n'))
+}
+
+/// Where the `version` value of the XML declaration ends (just after its closing quote), if the declaration starts with one.
+fn version_end(head: &str) -> Option<usize> {
+    let rest = head.strip_prefix("<?xml")?;
+    let after_space = rest.trim_start_matches([' ', '\t', '\r', '\n']);
+    let after_name = after_space.strip_prefix("version")?.trim_start_matches([' ', '\t', '\r', '\n']);
+    let after_eq = after_name.strip_prefix('=')?.trim_start_matches([' ', '\t', '\r', '\n']);
+    let quote = after_eq.chars().next().filter(|q| matches!(q, '"' | '\''))?;
+    let value = after_eq.get(1..)?;
+    let close = value.find(quote)?;
+    // The offset of the closing quote's end: everything consumed so far plus the value and the quote.
+    Some(head.len() - value.len() + close + 1)
 }
 
 /// Editor settings for a text: its dominant line ending and its indentation.
@@ -237,7 +350,7 @@ mod tests {
         ] {
             let d = open(bytes);
             assert!(!d.is_lossy() && !d.is_dirty());
-            assert_eq!(d.to_bytes(Unmappable::Refuse).expect("encodes"), bytes, "{bytes:?}");
+            assert_eq!(d.to_bytes().expect("encodes"), bytes, "{bytes:?}");
         }
     }
 
@@ -250,7 +363,7 @@ mod tests {
             input.extend_from_slice(&bytes);
             let d = open(&input);
             if !d.is_lossy() {
-                prop_assert_eq!(d.to_bytes(Unmappable::Refuse).expect("encodes"), input);
+                prop_assert_eq!(d.to_bytes().expect("encodes"), input);
             } else {
                 prop_assert!(!d.can_overwrite_source());
             }
@@ -263,7 +376,7 @@ mod tests {
         assert!(!d.is_dirty());
         d.editor_mut().type_text("x");
         assert!(d.is_dirty());
-        assert_eq!(d.to_bytes(Unmappable::Refuse).expect("encodes"), b"x<a/>");
+        assert_eq!(d.to_bytes().expect("encodes"), b"x<a/>");
         d.mark_saved(PathBuf::from("/tmp/b.xml"), None);
         assert!(!d.is_dirty());
         assert_eq!((d.name(), d.path()), ("b.xml", Some(Path::new("/tmp/b.xml"))));
@@ -280,28 +393,135 @@ mod tests {
     }
 
     #[test]
-    fn a_character_the_encoding_cannot_hold_is_reported() {
-        let mut d = open(b"<?xml version=\"1.0\" encoding=\"windows-1252\"?><a/>");
+    fn a_character_the_encoding_cannot_hold_is_reported_and_becomes_a_reference_in_the_text() {
+        let mut d = open(b"<?xml version=\"1.0\" encoding=\"windows-1252\"?><a b=\"x\">t</a>");
         let at = d.editor().buffer().len() - 4;
         d.editor_mut().place_caret(at, false);
         d.editor_mut().type_text("日");
-        assert!(matches!(d.to_bytes(Unmappable::Refuse), Err(SaveError::Unmappable(_))));
-        let bytes = d.to_bytes(Unmappable::CharRefs).expect("with references");
-        assert!(bytes.windows(8).any(|w| w == b"&#x65E5;"));
+        assert!(matches!(d.to_bytes(), Err(SaveError::Unmappable(e)) if e.ch == '日'));
+        d.mark_saved(PathBuf::from("/tmp/a.xml"), None);
+        let in_value = d.editor().text().find("x\"").unwrap_or(0);
+        d.editor_mut().place_caret(in_value, false);
+        d.editor_mut().type_text("€日");
+        // The euro sign is in windows-1252; only the other character needs a reference, in the text and in the attribute value.
+        assert_eq!(d.unmappable_characters().len(), 2);
+        assert_eq!(d.apply_character_references(), Ok(2));
+        assert!(d.editor().text().contains("b=\"€&#x65E5;x\"") && d.editor().text().contains("&#x65E5;</a>"), "{}", d.editor().text());
+        // The text is what the file will hold: saving gives exactly it, and the document is dirty because the text changed.
+        assert!(d.is_dirty());
+        let bytes = d.to_bytes().expect("now it encodes");
+        assert!(bytes.windows(8).any(|w| w == b"&#x65E5;") && bytes.contains(&0x80));
+        // One undo step takes the references out again.
+        d.editor_mut().undo();
+        assert_eq!(d.unmappable_characters().len(), 2);
+        assert_eq!(d.apply_character_references(), Ok(2));
+        assert_eq!(d.apply_character_references(), Ok(0), "nothing left to replace");
     }
 
     #[test]
-    fn changing_the_encoding_counts_as_a_change() {
+    fn a_character_reference_is_not_written_where_it_would_be_literal() {
+        for (src, bad) in [
+            ("<a><!-- 日 --></a>", "in a comment"),
+            ("<a><![CDATA[日]]></a>", "in a CDATA section"),
+            ("<a><?pi 日?></a>", "in a processing instruction"),
+            ("<日/>", "in a name"),
+        ] {
+            let mut d = open(b"<?xml version=\"1.0\" encoding=\"windows-1252\"?><a/>");
+            // Character data next to the construct could take a reference, but it is all or nothing.
+            let with_text = format!("<?xml version=\"1.0\" encoding=\"windows-1252\"?>{}", src.replacen("<a>", "<a>日", 1));
+            d.editor_mut().load(&with_text);
+            let result = d.apply_character_references();
+            assert!(matches!(result, Err(SaveError::Unmappable(e)) if e.ch == '日'), "{bad}: {result:?}");
+            assert_eq!(d.editor().text(), with_text, "{bad}: nothing changed");
+        }
+    }
+
+    #[test]
+    fn changing_the_encoding_counts_as_a_change_until_it_is_the_same_again() {
         let mut d = open(b"<a>\xC3\xA9</a>");
-        d.set_encoding(Encoding::UTF_16LE, true);
+        assert!(d.set_encoding(Encoding::UTF_16LE, true));
         assert!(d.is_dirty());
-        assert_eq!(d.to_bytes(Unmappable::Refuse).expect("encodes")[..2], [0xFF, 0xFE]);
+        assert_eq!(d.to_bytes().expect("encodes")[..2], [0xFF, 0xFE]);
+        // Back to what the file has: clean again, with nothing saved in between.
+        assert!(d.set_encoding(Encoding::UTF_8, false));
+        assert!(!d.is_dirty(), "UTF-8 without a mark is what was read");
+        assert!(d.set_encoding(Encoding::UTF_16LE, true));
         d.mark_saved(PathBuf::from("/tmp/a.xml"), None);
         assert!(!d.is_dirty());
-        d.set_encoding(Encoding::UTF_16LE, true);
-        assert!(!d.is_dirty(), "the same encoding is no change");
-        d.set_encoding(Encoding::WINDOWS_1252, true);
+        assert!(!d.set_encoding(Encoding::UTF_16LE, true), "the same encoding is no change");
+        assert!(d.set_encoding(Encoding::WINDOWS_1252, true));
         assert!(!d.encoding().bom, "only UTF-8 and UTF-16 have a byte-order mark");
+        assert!(!d.set_encoding(Encoding::WINDOWS_1252, true), "asking for a mark it cannot have is no change either");
+        assert!(d.is_dirty());
+    }
+
+    #[test]
+    fn a_mark_that_the_encoding_cannot_have_does_not_dirty_a_document() {
+        let mut d = open(b"<?xml version=\"1.0\" encoding=\"windows-1252\"?><a/>");
+        assert!(!d.set_encoding(Encoding::WINDOWS_1252, true));
+        assert!(!d.is_dirty());
+    }
+
+    #[test]
+    fn the_xml_declaration_follows_the_encoding() {
+        // A declaration that names the old encoding is edited, keeping its quotes.
+        let mut d = open(b"<?xml version=\"1.0\" encoding='ISO-8859-1' standalone=\"yes\"?>\n<a>\xE9</a>");
+        assert!(d.set_encoding(Encoding::UTF_8, false));
+        assert_eq!(d.editor().text(), "<?xml version=\"1.0\" encoding='UTF-8' standalone=\"yes\"?>\n<a>é</a>");
+        assert_eq!(d.encoding().declared.as_deref(), Some("UTF-8"));
+        assert!(d.encoding().declaration_matches());
+        // A declaration that already names it (in any case) is left alone.
+        let mut d = open(b"<?xml version=\"1.0\" encoding=\"utf-8\"?><a/>");
+        assert!(d.set_encoding(Encoding::UTF_8, true));
+        assert_eq!(d.editor().text(), "<?xml version=\"1.0\" encoding=\"utf-8\"?><a/>");
+        // Plain `UTF-16` names both byte orders.
+        let mut d = open(b"<?xml version=\"1.0\" encoding=\"UTF-8\"?><a/>");
+        d.set_encoding(Encoding::UTF_16BE, true);
+        assert!(d.editor().text().starts_with("<?xml version=\"1.0\" encoding=\"UTF-16\"?>"));
+        // No `encoding` in the declaration, or no declaration: UTF-8 and UTF-16 with a mark need none; the others do.
+        let mut d = open(b"<?xml version=\"1.0\"?>\r\n<a/>");
+        d.set_encoding(Encoding::UTF_16LE, true);
+        assert_eq!(d.editor().text(), "<?xml version=\"1.0\"?>\r\n<a/>");
+        d.set_encoding(Encoding::WINDOWS_1252, false);
+        assert_eq!(d.editor().text(), "<?xml version=\"1.0\" encoding=\"windows-1252\"?>\r\n<a/>");
+        let mut d = open(b"<a/>");
+        d.set_encoding(Encoding::UTF_16LE, true);
+        assert_eq!(d.editor().text(), "<a/>");
+        d.set_encoding(Encoding::UTF_16LE, false);
+        assert_eq!(d.editor().text(), "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n<a/>", "UTF-16 without a mark must say so");
+        // And it round-trips: the file written in the new encoding is read back as that encoding.
+        let bytes = d.to_bytes().expect("encodes");
+        assert_eq!(sniff(&bytes).encoding, Encoding::UTF_16LE);
+    }
+
+    #[test]
+    fn undoing_back_to_the_saved_text_is_clean() {
+        let mut d = open(b"<a/>");
+        d.editor_mut().type_text("x");
+        d.editor_mut().undo();
+        assert!(!d.is_dirty(), "undone before any save");
+        d.editor_mut().redo();
+        assert!(d.is_dirty());
+        d.mark_saved(PathBuf::from("/tmp/a.xml"), None);
+        assert!(!d.is_dirty());
+        d.editor_mut().type_text("y");
+        d.editor_mut().break_undo_group();
+        d.editor_mut().type_text("z");
+        assert!(d.is_dirty());
+        d.editor_mut().undo();
+        assert!(d.is_dirty(), "one step back is still not the saved text");
+        d.editor_mut().undo();
+        assert!(!d.is_dirty(), "two steps back is");
+        d.editor_mut().undo();
+        assert!(d.is_dirty(), "before the saved text is a change");
+        d.editor_mut().redo();
+        assert!(!d.is_dirty());
+        // A different edit after undoing is not the saved text.
+        d.editor_mut().type_text("q");
+        d.editor_mut().undo();
+        assert!(!d.is_dirty());
+        d.editor_mut().type_text("q");
+        assert!(d.is_dirty());
     }
 
     #[test]

@@ -270,6 +270,44 @@ pub fn encode_chunks<'a>(
     Ok(out)
 }
 
+/// Every character of the text that `encoding` cannot hold, in order, at most `limit` of them (UTF-8 and UTF-16 hold everything).
+pub fn unmappable_characters<'a>(chunks: impl IntoIterator<Item = &'a str>, encoding: Encoding, limit: usize) -> Vec<EncodeError> {
+    let mut found = Vec::new();
+    if encoding.is_utf8() || encoding.is_utf16() {
+        return found;
+    }
+    let mut encoder = encoding.0.new_encoder();
+    let mut buf = [0u8; 4096];
+    // Bytes of the text before the current piece. The last call has no input and flushes the encoder.
+    let mut base = 0usize;
+    for (chunk, last) in chunks.into_iter().map(|c| (c, false)).chain(std::iter::once(("", true))) {
+        let mut rest = chunk;
+        let mut done = 0usize;
+        loop {
+            let (result, read, written) = encoder.encode_from_utf8_without_replacement(rest, &mut buf, last);
+            done = done.saturating_add(read);
+            rest = rest.get(read..).unwrap_or_default();
+            match result {
+                encoding_rs::EncoderResult::InputEmpty => break,
+                encoding_rs::EncoderResult::OutputFull => {
+                    if read == 0 && written == 0 {
+                        return found; // no progress with an empty buffer cannot happen; stop rather than loop forever
+                    }
+                }
+                encoding_rs::EncoderResult::Unmappable(ch) => {
+                    // `read` includes the character the encoder refused.
+                    found.push(EncodeError { offset: base.saturating_add(done).saturating_sub(ch.len_utf8()), ch });
+                    if found.len() >= limit {
+                        return found;
+                    }
+                }
+            }
+        }
+        base = base.saturating_add(chunk.len());
+    }
+    found
+}
+
 /// Encode with an `encoding_rs` encoder (every encoding except UTF-8 and UTF-16).
 fn encode_legacy<'a>(
     encoding: &'static encoding_rs::Encoding,
@@ -320,6 +358,22 @@ mod tests {
 
     fn det(encoding: Encoding, bom: bool) -> Detected {
         Detected { encoding, bom, declared: None }
+    }
+
+    #[test]
+    fn every_unmappable_character_is_found_with_its_offset() {
+        let text = "a日b€c\u{1F600}d";
+        let found = unmappable_characters([text], Encoding::WINDOWS_1252, 100);
+        assert_eq!(found.iter().map(|e| (e.offset, e.ch)).collect::<Vec<_>>(), [(1, '日'), (9, '\u{1F600}')], "the euro sign is in windows-1252");
+        for e in &found {
+            assert_eq!(text[e.offset..].chars().next(), Some(e.ch));
+        }
+        // Across pieces of a rope, offsets are into the whole text; a limit stops early; Unicode encodings hold everything.
+        let pieces = unmappable_characters(["a日", "b€", "c\u{1F600}d"], Encoding::WINDOWS_1252, 100);
+        assert_eq!(pieces, found);
+        assert_eq!(unmappable_characters([text], Encoding::WINDOWS_1252, 1).len(), 1);
+        assert!(unmappable_characters([text], Encoding::UTF_8, 100).is_empty() && unmappable_characters([text], Encoding::UTF_16LE, 100).is_empty());
+        assert!(unmappable_characters(["plain"], Encoding::WINDOWS_1252, 100).is_empty());
     }
 
     #[test]

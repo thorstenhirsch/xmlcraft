@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 xmlcraft-text = { workspace = true }
+xmlcraft-syntax = { workspace = true }
 xmlcraft-editor = { workspace = true }
 
 [dev-dependencies]
