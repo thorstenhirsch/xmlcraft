@@ -4700,6 +4700,8 @@ dependencies = [
  "serde_json",
  "sha2",
  "toml",
+ "xmlcraft-syntax",
+ "xmlcraft-text",
 ]
 
 [[package]]

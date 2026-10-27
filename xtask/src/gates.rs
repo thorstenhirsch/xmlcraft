@@ -138,7 +138,7 @@ pub fn deny(_: &[String]) -> anyhow::Result<()> {
 }
 
 /// The full gate, in order, stopping at the first failure. Steps are added here as the commands behind them land (the CLI
-/// without default features, i18n-report, schemas and the conformance ratchet).
+/// without default features, i18n-report and schemas).
 pub fn ci(_: &[String]) -> anyhow::Result<()> {
     type Step = (&'static str, Box<dyn Fn() -> anyhow::Result<()>>);
     let steps: Vec<Step> = vec![
@@ -149,6 +149,8 @@ pub fn ci(_: &[String]) -> anyhow::Result<()> {
         ("wasm", Box::new(|| wasm(&[]))),
         ("assets", Box::new(|| crate::assets::run(&[]))),
         ("parity", Box::new(|| crate::parity::run(&[]))),
+        // Skips with a notice unless the suite has been fetched (`cargo xtask conformance xmlconf --fetch`).
+        ("conformance", Box::new(|| crate::conformance::run(&["xmlconf".to_owned()]))),
         ("deny", Box::new(|| deny(&[]))),
     ];
     for (i, (name, f)) in steps.iter().enumerate() {

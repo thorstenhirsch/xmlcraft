@@ -158,6 +158,43 @@ fn doctype_problems() {
 }
 
 #[test]
+fn whitespace_and_declaration_rules() {
+    assert_eq!(problems("<a b=\"1\"c=\"2\"/>"), [p(Code::MissingSpace, "c")]);
+    assert_eq!(problems("<a b=\"1\" c=\"2\"\n d='3'/>"), vec![]);
+    assert_eq!(problems("<?xml version=\"1.0\"encoding=\"UTF-8\"?><a/>"), [p(Code::MissingSpace, "encoding")]);
+    assert_eq!(problems("<?pi+?><a/>"), [p(Code::MissingSpace, "+")]);
+    assert_eq!(problems("<?pi ?><?pi?><?pi  x ?><a/>"), vec![]);
+    assert_eq!(problems("<?a:b x?><a/>"), [p(Code::ColonInName, "a:b")]);
+    assert_eq!(problems("<!DOCTYPE a PUBLIC \"[\" \"x\"><a/>"), [p(Code::BadPubidLiteral, "[")]);
+    assert_eq!(problems("<!DOCTYPE a PUBLIC \"-//A B//C 1.0//EN\" \"x[\"><a/>"), vec![], "the system literal may hold anything");
+    assert_eq!(problems("<!DOCTYPE a [<!NOTATION n PUBLIC \"a{b\">]><a/>"), [p(Code::BadPubidLiteral, "{")]);
+    assert_eq!(problems("<!DOCTYPE a [<!DUNNO x>]><a/>"), [p(Code::UnknownDeclaration, "<!DUNNO")]);
+    assert_eq!(problems("<!DOCTYPE a [] x><a/>"), [p(Code::BadDoctype, "x")]);
+}
+
+#[test]
+fn entity_declaration_rules() {
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY e \"a&b\">]><a/>"), [p(Code::BadEntityValue, "&")]);
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY e \"a%b\">]><a/>"), [p(Code::BadEntityValue, "%")]);
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY e \"&#0;\">]><a/>"), [p(Code::BadEntityValue, "&")]);
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY e \"a&#65;&#x42;&x;&amp;\">]><a/>"), vec![], "references are fine in entity values");
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY e SYSTEM \"a&b%c\">]><a/>"), vec![], "an external identifier is not an entity value");
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY % p \"x\"><!ENTITY e \"%p;\">]><a/>"), [p(Code::PeInDeclaration, "%p;")]);
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY % p \"x\"><!ATTLIST a %p; CDATA #IMPLIED>]><a/>"), [p(Code::PeInDeclaration, "%p;")]);
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY % p \"x\">%p;]><a/>"), vec![], "between declarations it is fine");
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY a:b \"x\">]><a/>"), [p(Code::ColonInName, "a:b")]);
+    // A colon in the name of a referenced entity, general or parameter.
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY e \"&x:y;\">]><a/>"), [p(Code::ColonInName, "x:y")]);
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY e \"%x:y;\">]><a/>"), [p(Code::ColonInName, "x:y"), p(Code::PeInDeclaration, "%x:y;")]);
+    // `SYSTEM` and `PUBLIC` are keywords only straight after the name: an entity may be called that, and its value is still an entity value.
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY SYSTEM \"a&b\">]><a/>"), [p(Code::BadEntityValue, "&")]);
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY PUBLIC \"a&b\">]><a/>"), [p(Code::BadEntityValue, "&")]);
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY % SYSTEM \"a&b\">]><a/>"), [p(Code::BadEntityValue, "&")]);
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY e SYSTEM \"a&b\">]><a/>"), vec![], "an external identifier is not an entity value");
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY e PUBLIC \"-//x\" \"a&b\">]><a/>"), vec![]);
+}
+
+#[test]
 fn namespace_problems() {
     assert_eq!(problems("<p:a/>"), [p(Code::UnboundPrefix, "p")]);
     assert_eq!(problems("<a p:b=\"1\"/>"), [p(Code::UnboundPrefix, "p")]);
