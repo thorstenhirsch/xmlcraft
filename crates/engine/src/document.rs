@@ -328,7 +328,10 @@ impl Document {
     /// history is dropped.
     pub fn reload(&mut self, bytes: &[u8], stamp: Option<FileStamp>) -> Result<(), OpenError> {
         let fresh = Self::from_bytes(self.id, self.path.clone(), bytes, stamp)?;
+        let before = self.editor.version();
         *self = fresh;
+        // Versions only go up, so nothing that was worked out about the old text can pass for the new one's.
+        self.editor.raise_version_above(before);
         Ok(())
     }
 }
@@ -626,6 +629,18 @@ mod tests {
         let mut tabs = open(b"<a>\n\t<b>\n\t\t<c/></b>\n</a><!--x-->");
         assert_eq!(tabs.pretty_print(), Ok(true));
         assert_eq!(tabs.editor().text(), "<a>\n\t<b>\n\t\t<c/>\n\t</b>\n</a>\n<!--x-->");
+    }
+
+    #[test]
+    fn a_reload_never_reuses_a_version_the_old_text_had() {
+        let mut d = open(b"<a/>");
+        d.editor_mut().type_text("x");
+        d.editor_mut().type_text("y");
+        let before = d.editor().version();
+        d.reload(b"<b/>", None).expect("reloads");
+        assert!(d.editor().version() > before, "{} after {before}", d.editor().version());
+        assert_eq!(d.editor().text(), "<b/>");
+        assert!(!d.is_dirty());
     }
 
     #[test]

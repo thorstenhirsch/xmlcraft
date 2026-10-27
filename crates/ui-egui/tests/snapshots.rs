@@ -84,6 +84,13 @@ fn a_document_tab_with_unsaved_changes() {
     session.active_document_mut().expect("shown").editor_mut().type_text(" ");
     session.open(Some("/x/catalog.xsd".into()), b"<schema/>", None).expect("opens");
     session.set_active(Some(0));
+    // The outline and the status badge come from the background analysis: wait for it, or the tree would show "Reading the document…".
+    let started = std::time::Instant::now();
+    while h.state().problems().is_none() {
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "waiting for the analysis");
+        h.run_steps(1);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
     h.run_steps(3);
     check("shell_tabs", &tree_text(&h));
 }

@@ -97,7 +97,7 @@ impl Shortcut {
 pub struct CommandSpec {
     pub id: &'static str,
     pub label: &'static str,
-    /// Top-level menu it appears in (`File`, `Edit`, `View`, `Help`), if any.
+    /// Top-level menu it appears in (one of [`MENUS`]), if any.
     pub menu: Option<&'static str>,
     pub shortcut: Option<Shortcut>,
     pub needs: Needs,

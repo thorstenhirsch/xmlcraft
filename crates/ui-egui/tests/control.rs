@@ -201,3 +201,26 @@ fn open_and_document_text_work_on_files_and_refuse_bad_requests() {
     }
     assert!(ask(&mut h, &c, "ui.open", json!({})).is_err() && ask(&mut h, &c, "ui.open", json!({"path": path.to_str(), "x": 1})).is_err());
 }
+
+#[test]
+fn state_names_the_document_and_version_its_problems_are_about() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = dir.path().join("bad.xml");
+    std::fs::write(&path, "<a><b></a>").expect("writes");
+    let (mut h, c) = shell();
+    assert_eq!(ask(&mut h, &c, "ui.state", Value::Null).expect("state")["problems"], Value::Null, "no document, no problems");
+    ask(&mut h, &c, "ui.open", json!({"path": path.to_str()})).expect("opens");
+    let started = std::time::Instant::now();
+    let problems = loop {
+        let state = ask(&mut h, &c, "ui.state", Value::Null).expect("state");
+        if !state["problems"].is_null() {
+            break state;
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "waiting for the analysis");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    };
+    let reported = &problems["problems"];
+    assert_eq!((reported["name"].as_str(), reported["errors"].as_u64()), (Some("bad.xml"), Some(1)));
+    assert_eq!(reported["document"], problems["documents"][0]["id"]);
+    assert_eq!(reported["version"], problems["documents"][0]["version"], "about the text the document is at");
+}

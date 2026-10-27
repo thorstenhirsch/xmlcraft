@@ -225,6 +225,9 @@ pub fn status_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                         let syntax = crate::editor_view::SyntaxTokens::for_kind(t.kind);
                         let (text, color) = match app.active_analysis() {
                             None => (tl!("Checking…").to_owned(), t.text_faint),
+                            Some(a) if a.skipped == Some(xmlcraft_engine::analysis::Skipped::Failed) => {
+                                (tl!("The check failed").to_owned(), syntax.error)
+                            }
                             Some(a) if a.skipped.is_some() => (tl!("Not checked").to_owned(), t.text_faint),
                             Some(a) if a.error_count() > 0 => {
                                 (crate::i18n::fmt(tl!("{count} errors"), &[("count", &a.error_count().to_string())]), syntax.error)

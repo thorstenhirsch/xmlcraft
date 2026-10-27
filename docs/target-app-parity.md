@@ -10,8 +10,8 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **6.6%** shipped, 12.2% with partial counted half (10 shipped + 17 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-27) |
-| Must-have (P0) features | 7.8% shipped, 19.5% weighted (5 shipped + 15 partial of 64) | measured |
+| **Feature breadth**, unweighted | **6.6%** shipped, 12.5% with partial counted half (10 shipped + 18 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-27) |
+| Must-have (P0) features | 7.8% shipped, 20.3% weighted (5 shipped + 16 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **64.7%** (658 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-27) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): no well-formedness error is reported on a well-formed document | measured (same run) |
 | W3C xsdtests (XSD 1.0) | not measured | arrives with M3 |
@@ -38,8 +38,8 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 ## Revision history
 
-- 2026-10-27: M1.12: documents in the app; 8 shipped, 13 partial.
-- 2026-10-27: M1.13: well-formedness on a worker thread, the Messages and Outline panes, F7 and Go to Line; 8 shipped, 17 partial (the clipboard went back to partial until it has a command or tool).
+- 2026-10-27: M1.12: documents in the app; 8 shipped, 13 partial (7 shipped and 14 partial once its review had moved the clipboard back to partial).
+- 2026-10-27: M1.13: well-formedness on a worker thread, the Messages and Outline panes, F7 and Go to Line. Go to Line went from planned to shipped; the outline, the messages, the well-formedness check and namespace well-formedness went from planned to partial: 8 shipped and 18 partial, from 7 shipped and 14 partial after M1.12 (the clipboard had gone back to partial in its review).
 - 2026-10-27: M1.5: first conformance numbers.
 - 2026-10-27: created.
-- 2026-10-27: M1.11 and M1.14: pretty-print and minify as minimal edits, the document and XML tools (`doc_*`, `xml_wellformed`, `xml_outline`, `xml_format`) and `xmlcraft-cli check` and `format`; 10 shipped, 17 partial.
+- 2026-10-27: M1.11 and M1.14: pretty-print and minify as minimal edits, the document and XML tools (`doc_*`, `xml_wellformed`, `xml_outline`, `xml_format`) and `xmlcraft-cli check` and `format`; 10 shipped and 18 partial.

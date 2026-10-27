@@ -9,6 +9,7 @@ use std::ops::RangeInclusive;
 use craft_ui::panes::{Edge, PaneContent, PaneHost, PaneLabels, PaneRequest, PaneState, Rail, RailItem, RailRequest, SidePolicy};
 use egui::{Align, Layout, Stroke, vec2};
 use serde::{Deserialize, Serialize};
+use xmlcraft_engine::analysis::Skipped;
 
 use crate::i18n::tl;
 use crate::theme::{self, Tokens};
@@ -197,40 +198,69 @@ fn pane_hint(ui: &mut egui::Ui, text: &str) {
 /// Rows of a list: tall enough to click.
 const ROW: f32 = 24.0;
 
+/// The Outline's rows (indexes into the analysis's outline) for one filter, one document and one analysis; kept between frames so that
+/// 50,000 names are not lowercased and compared again every frame.
+pub(crate) struct OutlineRows {
+    filter: String,
+    document: u64,
+    version: u64,
+    rows: Vec<usize>,
+}
+
 fn outline_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     let t = Tokens::get(ui.ctx());
     let Some(doc) = app.session.active_document() else {
         widgets::empty_state(ui, 24.0, tl!("No document open"), tl!("The element tree of the open file appears here."));
         return;
     };
-    let caret = doc.editor().primary().head();
+    let (caret, document) = (doc.editor().primary().head(), doc.id());
     egui::Frame::NONE.inner_margin(egui::Margin { left: 12, right: 12, top: 0, bottom: 6 }).show(ui, |ui| {
         let filter = ui.add(egui::TextEdit::singleline(&mut app.outline_filter).hint_text(tl!("Filter elements")).desired_width(f32::INFINITY));
         widgets::name_for_assistive_technology(ui, &filter, tl!("Filter elements"));
     });
+    let filter = app.outline_filter.trim().to_lowercase();
+    let cached = app.outline_rows.take();
     let Some(analysis) = app.active_analysis() else {
         widgets::empty_state(ui, 12.0, tl!("Reading the document…"), "");
         return;
     };
+    match analysis.skipped {
+        Some(Skipped::TooLarge) => {
+            return widgets::empty_state(ui, 12.0, tl!("Not checked"), tl!("The document is too large for an outline while typing."));
+        }
+        Some(Skipped::Failed) => return widgets::empty_state(ui, 12.0, tl!("The check failed"), tl!("This is a bug. The document is unchanged.")),
+        None => {}
+    }
     if analysis.outline.is_empty() {
         widgets::empty_state(ui, 12.0, tl!("No elements"), tl!("The element tree appears once the document has a root element."));
         return;
     }
-    let filter = app.outline_filter.trim().to_lowercase();
-    let rows: Vec<usize> = analysis
-        .outline
-        .iter()
-        .enumerate()
-        .filter(|(_, item)| {
-            filter.is_empty() || item.name.to_lowercase().contains(&filter) || item.label.as_ref().is_some_and(|l| l.to_lowercase().contains(&filter))
-        })
-        .map(|(i, _)| i)
-        .collect();
+    let rows = match cached.filter(|c| c.filter == filter && c.document == document && c.version == analysis.version) {
+        Some(rows) => rows,
+        None => {
+            let matching = analysis
+                .outline
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| {
+                    filter.is_empty()
+                        || item.name.to_lowercase().contains(&filter)
+                        || item.label.as_ref().is_some_and(|l| l.to_lowercase().contains(&filter))
+                })
+                .map(|(i, _)| i)
+                .collect();
+            OutlineRows { filter, document, version: analysis.version, rows: matching }
+        }
+    };
     // The innermost element around the caret.
     let current = analysis.outline.iter().rposition(|item| item.range.start <= caret && caret <= item.range.end);
+    // Above the list, where it is seen (below a list that fills the pane it never would be).
+    if analysis.outline_truncated {
+        pane_hint(ui, tl!("Only the first elements are listed."));
+    }
     let mut clicked = None;
-    egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, ROW, rows.len(), |ui, range| {
-        for &index in rows.get(range).unwrap_or_default() {
+    egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, ROW, rows.rows.len(), |ui, range| {
+        for &index in rows.rows.get(range).unwrap_or_default() {
             let Some(item) = analysis.outline.get(index) else { continue };
             let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), egui::Sense::click());
             let label = match &item.label {
@@ -254,9 +284,7 @@ fn outline_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
             }
         }
     });
-    if analysis.outline_truncated {
-        pane_hint(ui, tl!("Only the first elements are listed."));
-    }
+    app.outline_rows = Some(rows);
     if let Some(range) = clicked {
         app.jump_to(range.start..range.start);
     }
@@ -274,11 +302,11 @@ fn messages_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
         return;
     };
     match analysis.skipped {
-        Some(xmlcraft_engine::analysis::Skipped::TooLarge) => {
+        Some(Skipped::TooLarge) => {
             widgets::empty_state(ui, 6.0, tl!("Not checked"), tl!("The document is too large to check while typing."));
             return;
         }
-        Some(xmlcraft_engine::analysis::Skipped::Failed) => {
+        Some(Skipped::Failed) => {
             widgets::empty_state(ui, 6.0, tl!("The check failed"), tl!("This is a bug. The document is unchanged."));
             return;
         }

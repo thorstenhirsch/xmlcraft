@@ -142,3 +142,84 @@ fn go_to_line_moves_the_caret() {
     h.run_steps(3);
     assert!(h.query_by_label("'abc' is not a line number").is_some());
 }
+
+#[test]
+fn a_reloaded_file_gets_the_outline_and_problems_of_its_new_text() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = file(dir.path(), "a.xml", "<a><b/></a>");
+    let mut h = shell();
+    open(&mut h, &path);
+    assert!(h.query_by_label("b").is_some() && h.query_by_label("c").is_none());
+    // Some history first, so that the text's version is well past what a freshly read one starts at (and the document is clean again).
+    h.get_by_label("XML editor").type_text("x");
+    h.run_steps(2);
+    h.state_mut().execute("edit.undo");
+    h.run_steps(2);
+    assert!(!h.state().tabs()[0].dirty);
+    std::fs::write(&path, "<c><d></c>").expect("writes");
+    h.state_mut().check_disk_changes(); // the document has no edits: it is reloaded
+    wait(&mut h, "the outline of the new text", |app| app.problems() == Some((1, 0)));
+    assert!(h.query_by_label("c").is_some() && h.query_by_label("d").is_some(), "the new elements");
+    assert!(h.query_by_label("b").is_none(), "and not the old one");
+}
+
+#[test]
+fn go_to_line_leaves_a_question_that_is_being_asked_alone() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "a.xml", "<a/>"));
+    assert!(!h.state_mut().open_path(&dir.path().join("missing.xml")));
+    h.run_steps(3);
+    assert!(h.query_by_label("Couldn't open the file").is_some());
+    h.state_mut().execute("edit.go_to_line");
+    h.run_steps(3);
+    assert!(h.query_by_label("Couldn't open the file").is_some(), "the question is still there");
+    assert!(h.query_by_label("Go to Line").is_none(), "and Go to Line did not replace it");
+}
+
+#[test]
+fn tab_leaves_the_go_to_line_field_for_its_buttons() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "a.xml", "<a>\n</a>\n"));
+    h.state_mut().execute("edit.go_to_line");
+    h.run_steps(3);
+    assert!(h.get_by_label("Line or line:column").is_focused(), "the field has the keyboard when the dialog opens");
+    h.key_press(Key::Tab);
+    h.run_steps(4);
+    assert!(!h.get_by_label("Line or line:column").is_focused(), "Tab moved on, and the field did not take the keyboard back");
+}
+
+#[test]
+fn a_quit_waiting_for_go_to_line_goes_on_when_it_is_answered() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "a.xml", "<a/>"));
+    h.get_by_label("XML editor").focus();
+    h.get_by_label("XML editor").type_text("x");
+    h.run_steps(2);
+    h.state_mut().execute("edit.go_to_line");
+    h.run_steps(3);
+    h.state_mut().execute("file.quit");
+    h.run_steps(2);
+    h.get_by_label("Line or line:column").type_text("1");
+    h.run_steps(2);
+    h.get_by_label("Go").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("Save changes to a.xml?").is_some(), "the quit was not forgotten");
+}
+
+#[test]
+fn f7_reports_the_text_as_it_is_now_without_waiting_on_the_window() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "a.xml", "<a>"));
+    assert_eq!(h.state().problems(), Some((1, 0)));
+    h.state_mut().session.active_document_mut().expect("shown").editor_mut().set_selection(3, 3);
+    h.get_by_label("XML editor").focus();
+    h.run_steps(2);
+    h.get_by_label("XML editor").type_text("</a>");
+    h.key_press(Key::F7);
+    wait(&mut h, "the check of the new text", |app| app.status == "a.xml is well-formed");
+    assert!(h.state().bottom_open);
+}

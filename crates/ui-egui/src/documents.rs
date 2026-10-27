@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use xmlcraft_code_editor::{CodeEditor, ViewState};
-use xmlcraft_engine::analysis::{Analysis, analyze};
+use xmlcraft_engine::analysis::{Analysis, Skipped};
 use xmlcraft_engine::{Document, SaveError};
 use xmlcraft_platform::files::{self, DiskChange};
 use xmlcraft_text::encoding::Encoding;
@@ -129,7 +129,8 @@ impl XmlCraftApp {
 
     // --- analysis --------------------------------------------------------------------------------------------------------------
 
-    /// Collect finished analyses, and ask for one of the document being shown if its text has changed since. Called every frame.
+    /// Collect finished analyses, ask for one of the document being shown if its text has changed since, and report a check (F7) that
+    /// was waiting for its result. Called every frame, after whatever changes a text.
     pub(crate) fn pump_analysis(&mut self) {
         let kind = self.applied.unwrap_or(ThemeKind::Light);
         for (id, analysis) in self.analyzer.poll() {
@@ -149,6 +150,25 @@ impl XmlCraftApp {
                 self.analyzer.submit(id, version, doc.editor().buffer());
             }
         }
+        self.report_check();
+    }
+
+    /// If a check (F7) is waiting and the analysis of the text it asked about has arrived (or a later one), say what it found.
+    fn report_check(&mut self) {
+        let Some((id, version)) = self.check_pending else { return };
+        let Some(doc) = self.session.position_of(id).and_then(|i| self.session.document(i)) else {
+            self.check_pending = None; // closed meanwhile
+            return;
+        };
+        let name = doc.name().to_owned();
+        let Some(analysis) = self.views.get(&id).and_then(|v| v.analysis.as_ref()).filter(|a| a.version >= version) else { return };
+        self.status = match analysis.skipped {
+            Some(Skipped::TooLarge) => fmt(tl!("{name} is too large to check"), &[("name", &name)]),
+            Some(Skipped::Failed) => fmt(tl!("Checking {name} failed. This is a bug; the document is unchanged."), &[("name", &name)]),
+            None if analysis.error_count() == 0 => fmt(tl!("{name} is well-formed"), &[("name", &name)]),
+            None => fmt(tl!("{name}: {count} errors"), &[("name", &name), ("count", &analysis.error_count().to_string())]),
+        };
+        self.check_pending = None;
     }
 
     /// The analysis of the document being shown, if there is one.
@@ -187,23 +207,20 @@ impl XmlCraftApp {
         }
     }
 
-    /// Check the document being shown now and show the result in Messages (F7).
+    /// Check the document being shown now and show the result in Messages (F7). The check is the background analysis of the text as it
+    /// is now (asked for at once if it has not been yet), reported when it arrives: the window never waits for a parse.
     pub(crate) fn check_now(&mut self) {
         let kind = self.applied.unwrap_or(ThemeKind::Light);
         let Some(doc) = self.session.active_document() else { return };
         let (id, version) = (doc.id(), doc.editor().version());
-        let name = doc.name().to_owned();
-        let analysis = analyze(&doc.editor().text(), version);
-        let errors = analysis.error_count();
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
-        view.requested = Some(version);
-        view.set_analysis(analysis);
+        if view.requested != Some(version) {
+            view.requested = Some(version);
+            self.analyzer.submit(id, version, doc.editor().buffer());
+        }
+        self.check_pending = Some((id, version));
         self.bottom_open = true;
-        self.status = if errors == 0 {
-            fmt(tl!("{name} is well-formed"), &[("name", &name)])
-        } else {
-            fmt(tl!("{name}: {count} errors"), &[("name", &name), ("count", &errors.to_string())])
-        };
+        self.report_check();
     }
 
     /// Select `range` in the document being shown and give the editor the keyboard (a message or an outline entry was clicked).
@@ -455,6 +472,9 @@ impl XmlCraftApp {
                 if let Some(view) = self.views.get_mut(&id) {
                     view.view.reset();
                     view.styler.reset();
+                    // What was worked out about the old text (its outline, its problems) is not about this one.
+                    view.analysis = None;
+                    view.requested = None;
                 }
             }
             Err(e) => self.message(
