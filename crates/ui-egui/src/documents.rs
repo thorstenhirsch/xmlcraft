@@ -183,6 +183,30 @@ impl XmlCraftApp {
         self.active_analysis().filter(|a| a.skipped.is_none()).map(|a| (a.error_count(), a.warning_count()))
     }
 
+    /// Pretty-print (or, with `minify`, strip the white space of) the document being shown, as one undoable edit. A document that is not
+    /// well-formed is left as it is and the reason is shown.
+    pub(crate) fn reformat(&mut self, minify: bool) {
+        let Some(doc) = self.session.active_document_mut() else { return };
+        let name = doc.name().to_owned();
+        let result = if minify { doc.minify() } else { doc.pretty_print() };
+        match result {
+            Ok(true) => {
+                self.status = fmt(if minify { tl!("Stripped the white space of {name}") } else { tl!("Pretty-printed {name}") }, &[("name", &name)])
+            }
+            Ok(false) => self.status = fmt(tl!("{name} needs no changes"), &[("name", &name)]),
+            Err(xmlcraft_format::FormatError::NotWellFormed { message, offset }) => {
+                let line = doc.editor().buffer().line_of(offset.min(doc.editor().buffer().len())) + 1;
+                self.message(
+                    tl!("The document is not well-formed"),
+                    fmt(
+                        tl!("{name} is left as it is: formatting does not guess what broken markup was meant to be. The first problem is on line {line}: {message}"),
+                        &[("name", &name), ("line", &line.to_string()), ("message", &message)],
+                    ),
+                );
+            }
+        }
+    }
+
     /// Check the document being shown now and show the result in Messages (F7). The check is the background analysis of the text as it
     /// is now (asked for at once if it has not been yet), reported when it arrives: the window never waits for a parse.
     pub(crate) fn check_now(&mut self) {

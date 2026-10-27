@@ -1,0 +1,19 @@
+[package]
+name = "xmlcraft-format"
+description = "XmlCraft's pretty-printer and minifier: changes to the white space between nodes, as minimal edits of the text"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-text = { workspace = true }
+xmlcraft-syntax = { workspace = true }
+rowan = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

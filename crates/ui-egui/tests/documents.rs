@@ -426,3 +426,35 @@ fn a_character_reference_is_not_written_into_a_comment() {
     assert_eq!(std::fs::read(&path).expect("reads"), original, "nothing was written");
     assert!(text(&h).contains("<!--日-->"), "and the text was not touched: {}", text(&h));
 }
+
+#[test]
+fn pretty_print_and_minify_are_commands_that_undo_in_one_step() {
+    let mut h = shell();
+    h.state_mut().execute("file.new");
+    h.run_steps(3);
+    type_text(&mut h, "<a><b><c/></b><d/></a>");
+    assert!(h.state_mut().execute("xml.pretty_print"));
+    h.run_steps(2);
+    assert_eq!(text(&h), "<a>\n  <b>\n    <c/>\n  </b>\n  <d/>\n</a>");
+    assert_eq!(h.state().status, "Pretty-printed Untitled-1");
+    assert!(h.state_mut().execute("xml.minify"));
+    h.run_steps(2);
+    assert_eq!(text(&h), "<a><b><c/></b><d/></a>");
+    assert!(h.state_mut().execute("xml.minify"));
+    assert_eq!(h.state().status, "Untitled-1 needs no changes");
+    assert!(h.state_mut().execute("edit.undo"));
+    h.run_steps(2);
+    assert_eq!(text(&h), "<a>\n  <b>\n    <c/>\n  </b>\n  <d/>\n</a>");
+}
+
+#[test]
+fn a_document_that_is_not_well_formed_is_not_reformatted() {
+    let mut h = shell();
+    h.state_mut().execute("file.new");
+    h.run_steps(3);
+    type_text(&mut h, "<a><b></a>");
+    h.state_mut().execute("xml.pretty_print");
+    h.run_steps(3);
+    assert!(h.query_by_label("The document is not well-formed").is_some());
+    assert_eq!(text(&h), "<a><b></a>", "left as it was");
+}

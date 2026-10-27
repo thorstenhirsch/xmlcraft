@@ -1,5 +1,8 @@
 //! What `xmlcraft-cli` does: parse the command line, then run it.
 //!
+//! - `check FILE… [--root DIR] [--json]`: check the files for well-formedness; the problems are printed as `file:line:column: severity: message`.
+//! - `format FILE [--minify] [--indent N | --tabs] [--blank-lines keep|remove] [--check | --in-place] [--root DIR]`: pretty-print (or minify) a
+//!   file; the result goes to standard output unless `--in-place`.
 //! - `tools [--json]`: the tools and their input schemas.
 //! - `run <tool> [key=value …] [--root DIR]`: call one tool. A value is read as JSON when it is (`3`, `true`, `["a"]`), else as text.
 //! - `run --script FILE [--root DIR] [--keep-going]`: run a JSON list of steps.
@@ -7,7 +10,7 @@
 //! - `ui --control FILE <method> [key=value …] [--out FILE.png]`: drive a running app that was started with `--control FILE`.
 //!
 //! Results are JSON on standard output; messages for a person go to standard error. The exit code is 0 for success, 1 when a tool or
-//! request failed, and 2 for a command line that could not be understood.
+//! request failed (`check`: a problem was found; `format --check`: the file would change), and 2 for a command line that could not be understood.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -17,6 +20,8 @@ use xmlcraft_automation::control::ControlClient;
 use xmlcraft_automation::{Automation, Content};
 
 pub const USAGE: &str = "Usage:
+  xmlcraft-cli check FILE... [--root DIR] [--json]
+  xmlcraft-cli format FILE [--minify] [--indent N | --tabs] [--blank-lines keep|remove] [--check | --in-place] [--root DIR]
   xmlcraft-cli tools [--json]
   xmlcraft-cli run <tool> [key=value ...] [--root DIR]
   xmlcraft-cli run --script FILE [--root DIR] [--keep-going]
@@ -31,6 +36,18 @@ A key=value value is read as JSON when it is valid JSON (3, true, [\"a\"]), and 
 pub enum Command {
     Version,
     Help,
+    Check {
+        files: Vec<String>,
+        root: Option<PathBuf>,
+        json: bool,
+    },
+    Format {
+        file: String,
+        /// Arguments of the `xml_format` tool beyond the file.
+        options: Value,
+        root: Option<PathBuf>,
+        mode: FormatMode,
+    },
     Tools {
         json: bool,
     },
@@ -54,6 +71,17 @@ pub enum Command {
         params: Value,
         out: Option<PathBuf>,
     },
+}
+
+/// What `format` does with the result.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum FormatMode {
+    /// Print it.
+    Print,
+    /// Say whether the file would change (exit code 1 if it would), and print nothing else.
+    Check,
+    /// Write it back to the file.
+    InPlace,
 }
 
 /// One `key=value` argument: the value is JSON when it parses as JSON, otherwise a string.
@@ -111,6 +139,56 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
             let json = take_flag(&mut rest, "--json");
             no_extra(&rest)?;
             Ok(Command::Tools { json })
+        }
+        "check" => {
+            let root = take_option(&mut rest, "--root")?.map(PathBuf::from);
+            let json = take_flag(&mut rest, "--json");
+            if let Some(flag) = rest.iter().find(|a| a.starts_with("--")) {
+                return Err(format!("unknown option {flag}"));
+            }
+            if rest.is_empty() {
+                return Err("check needs at least one file".into());
+            }
+            Ok(Command::Check { files: rest, root, json })
+        }
+        "format" => {
+            let root = take_option(&mut rest, "--root")?.map(PathBuf::from);
+            let mut options = Map::new();
+            if take_flag(&mut rest, "--minify") {
+                options.insert("minify".into(), json!(true));
+            }
+            if take_flag(&mut rest, "--tabs") {
+                options.insert("tabs".into(), json!(true));
+            }
+            if let Some(n) = take_option(&mut rest, "--indent")? {
+                let n: u64 = n.parse().map_err(|_| format!("--indent needs a number of spaces, not {n:?}"))?;
+                if options.contains_key("tabs") {
+                    return Err("--tabs and --indent cannot be combined".into());
+                }
+                options.insert("indent".into(), json!(n));
+            }
+            if let Some(b) = take_option(&mut rest, "--blank-lines")? {
+                if b != "keep" && b != "remove" {
+                    return Err(format!("--blank-lines is keep or remove, not {b:?}"));
+                }
+                options.insert("blank_lines".into(), json!(b));
+            }
+            let (check, in_place) = (take_flag(&mut rest, "--check"), take_flag(&mut rest, "--in-place"));
+            if check && in_place {
+                return Err("--check and --in-place cannot be combined".into());
+            }
+            if let Some(flag) = rest.iter().find(|a| a.starts_with("--")) {
+                return Err(format!("unknown option {flag}"));
+            }
+            let [file] = <[String; 1]>::try_from(rest).map_err(|rest| format!("format takes one file, not {}", rest.len()))?;
+            let mode = if check {
+                FormatMode::Check
+            } else if in_place {
+                FormatMode::InPlace
+            } else {
+                FormatMode::Print
+            };
+            Ok(Command::Format { file, options: Value::Object(options), root, mode })
         }
         "run" => {
             let root = take_option(&mut rest, "--root")?.map(PathBuf::from);
@@ -181,6 +259,8 @@ pub fn execute(command: Command, out: &mut impl Write, err: &mut impl Write) -> 
             }
             0
         }
+        Command::Check { files, root, json } => check(&files, root, json, out, err),
+        Command::Format { file, options, root, mode } => format_file(&file, options, root, mode, out, err),
         Command::Run { tool, args, root } => {
             let mut automation = match automation(root) {
                 Ok(a) => a,
@@ -258,6 +338,125 @@ pub fn execute(command: Command, out: &mut impl Write, err: &mut impl Write) -> 
                 }
                 Err(e) => fail(err, &e),
             }
+        }
+    }
+}
+
+fn value_of(content: Vec<Content>) -> Value {
+    match content.into_iter().next() {
+        Some(Content::Json(v)) => v,
+        None => Value::Null,
+    }
+}
+
+/// `check`: every file through `xml_wellformed`. Exit 1 if any file has an error or cannot be read.
+fn check(files: &[String], root: Option<PathBuf>, as_json: bool, out: &mut impl Write, err: &mut impl Write) -> u8 {
+    let mut automation = match automation(root) {
+        Ok(a) => a,
+        Err(e) => return fail(err, &e),
+    };
+    let (mut code, mut results) = (0u8, Vec::new());
+    for file in files {
+        match automation.call("xml_wellformed", &json!({ "path": file })) {
+            Ok(content) => {
+                let result = value_of(content);
+                if result["errors"].as_u64().unwrap_or(0) > 0 {
+                    code = 1;
+                }
+                // Bytes that are not valid in the file's encoding were read as U+FFFD: what was checked is not quite the file.
+                if result["lossy"] == true {
+                    code = 1;
+                    if !as_json {
+                        let _ =
+                            writeln!(err, "xmlcraft-cli: {file}: has bytes that are not valid in its encoding (checked with each shown as U+FFFD)");
+                    }
+                }
+                if !as_json {
+                    for p in result["problems"].as_array().into_iter().flatten() {
+                        say(
+                            out,
+                            &format!(
+                                "{file}:{}:{}: {}: {}",
+                                p["line"].as_u64().unwrap_or(0),
+                                p["column"].as_u64().unwrap_or(0),
+                                p["severity"].as_str().unwrap_or("error"),
+                                p["message"].as_str().unwrap_or_default()
+                            ),
+                        );
+                    }
+                    if result["well_formed"] == true && result["warnings"].as_u64() == Some(0) {
+                        say(out, &format!("{file}: well-formed"));
+                    }
+                }
+                results.push(json!({ "file": file, "result": result }));
+            }
+            Err(e) => {
+                code = 1;
+                if as_json {
+                    results.push(json!({ "file": file, "error": e.to_string() }));
+                } else {
+                    let _ = writeln!(err, "xmlcraft-cli: {file}: {e}");
+                }
+            }
+        }
+    }
+    if as_json {
+        say(out, &pretty(&Value::Array(results)));
+    }
+    code
+}
+
+/// `format`: the file through `xml_format`; the result is printed, checked against the file, or written back (atomically, through the
+/// document tools, so a file that changed meanwhile is not replaced).
+fn format_file(file: &str, options: Value, root: Option<PathBuf>, mode: FormatMode, out: &mut impl Write, err: &mut impl Write) -> u8 {
+    let mut automation = match automation(root) {
+        Ok(a) => a,
+        Err(e) => return fail(err, &e),
+    };
+    let mut args = options;
+    if let Value::Object(map) = &mut args {
+        map.insert("path".into(), json!(file));
+    }
+    if mode == FormatMode::InPlace {
+        // Through a document, so that the file keeps its encoding, byte-order mark and line endings.
+        let id = match automation.call("doc_open", &json!({ "path": file })) {
+            Ok(content) => value_of(content)["id"].as_u64().unwrap_or(0),
+            Err(e) => return fail(err, &e.to_string()),
+        };
+        if let Value::Object(map) = &mut args {
+            map.remove("path");
+            map.insert("id".into(), json!(id));
+        }
+        let changed = match automation.call("xml_format", &args) {
+            Ok(content) => value_of(content)["changed"] == true,
+            Err(e) => return fail(err, &e.to_string()),
+        };
+        if changed && let Err(e) = automation.call("doc_save", &json!({ "id": id })) {
+            return fail(err, &e.to_string());
+        }
+        return 0;
+    }
+    let result = match automation.call("xml_format", &args) {
+        Ok(content) => value_of(content),
+        Err(e) => return fail(err, &e.to_string()),
+    };
+    match mode {
+        FormatMode::Check => {
+            if result["changed"] == true {
+                let _ = writeln!(err, "xmlcraft-cli: {file} would be reformatted");
+                1
+            } else {
+                0
+            }
+        }
+        _ => {
+            // Not text that would be written over the file's bytes with U+FFFD in them.
+            if result["lossy"] == true {
+                return fail(err, &format!("{file} has bytes that are not valid in its encoding; nothing was printed"));
+            }
+            // Print exactly the formatted text (no extra line break), as a person redirecting it to a file expects.
+            let _ = write!(out, "{}", result["text"].as_str().unwrap_or_default());
+            0
         }
     }
 }
@@ -342,6 +541,15 @@ mod tests {
             ("ui --control c.json", "ui needs a method"),
             ("mcp --root", "--root needs a value"),
             ("mcp extra", "unexpected argument"),
+            ("check", "needs at least one file"),
+            ("check --what a.xml", "unknown option --what"),
+            ("format", "format takes one file, not 0"),
+            ("format a.xml b.xml", "format takes one file, not 2"),
+            ("format a.xml --indent x", "--indent needs a number"),
+            ("format a.xml --blank-lines some", "keep or remove"),
+            ("format a.xml --check --in-place", "cannot be combined"),
+            ("format a.xml --tabs --indent 4", "--tabs and --indent cannot be combined"),
+            ("format a.xml --nope", "unknown option --nope"),
         ] {
             let err = parse(&args(line)).expect_err(line);
             assert!(err.contains(needle), "{line:?}: {err}");
@@ -457,5 +665,100 @@ mod tests {
         let (code, _, err) = run(Command::Ui { control: dir.path().join("missing.json"), method: "ui.state".into(), params: json!({}), out: None });
         assert_eq!(code, 1);
         assert!(err.contains("missing.json"), "{err}");
+    }
+
+    #[test]
+    fn check_and_format_options_parse() {
+        assert_eq!(
+            parse(&args("check a.xml b.xml --json --root r")),
+            Ok(Command::Check { files: vec!["a.xml".into(), "b.xml".into()], root: Some("r".into()), json: true })
+        );
+        assert_eq!(
+            parse(&args("format a.xml --minify --indent 4 --blank-lines remove --check")),
+            Ok(Command::Format {
+                file: "a.xml".into(),
+                options: json!({"minify": true, "indent": 4, "blank_lines": "remove"}),
+                root: None,
+                mode: FormatMode::Check
+            })
+        );
+        assert_eq!(
+            parse(&args("format a.xml --tabs --in-place")),
+            Ok(Command::Format { file: "a.xml".into(), options: json!({"tabs": true}), root: None, mode: FormatMode::InPlace })
+        );
+    }
+
+    #[test]
+    fn check_prints_problems_as_file_line_column_and_sets_the_exit_code() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let good = dir.path().join("good.xml");
+        let bad = dir.path().join("bad.xml");
+        std::fs::write(&good, "<a/>").expect("writes");
+        std::fs::write(&bad, "<a>\n  <b></c>\n</a>").expect("writes");
+        let (good, bad) = (good.to_str().expect("utf-8").to_owned(), bad.to_str().expect("utf-8").to_owned());
+        let (code, out, _) = run(Command::Check { files: vec![good.clone()], root: None, json: false });
+        assert_eq!((code, out.trim()), (0, format!("{good}: well-formed").as_str()));
+        let (code, out, _) = run(Command::Check { files: vec![good.clone(), bad.clone()], root: None, json: false });
+        assert_eq!(code, 1);
+        assert!(out.contains(&format!("{bad}:2:6: error: The end tag </c> does not match the start tag <b>.")), "{out}");
+        let (code, out, _) = run(Command::Check { files: vec![bad.clone()], root: None, json: true });
+        assert_eq!(code, 1);
+        assert_eq!(serde_json::from_str::<Value>(&out).expect("JSON")[0]["result"]["errors"], 1);
+        let (code, _, err) = run(Command::Check { files: vec![format!("{good}.missing")], root: None, json: false });
+        assert_eq!(code, 1);
+        assert!(err.contains("missing"), "{err}");
+    }
+
+    #[test]
+    fn format_prints_checks_and_rewrites_in_place_keeping_the_files_style() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("a.xml");
+        let file = path.to_str().expect("utf-8").to_owned();
+        std::fs::write(&path, "\u{FEFF}<a><b/></a>\r\n").expect("writes");
+        let format = |options: Value, mode| Command::Format { file: file.clone(), options, root: None, mode };
+        // Printing writes nothing; the text is exact.
+        let (code, out, _) = run(format(json!({}), FormatMode::Print));
+        assert_eq!((code, out.as_str()), (0, "<a>\r\n  <b/>\r\n</a>\r\n"));
+        assert_eq!(std::fs::read(&path).expect("reads"), "\u{FEFF}<a><b/></a>\r\n".as_bytes());
+        // --check says so by the exit code.
+        let (code, out, err) = run(format(json!({}), FormatMode::Check));
+        assert_eq!((code, out.as_str()), (1, ""));
+        assert!(err.contains("would be reformatted"), "{err}");
+        // In place: the byte-order mark and the CRLFs stay.
+        let (code, _, _) = run(format(json!({}), FormatMode::InPlace));
+        assert_eq!(code, 0);
+        assert_eq!(std::fs::read(&path).expect("reads"), "\u{FEFF}<a>\r\n  <b/>\r\n</a>\r\n".as_bytes());
+        let (code, _, _) = run(format(json!({}), FormatMode::Check));
+        assert_eq!(code, 0, "formatted already");
+        // Minify, and a document that is not well-formed is refused without touching the file.
+        let (_, out, _) = run(format(json!({"minify": true}), FormatMode::Print));
+        assert_eq!(out, "<a><b/></a>");
+        std::fs::write(&path, "<a><b></a>").expect("writes");
+        for mode in [FormatMode::Print, FormatMode::Check, FormatMode::InPlace] {
+            let (code, _, err) = run(format(json!({}), mode));
+            assert_eq!(code, 1);
+            assert!(err.contains("not well-formed"), "{err}");
+        }
+        assert_eq!(std::fs::read(&path).expect("reads"), b"<a><b></a>");
+    }
+
+    #[test]
+    fn a_file_with_invalid_bytes_is_not_reported_well_formed_printed_or_rewritten() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("bad.xml");
+        let original: &[u8] = b"<a>\n  <b/>\n</a><!-- \xFF -->";
+        std::fs::write(&path, original).expect("writes");
+        let file = path.to_str().expect("utf-8").to_owned();
+        let (code, _, err) = run(Command::Check { files: vec![file.clone()], root: None, json: false });
+        assert_eq!(code, 1, "the text is well-formed but it is not the file");
+        assert!(err.contains("not valid in its encoding"), "{err}");
+        let (code, out, err) = run(Command::Format { file: file.clone(), options: json!({"minify": true}), root: None, mode: FormatMode::Print });
+        assert_eq!((code, out.as_str()), (1, ""));
+        assert!(err.contains("nothing was printed"), "{err}");
+        // In place, it would have to write the replacement character over the bad byte: refused.
+        let (code, _, err) = run(Command::Format { file, options: json!({"minify": true}), root: None, mode: FormatMode::InPlace });
+        assert_eq!(code, 1);
+        assert!(err.contains("not valid"), "{err}");
+        assert_eq!(std::fs::read(&path).expect("reads"), original);
     }
 }

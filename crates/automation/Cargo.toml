@@ -17,6 +17,10 @@ mcp = []
 
 [dependencies]
 xmlcraft-engine = { workspace = true }
+xmlcraft-platform = { workspace = true }
+xmlcraft-format = { workspace = true }
+xmlcraft-syntax = { workspace = true }
+xmlcraft-text = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }

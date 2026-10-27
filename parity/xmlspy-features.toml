@@ -49,9 +49,9 @@ tier = "P0"
 milestone = "M1"
 status = "shipped"
 commands = ["edit.undo", "edit.redo"]
-tools = []
-evidence = ["crates/editor/tests/model.rs::any_commands_keep_the_carets_valid_and_undo_redo_consistent", "crates/text/src/history.rs::typing_in_a_run_is_one_undo_step", "crates/ui-egui/tests/documents.rs::undo_and_redo_through_the_menu_commands"]
-notes = "Typing runs merge into one step, selections come back, the history is capped at 64 MiB. Undoing back to the saved text is clean again. Reachable through the registry commands (menu, palette, control channel); the headless tools for documents (`doc_*`) arrive with M1.14."
+tools = ["doc_undo"]
+evidence = ["crates/editor/tests/model.rs::any_commands_keep_the_carets_valid_and_undo_redo_consistent", "crates/text/src/history.rs::typing_in_a_run_is_one_undo_step", "crates/ui-egui/tests/documents.rs::undo_and_redo_through_the_menu_commands", "crates/automation/tests/documents.rs::a_file_is_opened_read_edited_and_saved_with_its_bytes_kept"]
+notes = "Typing runs merge into one step, selections come back, the history is capped at 64 MiB. Undoing back to the saved text is clean again. Reachable through the registry commands (menu, palette, control channel) and the `doc_undo` tool."
 
 [[feature]]
 id = "editor.clipboard"
@@ -263,11 +263,11 @@ title = "Pretty-print as minimal edits"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = "Respects xml:space and mixed content; never rewrites the document."
+status = "shipped"
+commands = ["xml.pretty_print"]
+tools = ["xml_format"]
+evidence = ["crates/format/tests/properties.rs::pretty_printing_changes_only_white_space_between_nodes", "crates/format/src/lib.rs::element_only_content_gets_one_node_per_line_and_one_level_per_depth", "crates/automation/tests/documents.rs::formatting_text_files_and_documents", "crates/ui-egui/tests/documents.rs::pretty_print_and_minify_are_commands_that_undo_in_one_step"]
+notes = "Only the white space between nodes changes, as minimal edits (one undoable step): one node per line, indented, in the document's own indentation and line ending. Mixed content, `xml:space=\"preserve\"` and the DOCTYPE are left alone, and broken markup is refused. Still missing: wrapping long start tags, one attribute per line, sorting, and format-on-save; no schema-aware decisions about what is element-only (without a schema, an element with no text of its own is treated as element-only)."
 
 [[feature]]
 id = "editor.minify"
@@ -275,11 +275,11 @@ title = "Strip insignificant whitespace"
 area = "A"
 tier = "P1"
 milestone = "M1"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "shipped"
+commands = ["xml.minify"]
+tools = ["xml_format"]
+evidence = ["crates/format/tests/properties.rs::minifying_changes_only_white_space_and_is_idempotent", "crates/format/src/lib.rs::minifying_removes_only_insignificant_white_space", "crates/ui-egui/tests/documents.rs::pretty_print_and_minify_are_commands_that_undo_in_one_step"]
+notes = "`xml_format` with `minify: true`: removes the white space between nodes where it cannot mean anything (see pretty-print for what is left alone). Comments are kept."
 
 [[feature]]
 id = "editor.encodings-bom"
@@ -289,7 +289,7 @@ tier = "P0"
 milestone = "M1"
 status = "partial"
 commands = []
-tools = []
+tools = ["doc_set_encoding"]
 evidence = ["crates/text/src/encoding.rs::any_bytes_are_either_flagged_or_written_back_identically", "crates/ui-egui/tests/documents.rs::a_latin_1_file_stays_latin_1"]
 notes = "UTF-8, UTF-16 (both orders) and legacy encodings are read, shown in the status bar and written back; a character the encoding cannot hold offers character references or UTF-8. Not yet: reloading as, or converting to, another encoding on request. ISO-8859-1 is read as windows-1252."
 
@@ -301,7 +301,7 @@ tier = "P0"
 milestone = "M1"
 status = "partial"
 commands = []
-tools = []
+tools = ["doc_open"]
 evidence = ["crates/engine/src/document.rs::new_lines_use_the_files_line_ending_and_its_indentation", "crates/ui-egui/tests/documents.rs::typing_and_saving_keep_the_encoding_the_byte_order_mark_and_the_line_endings", "crates/engine/src/document.rs::a_character_the_encoding_cannot_hold_is_reported_and_becomes_a_reference_in_the_text"]
 notes = "LF, CRLF and CR are detected, kept, used for new lines, and shown (including mixed). Not yet: converting a file's line endings."
 
@@ -313,8 +313,8 @@ tier = "P0"
 milestone = "M1"
 status = "shipped"
 commands = ["file.save", "file.save_as"]
-tools = []
-evidence = ["crates/engine/src/document.rs::open_then_save_is_the_identity_or_flagged", "crates/ui-egui/tests/documents.rs::typing_and_saving_keep_the_encoding_the_byte_order_mark_and_the_line_endings", "crates/engine/src/document.rs::a_character_the_encoding_cannot_hold_is_reported_and_becomes_a_reference_in_the_text"]
+tools = ["doc_open", "doc_save"]
+evidence = ["crates/engine/src/document.rs::open_then_save_is_the_identity_or_flagged", "crates/ui-egui/tests/documents.rs::typing_and_saving_keep_the_encoding_the_byte_order_mark_and_the_line_endings", "crates/engine/src/document.rs::a_character_the_encoding_cannot_hold_is_reported_and_becomes_a_reference_in_the_text", "crates/automation/tests/documents.rs::a_file_is_opened_read_edited_and_saved_with_its_bytes_kept", "crates/automation/tests/documents.rs::a_file_with_invalid_bytes_is_not_overwritten_but_can_be_saved_elsewhere"]
 notes = "For any bytes, a document is flagged lossy or saving gives back exactly the bytes read; saves are atomic (craft-atomic) and keep a symbolic link; a file with invalid bytes is never overwritten; a character the encoding cannot hold is never replaced silently: the user chooses character references (an undoable edit of the text, only in character data and attribute values) or another encoding (which also updates the XML declaration). Edits are not yet minimal diffs of the bytes (the whole file is rewritten, identically)."
 
 [[feature]]
@@ -498,8 +498,8 @@ tier = "P0"
 milestone = "M1"
 status = "partial"
 commands = ["view.outline"]
-tools = []
-evidence = ["crates/ui-egui/tests/analysis.rs::the_outline_lists_elements_filters_and_jumps", "crates/engine/src/analysis.rs::a_well_formed_document_has_no_problems_and_an_outline"]
+tools = ["xml_outline"]
+evidence = ["crates/ui-egui/tests/analysis.rs::the_outline_lists_elements_filters_and_jumps", "crates/engine/src/analysis.rs::a_well_formed_document_has_no_problems_and_an_outline", "crates/automation/tests/documents.rs::the_outline_lists_elements_with_positions"]
 notes = "The element tree of the document being shown (name, and a hint from its id, name or key attribute), kept up to date while typing, with a filter and click to jump; capped at 50,000 items. Still missing: collapsing branches, following the caret, attributes and text nodes, drag and drop, the Info pane below it."
 
 [[feature]]
@@ -1005,9 +1005,9 @@ tier = "P0"
 milestone = "M1"
 status = "partial"
 commands = ["xml.check"]
-tools = []
-evidence = ["crates/engine/src/analysis.rs::problems_are_sorted_by_position_and_counted", "crates/ui-egui/tests/analysis.rs::f7_checks_now_and_opens_messages", "crates/ui-egui/tests/analysis.rs::the_analysis_follows_the_typing"]
-notes = "XML 1.0 5th edition and Namespaces, on a worker thread after every edit (squiggles, status badge, Messages) and at once with F7. Of the W3C xmlconf not-well-formed tests 64.7% are rejected: the DTD rules arrive in M2 (docs/gaps.md, gap 16). No headless tool yet (M1.14)."
+tools = ["xml_wellformed"]
+evidence = ["crates/engine/src/analysis.rs::problems_are_sorted_by_position_and_counted", "crates/ui-egui/tests/analysis.rs::f7_checks_now_and_opens_messages", "crates/ui-egui/tests/analysis.rs::the_analysis_follows_the_typing", "crates/automation/tests/documents.rs::well_formedness_is_reported_for_a_document_a_file_or_text"]
+notes = "XML 1.0 5th edition and Namespaces, on a worker thread after every edit (squiggles, status badge, Messages), at once with F7, and headlessly with the `xml_wellformed` tool and `xmlcraft-cli check`. Of the W3C xmlconf not-well-formed tests 64.7% are rejected: the DTD rules arrive in M2 (docs/gaps.md, gap 16)."
 
 [[feature]]
 id = "validate.namespaces"
@@ -1017,7 +1017,7 @@ tier = "P0"
 milestone = "M1"
 status = "partial"
 commands = ["xml.check"]
-tools = []
+tools = ["xml_wellformed"]
 evidence = ["crates/syntax/tests/parse.rs::namespace_problems", "crates/syntax/tests/oracle.rs::known_documents_have_the_verdict_the_specifications_give"]
 notes = "Namespaces in XML 1.0 is checked with the well-formedness check (unbound and reserved prefixes, empty bindings, NCName parts of qualified names, duplicate expanded attribute names) and underlined as the text is typed. The xmlconf namespace tests that apply are in the ratchet (docs/target-app-parity.md); xmllint reports these as non-fatal, here they are errors by design."
 

@@ -17,6 +17,7 @@ pollster = { workspace = true }
 
 [dependencies]
 xmlcraft-engine = { workspace = true }
+xmlcraft-format = { workspace = true }
 xmlcraft-text = { workspace = true }
 xmlcraft-syntax = { workspace = true }
 xmlcraft-editor = { workspace = true }

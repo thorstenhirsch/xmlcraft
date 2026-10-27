@@ -33,7 +33,7 @@ fn object(properties: Value, required: &[&str]) -> Value {
 pub fn tools() -> &'static [ToolDef] {
     static TOOLS: OnceLock<Vec<ToolDef>> = OnceLock::new();
     TOOLS.get_or_init(|| {
-        vec![
+        let mut table = vec![
             ToolDef {
                 name: "app_info",
                 title: "About this XmlCraft",
@@ -56,7 +56,9 @@ pub fn tools() -> &'static [ToolDef] {
                 destructive: false,
                 handler: command_list,
             },
-        ]
+        ];
+        table.extend(crate::documents::tools());
+        table
     })
 }
 

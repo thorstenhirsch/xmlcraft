@@ -10,6 +10,7 @@
 //! - A tool failure is an error an agent can act on: it says what was wrong and what is allowed. Tools never panic: a panic is caught
 //!   and reported (AGENTS.md section 5).
 
+mod documents;
 pub mod file_access;
 mod lines;
 mod schema;

@@ -4669,6 +4669,10 @@ dependencies = [
  "serde_json",
  "tempfile",
  "xmlcraft-engine",
+ "xmlcraft-format",
+ "xmlcraft-platform",
+ "xmlcraft-syntax",
+ "xmlcraft-text",
 ]
 
 [[package]]
@@ -4711,6 +4715,17 @@ dependencies = [
  "proptest",
  "rowan",
  "xmlcraft-editor",
+ "xmlcraft-format",
+ "xmlcraft-syntax",
+ "xmlcraft-text",
+]
+
+[[package]]
+name = "xmlcraft-format"
+version = "0.0.1"
+dependencies = [
+ "proptest",
+ "rowan",
  "xmlcraft-syntax",
  "xmlcraft-text",
 ]
@@ -4764,6 +4779,7 @@ dependencies = [
  "xmlcraft-code-editor",
  "xmlcraft-editor",
  "xmlcraft-engine",
+ "xmlcraft-format",
  "xmlcraft-platform",
  "xmlcraft-syntax",
  "xmlcraft-text",
