@@ -1,6 +1,6 @@
 # XmlCraft roadmap: milestones and what's next
 
-> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** M1.1–M1.8, M1.9a–c, M1.10a–c, M1.11–M1.14 done · **Target:** Altova XMLSpy (feature set described in its public documentation)
+> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** M1.1–M1.8, M1.9a–c, M1.10a–c, M1.11–M1.14 done, M1.15 begun (bench, colouring far into large files) · **Target:** Altova XMLSpy (feature set described in its public documentation)
 
 Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is done when its **exit criteria** are met and measured, not when its tasks are merged. [ROADMAP.md](../ROADMAP.md) is the one-page summary.
 
