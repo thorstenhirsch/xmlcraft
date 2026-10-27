@@ -178,6 +178,9 @@ impl Editor {
     }
 
     pub fn set_settings(&mut self, settings: Settings) {
+        if !settings.sync_tag_names {
+            self.linked = None;
+        }
         self.settings = settings;
     }
 
@@ -441,7 +444,9 @@ impl Editor {
         // Last first: the offsets of the edits that come earlier in the text stay valid while the later ones are applied.
         let ordered: Vec<Edit> = edits.into_iter().rev().collect();
         let Ok(inverse) = self.buffer.apply_all(&ordered) else { return false };
-        self.linked = names;
+        // The names must still stand where a tag's name does (the `<` before one deleted, say): what is left is text, not a name to follow.
+        let still_names = names.filter(|names| names.iter().all(|name| self.names_a_tag(name)));
+        self.linked = still_names;
         self.remap_folds(&ordered);
         self.set_carets_raw(carets, primary);
         let after = self.selections_for_history();

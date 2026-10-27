@@ -44,7 +44,7 @@ impl Editor {
     }
 
     /// Whether `name` stands where the name of a tag does: after `<` or `</`, and not followed by more of a name.
-    fn names_a_tag(&self, name: &Range<usize>) -> bool {
+    pub(crate) fn names_a_tag(&self, name: &Range<usize>) -> bool {
         let before = self.buffer.prev_char(name.start);
         let opened = match self.buffer.char_at(before) {
             Some('<') => true,
@@ -52,6 +52,12 @@ impl Editor {
             _ => false,
         };
         opened && self.buffer.char_at(name.end).is_none_or(|c| !is_name_char(c))
+    }
+
+    /// Whether the (single) caret is inside a tag as the lexer sees it, where a name to link could be.
+    pub fn caret_in_tag(&mut self) -> bool {
+        let [caret] = self.carets.as_slice() else { return false };
+        matches!(self.lexer.mode_at(&self.buffer, caret.head()), xmlcraft_syntax::Mode::Tag)
     }
 
     /// Stop keeping names in step.
@@ -74,10 +80,6 @@ impl Editor {
     /// with `carets` as the result: a single change inside one name is written into the other name too.
     pub(crate) fn step_linked(&self, mut edits: Vec<Edit>, mut carets: Vec<Caret>, kind: EditKind) -> LinkedStep {
         let Some(names) = &self.linked else { return LinkedStep { edits, carets, names: None } };
-        // Edits elsewhere can have taken the tags apart (the `</` of the end tag deleted, say): what is left is text, not a name to follow.
-        if !names.iter().all(|name| self.names_a_tag(name)) {
-            return LinkedStep { edits, carets, names: None };
-        }
         let mirror = match edits.as_slice() {
             [edit] if self.carets.len() == 1 && matches!(kind, EditKind::Typing | EditKind::Delete) => self.mirror_of(names, edit),
             _ => None,
@@ -218,11 +220,39 @@ mod tests {
         // The `</` of the end tag is deleted (by something that is not typing): the `a` that is left is text, not a name to follow.
         let mut e = linked("<a>x</a>", 1..2, 6..7, 2);
         assert!(e.apply_edits(&[Edit::delete(4..6)]));
-        assert_eq!((e.text().as_str(), e.linked_names()), ("<a>xa>", Some(&[1..2, 4..5])));
+        assert_eq!((e.text().as_str(), e.linked_names()), ("<a>xa>", None), "the link ends as soon as the end tag is torn");
         e.set_selection(2, 2);
         e.type_input("b");
         assert_eq!(e.text(), "<ab>xa>");
+        // The same for the start tag: its `<` deleted.
+        let mut e = linked("<a>x</a>", 1..2, 6..7, 8);
+        assert!(e.apply_edits(&[Edit::delete(0..1)]));
+        assert_eq!((e.text().as_str(), e.linked_names()), ("a>x</a>", None));
+    }
+
+    #[test]
+    fn turning_the_setting_off_ends_the_link_and_nothing_is_mirrored() {
+        let mut e = linked("<a>x</a>", 1..2, 6..7, 2);
+        e.set_settings(Settings { sync_tag_names: false, ..Settings::default() });
         assert_eq!(e.linked_names(), None);
+        e.type_input("b");
+        assert_eq!(e.text(), "<ab>x</a>");
+        e.set_settings(Settings::default());
+        assert!(!e.link_names(1..3, 6..7), "the names differ now");
+    }
+
+    #[test]
+    fn the_caret_is_in_a_tag_where_the_lexer_says_so() {
+        let mut e = Editor::new("<a b=\"x\">t<!-- c --></a>");
+        let in_tag = |e: &mut Editor, at: usize| {
+            e.set_selection(at, at);
+            e.caret_in_tag()
+        };
+        // In the name, among the attributes, in the end tag's name; not in a value, text or a comment.
+        assert!(in_tag(&mut e, 2) && in_tag(&mut e, 4) && in_tag(&mut e, 23));
+        assert!(!in_tag(&mut e, 6) && !in_tag(&mut e, 9) && !in_tag(&mut e, 14) && !in_tag(&mut e, 24));
+        e.set_selections(&[Selection::caret(2), Selection::caret(4)]);
+        assert!(!e.caret_in_tag(), "not with several carets");
     }
 
     #[test]
@@ -296,6 +326,7 @@ mod tests {
                     let (first, second) = (e.buffer().slice(a.clone()), e.buffer().slice(b.clone()));
                     proptest::prop_assert!(first.is_ok() && first == second, "{:?}: {} {:?}", e.linked_names(), e.text(), (first, second));
                     proptest::prop_assert!(a.end <= b.start, "{:?}", e.linked_names());
+                    proptest::prop_assert!(e.names_a_tag(a) && e.names_a_tag(b), "still tag names: {:?} in {}", e.linked_names(), e.text());
                 }
             }
         }

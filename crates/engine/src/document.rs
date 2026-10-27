@@ -173,6 +173,11 @@ impl Document {
             return true;
         }
         let at = caret.head();
+        // Only a caret in a tag can be in a name, and a text too large to analyse has no pairs: neither is worth copying the text for.
+        if editor.buffer().len() > crate::analysis::MAX_ANALYSED_BYTES || !editor.caret_in_tag() {
+            editor.unlink_names();
+            return false;
+        }
         let analysis = crate::analysis::analyze_guarded(&editor.text(), editor.version());
         match analysis.skipped.is_none().then(|| analysis.linked_names(at)).flatten() {
             Some([a, b]) => editor.link_names(a, b),
@@ -723,6 +728,19 @@ mod tests {
         // A call while the caret is still in a linked name keeps the link without analysing again.
         d.editor_mut().set_selection(5, 5);
         assert!(d.link_tag_names() && d.link_tag_names());
+    }
+
+    #[test]
+    fn a_text_too_large_to_analyse_or_a_caret_outside_a_tag_is_not_worth_an_analysis() {
+        let text = format!("<a>{}</a>", "x".repeat(crate::analysis::MAX_ANALYSED_BYTES));
+        let mut d = open(text.as_bytes());
+        d.editor_mut().set_selection(2, 2);
+        assert!(!d.link_tag_names(), "too large: no pairs are known");
+        assert_eq!(d.editor().linked_names(), None);
+        // In text: no tag, so nothing to link.
+        let mut d = open(b"<a>text</a>");
+        d.editor_mut().set_selection(5, 5);
+        assert!(!d.link_tag_names());
     }
 
     #[test]

@@ -48,3 +48,4 @@ Details are added here as each gap is worked, including known approximations (fo
 - 2026-10-27: gap 17 added with M1.13 (analysis is whole-document and may lag the text).
 - 2026-10-27: gap 18 added with `cargo xtask bench` (colouring far into a very large document takes 1.2 s for 100 MB).
 - 2026-10-27: gap 1 reworded (find/replace, folding, matching tags, typing aids and formatting have shipped); gap 18 narrowed to the estimate's rare wrong colour after the far-jump start (M1.15).
+- 2026-10-27: gap 1: tag-rename sync shipped (M1.10c).
