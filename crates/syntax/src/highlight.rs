@@ -46,68 +46,90 @@ pub type Span = (Range<usize>, HighlightClass);
 /// Classify the tokens of one line. `line` is the line's text including its line break, if it has one; `start` is the lexer's mode at the
 /// start of the line. Returns the spans (adjacent ones of the same class joined, plain text left out) and the mode at the end of the line,
 /// which is the next line's start.
+///
+/// A name right after a tag opener is an element name, but this does not know that the previous line ended with an opener; a [`Highlighter`]
+/// does, and carries that across line breaks.
 pub fn highlight_line(line: &str, start: Mode) -> (Vec<Span>, Mode) {
+    let mut spans = Vec::new();
+    let (mode, _) = lex_line(line, start, false, Some(&mut spans));
+    (spans, mode)
+}
+
+/// What a line ended with, which is what the next line starts from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct LineStart {
+    mode: Mode,
+    /// The last token that was not whitespace opened a tag (`<` or `</`), so a name now is an element name.
+    after_open: bool,
+}
+
+/// Lex one line from `start`, with `after_open` saying whether the line before ended by opening a tag. Fills `spans` when it is given
+/// (a pass that only needs where the line ends leaves it out and skips the classification). Returns the mode and `after_open` at the end.
+fn lex_line(line: &str, start: Mode, after_open: bool, mut spans: Option<&mut Vec<Span>>) -> (Mode, bool) {
     let mut lexer = Lexer::with_mode(line, start);
-    let mut spans: Vec<Span> = Vec::new();
-    // Whether the last meaningful token opened a tag, so that the name after it is an element name.
-    let mut after_open = false;
+    let mut after_open = after_open;
     loop {
         // What kind of markup the token is in depends on where the lexer was when it started.
         let before = lexer.mode();
         let Some(token) = lexer.next() else { break };
-        let class = match token.kind {
-            TokenKind::Text | TokenKind::Whitespace | TokenKind::Punct => HighlightClass::Plain,
-            TokenKind::CharRef | TokenKind::EntityRef | TokenKind::PercentRef => HighlightClass::Reference,
-            TokenKind::BareAmp | TokenKind::BareLt | TokenKind::Error => HighlightClass::Error,
-            TokenKind::Gt if matches!(before, Mode::Doctype | Mode::Decl) => HighlightClass::Declaration,
-            TokenKind::TagOpen | TokenKind::EndTagOpen | TokenKind::Gt | TokenKind::SlashGt | TokenKind::Eq => HighlightClass::Punctuation,
-            TokenKind::Name => match before {
-                Mode::XmlDecl => HighlightClass::DeclarationName,
-                Mode::Doctype | Mode::Decl | Mode::Subset => HighlightClass::Declaration,
-                _ if after_open => HighlightClass::ElementName,
-                _ => HighlightClass::AttributeName,
-            },
-            TokenKind::Quote => match before {
-                Mode::Tag | Mode::AttrValue(_) => HighlightClass::AttributeValue,
-                Mode::XmlDecl | Mode::Literal(_, Return::XmlDecl) => HighlightClass::DeclarationValue,
-                Mode::Doctype | Mode::Decl | Mode::Literal(..) => HighlightClass::Literal,
-                _ => HighlightClass::Punctuation,
-            },
-            TokenKind::AttrText => HighlightClass::AttributeValue,
-            TokenKind::LiteralText => {
-                if matches!(before, Mode::Literal(_, Return::XmlDecl)) {
-                    HighlightClass::DeclarationValue
-                } else {
-                    HighlightClass::Literal
+        if let Some(spans) = spans.as_deref_mut() {
+            let class = classify(token.kind, before, after_open);
+            if class != HighlightClass::Plain {
+                match spans.last_mut() {
+                    Some((range, last)) if *last == class && range.end == token.start => range.end = token.end,
+                    _ => spans.push((token.range(), class)),
                 }
             }
-            TokenKind::CommentStart | TokenKind::CommentText | TokenKind::CommentEnd => HighlightClass::Comment,
-            TokenKind::CdataStart | TokenKind::CdataEnd => HighlightClass::CdataMarkup,
-            TokenKind::CdataText => HighlightClass::CdataText,
-            TokenKind::PiStart | TokenKind::PiTarget | TokenKind::PiText | TokenKind::PiEnd => HighlightClass::ProcessingInstruction,
-            TokenKind::DoctypeStart | TokenKind::DeclStart | TokenKind::LBracket | TokenKind::RBracket => HighlightClass::Declaration,
-        };
+        }
         match token.kind {
             TokenKind::TagOpen | TokenKind::EndTagOpen => after_open = true,
             TokenKind::Whitespace => {}
             _ => after_open = false,
         }
-        if class == HighlightClass::Plain {
-            continue;
-        }
-        match spans.last_mut() {
-            Some((range, last)) if *last == class && range.end == token.start => range.end = token.end,
-            _ => spans.push((token.range(), class)),
-        }
     }
-    (spans, lexer.mode())
+    (lexer.mode(), after_open)
+}
+
+fn classify(kind: TokenKind, before: Mode, after_open: bool) -> HighlightClass {
+    match kind {
+        TokenKind::Text | TokenKind::Whitespace | TokenKind::Punct => HighlightClass::Plain,
+        TokenKind::CharRef | TokenKind::EntityRef | TokenKind::PercentRef => HighlightClass::Reference,
+        TokenKind::BareAmp | TokenKind::BareLt | TokenKind::Error => HighlightClass::Error,
+        TokenKind::Gt if matches!(before, Mode::Doctype | Mode::Decl) => HighlightClass::Declaration,
+        TokenKind::TagOpen | TokenKind::EndTagOpen | TokenKind::Gt | TokenKind::SlashGt | TokenKind::Eq => HighlightClass::Punctuation,
+        TokenKind::Name => match before {
+            Mode::XmlDecl => HighlightClass::DeclarationName,
+            Mode::Doctype | Mode::Decl | Mode::Subset => HighlightClass::Declaration,
+            _ if after_open => HighlightClass::ElementName,
+            _ => HighlightClass::AttributeName,
+        },
+        TokenKind::Quote => match before {
+            Mode::Tag | Mode::AttrValue(_) => HighlightClass::AttributeValue,
+            Mode::XmlDecl | Mode::Literal(_, Return::XmlDecl) => HighlightClass::DeclarationValue,
+            Mode::Doctype | Mode::Decl | Mode::Literal(..) => HighlightClass::Literal,
+            _ => HighlightClass::Punctuation,
+        },
+        TokenKind::AttrText => HighlightClass::AttributeValue,
+        TokenKind::LiteralText => {
+            if matches!(before, Mode::Literal(_, Return::XmlDecl)) {
+                HighlightClass::DeclarationValue
+            } else {
+                HighlightClass::Literal
+            }
+        }
+        TokenKind::CommentStart | TokenKind::CommentText | TokenKind::CommentEnd => HighlightClass::Comment,
+        TokenKind::CdataStart | TokenKind::CdataEnd => HighlightClass::CdataMarkup,
+        TokenKind::CdataText => HighlightClass::CdataText,
+        TokenKind::PiStart | TokenKind::PiTarget | TokenKind::PiText | TokenKind::PiEnd => HighlightClass::ProcessingInstruction,
+        TokenKind::DoctypeStart | TokenKind::DeclStart | TokenKind::LBracket | TokenKind::RBracket => HighlightClass::Declaration,
+    }
 }
 
 /// Colours the lines of a buffer, remembering the lexer's mode at the start of the lines it has looked at.
 #[derive(Clone, Debug, Default)]
 pub struct Highlighter {
-    /// `modes[i]` is the mode at the start of line `i`; known for the first `modes.len()` lines.
-    modes: Vec<Mode>,
+    /// `starts[i]` is the state at the start of line `i`; known for the first `starts.len()` lines.
+    starts: Vec<LineStart>,
 }
 
 impl Highlighter {
@@ -117,17 +139,17 @@ impl Highlighter {
 
     /// Forget everything from `line` on: an edit started there (or earlier).
     pub fn invalidate_from(&mut self, line: usize) {
-        self.modes.truncate(line.saturating_add(1));
+        self.starts.truncate(line.saturating_add(1));
     }
 
     /// Forget everything (a new document).
     pub fn reset(&mut self) {
-        self.modes.clear();
+        self.starts.clear();
     }
 
     /// How many lines' start modes are known.
     pub fn known_lines(&self) -> usize {
-        self.modes.len()
+        self.starts.len()
     }
 
     /// The text of `line` including its break, or `None` past the end.
@@ -136,28 +158,33 @@ impl Highlighter {
         buffer.slice(range).ok()
     }
 
-    /// The mode at the start of `line`, lexing forward from the last known line if needed.
-    fn mode_at(&mut self, buffer: &Buffer, line: usize) -> Mode {
-        if self.modes.is_empty() {
-            self.modes.push(Mode::Content);
+    /// The state at the start of `line`, lexing forward from the last known line if needed. The lines before are only run through for
+    /// where they end, without building their spans.
+    fn start_of(&mut self, buffer: &Buffer, line: usize) -> LineStart {
+        if self.starts.is_empty() {
+            self.starts.push(LineStart::default());
         }
-        while self.modes.len() <= line {
-            let at = self.modes.len() - 1;
-            let start = self.modes.get(at).copied().unwrap_or_default();
+        while self.starts.len() <= line {
+            let at = self.starts.len() - 1;
+            let start = self.starts.get(at).copied().unwrap_or_default();
             let next = match Self::line_with_break(buffer, at) {
-                Some(text) => highlight_line(&text, start).1,
+                Some(text) => {
+                    let (mode, after_open) = lex_line(&text, start.mode, start.after_open, None);
+                    LineStart { mode, after_open }
+                }
                 None => break, // past the end of the text
             };
-            self.modes.push(next);
+            self.starts.push(next);
         }
-        self.modes.get(line).copied().unwrap_or_default()
+        self.starts.get(line).copied().unwrap_or_default()
     }
 
     /// The coloured parts of `line` (byte ranges of the line's text without its break).
     pub fn spans(&mut self, buffer: &Buffer, line: usize) -> Vec<Span> {
-        let start = self.mode_at(buffer, line);
+        let start = self.start_of(buffer, line);
         let Some(text) = Self::line_with_break(buffer, line) else { return Vec::new() };
-        let (mut spans, _) = highlight_line(&text, start);
+        let mut spans = Vec::new();
+        lex_line(&text, start.mode, start.after_open, Some(&mut spans));
         // The line break is not part of the line the view draws.
         let visible = buffer.line_range(line).map_or(text.len(), |r| r.len());
         spans.retain_mut(|(range, _)| {
@@ -234,6 +261,24 @@ mod tests {
         let (_, mode) = highlight_line("<a\n", Mode::Content);
         assert_eq!(mode, Mode::Tag);
         assert_eq!(highlight_line("  b=\"1\">", mode).0[0], (2..3, AttributeName));
+    }
+
+    #[test]
+    fn a_name_after_an_opener_on_the_line_before_is_still_an_element_name() {
+        // `</` and the name are apart, which XML does not allow but the parser recovers from: the name is the end tag's.
+        let buffer = Buffer::from_text("</\na>\n<b\nc=\"1\"/>");
+        let mut h = Highlighter::new();
+        assert_eq!(h.spans(&buffer, 1)[0], (0..1, ElementName), "`a` after `</` on the line above");
+        // After an attribute name instead, a name on the next line is an attribute.
+        assert_eq!(h.spans(&buffer, 3)[0], (0..1, AttributeName));
+        // A name after a tag opener and a blank line.
+        let buffer = Buffer::from_text("</\n\nx>");
+        assert_eq!(Highlighter::new().spans(&buffer, 2)[0], (0..1, ElementName));
+        // The same holds when the line is asked for first (the state is found by running the lines before it) and after an edit.
+        let mut h = Highlighter::new();
+        assert_eq!(h.spans(&buffer, 2)[0], (0..1, ElementName));
+        h.invalidate_from(1);
+        assert_eq!(h.spans(&buffer, 2)[0], (0..1, ElementName));
     }
 
     #[test]

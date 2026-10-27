@@ -2,8 +2,6 @@
 
 use std::path::PathBuf;
 
-use xmlcraft_text::encoding::Unmappable;
-
 use crate::XmlCraftApp;
 use crate::documents::AfterClose;
 use crate::i18n::{fmt, tl};
@@ -32,6 +30,7 @@ pub(crate) enum Dialog {
     /// The file had bytes that were not valid, and saving over it would make that permanent.
     Lossy {
         id: u64,
+        then: Option<AfterClose>,
     },
     /// The file changed on disk while the document has edits.
     Reload {
@@ -45,6 +44,18 @@ pub(crate) enum Dialog {
         title: String,
         text: String,
     },
+}
+
+impl Dialog {
+    /// Whether this question was asked on the way to quitting, so that answering it with anything but a yes ends the quit. (The others
+    /// are about something else: the quit goes on once they are answered.)
+    fn belongs_to_quit(&self) -> bool {
+        match self {
+            Dialog::Unsaved { then, .. } => *then == AfterClose::Quit,
+            Dialog::OverwriteChanged { then, .. } | Dialog::Unmappable { then, .. } | Dialog::Lossy { then, .. } => *then == Some(AfterClose::Quit),
+            Dialog::Reload { .. } | Dialog::ConfirmRevert { .. } | Dialog::Message { .. } => false,
+        }
+    }
 }
 
 /// What a button does.
@@ -90,7 +101,7 @@ impl XmlCraftApp {
             Dialog::Unmappable { id, character, .. } => Describe {
                 title: fmt(tl!("{name} has a character its encoding cannot hold"), &[("name", &self.document_name(*id))]),
                 text: fmt(
-                    tl!("The character '{character}' (U+{code}) cannot be written in this file's encoding. Write it as a character reference, or save the file as UTF-8."),
+                    tl!("The character '{character}' (U+{code}) cannot be written in this file's encoding. Write it as a character reference (possible in text and attribute values), or save the file as UTF-8."),
                     &[("character", &character.to_string()), ("code", &format!("{:04X}", u32::from(*character)))],
                 ),
                 buttons: vec![
@@ -99,7 +110,7 @@ impl XmlCraftApp {
                     (tl!("Cancel"), Choice::Cancel),
                 ],
             },
-            Dialog::Lossy { id } => Describe {
+            Dialog::Lossy { id, .. } => Describe {
                 title: fmt(tl!("{name} cannot be saved over"), &[("name", &self.document_name(*id))]),
                 text: tl!("The file has bytes that are not valid in its encoding. They are shown as �, and saving over the file would replace them for good. Save a copy under another name instead.").to_owned(),
                 buttons: vec![(tl!("Save As…"), Choice::SaveAs), (tl!("Cancel"), Choice::Cancel)],
@@ -107,7 +118,7 @@ impl XmlCraftApp {
             Dialog::Reload { id } => Describe {
                 title: fmt(tl!("{name} changed on disk"), &[("name", &self.document_name(*id))]),
                 text: tl!("Another program changed the file, and you have unsaved changes here. Reloading discards your changes.").to_owned(),
-                buttons: vec![(tl!("Keep my version"), Choice::Keep), (tl!("Reload"), Choice::Reload)],
+                buttons: vec![(tl!("Keep my version"), Choice::Keep), (tl!("Reload"), Choice::Reload), (tl!("Cancel"), Choice::Cancel)],
             },
             Dialog::ConfirmRevert { id } => Describe {
                 title: fmt(tl!("Revert {name}?"), &[("name", &self.document_name(*id))]),
@@ -145,9 +156,10 @@ impl XmlCraftApp {
                 }
             });
         });
-        // Escape or a click outside is the safe answer.
+        // Escape or a click outside is the safe answer: never one that decides something (not "Keep my version", which would let the next
+        // save replace what another program wrote without asking again).
         if chosen.is_none() && response.should_close() {
-            chosen = described.buttons.iter().map(|(_, c)| *c).find(|c| matches!(c, Choice::Cancel | Choice::Ok | Choice::Keep));
+            chosen = described.buttons.iter().map(|(_, c)| *c).find(|c| matches!(c, Choice::Cancel | Choice::Ok));
         }
         if let Some(choice) = chosen {
             self.dialog = None;
@@ -164,18 +176,23 @@ impl XmlCraftApp {
                     self.continue_quit(ctx);
                 }
             }
-            (Dialog::OverwriteChanged { id, path, then }, Choice::Overwrite) => self.write_document(ctx, id, path, Unmappable::Refuse, true, then),
-            (Dialog::Unmappable { id, path, then, .. }, Choice::WriteReferences) => {
-                self.write_document(ctx, id, path, Unmappable::CharRefs, true, then)
-            }
+            (Dialog::OverwriteChanged { id, path, then }, Choice::Overwrite) => self.write_document(ctx, id, path, true, then),
+            (Dialog::Unmappable { id, path, then, .. }, Choice::WriteReferences) => self.write_with_references(ctx, id, path, then),
             (Dialog::Unmappable { id, path, then, .. }, Choice::SaveAsUtf8) => self.change_encoding_and_write(ctx, id, path, then),
-            (Dialog::Lossy { id }, Choice::SaveAs) => {
-                self.pick_save_as(ctx, id, None);
+            (Dialog::Lossy { id, then }, Choice::SaveAs) => {
+                self.pick_save_as(ctx, id, then);
             }
             (Dialog::Reload { id }, Choice::Reload) | (Dialog::ConfirmRevert { id }, Choice::Revert) => self.reload_document(id),
             (Dialog::Reload { id }, Choice::Keep) => self.keep_version(id),
-            // Anything else is a way out: a quit that was waiting for this answer is off.
-            _ => self.quitting = false,
+            // Anything else is a way out. A quit that was waiting for this answer is off; one that was only waiting for another question
+            // to be out of the way goes on.
+            (dialog, _) => {
+                if dialog.belongs_to_quit() {
+                    self.quitting = false;
+                } else {
+                    self.continue_quit(ctx);
+                }
+            }
         }
     }
 }

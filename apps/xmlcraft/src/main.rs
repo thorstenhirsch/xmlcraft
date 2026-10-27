@@ -27,7 +27,7 @@ const APP_ICON_PNG: &[u8] = include_bytes!("../../../assets/app-icon/hicolor/256
 
 const USAGE: &str = "XmlCraft, an open-source XML editor.
 
-Usage: xmlcraft [OPTIONS] [FILE...]
+Usage: xmlcraft [OPTIONS] [--] [FILE...]
 
 Options:
   --version        Print the version and exit
@@ -39,7 +39,40 @@ Environment:
   XMLCRAFT_RENDERER=wgpu|gl   Choose the renderer (default: wgpu, then OpenGL if wgpu cannot start)
   RUST_LOG=...                Log filter, e.g. `debug` or `warn,xmlcraft_syntax=trace`
 
-Files named on the command line are opened, each in its own tab.";
+Files named on the command line are opened, each in its own tab. Put `--` before a file whose name starts with a hyphen.";
+
+/// What the command line asks for.
+#[derive(Debug, PartialEq, Eq)]
+enum Cli {
+    Version,
+    Help,
+    Fail(String),
+    Run { files: Vec<String>, control: Option<PathBuf> },
+}
+
+/// Read the command line (without the program name). Everything after `--` is a file, so a name that starts with a hyphen can be opened.
+fn parse_args(args: impl IntoIterator<Item = String>) -> Cli {
+    let mut files = Vec::new();
+    let mut control = None;
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--version" => return Cli::Version,
+            "-h" | "--help" => return Cli::Help,
+            "--control" => match args.next() {
+                Some(file) => control = Some(PathBuf::from(file)),
+                None => return Cli::Fail("--control needs a file name".to_owned()),
+            },
+            "--" => {
+                files.extend(args.by_ref());
+                break;
+            }
+            flag if flag.starts_with('-') => log::warn!("ignoring the unknown option {flag}"),
+            _ => files.push(arg),
+        }
+    }
+    Cli::Run { files, control }
+}
 
 fn main() -> eframe::Result {
     // First, so the panic hook and every start-up warning are recorded.
@@ -60,21 +93,12 @@ fn main() -> eframe::Result {
             let _ = std::io::Write::write_fmt(&mut std::io::stderr(), format_args!("xmlcraft: {report}\n"));
         }
     }));
-    let mut files = Vec::new();
-    let mut control: Option<PathBuf> = None;
-    let mut args = std::env::args().skip(1);
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--version" => return print_and_exit(&format!("xmlcraft {VERSION}")),
-            "-h" | "--help" => return print_and_exit(USAGE),
-            "--control" => match args.next() {
-                Some(file) => control = Some(PathBuf::from(file)),
-                None => return print_and_fail("--control needs a file name"),
-            },
-            flag if flag.starts_with('-') => log::warn!("ignoring the unknown option {flag}"),
-            _ => files.push(arg),
-        }
-    }
+    let (files, control) = match parse_args(std::env::args().skip(1)) {
+        Cli::Version => return print_and_exit(&format!("xmlcraft {VERSION}")),
+        Cli::Help => return print_and_exit(USAGE),
+        Cli::Fail(message) => return print_and_fail(&message),
+        Cli::Run { files, control } => (files, control),
+    };
     let choice = renderer_choice(std::env::var("XMLCRAFT_RENDERER").ok().as_deref());
     // Set once the app is created, which is after the renderer has started.
     let started = Rc::new(Cell::new(false));
@@ -166,9 +190,7 @@ fn app_creator<'a>(started: Rc<Cell<bool>>, control: Option<PathBuf>, files: Vec
             log::warn!("couldn't install the app menu, so ⌘Q quits without asking to save: {e}");
         }
         let mut app = XmlCraftApp::new(cc);
-        for file in &files {
-            app.open_path(Path::new(file));
-        }
+        app.open_paths(files.iter().map(Path::new));
         if let Some(file) = &control {
             open_control_channel(&mut app, &cc.egui_ctx, file)?;
             app.set_control_file(file.clone());
@@ -190,6 +212,28 @@ fn open_control_channel(app: &mut XmlCraftApp, ctx: &egui::Context, file: &Path)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn args(list: &[&str]) -> Cli {
+        parse_args(list.iter().map(|a| (*a).to_owned()))
+    }
+
+    #[test]
+    fn the_command_line() {
+        let run = |files: &[&str], control: Option<&str>| Cli::Run {
+            files: files.iter().map(|f| (*f).to_owned()).collect(),
+            control: control.map(PathBuf::from),
+        };
+        assert_eq!(args(&[]), run(&[], None));
+        assert_eq!(args(&["a.xml", "b.xml"]), run(&["a.xml", "b.xml"], None));
+        assert_eq!(args(&["--control", "c.json", "a.xml"]), run(&["a.xml"], Some("c.json")));
+        assert_eq!(args(&["--version", "a.xml"]), Cli::Version);
+        assert_eq!(args(&["a.xml", "-h"]), Cli::Help);
+        assert!(matches!(args(&["--control"]), Cli::Fail(_)));
+        // An unknown option is ignored; after `--` even a name that starts with a hyphen is a file, and so is `--version`.
+        assert_eq!(args(&["--bogus", "a.xml"]), run(&["a.xml"], None));
+        assert_eq!(args(&["--", "-odd.xml", "--version", "--"]), run(&["-odd.xml", "--version", "--"], None));
+        assert_eq!(args(&["a.xml", "--", "b.xml"]), run(&["a.xml", "b.xml"], None));
+    }
 
     #[test]
     fn the_renderer_follows_the_environment() {

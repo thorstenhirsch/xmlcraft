@@ -51,7 +51,7 @@ status = "shipped"
 commands = ["edit.undo", "edit.redo"]
 tools = []
 evidence = ["crates/editor/tests/model.rs::any_commands_keep_the_carets_valid_and_undo_redo_consistent", "crates/text/src/history.rs::typing_in_a_run_is_one_undo_step", "crates/ui-egui/tests/documents.rs::undo_and_redo_through_the_menu_commands"]
-notes = "Typing runs merge into one step, selections come back, the history is capped at 64 MiB. Undoing back to the saved text still counts as a change."
+notes = "Typing runs merge into one step, selections come back, the history is capped at 64 MiB. Undoing back to the saved text is clean again. Reachable through the registry commands (menu, palette, control channel); the headless tools for documents (`doc_*`) arrive with M1.14."
 
 [[feature]]
 id = "editor.clipboard"
@@ -59,11 +59,11 @@ title = "Cut, copy and paste"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "shipped"
+status = "partial"
 commands = []
 tools = []
 evidence = ["crates/code-editor/tests/widget.rs::copy_cut_and_paste_events", "crates/editor/src/editor.rs::paste_converts_line_endings_and_distributes_lines"]
-notes = "Cut, copy and paste by keyboard (whole lines when nothing is selected; line endings become the document's; one line per caret). Paste is not in the Edit menu: egui can only receive a paste, not read the clipboard."
+notes = "Cut, copy and paste by keyboard (whole lines when nothing is selected; line endings become the document's; one line per caret). Paste is not in the Edit menu (egui can only receive a paste, not read the clipboard), and there is no registry command or headless tool for it yet: the `doc_*` tools of M1.14 add the headless side."
 
 [[feature]]
 id = "editor.multi-cursor"
@@ -302,7 +302,7 @@ milestone = "M1"
 status = "partial"
 commands = []
 tools = []
-evidence = ["crates/engine/src/document.rs::new_lines_use_the_files_line_ending_and_its_indentation", "crates/ui-egui/tests/documents.rs::typing_and_saving_keep_the_encoding_the_byte_order_mark_and_the_line_endings"]
+evidence = ["crates/engine/src/document.rs::new_lines_use_the_files_line_ending_and_its_indentation", "crates/ui-egui/tests/documents.rs::typing_and_saving_keep_the_encoding_the_byte_order_mark_and_the_line_endings", "crates/engine/src/document.rs::a_character_the_encoding_cannot_hold_is_reported_and_becomes_a_reference_in_the_text"]
 notes = "LF, CRLF and CR are detected, kept, used for new lines, and shown (including mixed). Not yet: converting a file's line endings."
 
 [[feature]]
@@ -314,8 +314,8 @@ milestone = "M1"
 status = "shipped"
 commands = ["file.save", "file.save_as"]
 tools = []
-evidence = ["crates/engine/src/document.rs::open_then_save_is_the_identity_or_flagged", "crates/ui-egui/tests/documents.rs::typing_and_saving_keep_the_encoding_the_byte_order_mark_and_the_line_endings"]
-notes = "For any bytes, a document is flagged lossy or saving gives back exactly the bytes read; saves are atomic (craft-atomic) and keep a symbolic link; a file with invalid bytes is never overwritten. Edits are not yet minimal diffs of the bytes (the whole file is rewritten, identically)."
+evidence = ["crates/engine/src/document.rs::open_then_save_is_the_identity_or_flagged", "crates/ui-egui/tests/documents.rs::typing_and_saving_keep_the_encoding_the_byte_order_mark_and_the_line_endings", "crates/engine/src/document.rs::a_character_the_encoding_cannot_hold_is_reported_and_becomes_a_reference_in_the_text"]
+notes = "For any bytes, a document is flagged lossy or saving gives back exactly the bytes read; saves are atomic (craft-atomic) and keep a symbolic link; a file with invalid bytes is never overwritten; a character the encoding cannot hold is never replaced silently: the user chooses character references (an undoable edit of the text, only in character data and attribute values) or another encoding (which also updates the XML declaration). Edits are not yet minimal diffs of the bytes (the whole file is rewritten, identically)."
 
 [[feature]]
 id = "editor.large-files"

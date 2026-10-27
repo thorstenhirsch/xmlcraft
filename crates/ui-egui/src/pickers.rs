@@ -72,9 +72,9 @@ impl Drop for Claim {
 impl XmlCraftApp {
     /// Show the Open panel. Returns `false` when another panel is already showing.
     pub(crate) fn pick_open(&mut self, ctx: &egui::Context) -> bool {
-        let dialog = rfd::AsyncFileDialog::new()
-            .set_title(crate::i18n::tl!("Open"))
-            .add_filter("XML", &["xml", "xsd", "dtd", "ent", "mod", "xsl", "xslt", "wsdl", "svg", "xhtml"]);
+        // No extension filter: opening by drag and drop or from the command line takes any file, and so should the panel (XML lives in
+        // files with many other extensions, and a chooser that enforces a filter would hide them).
+        let dialog = rfd::AsyncFileDialog::new().set_title(crate::i18n::tl!("Open"));
         self.ask(ctx, PickFor::Open, Ask::Open(dialog))
     }
 
@@ -160,11 +160,7 @@ impl XmlCraftApp {
         for Done { what, paths } in done {
             self.pickers.showing.store(false, Ordering::SeqCst);
             match (what, paths.is_empty()) {
-                (PickFor::Open, false) => {
-                    for path in &paths {
-                        self.open_path(path);
-                    }
-                }
+                (PickFor::Open, false) => self.open_paths(paths.iter().map(PathBuf::as_path)),
                 (PickFor::SaveAs { id, then }, false) => {
                     if let Some(path) = paths.into_iter().next() {
                         self.save_document_as(ctx, id, path, then);

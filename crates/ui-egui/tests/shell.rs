@@ -71,7 +71,7 @@ fn the_rail_reopens_entry_helpers() {
 }
 
 #[test]
-fn new_and_open_are_in_the_tab_strip_and_work() {
+fn new_opens_an_untitled_document_and_open_is_enabled() {
     let mut h = shell();
     assert!(!h.get_by_label("Open").accesskit_node().is_disabled());
     h.get_by_label("New").click();

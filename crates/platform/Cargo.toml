@@ -12,6 +12,9 @@ workspace = true
 
 [dependencies]
 xmlcraft-engine = { workspace = true }
+
+# The file functions are native only (on the web they are stubs, see files.rs): the web build does not resolve the atomic-write crate.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 craft-atomic = { workspace = true }
 
 [dev-dependencies]

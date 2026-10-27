@@ -16,7 +16,7 @@ use crate::chars::{is_name_start_char, is_xml_char, is_xml_space};
 use crate::diagnostic::{Code, Diagnostic, Severity};
 use crate::kinds::{SyntaxKind, SyntaxNode};
 use crate::lexer::{Lexer, Token, TokenKind};
-use crate::ns::{NsScope, XML_NAMESPACE, XMLNS_NAMESPACE, split_qname};
+use crate::ns::{NsScope, XML_NAMESPACE, XMLNS_NAMESPACE, is_ncname, split_qname};
 
 /// Caps that keep a hostile or huge document from costing more than it is worth.
 #[derive(Clone, Debug)]
@@ -212,16 +212,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// The kind of the first token that is not whitespace, looking at most a few dozen tokens ahead.
-    fn next_significant(&mut self) -> Option<TokenKind> {
-        for i in 0..64 {
-            match self.peek_nth(i) {
-                Some(t) if t.kind == TokenKind::Whitespace => {}
-                Some(t) => return Some(t.kind),
-                None => return None,
-            }
-        }
-        None
+    /// Whether the first thing after the whitespace that starts at the next token is `=`. It reads the text rather than looking ahead
+    /// in the tokens, so any amount of whitespace costs neither a limit nor memory.
+    fn next_is_eq(&mut self) -> bool {
+        let Some(token) = self.peek() else { return false };
+        self.src.get(token.start..).is_some_and(|rest| rest.trim_start_matches(is_xml_space).starts_with('='))
     }
 
     fn slice(&self, range: &Range<usize>) -> &'a str {
@@ -311,8 +306,9 @@ impl<'a> Parser<'a> {
     fn text(&mut self, token: Token) {
         let text = self.slice(&token.range());
         if self.open.is_empty() {
-            let bom = token.start == 0 && text == "\u{FEFF}";
-            if !bom && !text.chars().all(is_xml_space) {
+            // A byte-order mark that survived decoding is allowed in front of the whitespace before the root.
+            let text = if token.start == 0 { text.strip_prefix('\u{FEFF}').unwrap_or(text) } else { text };
+            if !text.chars().all(is_xml_space) {
                 self.outside_root(token.range());
             }
         }
@@ -442,7 +438,7 @@ impl<'a> Parser<'a> {
         };
         let name_text = self.slice(&name.range());
         let mut value = None;
-        if self.next_significant() == Some(TokenKind::Eq) {
+        if self.next_is_eq() {
             self.skip_whitespace();
             self.bump(); // =
             self.skip_whitespace();
@@ -820,7 +816,7 @@ impl<'a> Parser<'a> {
                     }
                     self.bump();
                     let mut value = None;
-                    if self.next_significant() == Some(TokenKind::Eq) {
+                    if self.next_is_eq() {
                         self.skip_whitespace();
                         self.bump();
                         self.skip_whitespace();
@@ -1058,7 +1054,8 @@ impl<'a> Parser<'a> {
         let (is_entity, is_notation) = (keyword == "<!ENTITY", keyword == "<!NOTATION");
         self.tree.start(SyntaxKind::MarkupDecl);
         self.bump();
-        let mut first_name = true;
+        // Names seen so far: the declared name comes first, and `SYSTEM` or `PUBLIC` count only straight after it.
+        let mut names = 0usize;
         let mut external = false;
         let mut public_literals_left = 0;
         let mut closed = false;
@@ -1071,18 +1068,20 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Name => {
                     let name = self.slice(&t.range());
-                    if first_name && (is_entity || is_notation) && name.contains(':') {
+                    if names == 0 && (is_entity || is_notation) && name.contains(':') {
                         self.diag(Code::ColonInName, t.range(), vec![name.to_owned()]);
                     }
-                    first_name = false;
-                    match name {
-                        "SYSTEM" => external = true,
-                        "PUBLIC" => {
-                            external = true;
-                            public_literals_left = 1;
+                    if names == 1 {
+                        match name {
+                            "SYSTEM" => external = true,
+                            "PUBLIC" => {
+                                external = true;
+                                public_literals_left = 1;
+                            }
+                            _ => {}
                         }
-                        _ => {}
                     }
+                    names += 1;
                     self.bump();
                 }
                 TokenKind::PercentRef => {
@@ -1136,17 +1135,22 @@ impl<'a> Parser<'a> {
             let from = at + i;
             let rest = text.get(from..).unwrap_or_default();
             let bad = |this: &mut Self, c: &str| this.diag(Code::BadEntityValue, range.start + from..range.start + from + 1, vec![c.to_owned()]);
-            let name_end = |after: &str| -> Option<usize> {
+            // The length of the name at the start of `after` when `;` follows it.
+            let name_len = |after: &str| -> Option<usize> {
                 let end = after.find(|c| !crate::chars::is_name_char(c)).unwrap_or(after.len());
                 let valid = after.chars().next().is_some_and(is_name_start_char) && after.get(end..).is_some_and(|r| r.starts_with(';'));
-                valid.then_some(end + 1)
+                valid.then_some(end)
             };
             if rest.starts_with('&') {
                 let after = rest.get(1..).unwrap_or_default();
                 let length = if after.starts_with('#') {
                     after.find(';').filter(|e| char_ref_value(&format!("&{}", after.get(..=*e).unwrap_or_default())).is_some()).map(|e| e + 1)
                 } else {
-                    name_end(after)
+                    let len = name_len(after);
+                    if let Some(len) = len {
+                        self.colon_in_reference(range.start + from + 1, after.get(..len).unwrap_or_default());
+                    }
+                    len.map(|len| len + 1)
                 };
                 match length {
                     Some(n) => at = from + 1 + n,
@@ -1156,10 +1160,12 @@ impl<'a> Parser<'a> {
                     }
                 }
             } else {
-                match name_end(rest.get(1..).unwrap_or_default()) {
-                    Some(n) => {
-                        self.diag(Code::PeInDeclaration, range.start + from..range.start + from + 1 + n, Vec::new());
-                        at = from + 1 + n;
+                let after = rest.get(1..).unwrap_or_default();
+                match name_len(after) {
+                    Some(len) => {
+                        self.colon_in_reference(range.start + from + 1, after.get(..len).unwrap_or_default());
+                        self.diag(Code::PeInDeclaration, range.start + from..range.start + from + 2 + len, Vec::new());
+                        at = from + 2 + len;
                     }
                     None => {
                         bad(self, "%");
@@ -1170,12 +1176,23 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Entity names are NCNames when namespaces are in force, so a reference to one may not contain a colon.
+    fn colon_in_reference(&mut self, start: usize, name: &str) {
+        if name.contains(':') {
+            self.diag(Code::ColonInName, start..start + name.len(), vec![name.to_owned()]);
+        }
+    }
+
     fn declare(&mut self, prefix: Option<&str>, attr: &Attr) {
+        let span = attr.name.clone();
+        if prefix.is_some_and(|p| !is_ncname(p)) {
+            let name = self.slice(&span).to_owned();
+            self.diag(Code::InvalidQName, span, vec![name]);
+            return;
+        }
         let Some(value) = attr.value.clone() else { return };
         let uri = decode_references(self.slice(&value));
-        let span = attr.name.clone();
         match prefix {
-            Some("") => self.diag(Code::InvalidQName, span, vec!["xmlns:".to_owned()]),
             Some("xmlns") => self.diag(Code::ReservedPrefix, span, vec!["xmlns".to_owned()]),
             Some("xml") => {
                 if uri != XML_NAMESPACE {

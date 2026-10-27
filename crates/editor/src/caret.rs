@@ -37,24 +37,41 @@ impl Caret {
 }
 
 /// Sort carets by position and merge those that overlap or touch (two empty carets at one place, or a caret on the edge of a selection),
-/// so no two ever edit the same text. Returns the carets and where the one that held `primary_head` ended up.
-pub fn normalize(mut carets: Vec<Caret>, primary_head: usize) -> (Vec<Caret>, usize) {
-    carets.sort_by_key(|c| (c.start(), c.end()));
-    let mut merged: Vec<Caret> = Vec::with_capacity(carets.len());
-    for caret in carets {
-        match merged.last_mut() {
+/// so no two ever edit the same text. `primary` is the index in `carets` of the primary caret; returns the carets and the index where
+/// that one ended up (the last one if `primary` is out of range).
+///
+/// A merged selection keeps the direction of the selection among the pair, not of an empty caret, and of the later one when both are
+/// selections.
+pub fn normalize(carets: Vec<Caret>, primary: usize) -> (Vec<Caret>, usize) {
+    let mut order: Vec<(usize, Caret)> = carets.into_iter().enumerate().collect();
+    order.sort_by_key(|(_, c)| (c.start(), c.end()));
+    let mut merged: Vec<Caret> = Vec::with_capacity(order.len());
+    let mut primary_at = None;
+    for (index, caret) in order {
+        let tail = merged.len().saturating_sub(1);
+        let slot = match merged.last_mut() {
             Some(last) if last.end() > caret.start() || (last.end() == caret.start() && (last.is_empty() || caret.is_empty())) => {
                 let start = last.start().min(caret.start());
                 let end = last.end().max(caret.end());
-                // The merged selection keeps the direction of the one that came later.
-                let forward = caret.sel.head >= caret.sel.anchor;
+                let source = if caret.is_empty() && !last.is_empty() { *last } else { caret };
+                let forward = source.sel.head >= source.sel.anchor;
                 last.sel = if forward { Selection { anchor: start, head: end } } else { Selection { anchor: end, head: start } };
-                last.goal = caret.goal;
+                // The column a vertical move aims for is the primary caret's when it is one of the two, else the later one's.
+                if primary_at != Some(tail) {
+                    last.goal = caret.goal;
+                }
+                tail
             }
-            _ => merged.push(caret),
+            _ => {
+                merged.push(caret);
+                merged.len() - 1
+            }
+        };
+        if index == primary {
+            primary_at = Some(slot);
         }
     }
-    let primary = merged.iter().position(|c| c.start() <= primary_head && primary_head <= c.end()).unwrap_or(merged.len().saturating_sub(1));
+    let primary = primary_at.unwrap_or(merged.len().saturating_sub(1));
     (merged, primary)
 }
 
@@ -64,23 +81,62 @@ mod tests {
 
     #[test]
     fn carets_are_sorted_and_merged() {
-        let (carets, primary) = normalize(vec![Caret::at(9), Caret::at(2), Caret::at(2), Caret::new(5, 7)], 9);
+        // The primary caret is the one at 9, the first in the list.
+        let (carets, primary) = normalize(vec![Caret::at(9), Caret::at(2), Caret::at(2), Caret::new(5, 7)], 0);
         assert_eq!(carets.iter().map(|c| (c.start(), c.end())).collect::<Vec<_>>(), [(2, 2), (5, 7), (9, 9)]);
         assert_eq!(primary, 2);
+        let (_, primary) = normalize(vec![Caret::at(9), Caret::at(2), Caret::at(2), Caret::new(5, 7)], 2);
+        assert_eq!(primary, 0, "the second of two carets that merge");
     }
 
     #[test]
     fn overlapping_and_touching_selections_become_one() {
-        let (carets, _) = normalize(vec![Caret::new(1, 5), Caret::new(4, 8)], 8);
+        let (carets, _) = normalize(vec![Caret::new(1, 5), Caret::new(4, 8)], 1);
         assert_eq!(carets.len(), 1);
         assert_eq!((carets[0].start(), carets[0].end()), (1, 8));
-        let (carets, _) = normalize(vec![Caret::new(1, 3), Caret::at(3)], 3);
+        let (carets, _) = normalize(vec![Caret::new(1, 3), Caret::at(3)], 1);
         assert_eq!(carets.len(), 1, "a caret on the edge of a selection");
-        let (carets, _) = normalize(vec![Caret::new(1, 3), Caret::new(3, 5)], 3);
+        let (carets, _) = normalize(vec![Caret::new(1, 3), Caret::new(3, 5)], 1);
         assert_eq!(carets.len(), 2, "two selections that only touch stay apart");
-        let (carets, _) = normalize(vec![Caret::new(8, 4), Caret::new(6, 2)], 2);
+        let (carets, _) = normalize(vec![Caret::new(8, 4), Caret::new(6, 2)], 1);
         assert_eq!((carets[0].start(), carets[0].end()), (2, 8));
         assert_eq!(carets[0].sel.head, 2, "backwards: the later caret's direction");
+    }
+
+    #[test]
+    fn the_primary_caret_stays_the_primary_caret() {
+        // A backward selection whose head touches the end of the one before it: they stay apart, and the primary is the second.
+        let (carets, primary) = normalize(vec![Caret::new(1, 3), Caret::new(5, 3)], 1);
+        assert_eq!(carets.iter().map(|c| (c.start(), c.end())).collect::<Vec<_>>(), [(1, 3), (3, 5)]);
+        assert_eq!(primary, 1, "head 3 is inside both, the caret that held it is the second");
+        // The same, listed the other way round.
+        let (_, primary) = normalize(vec![Caret::new(5, 3), Caret::new(1, 3)], 0);
+        assert_eq!(primary, 1);
+        // An index past the end means the last caret.
+        assert_eq!(normalize(vec![Caret::at(1), Caret::at(4)], 9).1, 1);
+    }
+
+    #[test]
+    fn a_selection_keeps_its_direction_when_an_empty_caret_joins_it() {
+        // The empty caret sorts after the backward selection and touches it.
+        let (carets, _) = normalize(vec![Caret::new(5, 1), Caret::at(5)], 0);
+        assert_eq!((carets[0].start(), carets[0].end(), carets[0].sel.head), (1, 5, 1), "backward stays backward");
+        // And before a forward one.
+        let (carets, _) = normalize(vec![Caret::at(1), Caret::new(1, 5)], 1);
+        assert_eq!((carets[0].start(), carets[0].end(), carets[0].sel.head), (1, 5, 5), "forward stays forward");
+        // Inside a backward selection.
+        let (carets, _) = normalize(vec![Caret::new(8, 2), Caret::at(5)], 0);
+        assert_eq!((carets[0].start(), carets[0].end(), carets[0].sel.head), (2, 8, 2));
+    }
+
+    #[test]
+    fn a_merged_caret_keeps_the_primary_carets_goal_column() {
+        let selection = Caret { sel: Selection { anchor: 1, head: 5 }, goal: Some(2) };
+        let empty = Caret { sel: Selection::caret(5), goal: Some(7) };
+        // The empty caret is the primary: its column survives. Then the selection is: its column survives. Then neither: the later's.
+        assert_eq!(normalize(vec![selection, empty], 1).0[0].goal, Some(7));
+        assert_eq!(normalize(vec![selection, empty], 0).0[0].goal, Some(2));
+        assert_eq!(normalize(vec![selection, empty, Caret::at(20)], 2).0[0].goal, Some(7));
     }
 
     #[test]

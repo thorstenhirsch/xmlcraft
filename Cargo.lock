@@ -4709,6 +4709,7 @@ version = "0.0.1"
 dependencies = [
  "proptest",
  "xmlcraft-editor",
+ "xmlcraft-syntax",
  "xmlcraft-text",
 ]
 

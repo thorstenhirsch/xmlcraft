@@ -6,7 +6,7 @@ Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is 
 
 | Milestone | Scope | Version | Status |
 |---|---|---|---|
-| **M0** Bootstrap | Workspace, policies, xtask gates, assets, app shell with the PdfCraft look, automation/CLI skeleton, CI, packaging for all six targets | 0.0.x | **in progress** (M0.1–M0.11 done, M0.6 folded into M0.7; the release dry run builds macOS and Linux, the Windows MSI fix is in review) |
+| **M0** Bootstrap | Workspace, policies, xtask gates, assets, app shell with the PdfCraft look, automation/CLI skeleton, CI, packaging for all six targets | 0.0.x | **in progress** (M0.1–M0.11 done, M0.6 folded into M0.7; the release dry run builds and verifies all six targets (run 40454851007, after the Windows MSI fix in #4); installing and launching each artifact is checked only for Windows ARM64, by the `windows-arm64` workflow) |
 | **M1** Text editor and XML syntax | Rope buffer, encodings, lossless CST, well-formedness, the code-editor widget (highlighting, folding, multi-cursor, find/replace, XML typing aids), formatting, outline, large files | 0.0.x | **in progress** (M1.1 buffer and undo, M1.2 encodings and line endings, M1.3 lexer, M1.4 syntax tree and well-formedness, M1.5 xmlconf harness (the streaming Reader moved to when validation needs it, M2.9) done; headless editor model (M1.6a) the egui code-editor widget (M1.6b), XML colouring (M1.7) and the document lifecycle in the app (M1.12) done; outline, Messages and F7 (M1.13), tools and CLI (M1.14), then find/replace, folding, typing aids and the formatter (M1.8–M1.11)) |
 | **M2** Catalogs, resolver and DTD | OASIS catalogs, bundled-schema crate, resolver with disk cache and network fetcher, the shared grammar model, DTD parsing and validation, Entry Helpers | 0.0.x | not started |
 | **M3** XSD engine and validation UX | XSD regex and datatypes, schema compilation, XSD 1.0 validation, identity constraints, the W3C xsdtests ratchet, schema-aware completion and Entry Helpers | 0.0.x | not started |
@@ -17,8 +17,8 @@ Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is 
 ## Exit criteria (MVP path)
 
 - **M0:** `cargo xtask ci` green on Ubuntu and Windows; a dry-run release builds, installs and launches on all six targets (win x64/arm64, macOS universal, linux x64/arm64).
-- **M1:** editor performance targets met (1 MB: keystroke-to-paint p95 under 8 ms; 100 MB: opens in under 3 s, scrolls at 60 fps); xmlconf not-well-formed 100%; byte-identical open/save round-trip property holds; an hour of fuzzing finds no panic.
-- **M2:** xmlconf valid and invalid at least 99%; DocBook 4.5 and XHTML documents validate offline; at least 99% verdict agreement with `xmllint --valid`.
+- **M1:** editor performance targets met (1 MB: keystroke-to-paint p95 under 8 ms; 100 MB: opens in under 3 s, scrolls at 60 fps); xmlconf not-well-formed 100% of the tests that need no DTD (the rest closes in M2, gap 16); byte-identical open/save round-trip property holds; an hour of fuzzing finds no panic.
+- **M2:** xmlconf not-well-formed 100% (the DTD and entity rules of gap 16) and valid and invalid at least 99%; DocBook 4.5 and XHTML documents validate offline; at least 99% verdict agreement with `xmllint --valid`.
 - **M3:** xsdtests at least 90%; at least 98% agreement with `xmllint --schema` on the curated set; a 10 MB document validates in under 1 s.
 - **M4:** every corpus document validates against both its inferred XSD and DTD; at least 95% of generated samples validate; xsdtests at least 95%; 0.1.0 released for all six targets.
 
@@ -40,4 +40,4 @@ Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is 
 - 2026-10-27: M1.6b (`xmlcraft-code-editor`): the egui editor widget.
 - 2026-10-27: M1.7: XML colouring (per-line lexing from checkpoints) and its theme colours.
 - 2026-10-27: M1.12a: the document model (`xmlcraft-engine::Document`, `Session`) and native file I/O (`xmlcraft-platform`).
-- 2026-10-27: M1.12b: the editor in the app (open, edit, save, prompts, drag and drop). Recent files, autosave recovery and file watching are still to do.
+- 2026-10-27: M1.12b: the editor in the app (open, edit, save, prompts, drag and drop). Still to do for M1.12: recent files, autosave recovery, watching the open files (they are looked at when the window gets the focus back), a single running instance and Apple events (files opened from the Finder), and Edit ▸ Paste (egui can receive a paste but not read the clipboard).

@@ -73,11 +73,10 @@ impl XmlCraftApp {
         if !self.command_enabled(spec) {
             return false;
         }
+        // Cleared first, so what the command says ("Saved a.xml") is what the status bar shows afterwards.
+        self.status.clear();
         match xmlcraft_engine::guard(|| self.execute_unguarded(id)) {
-            Ok(done) => {
-                self.status.clear();
-                done
-            }
+            Ok(done) => done,
             Err(message) => {
                 log::error!("command {id} failed: {message}");
                 self.status = crate::i18n::fmt(
