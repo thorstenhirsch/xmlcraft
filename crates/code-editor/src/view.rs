@@ -14,7 +14,7 @@ use xmlcraft_text::Buffer;
 
 use crate::colors::EditorColors;
 use crate::keys::{Command, command_for};
-use crate::layout::{LayoutParams, LineLayout, MAX_WINDOW, StyleSpan};
+use crate::layout::{LayoutParams, LineLayout, LineStyler, MAX_WINDOW, StyleSpan};
 
 /// Space on the left and right of the line numbers, in points.
 const GUTTER_PADDING: f32 = 10.0;
@@ -84,6 +84,8 @@ pub struct ViewState {
     page_lines: usize,
     /// Bump this when the host's colouring changes, so cached lines are laid out again.
     pub highlight_version: u64,
+    /// The editor's version when the styler was last told about changes.
+    styled_version: u64,
 }
 
 impl ViewState {
@@ -129,8 +131,6 @@ pub struct CodeEditorOutput {
     pub selection_changed: bool,
 }
 
-type Highlighter<'a> = &'a dyn Fn(usize, &str) -> Vec<StyleSpan>;
-
 /// The editor widget. `show` it every frame.
 pub struct CodeEditor<'a> {
     editor: &'a mut Editor,
@@ -142,12 +142,12 @@ pub struct CodeEditor<'a> {
     blink: bool,
     gutter: bool,
     read_only: bool,
-    highlighter: Option<Highlighter<'a>>,
+    styler: Option<&'a mut dyn LineStyler>,
 }
 
 impl<'a> CodeEditor<'a> {
     pub fn new(id_salt: Id, editor: &'a mut Editor, view: &'a mut ViewState, colors: EditorColors) -> Self {
-        Self { editor, view, colors, id_salt, font: None, line_height: 1.5, blink: true, gutter: true, read_only: false, highlighter: None }
+        Self { editor, view, colors, id_salt, font: None, line_height: 1.5, blink: true, gutter: true, read_only: false, styler: None }
     }
 
     /// The font (monospaced). The default is the style's monospace font.
@@ -179,14 +179,14 @@ impl<'a> CodeEditor<'a> {
         self
     }
 
-    /// Colours for the text of a line: given the line's number and its text, the coloured byte ranges (the rest is plain).
-    pub fn highlighter(mut self, highlighter: Highlighter<'a>) -> Self {
-        self.highlighter = Some(highlighter);
+    /// Colours for the text, line by line (the host's lexer or parser).
+    pub fn styler(mut self, styler: &'a mut dyn LineStyler) -> Self {
+        self.styler = Some(styler);
         self
     }
 
     pub fn show(self, ui: &mut Ui) -> CodeEditorOutput {
-        let Self { editor, view, colors, id_salt, font, line_height, blink, gutter, read_only, highlighter } = self;
+        let Self { editor, view, colors, id_salt, font, line_height, blink, gutter, read_only, mut styler } = self;
         let id = ui.make_persistent_id(id_salt);
         let font = font.unwrap_or_else(|| egui::TextStyle::Monospace.resolve(ui.style()));
         let (column_w, glyph_row) = ui.ctx().fonts_mut(|f| (f.glyph_width(&font, '0').max(1.0), f.row_height(&font)));
@@ -206,6 +206,14 @@ impl<'a> CodeEditor<'a> {
             let page = view.page_lines;
             handle_events(ui, editor, view, mac, read_only, page, now);
         }
+
+        // The styler hears about edits before anything is drawn, so no frame shows colours of the text as it was.
+        if let Some(styler) = styler.as_mut()
+            && let Some(first_line) = editor.first_changed_line_since(view.styled_version)
+        {
+            styler.text_changed(first_line);
+        }
+        view.styled_version = editor.version();
 
         // --- geometry ---
         let line_count = editor.buffer().line_count();
@@ -235,6 +243,11 @@ impl<'a> CodeEditor<'a> {
             let first = ((viewport.min.y / row_h).floor().max(0.0) as usize).min(line_count.saturating_sub(1));
             let last = (((viewport.max.y / row_h).ceil().max(0.0) as usize) + 1).min(line_count);
             view.frame += 1;
+            // A shorter borrow of the styler for this frame (a trait object's lifetime can only be shortened at a coercion).
+            let styler_ref: Option<&mut dyn LineStyler> = match styler.as_mut() {
+                Some(s) => Some(&mut **s),
+                None => None,
+            };
             let frame = Frame {
                 painter: &painter,
                 font: &font,
@@ -243,7 +256,7 @@ impl<'a> CodeEditor<'a> {
                 tab_width: editor.settings().tab_width,
                 scroll_x: viewport.min.x,
                 version: editor.version(),
-                highlighter,
+                styler: std::cell::RefCell::new(styler_ref),
             };
             let text_x = rect.min.x + gutter_w + TEXT_MARGIN;
             view.geometry = Some(Geometry { origin: rect.min, text_x, row_height: row_h, column_width: column_w });
@@ -413,7 +426,7 @@ struct Frame<'a> {
     tab_width: usize,
     scroll_x: f32,
     version: u64,
-    highlighter: Option<Highlighter<'a>>,
+    styler: std::cell::RefCell<Option<&'a mut dyn LineStyler>>,
 }
 
 /// The characters of a long line that are laid out: a window around what is scrolled into view.
@@ -446,7 +459,7 @@ fn layout_line(view: &mut ViewState, buffer: &Buffer, line: usize, frame: &Frame
     let text = buffer.line_text(line).unwrap_or_default();
     let chars = text.chars().count();
     let window = window_for(chars, frame);
-    let spans: Vec<StyleSpan> = frame.highlighter.map(|h| h(line, &text)).unwrap_or_default();
+    let spans: Vec<StyleSpan> = frame.styler.borrow_mut().as_mut().map(|styler| styler.style_line(buffer, line, &text)).unwrap_or_default();
     let params = LayoutParams { font: frame.font, color: frame.colors.text, tab_width: frame.tab_width, column_width: frame.column_w, spans: &spans };
     let layout = Arc::new(LineLayout::new(frame.painter, &text, window, &params));
     view.cache.insert(line, Cached { key, layout: layout.clone(), chars, frame: view.frame });

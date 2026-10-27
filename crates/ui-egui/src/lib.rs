@@ -5,6 +5,7 @@
 mod chrome;
 mod commands;
 mod control;
+pub mod editor_view;
 mod home;
 mod i18n;
 mod icon_data;

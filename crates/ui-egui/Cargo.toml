@@ -12,6 +12,10 @@ workspace = true
 
 [dependencies]
 xmlcraft-engine = { workspace = true }
+xmlcraft-text = { workspace = true }
+xmlcraft-syntax = { workspace = true }
+xmlcraft-editor = { workspace = true }
+xmlcraft-code-editor = { workspace = true }
 craft-ui = { workspace = true }
 # macOS: a window close quits through `terminate:` (the Touch Bar crash); elsewhere a no-op.
 craft-quit = { workspace = true, features = ["egui"] }

@@ -9,6 +9,7 @@
 //! - Character classes from XML 1.0 (5th edition) are in [`is_name_start_char`], [`is_name_char`], [`is_xml_char`] and
 //!   [`is_xml_space`].
 //!
+//! - [`highlight_line`] and [`Highlighter`] colour a line at a time, resuming from the lexer's mode at the line's start.
 //! - [`parse`] builds a lossless, error-tolerant syntax tree (`rowan`) whose text is exactly the input, and the [`Diagnostic`]s for
 //!   everything that is not well-formed XML 1.0 or not valid under Namespaces in XML 1.0. Whatever the input, it gives a tree and never
 //!   fails: broken markup is recovered from, and what was recovered is reported.
@@ -19,6 +20,7 @@
 
 mod chars;
 mod diagnostic;
+mod highlight;
 mod kinds;
 mod lexer;
 mod ns;
@@ -26,6 +28,7 @@ mod parser;
 
 pub use chars::{is_name_char, is_name_start_char, is_xml_char, is_xml_space};
 pub use diagnostic::{Code, Diagnostic, Severity};
+pub use highlight::{HighlightClass, Highlighter, Span, highlight_line};
 pub use kinds::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken, XmlLanguage};
 pub use lexer::{Checkpoint, Lexer, Mode, Quote, Return, Token, TokenKind};
 pub use ns::{NsScope, XML_NAMESPACE, XMLNS_NAMESPACE, split_qname};

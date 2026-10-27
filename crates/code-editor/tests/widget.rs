@@ -4,20 +4,44 @@
 use egui::{Event, Id, ImeEvent, Key, Modifiers, PointerButton};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use xmlcraft_code_editor::{CodeEditor, EditorColors, ViewState};
+use xmlcraft_code_editor::{CodeEditor, EditorColors, LineStyler, StyleSpan, ViewState};
 use xmlcraft_editor::Editor;
+
+/// Records what the widget asks of a styler, and colours the first byte of every line.
+#[derive(Default)]
+struct Recorder {
+    changed: Vec<usize>,
+    styled: std::collections::BTreeSet<usize>,
+}
+
+impl LineStyler for Recorder {
+    fn text_changed(&mut self, first_line: usize) {
+        self.changed.push(first_line);
+        self.styled.clear();
+    }
+
+    fn style_line(&mut self, _buffer: &xmlcraft_text::Buffer, line: usize, text: &str) -> Vec<StyleSpan> {
+        self.styled.insert(line);
+        if text.is_empty() { Vec::new() } else { vec![StyleSpan { range: 0..1, color: egui::Color32::RED }] }
+    }
+}
 
 struct App {
     editor: Editor,
     view: ViewState,
     read_only: bool,
+    recorder: Recorder,
 }
 
 fn harness(text: &str) -> Harness<'static, App> {
-    let app = App { editor: Editor::new(text), view: ViewState::new(), read_only: false };
+    let app = App { editor: Editor::new(text), view: ViewState::new(), read_only: false, recorder: Recorder::default() };
     let mut h = Harness::builder().with_size(egui::vec2(640.0, 360.0)).build_ui_state(
         |ui, app: &mut App| {
-            CodeEditor::new(Id::new("editor"), &mut app.editor, &mut app.view, EditorColors::light()).blink(false).read_only(app.read_only).show(ui);
+            CodeEditor::new(Id::new("editor"), &mut app.editor, &mut app.view, EditorColors::light())
+                .blink(false)
+                .read_only(app.read_only)
+                .styler(&mut app.recorder)
+                .show(ui);
         },
         app,
     );
@@ -210,4 +234,23 @@ fn a_very_long_line_is_laid_out_in_a_window() {
     h.get_by_label("XML editor").type_text("!");
     h.run_steps(3);
     assert!(text(&h).ends_with("/>!"));
+}
+
+#[test]
+fn the_styler_hears_about_edits_and_styles_only_what_is_on_screen() {
+    let text = (0..100_000).map(|i| format!("<l n=\"{i}\"/>")).collect::<Vec<_>>().join("\n");
+    let mut h = harness(&text);
+    h.run_steps(3);
+    assert!(h.state().recorder.changed.is_empty(), "nothing has changed yet: {:?}", h.state().recorder.changed);
+    let styled = h.state().recorder.styled.clone();
+    assert!(styled.len() > 5 && styled.len() < 60, "{} lines styled", styled.len());
+    assert_eq!(styled.iter().next().copied(), Some(0));
+    // An edit on the third line: the styler is told, once, and the lines are styled again.
+    let third = text.lines().take(2).map(|l| l.len() + 1).sum::<usize>();
+    h.state_mut().editor.set_selection(third, third);
+    h.run_steps(2);
+    h.get_by_label("XML editor").type_text("x");
+    h.run_steps(3);
+    assert_eq!(h.state().recorder.changed, vec![2]);
+    assert!(h.state().recorder.styled.contains(&2), "the edited line is styled again");
 }

@@ -1,13 +1,13 @@
 # XmlCraft roadmap: milestones and what's next
 
-> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** M1.1–M1.6 done · **Target:** Altova XMLSpy (feature set described in its public documentation)
+> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** M1.1–M1.7 done · **Target:** Altova XMLSpy (feature set described in its public documentation)
 
 Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is done when its **exit criteria** are met and measured, not when its tasks are merged. [ROADMAP.md](../ROADMAP.md) is the one-page summary.
 
 | Milestone | Scope | Version | Status |
 |---|---|---|---|
 | **M0** Bootstrap | Workspace, policies, xtask gates, assets, app shell with the PdfCraft look, automation/CLI skeleton, CI, packaging for all six targets | 0.0.x | **in progress** (M0.1–M0.11 done, M0.6 folded into M0.7; the release dry run builds macOS and Linux, the Windows MSI fix is in review) |
-| **M1** Text editor and XML syntax | Rope buffer, encodings, lossless CST, well-formedness, the code-editor widget (highlighting, folding, multi-cursor, find/replace, XML typing aids), formatting, outline, large files | 0.0.x | **in progress** (M1.1 buffer and undo, M1.2 encodings and line endings, M1.3 lexer, M1.4 syntax tree and well-formedness, M1.5 xmlconf harness (the streaming Reader moved to when validation needs it, M2.9) done; headless editor model (M1.6a) and the egui code-editor widget (M1.6b) done; highlighting (M1.7) next) |
+| **M1** Text editor and XML syntax | Rope buffer, encodings, lossless CST, well-formedness, the code-editor widget (highlighting, folding, multi-cursor, find/replace, XML typing aids), formatting, outline, large files | 0.0.x | **in progress** (M1.1 buffer and undo, M1.2 encodings and line endings, M1.3 lexer, M1.4 syntax tree and well-formedness, M1.5 xmlconf harness (the streaming Reader moved to when validation needs it, M2.9) done; headless editor model (M1.6a) the egui code-editor widget (M1.6b) and XML colouring (M1.7) done; multi-cursor gestures, find/replace and the app wiring next) |
 | **M2** Catalogs, resolver and DTD | OASIS catalogs, bundled-schema crate, resolver with disk cache and network fetcher, the shared grammar model, DTD parsing and validation, Entry Helpers | 0.0.x | not started |
 | **M3** XSD engine and validation UX | XSD regex and datatypes, schema compilation, XSD 1.0 validation, identity constraints, the W3C xsdtests ratchet, schema-aware completion and Entry Helpers | 0.0.x | not started |
 | **M4** Generators and bundled set | Schema inference (XSD and DTD), sample XML generation, the full bundled schema set, Home page, About — **MVP release** | **0.1.0** | not started |
@@ -38,3 +38,4 @@ Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is 
 - 2026-10-27: M1.5: `cargo xtask conformance xmlconf` and its ratchet; first numbers: not-wf 64.7%, valid 100%, invalid 100%. The streaming `Reader` is deferred to M2.9 (validation), where one parser core with a tree sink and an event sink avoids two copies of the rules.
 - 2026-10-27: M1.6a (`xmlcraft-editor`): the headless editor model, multi-caret from the start.
 - 2026-10-27: M1.6b (`xmlcraft-code-editor`): the egui editor widget.
+- 2026-10-27: M1.7: XML colouring (per-line lexing from checkpoints) and its theme colours.
