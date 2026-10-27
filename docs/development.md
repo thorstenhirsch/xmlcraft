@@ -47,6 +47,7 @@ Scope builds to the crates you touched; a full `--workspace` build is CI's job.
 
 - `xmllint` (libxml2-utils) is a black-box oracle for `cargo xtask oracle` and some tests. It is optional locally: tests that need it skip with a notice unless `XMLCRAFT_ORACLES_REQUIRED=1` is set (CI sets it on Linux).
 - The W3C and OASIS conformance suites are fetched by `cargo xtask conformance --fetch` into the gitignored `conformance/` directory.
+- `cargo xtask bench` measures the editor's performance targets on synthetic documents (it re-runs itself in release mode; `--list`, `--only NAME`, `--json`). It fails when a scenario is over its budget in `xtask/baselines/bench.toml`; a budget above its target is a known shortfall in `docs/gaps.md` and is only ever lowered. It is not part of `xtask ci` (timings on shared runners are noise).
 
 ## Revision history
 

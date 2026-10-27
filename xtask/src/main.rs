@@ -5,6 +5,7 @@
 use std::process::ExitCode;
 
 mod assets;
+mod bench;
 mod conformance;
 mod gates;
 mod layers;
@@ -28,6 +29,11 @@ const COMMANDS: &[(&str, &str, Command)] = &[
         "conformance",
         "Run a W3C conformance suite against the parser and hold the ratchet: `conformance xmlconf [--fetch] [--write] [-v]`",
         conformance::run,
+    ),
+    (
+        "bench",
+        "Measure the editor's performance targets on synthetic documents and hold the budgets: `bench [--only NAME] [--list] [--json]`",
+        bench::run,
     ),
     ("parity", "Validate parity/xmlspy-features.toml against the registry, tools and tests; report progress (--json, --partial)", parity::run),
 ];
