@@ -203,11 +203,11 @@ title = "Toggle comment on selection"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["edit.toggle_comment"]
+tools = ["doc_toggle_comment"]
+evidence = ["crates/editor/src/structure.rs::lines_are_commented_out_and_back_in", "crates/editor/src/structure.rs::a_selection_over_lines_is_one_comment", "crates/editor/src/structure.rs::what_cannot_be_in_a_comment_is_refused_and_nothing_changes", "crates/ui-egui/tests/structure.rs::control_slash_comments_the_line_out_and_in_and_says_when_it_cannot", "crates/automation/tests/documents.rs::comments_and_selections_work_on_the_structure"]
+notes = "⌘/ (Ctrl+/) wraps the lines the carets touch in `<!-- -->` (one comment for a selection over lines, from its first character that is not blank to the end of its last line) or, when they are exactly one comment, takes the markers off; the caret stays in its text and it is one undo step. A text with `--` in it cannot go into a comment: that is refused and nothing changes. Not yet: toggling a part of a line, and commenting out with CDATA."
 
 [[feature]]
 id = "editor.expand-selection"
@@ -215,11 +215,11 @@ title = "Expand and shrink selection by syntax node"
 area = "A"
 tier = "P2"
 milestone = "M1"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["edit.expand_selection", "edit.shrink_selection"]
+tools = ["doc_expand_selection", "doc_shrink_selection", "doc_select"]
+evidence = ["crates/editor/src/structure.rs::a_selection_grows_by_what_the_tree_says", "crates/editor/src/structure.rs::shrinking_goes_back_the_way_it_grew_until_something_else_happens", "crates/editor/src/structure.rs::the_selections_of_several_carets_grow_each_by_itself", "crates/ui-egui/tests/structure.rs::the_selection_grows_and_shrinks_with_the_shortcuts", "crates/automation/tests/documents.rs::comments_and_selections_work_on_the_structure"]
+notes = "⌥⌘→ (Ctrl+Alt+→) grows each selection to the smallest thing of the syntax tree that holds it and is bigger: the word, the token, the value without and with its quotes, the attribute, the tag, the content of the element, the element, the one around it; ⌥⌘← goes back the way it grew (not after an edit or a selection made another way). It parses the whole text when asked (not above 8 MiB), so it works on a document that is not well-formed too. Not yet: growing over several siblings at once, and the same through a schema."
 
 [[feature]]
 id = "editor.soft-wrap"

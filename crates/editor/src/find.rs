@@ -321,7 +321,7 @@ impl Editor {
 }
 
 /// The word at (or just before) `offset`: letters, digits and the characters of XML names.
-fn word_at(text: &str, offset: usize) -> Option<Range<usize>> {
+pub(crate) fn word_at(text: &str, offset: usize) -> Option<Range<usize>> {
     let at = floor_boundary(text, offset);
     let is_word = |c: char| c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | ':');
     let start = text.get(..at)?.char_indices().rev().take_while(|(_, c)| is_word(*c)).last().map_or(at, |(i, _)| i);

@@ -77,6 +77,9 @@ impl Shortcut {
             "OpenBracket" => "[",
             "CloseBracket" => "]",
             "Backslash" => "\\",
+            "Slash" => "/",
+            "ArrowRight" => "→",
+            "ArrowLeft" => "←",
             other => other,
         }
     }
@@ -202,6 +205,9 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("edit.select_all_occurrences", "Select All Occurrences", EDIT, Some(Shortcut::cmd_shift("L")), Needs::Document, "plus"),
     c("edit.go_to_line", "Go to Line…", EDIT, Some(Shortcut::cmd("G")), Needs::Document, "align-left").sep(),
     c("edit.go_to_matching_tag", "Go to Matching Tag", EDIT, Some(Shortcut::cmd_shift("Backslash")), Needs::Document, "code-xml"),
+    c("edit.toggle_comment", "Toggle Comment", EDIT, Some(Shortcut::cmd("Slash")), Needs::Document, "code-xml").sep(),
+    c("edit.expand_selection", "Expand Selection", EDIT, Some(Shortcut::cmd_alt("ArrowRight")), Needs::Document, "chevron-right"),
+    c("edit.shrink_selection", "Shrink Selection", EDIT, Some(Shortcut::cmd_alt("ArrowLeft")), Needs::Document, "chevron-left"),
     c("edit.fold", "Fold", EDIT, Some(Shortcut::cmd_alt("OpenBracket")), Needs::Document, "chevron-right").sep(),
     c("edit.unfold", "Unfold", EDIT, Some(Shortcut::cmd_alt("CloseBracket")), Needs::Document, "chevron-down"),
     c("edit.fold_all", "Fold All", EDIT, None, Needs::Document, "chevron-right"),
@@ -313,6 +319,9 @@ mod tests {
                 "edit.select_all_occurrences",
                 "edit.go_to_line",
                 "edit.go_to_matching_tag",
+                "edit.toggle_comment",
+                "edit.expand_selection",
+                "edit.shrink_selection",
                 "edit.fold",
                 "edit.unfold",
                 "edit.fold_all",
@@ -339,12 +348,19 @@ mod tests {
         assert_eq!(Shortcut::cmd_alt("OpenBracket").label(false), "Ctrl+Alt+[");
         assert_eq!(Shortcut::cmd_alt("OpenBracket").modifier_count(), 2);
         assert_eq!(Shortcut::cmd_alt("CloseBracket").label(true), "⌥⌘]");
+        assert_eq!(Shortcut::cmd("Slash").label(true), "⌘/");
+        assert_eq!(Shortcut::cmd_alt("ArrowRight").label(false), "Ctrl+Alt+→");
         assert_eq!(Shortcut::cmd_shift("Backslash").label(true), "⇧⌘\\");
         assert_eq!(Shortcut::cmd_shift("Backslash").label(false), "Ctrl+Shift+\\");
         // No menu shows the name egui gives a key.
         for c in COMMANDS {
             if let Some(s) = c.shortcut {
-                assert!(!s.label(true).contains("Bracket") && !s.label(false).contains("Backslash"), "{}: {}", c.id, s.label(false));
+                let (mac, other) = (s.label(true), s.label(false));
+                assert!(
+                    !mac.contains("Bracket") && !other.contains("Backslash") && !other.contains("Arrow") && !other.contains("Slash"),
+                    "{}: {other}",
+                    c.id
+                );
             }
         }
     }

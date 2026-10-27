@@ -96,6 +96,8 @@ pub struct Editor {
     pub(crate) folds: Vec<Fold>,
     /// Which lines the folds hide, for the current text and folds.
     pub(crate) fold_map: FoldMap,
+    /// What the selection was before each expansion of it ([`Editor::expand_selection`]), for [`Editor::shrink_selection`].
+    pub(crate) expansions: Vec<crate::structure::Expansion>,
     history: History,
     pub(crate) carets: Vec<Caret>,
     pub(crate) primary: usize,
@@ -126,6 +128,7 @@ impl Editor {
             lexer: Highlighter::new(),
             folds: Vec::new(),
             fold_map: FoldMap::default(),
+            expansions: Vec::new(),
             history: History::new(),
             carets: vec![Caret::at(0)],
             primary: 0,
@@ -255,6 +258,7 @@ impl Editor {
         self.history.clear();
         self.folds.clear();
         self.fold_map = FoldMap::default();
+        self.expansions.clear();
         self.carets = vec![Caret::at(0)];
         self.primary = 0;
         self.version += 1;
@@ -672,7 +676,7 @@ impl Editor {
     }
 
     /// The carets as they are after `edits`: each selection keeps its extent (its start stays put when an edit begins exactly there).
-    fn mapped_carets(&self, edits: &[Edit]) -> Vec<Caret> {
+    pub(crate) fn mapped_carets(&self, edits: &[Edit]) -> Vec<Caret> {
         self.carets
             .iter()
             .map(|c| {

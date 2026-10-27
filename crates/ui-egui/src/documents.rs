@@ -218,6 +218,14 @@ impl XmlCraftApp {
         self.active_analysis().filter(|a| a.skipped.is_none()).map(|a| (a.error_count(), a.warning_count()))
     }
 
+    /// Comment out the lines the carets are on, or bring them back (⌘/); say why when that cannot be done.
+    pub(crate) fn toggle_comment(&mut self) {
+        let Some(doc) = self.session.active_document_mut() else { return };
+        if let Err(refused) = doc.editor_mut().toggle_comment() {
+            self.status = fmt(tl!("Can't comment that out: {why}"), &[("why", &refused.to_string())]);
+        }
+    }
+
     /// Pretty-print (or, with `minify`, strip the white space of) the document being shown, as one undoable edit. A document that is not
     /// well-formed is left as it is and the reason is shown.
     pub(crate) fn reformat(&mut self, minify: bool) {

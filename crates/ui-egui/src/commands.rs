@@ -131,6 +131,19 @@ impl XmlCraftApp {
                 }
             }
             "edit.go_to_matching_tag" => self.when_analysed(Then::GoToMatchingTag),
+            "edit.toggle_comment" => self.toggle_comment(),
+            "edit.expand_selection" => {
+                if let Some(doc) = self.session.active_document_mut()
+                    && !doc.editor_mut().expand_selection()
+                {
+                    self.status = tl!("Nothing bigger to select here").to_owned();
+                }
+            }
+            "edit.shrink_selection" => {
+                if let Some(doc) = self.session.active_document_mut() {
+                    doc.editor_mut().shrink_selection();
+                }
+            }
             "edit.fold" => self.when_analysed(Then::Fold(FoldAction::Fold)),
             "edit.unfold" => self.when_analysed(Then::Fold(FoldAction::Unfold)),
             "edit.fold_all" => self.when_analysed(Then::Fold(FoldAction::FoldAll)),

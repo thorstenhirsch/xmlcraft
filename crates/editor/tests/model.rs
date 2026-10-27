@@ -42,6 +42,9 @@ enum Op {
     Fold(usize, usize),
     Unfold(usize),
     UnfoldAll,
+    ToggleComment,
+    Expand,
+    Shrink,
 }
 
 const MOTIONS: &[Motion] = &[
@@ -83,6 +86,9 @@ fn op() -> impl Strategy<Value = Op> {
         2 => (0usize..12, 1usize..6).prop_map(|(first, len)| Op::Fold(first, first + len)),
         1 => (0usize..12).prop_map(Op::Unfold),
         1 => Just(Op::UnfoldAll),
+        1 => Just(Op::ToggleComment),
+        2 => Just(Op::Expand),
+        1 => Just(Op::Shrink),
     ]
 }
 
@@ -115,6 +121,9 @@ fn apply(e: &mut Editor, op: &Op) {
         Op::Fold(first, last) => drop(e.fold_lines(*first, *last)),
         Op::Unfold(line) => drop(e.unfold_line(*line)),
         Op::UnfoldAll => drop(e.unfold_all()),
+        Op::ToggleComment => drop(e.toggle_comment()),
+        Op::Expand => drop(e.expand_selection()),
+        Op::Shrink => drop(e.shrink_selection()),
     }
 }
 
