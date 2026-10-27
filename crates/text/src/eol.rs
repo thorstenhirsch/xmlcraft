@@ -82,7 +82,7 @@ impl LineEndings {
 
     /// The most common ending (Lf when there are none or on a tie, the platform-neutral choice).
     pub fn dominant(&self) -> Eol {
-        if self.crlf > self.lf && self.crlf >= self.cr {
+        if self.crlf > self.lf && self.crlf > self.cr {
             Eol::CrLf
         } else if self.cr > self.lf && self.cr > self.crlf {
             Eol::Cr
@@ -145,6 +145,8 @@ mod tests {
         assert_eq!(LineEndings::count("a\r\nb\r\nc\n").dominant(), Eol::CrLf);
         assert_eq!(LineEndings::count("a\nb\nc\r\n").dominant(), Eol::Lf);
         assert_eq!(LineEndings::count("a\rb\rc").dominant(), Eol::Cr);
+        assert_eq!(LineEndings::count("a\r\nb\r\nc\rd\re\nf").dominant(), Eol::Lf, "CRLF and CR tie, and both beat LF only by count: a tie is LF");
+        assert_eq!(LineEndings { lf: 1, crlf: 2, cr: 2 }.dominant(), Eol::Lf);
         assert_eq!(LineEndings::count("x").dominant(), Eol::Lf);
         assert_eq!(LineEndings::count("a\nb\r\n").dominant(), Eol::Lf, "a tie is LF");
         assert!(LineEndings::count("a\nb\r\n").is_mixed());
