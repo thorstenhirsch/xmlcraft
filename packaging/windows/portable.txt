@@ -1,0 +1,6 @@
+XmlCraft portable mode
+
+This file marks this folder as a portable XmlCraft. (Portable mode, which keeps settings beside xmlcraft.exe instead of in
+%APPDATA%, arrives with the Preferences milestone; until then settings are stored in the normal per-user folder.)
+
+Delete this file at any time: it changes nothing today.

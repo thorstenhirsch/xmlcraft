@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- XML Schema files have no type of their own in every shared-mime-info release; this one makes sure .xsd files are offered to
+     XmlCraft. It is a kind of XML, so every XML editor still opens it. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-xmlcraft-xsd">
+    <comment>XML Schema Definition</comment>
+    <sub-class-of type="application/xml"/>
+    <glob pattern="*.xsd" weight="40"/>
+  </mime-type>
+</mime-info>

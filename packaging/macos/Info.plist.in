@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template: packaging/macos/package.sh substitutes @VERSION@ (full, e.g. 0.2.0-rc.1), @SHORT_VERSION@ (numeric X.Y.Z) and
+     @BUILD_SHA@. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>XmlCraft</string>
+  <key>CFBundleName</key>
+  <string>XmlCraft</string>
+  <key>CFBundleExecutable</key>
+  <string>XmlCraft</string>
+  <key>CFBundleIdentifier</key>
+  <string>io.github.thorstenhirsch.xmlcraft</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleSignature</key>
+  <string>????</string>
+  <key>CFBundleShortVersionString</key>
+  <string>@SHORT_VERSION@</string>
+  <key>CFBundleVersion</key>
+  <string>@SHORT_VERSION@</string>
+  <key>XmlCraftVersion</key>
+  <string>@VERSION@</string>
+  <key>XmlCraftBuildCommit</key>
+  <string>@BUILD_SHA@</string>
+  <key>CFBundleIconFile</key>
+  <string>XmlCraft</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.developer-tools</string>
+  <!-- Must match MACOSX_DEPLOYMENT_TARGET in package.sh. Big Sur is the first release on Apple silicon and has the Metal feature
+       set wgpu targets. -->
+  <key>LSMinimumSystemVersion</key>
+  <string>11.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSSupportsAutomaticGraphicsSwitching</key>
+  <true/>
+  <key>NSRequiresAquaSystemAppearance</key>
+  <false/>
+  <key>NSHumanReadableCopyright</key>
+  <string>Copyright © the XmlCraft contributors. MIT OR Apache-2.0.</string>
+
+  <!-- File types XmlCraft knows that the system does not (XSD, DTD, entity and XSLT files). Imported, not exported: they describe
+       files other apps own too. -->
+  <key>UTImportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>io.github.thorstenhirsch.xmlcraft.xsd</string>
+      <key>UTTypeDescription</key>
+      <string>XML Schema Definition</string>
+      <key>UTTypeConformsTo</key>
+      <array><string>public.xml</string></array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array><string>xsd</string></array>
+        <key>public.mime-type</key>
+        <array><string>application/xml</string></array>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>io.github.thorstenhirsch.xmlcraft.dtd</string>
+      <key>UTTypeDescription</key>
+      <string>Document Type Definition</string>
+      <key>UTTypeConformsTo</key>
+      <array><string>public.text</string></array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array><string>dtd</string><string>ent</string><string>mod</string></array>
+        <key>public.mime-type</key>
+        <array><string>application/xml-dtd</string></array>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>io.github.thorstenhirsch.xmlcraft.xslt</string>
+      <key>UTTypeDescription</key>
+      <string>XSL Transformation</string>
+      <key>UTTypeConformsTo</key>
+      <array><string>public.xml</string></array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array><string>xsl</string><string>xslt</string></array>
+        <key>public.mime-type</key>
+        <array><string>application/xslt+xml</string></array>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>io.github.thorstenhirsch.xmlcraft.wsdl</string>
+      <key>UTTypeDescription</key>
+      <string>Web Services Description</string>
+      <key>UTTypeConformsTo</key>
+      <array><string>public.xml</string></array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array><string>wsdl</string></array>
+      </dict>
+    </dict>
+  </array>
+
+  <!-- Documents XmlCraft opens: it is offered under Open With and can be made the default, without taking over from the system's
+       editor on install ("Alternate"). Declared by UTI (what modern macOS filters Open With > Recommended Applications on), plus
+       extension and MIME type for backward compatibility. Finder hands the file over as an Apple event. -->
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>XML Document</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>CFBundleTypeIconFile</key>
+      <string>XmlCraft</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.xml</string>
+        <string>io.github.thorstenhirsch.xmlcraft.xsd</string>
+        <string>io.github.thorstenhirsch.xmlcraft.xslt</string>
+        <string>io.github.thorstenhirsch.xmlcraft.wsdl</string>
+      </array>
+      <key>CFBundleTypeExtensions</key>
+      <array><string>xml</string><string>xsd</string><string>xsl</string><string>xslt</string><string>wsdl</string></array>
+      <key>CFBundleTypeMIMETypes</key>
+      <array><string>application/xml</string><string>text/xml</string></array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>DTD Document</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>CFBundleTypeIconFile</key>
+      <string>XmlCraft</string>
+      <key>LSItemContentTypes</key>
+      <array><string>io.github.thorstenhirsch.xmlcraft.dtd</string></array>
+      <key>CFBundleTypeExtensions</key>
+      <array><string>dtd</string><string>ent</string><string>mod</string></array>
+    </dict>
+  </array>
+
+</dict>
+</plist>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata (software centres). Template: package.sh substitutes @VERSION@ and @DATE@ from Cargo.toml and the build
+     date. -->
+<component type="desktop-application">
+  <id>io.github.thorstenhirsch.xmlcraft</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+  <name>XmlCraft</name>
+  <summary>Edit, validate and generate XML, XSD and DTD files</summary>
+  <developer id="io.github.thorstenhirsch">
+    <name>The XmlCraft contributors</name>
+  </developer>
+  <description>
+    <p>
+      XmlCraft is an open-source XML editor. It colours and completes XML as you type, validates documents against XSD and DTD
+      schemas, and generates a schema from an XML file or a sample XML file from a schema.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.thorstenhirsch.xmlcraft.desktop</launchable>
+  <icon type="stock">io.github.thorstenhirsch.xmlcraft</icon>
+  <!-- Only url types known to appstream 0.15 (Ubuntu 22.04, where CI validates): no vcs-browser. -->
+  <url type="homepage">https://github.com/thorstenhirsch/xmlcraft</url>
+  <url type="bugtracker">https://github.com/thorstenhirsch/xmlcraft/issues</url>
+  <url type="help">https://github.com/thorstenhirsch/xmlcraft</url>
+  <categories>
+    <category>Development</category>
+    <category>TextEditor</category>
+  </categories>
+  <keywords>
+    <keyword>xml</keyword>
+    <keyword>xsd</keyword>
+    <keyword>dtd</keyword>
+    <keyword>schema</keyword>
+  </keywords>
+  <branding>
+    <color type="primary" scheme_preference="light">#9fd0ff</color>
+    <color type="primary" scheme_preference="dark">#1f64ba</color>
+  </branding>
+  <requires>
+    <display_length compare="ge">760</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <provides>
+    <binary>xmlcraft</binary>
+    <mediatype>application/xml</mediatype>
+    <mediatype>application/xml-dtd</mediatype>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+</component>

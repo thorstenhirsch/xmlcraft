@@ -1,0 +1,91 @@
+name: Windows ARM64
+
+# An ARM64 build made on an x64 runner cannot run there. This builds the arm64 MSI and then installs and runs it on a real Windows 11
+# ARM64 machine, so a package that does not install or start there is found before a release. Weekly, by hand, and on changes to the
+# Windows packaging.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 4 * * 1"
+  pull_request:
+    paths:
+      - "packaging/windows/**"
+      - "apps/xmlcraft/build.rs"
+      - "apps/xmlcraft/src/windows_manifest.rs"
+      - ".github/workflows/windows-arm64.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+
+jobs:
+  build:
+    name: Build the arm64 MSI
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: aarch64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: windows-arm64-smoke
+          save-if: false
+      - name: Install WiX
+        shell: pwsh
+        run: dotnet tool install --global wix --version 5.0.2
+      - name: Build and package
+        shell: pwsh
+        run: ./packaging/windows/package.ps1 -Arch arm64
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-arm64-msi
+          path: dist/release/*.msi
+          if-no-files-found: error
+          retention-days: 3
+
+  install:
+    name: Install and run on Windows 11 ARM64
+    needs: [build]
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-arm64-msi
+          path: msi
+      - name: Install
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem msi\*.msi | Select-Object -First 1).FullName
+          Write-Output "installing $msi"
+          $p = Start-Process msiexec.exe -ArgumentList '/i', "`"$msi`"", '/qn', 'ALLUSERS=1', 'INSTALLDESKTOPSHORTCUT=0', '/l*v', 'install.log' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 80; throw "msiexec exited with $($p.ExitCode)" }
+      - name: Run the installed command line
+        shell: pwsh
+        run: |
+          $cli = Join-Path $env:ProgramFiles 'XmlCraft\xmlcraft-cli.exe'
+          & $cli --version
+          if ($LASTEXITCODE -ne 0) { throw "xmlcraft-cli --version failed" }
+          & $cli run app_info
+          if ($LASTEXITCODE -ne 0) { throw "xmlcraft-cli run app_info failed" }
+          if (-not (Test-Path (Join-Path $env:ProgramFiles 'XmlCraft\xmlcraft.exe'))) { throw 'xmlcraft.exe was not installed' }
+      - name: Uninstall
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem msi\*.msi | Select-Object -First 1).FullName
+          $p = Start-Process msiexec.exe -ArgumentList '/x', "`"$msi`"", '/qn', '/l*v', 'uninstall.log' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content uninstall.log -Tail 80; throw "msiexec /x exited with $($p.ExitCode)" }
+          if (Test-Path (Join-Path $env:ProgramFiles 'XmlCraft\xmlcraft.exe')) { throw 'xmlcraft.exe is still installed' }

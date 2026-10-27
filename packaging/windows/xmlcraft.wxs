@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  XmlCraft MSI (WiX Toolset v5: `dotnet tool install -g wix`). Built by package.ps1:
+
+    wix build xmlcraft.wxs -arch x64 -d Version=1.2.3 -d BinDir=... -d IconPath=... -o out.msi
+
+  Per-machine install into Program Files, a Start Menu shortcut, a desktop shortcut (on by default, optional, and an update keeps
+  it only if it is still there), an App Paths entry, and XmlCraft registered as a handler for XML, XSD, DTD, entity, XSLT and WSDL
+  files (offered under "Open with" and in Default apps, never forced as the default). Files opened with XmlCraft arrive on its
+  command line.
+
+  The UpgradeCode below identifies this product to Windows Installer for ever: never change it (docs/releasing.md).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="XmlCraft"
+      Manufacturer="The XmlCraft contributors"
+      Version="$(var.Version)"
+      UpgradeCode="5CE729A2-80AA-4E57-8DC3-6B3014812640"
+      Scope="perMachine"
+      Compressed="yes"
+      Language="1033">
+    <SummaryInformation Description="XmlCraft XML editor" Manufacturer="The XmlCraft contributors" />
+    <!-- HKLM registrations must never point into a per-user installation. Allow removal of an existing installation even if an
+         older MSI let it install per-user. -->
+    <Launch Condition="ALLUSERS = 1 OR (Installed AND REMOVE = &quot;ALL&quot;)"
+        Message="XmlCraft must be installed for all users. Run setup with administrator privileges and ALLUSERS=1; per-user installation is not supported." />
+    <!-- Same-version upgrades let successive pre-releases of one X.Y.Z replace each other (MSI versions are numeric, so 1.2.3-rc.1
+         and 1.2.3-rc.2 are both 1.2.3). -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+        DowngradeErrorMessage="A newer version of XmlCraft is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- Windows Installer requires an Icon id ending in .ico or .exe, or advertised shortcuts and Add/Remove Programs show a blank
+         icon. -->
+    <Icon Id="XmlcraftIcon.ico" SourceFile="$(var.IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="XmlcraftIcon.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/thorstenhirsch/xmlcraft" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/thorstenhirsch/xmlcraft/releases" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/thorstenhirsch/xmlcraft/issues" />
+    <!-- Desktop shortcut: on by default for a first install, and INSTALLDESKTOPSHORTCUT=0 on the msiexec command line for
+         unattended installs. Secure, so the choice reaches the elevated install. An update keeps the shortcut only if it is still
+         on the desktop: deleting it is the only way a user of a silent update can say no. A value given on the command line wins. -->
+    <Property Id="INSTALLDESKTOPSHORTCUT" Secure="yes" />
+    <Property Id="EXISTINGDESKTOPSHORTCUT">
+      <DirectorySearch Id="DesktopSearch" Path="[DesktopFolder]" Depth="0">
+        <FileSearch Name="XmlCraft.lnk" />
+      </DirectorySearch>
+    </Property>
+    <SetProperty Id="INSTALLDESKTOPSHORTCUT" Value="1" After="AppSearch" Sequence="first"
+        Condition="NOT INSTALLDESKTOPSHORTCUT AND (NOT WIX_UPGRADE_DETECTED OR EXISTINGDESKTOPSHORTCUT)" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="XmlCraft" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="DesktopFolder" />
+
+    <Feature Id="Main" Title="XmlCraft" Level="1">
+      <ComponentGroupRef Id="XmlcraftFiles" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="XmlcraftFiles" Directory="INSTALLFOLDER">
+      <!-- XML-family files: XmlCraft is offered under "Open with" and in Settings > Default apps, through Windows' Default
+           Programs registration (a ProgID, OpenWithProgids, Capabilities and RegisteredApplications). It never takes over an
+           existing default: no extension's own default value is touched, and the user chooses. -->
+      <Component Id="XmlcraftApp">
+        <File Id="XmlcraftExe" Source="$(var.BinDir)\xmlcraft.exe" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\xmlcraft.exe" Value="[#XmlcraftExe]" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\XmlCraft.Document" Value="XML Document" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\XmlCraft.Document\DefaultIcon" Value="&quot;[#XmlcraftExe]&quot;,0" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\XmlCraft.Document\shell\open\command" Value="&quot;[#XmlcraftExe]&quot; &quot;%1&quot;" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.xml\OpenWithProgids" Name="XmlCraft.Document" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.xsd\OpenWithProgids" Name="XmlCraft.Document" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.dtd\OpenWithProgids" Name="XmlCraft.Document" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.ent\OpenWithProgids" Name="XmlCraft.Document" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.mod\OpenWithProgids" Name="XmlCraft.Document" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.xsl\OpenWithProgids" Name="XmlCraft.Document" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.xslt\OpenWithProgids" Name="XmlCraft.Document" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.wsdl\OpenWithProgids" Name="XmlCraft.Document" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\xmlcraft.exe" Name="FriendlyAppName" Value="XmlCraft" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\xmlcraft.exe\DefaultIcon" Value="&quot;[#XmlcraftExe]&quot;,0" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\xmlcraft.exe\SupportedTypes" Name=".xml" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\xmlcraft.exe\SupportedTypes" Name=".xsd" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\xmlcraft.exe\SupportedTypes" Name=".dtd" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\xmlcraft.exe\SupportedTypes" Name=".ent" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\xmlcraft.exe\SupportedTypes" Name=".mod" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\xmlcraft.exe\SupportedTypes" Name=".xsl" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\xmlcraft.exe\SupportedTypes" Name=".xslt" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\xmlcraft.exe\SupportedTypes" Name=".wsdl" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\xmlcraft.exe\shell\open\command" Value="&quot;[#XmlcraftExe]&quot; &quot;%1&quot;" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\XmlCraft\Capabilities" Name="ApplicationName" Value="XmlCraft" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\XmlCraft\Capabilities" Name="ApplicationDescription" Value="Open-source XML editor" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\XmlCraft\Capabilities" Name="ApplicationIcon" Value="[#XmlcraftExe],0" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\XmlCraft\Capabilities\FileAssociations" Name=".xml" Value="XmlCraft.Document" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\XmlCraft\Capabilities\FileAssociations" Name=".xsd" Value="XmlCraft.Document" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\XmlCraft\Capabilities\FileAssociations" Name=".dtd" Value="XmlCraft.Document" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\XmlCraft\Capabilities\FileAssociations" Name=".ent" Value="XmlCraft.Document" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\XmlCraft\Capabilities\FileAssociations" Name=".mod" Value="XmlCraft.Document" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\XmlCraft\Capabilities\FileAssociations" Name=".xsl" Value="XmlCraft.Document" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\XmlCraft\Capabilities\FileAssociations" Name=".xslt" Value="XmlCraft.Document" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\XmlCraft\Capabilities\FileAssociations" Name=".wsdl" Value="XmlCraft.Document" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\RegisteredApplications" Name="XmlCraft" Value="Software\XmlCraft\Capabilities" Type="string" />
+      </Component>
+
+      <!-- Shortcuts are plain links to xmlcraft.exe, not advertised MSI shortcuts: advertised ones point at a Windows Installer
+           descriptor rather than the program, which Windows can't use as a file handler. Each has its own component with an HKLM
+           key path, so Windows Installer removes it on uninstall; in this per-machine package both folders are the all-users
+           ones. -->
+      <Component Id="XmlcraftStartMenuShortcut" Directory="ProgramMenuFolder">
+        <Shortcut Id="StartMenuShortcut" Name="XmlCraft" Description="XmlCraft XML editor"
+            Target="[#XmlcraftExe]" WorkingDirectory="INSTALLFOLDER" Icon="XmlcraftIcon.ico" IconIndex="0" />
+        <RegistryValue Root="HKLM" Key="Software\XmlCraft\Shortcuts" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+
+      <Component Id="XmlcraftDesktopShortcut" Directory="DesktopFolder" Condition="INSTALLDESKTOPSHORTCUT = 1">
+        <Shortcut Id="DesktopShortcut" Name="XmlCraft" Description="XmlCraft XML editor"
+            Target="[#XmlcraftExe]" WorkingDirectory="INSTALLFOLDER" Icon="XmlcraftIcon.ico" IconIndex="0" />
+        <RegistryValue Root="HKLM" Key="Software\XmlCraft\Shortcuts" Name="Desktop" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+
+      <Component Id="XmlcraftCli">
+        <File Id="XmlcraftCliExe" Source="$(var.BinDir)\xmlcraft-cli.exe" KeyPath="yes" />
+      </Component>
+      <!-- The licences of the code and of the fonts and icons compiled in travel with the binaries. -->
+      <Component Id="XmlcraftMitLicense">
+        <File Id="XmlcraftMitLicenseFile" Source="$(var.BinDir)\LICENSE-MIT" KeyPath="yes" />
+      </Component>
+      <Component Id="XmlcraftApacheLicense">
+        <File Id="XmlcraftApacheLicenseFile" Source="$(var.BinDir)\LICENSE-APACHE" KeyPath="yes" />
+      </Component>
+      <Component Id="XmlcraftNotice">
+        <File Id="XmlcraftNoticeFile" Source="$(var.BinDir)\NOTICE" KeyPath="yes" />
+      </Component>
+      <Component Id="XmlcraftThirdPartyLicenses">
+        <File Id="XmlcraftInterLicenseFile" Source="$(var.BinDir)\OFL-Inter.txt" KeyPath="yes" />
+        <File Id="XmlcraftJetBrainsLicenseFile" Source="$(var.BinDir)\OFL-JetBrainsMono.txt" />
+        <File Id="XmlcraftLucideLicenseFile" Source="$(var.BinDir)\LICENSE-lucide.txt" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

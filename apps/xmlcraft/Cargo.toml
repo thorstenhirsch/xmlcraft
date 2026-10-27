@@ -27,3 +27,7 @@ chrono = { workspace = true }
 # ⌘Q asks about unsaved changes like the close button: an app menu whose Quit asks the window to close instead of winit's, which
 # ends the process without asking.
 craft-quit = { workspace = true, features = ["menu"] }
+
+[build-dependencies]
+# Icon, manifest and VERSIONINFO for xmlcraft.exe; build.rs only uses it when targeting Windows.
+winresource = "0.1"

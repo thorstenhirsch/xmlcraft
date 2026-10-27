@@ -1,0 +1,72 @@
+name: Packaging lint
+
+# Static checks of the workflows and packaging files, cheap enough to run on every change to them: actionlint, shellcheck, the
+# PowerShell parser, XML well-formedness, desktop-entry and AppStream validation, and the WiX icon rule.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - "packaging/**"
+      - "assets/app-icon/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+      - "packaging/**"
+      - "assets/app-icon/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck desktop-file-utils appstream libxml2-utils
+
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" --workdir /repo rhysd/actionlint:1.7.7 -color -shellcheck=
+
+      - name: shellcheck
+        run: |
+          shopt -s globstar nullglob
+          shellcheck packaging/**/*.sh packaging/*.sh
+
+      - name: PowerShell scripts parse
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($f in Get-ChildItem packaging -Recurse -Filter *.ps1) {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errors)
+            if ($errors) { $errors | ForEach-Object { Write-Output "::error file=$($f.FullName)::$($_.Message)" }; $failed = $true }
+          }
+          if ($failed) { exit 1 }
+
+      - name: XML files are well-formed
+        run: |
+          xmllint --noout packaging/windows/xmlcraft.wxs packaging/macos/Info.plist.in packaging/macos/entitlements.plist \
+            packaging/linux/*.mime.xml packaging/linux/*.metainfo.xml.in
+
+      - name: Desktop entry and AppStream metadata
+        run: |
+          desktop-file-validate packaging/linux/*.desktop
+          sed -e 's/@VERSION@/0.0.0/g' -e 's/@DATE@/2026-01-01/g' packaging/linux/io.github.thorstenhirsch.xmlcraft.metainfo.xml.in > "$RUNNER_TEMP/app.metainfo.xml"
+          appstreamcli validate --no-net --explain "$RUNNER_TEMP/app.metainfo.xml"
+
+      - name: The MSI icon id ends in .ico (Windows Installer shows a blank icon otherwise)
+        run: |
+          ids=$(grep -o '<Icon Id="[^"]*"' packaging/windows/xmlcraft.wxs | sed 's/<Icon Id="//; s/"$//')
+          [ -n "$ids" ] || { echo "::error::no <Icon> in the WiX source"; exit 1; }
+          for id in $ids; do
+            case "$id" in *.ico | *.exe) ;; *) echo "::error::Icon Id '$id' must end in .ico or .exe"; exit 1 ;; esac
+          done

@@ -2,6 +2,9 @@
 
 //! XmlCraft desktop app: window, renderer, logging and command line. The application itself is `xmlcraft-ui-egui`.
 
+// A release build on Windows is a GUI program: no console window opens beside it. (`xmlcraft-cli` stays a console program.)
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod logging;
 
 use std::cell::Cell;

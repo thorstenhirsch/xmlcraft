@@ -1,0 +1,331 @@
+name: Release
+
+# Builds every release artifact and, on a push to the `release` branch, creates a DRAFT GitHub Release for the maintainer to publish:
+#
+#   macOS universal (Intel + Apple silicon)  xmlcraft-<v>-macos-universal.dmg, xmlcraft-cli-<v>-macos-universal.zip
+#   Windows x64 and arm64                    xmlcraft-<v>-windows-<arch>.msi and -portable.zip
+#   Linux x86_64 and aarch64                 AppImage (+ .zsync), .deb, .rpm, .tar.gz, and the CLI .tar.gz
+#
+# Run by hand (workflow_dispatch) it only builds and uploads the artifacts to the run: a dry run that publishes nothing.
+# Signing and notarization happen only when the secrets exist (docs/releasing.md); without them the artifacts are built unsigned and
+# the log says so.
+on:
+  push:
+    branches: [release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version override for a test run, e.g. 0.2.0-rc.1 (empty: read from Cargo.toml)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Git dependencies must come from storytold/craft-libs and nothing may replace a source behind the lock file's back, before any
+  # build runs.
+  git-sources:
+    name: Git dependencies come from storytold
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          set -euo pipefail
+          test -f Cargo.lock || { echo "Cargo.lock is missing"; exit 1; }
+          python3 - <<'PY'
+          import os, sys, tomllib
+          for path in (".cargo/config", ".cargo/config.toml"):
+              if not os.path.exists(path):
+                  continue
+              config = tomllib.load(open(path, "rb"))
+              replaced = [name for name, source in config.get("source", {}).items()
+                          if isinstance(source, dict) and "replace-with" in source]
+              if replaced or "patch" in config or "paths" in config:
+                  print(f"{path} replaces, patches or overrides a source")
+                  sys.exit(1)
+          PY
+          cargo metadata --locked --format-version 1 > /dev/null
+          python3 - <<'PY'
+          import sys, tomllib
+          lock = tomllib.load(open("Cargo.lock", "rb"))
+          bad = sorted({p["source"] for p in lock.get("package", [])
+                        if p.get("source", "").startswith("git+")
+                        and not p["source"].startswith("git+https://github.com/storytold/")})
+          if bad:
+              print("Git dependencies outside github.com/storytold:", *bad, sep="\n")
+              sys.exit(1)
+          PY
+
+  version:
+    name: Resolve version
+    needs: [git-sources]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      date: ${{ steps.resolve.outputs.date }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: resolve
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          # Reject newlines or carriage returns upfront to prevent output-file protocol forgery
+          if [[ "$INPUT_VERSION" =~ [$'\r\n'] ]]; then
+            echo "::error::the version input must not contain carriage returns or newlines"
+            exit 1
+          fi
+          . packaging/env.sh
+          v="${INPUT_VERSION#v}"
+          v="${v:-$VERSION}"
+          # Whole-string match against the semver grammar.
+          semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if [[ ! "$v" =~ $semver ]]; then
+            echo "::error::'$v' is not a version like 1.2.3 or 1.2.3-rc.1"
+            exit 1
+          fi
+          case "$v" in *-*) pre=true ;; *) pre=false ;; esac
+          {
+            echo "version=$v"
+            echo "date=$(date -u +%Y-%m-%d)"
+            echo "prerelease=$pre"
+          } >>"$GITHUB_OUTPUT"
+          printf '### XmlCraft v%s (`%s`)\n' "$v" "${GITHUB_SHA::9}" >>"$GITHUB_STEP_SUMMARY"
+
+  macos:
+    name: macOS universal
+    needs: [version]
+    runs-on: macos-15
+    timeout-minutes: 120
+    environment: release
+    env:
+      XMLCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      XMLCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      XMLCRAFT_BUILD_SHA: ${{ github.sha }}
+      INPUT_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-macos-universal
+          save-if: false
+      - name: Apply version override
+        if: inputs.version != ''
+        run: cargo xtask version set "$XMLCRAFT_VERSION"
+      - name: Import signing certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: packaging/macos/import-cert.sh
+      - name: Build, sign, notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: packaging/macos/package.sh --arch universal
+      - name: Verify the artifacts
+        run: packaging/macos/verify.sh --arch universal
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-macos
+          path: dist/release/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove temporary keychain
+        if: always()
+        run: |
+          if [ -n "${MACOS_KEYCHAIN:-}" ]; then security delete-keychain "$MACOS_KEYCHAIN" || true; fi
+
+  windows:
+    name: Windows ${{ matrix.arch }}
+    needs: [version]
+    runs-on: windows-latest
+    timeout-minutes: 120
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, target: x86_64-pc-windows-msvc }
+          - { arch: arm64, target: aarch64-pc-windows-msvc }
+    env:
+      XMLCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      XMLCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      XMLCRAFT_BUILD_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-windows-${{ matrix.arch }}
+          save-if: false
+      - name: Apply version override
+        if: inputs.version != ''
+        shell: bash
+        run: cargo xtask version set "$XMLCRAFT_VERSION"
+      - name: Install WiX
+        shell: pwsh
+        run: dotnet tool install --global wix --version 5.0.2
+      - name: Build, sign and package
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_CERT_PROFILE: ${{ secrets.AZURE_CERT_PROFILE }}
+        run: ./packaging/windows/package.ps1 -Arch ${{ matrix.arch }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-windows-${{ matrix.arch }}
+          path: dist/release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  linux:
+    name: Linux ${{ matrix.arch }}
+    needs: [version]
+    # Built on the oldest supported Ubuntu so the binaries run on newer distributions (glibc is forward compatible only).
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-22.04, deb: amd64 }
+          - { arch: aarch64, runner: ubuntu-22.04-arm, deb: arm64 }
+    env:
+      XMLCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      XMLCRAFT_BUILD_DATE: ${{ needs.version.outputs.date }}
+      XMLCRAFT_BUILD_SHA: ${{ github.sha }}
+      NFPM_VERSION: 2.48.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install build and packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev \
+            pkg-config desktop-file-utils appstream zsync
+      - name: Install nfpm (checksum verified)
+        env:
+          DEB_ARCH: ${{ matrix.deb }}
+        run: |
+          set -euo pipefail
+          deb_url="https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_${DEB_ARCH}.deb"
+          curl --proto '=https' --proto-redir =https -fsSL -o "$RUNNER_TEMP/nfpm.deb" "$deb_url"
+          curl --proto '=https' --proto-redir =https -fsSL -o "$RUNNER_TEMP/checksums.txt" "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/checksums.txt"
+          expected=$(grep -E "nfpm_${NFPM_VERSION}_${DEB_ARCH}\.deb" "$RUNNER_TEMP/checksums.txt" | awk '{print $1}')
+          [ -n "$expected" ] || { echo "::error::no checksum for nfpm"; exit 1; }
+          echo "$expected  $RUNNER_TEMP/nfpm.deb" | sha256sum -c -
+          sudo dpkg -i "$RUNNER_TEMP/nfpm.deb"
+          nfpm --version
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-linux-${{ matrix.arch }}
+          save-if: false
+      - name: Apply version override
+        if: inputs.version != ''
+        run: cargo xtask version set "$XMLCRAFT_VERSION"
+      - name: Build and package
+        env:
+          # The release's own repository names the AppImage's update information.
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: packaging/linux/package.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-linux-${{ matrix.arch }}
+          path: dist/release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # Only a push to the release branch publishes anything, and only as a draft the maintainer reviews and publishes by hand.
+  draft-release:
+    name: Draft GitHub Release
+    if: github.ref == 'refs/heads/release'
+    needs: [version, macos, windows, linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: artifacts
+          merge-multiple: true
+      - name: Compute checksums
+        working-directory: artifacts
+        run: sha256sum -- * | tee SHA256SUMS.txt
+      - name: Create or update the draft release
+        working-directory: artifacts
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          title="XmlCraft v$VERSION"
+          pre=()
+          if [ "$PRERELEASE" = "true" ]; then pre=(--prerelease); fi
+          if draft="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [ "$draft" != "true" ]; then
+              echo "::error::Release $tag is already published. Bump the version (cargo xtask version set) before pushing to release."
+              exit 1
+            fi
+            echo "Updating draft $tag: replacing its assets"
+            gh release view "$tag" --json assets --jq '.assets[].name' | while read -r asset; do
+              gh release delete-asset "$tag" "$asset" --yes
+            done
+            gh release edit "$tag" --draft --title "$title" --target "$GITHUB_SHA" --prerelease="$PRERELEASE"
+            gh release upload "$tag" --clobber -- *
+          else
+            echo "Creating draft $tag"
+            gh release create "$tag" --draft --title "$title" --target "$GITHUB_SHA" --generate-notes "${pre[@]}" -- *
+          fi
+          {
+            echo "Draft release **$title** at \`${GITHUB_SHA::9}\`:"
+            echo
+            sed 's/^/    /' SHA256SUMS.txt
+          } >>"$GITHUB_STEP_SUMMARY"

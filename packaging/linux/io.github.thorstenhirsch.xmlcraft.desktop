@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=XmlCraft
+GenericName=XML Editor
+Comment=Edit, validate and generate XML, XSD and DTD files
+Exec=xmlcraft %U
+TryExec=xmlcraft
+Icon=io.github.thorstenhirsch.xmlcraft
+Terminal=false
+StartupNotify=true
+StartupWMClass=io.github.thorstenhirsch.xmlcraft
+Categories=Development;TextEditor;
+Keywords=xml;xsd;dtd;schema;validate;editor;xpath;
+MimeType=application/xml;text/xml;application/xml-dtd;application/xml-external-parsed-entity;application/xslt+xml;application/x-xmlcraft-xsd;
