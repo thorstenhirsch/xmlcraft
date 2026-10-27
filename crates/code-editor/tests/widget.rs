@@ -91,19 +91,19 @@ fn carets(h: &Harness<'_, App>) -> Vec<(usize, usize)> {
 #[test]
 fn typing_inserts_text_at_the_caret() {
     let mut h = harness("");
-    h.get_by_label("XML editor").type_text("<a>");
+    h.get_by_label("XML editor").type_text("abc");
     h.run_steps(2);
-    assert_eq!(text(&h), "<a>");
+    assert_eq!(text(&h), "abc");
     assert_eq!(carets(&h), vec![(3, 3)]);
     h.key_press(Key::Enter);
     h.run_steps(2);
     h.get_by_label("XML editor").type_text("x");
     h.run_steps(2);
-    assert_eq!(text(&h), "<a>\nx");
+    assert_eq!(text(&h), "abc\nx");
     h.key_press(Key::Backspace);
     h.key_press(Key::Backspace);
     h.run_steps(2);
-    assert_eq!(text(&h), "<a>");
+    assert_eq!(text(&h), "abc");
 }
 
 #[test]
@@ -138,6 +138,34 @@ fn a_quote_typed_in_a_tag_is_paired_but_what_an_input_method_commits_is_not() {
     h.event(Event::Paste("'".to_owned()));
     h.run_steps(2);
     assert_eq!(text(&h), "<a b=\"'");
+}
+
+#[test]
+fn typing_a_start_tag_writes_its_end_tag_and_enter_splits_the_pair() {
+    let mut h = harness("");
+    for key in ["<", "a", ">"] {
+        h.get_by_label("XML editor").type_text(key);
+    }
+    h.run_steps(2);
+    assert_eq!((text(&h).as_str(), carets(&h)), ("<a></a>", vec![(3, 3)]), "the end tag follows, the caret between");
+    h.key_press(Key::Enter);
+    h.run_steps(2);
+    assert_eq!((text(&h).as_str(), carets(&h)), ("<a>\n  \n</a>", vec![(6, 6)]), "a line for the content, the end tag on its own");
+    // `</` completes the end tag of the element that is open.
+    let mut h = harness("<a><b>x");
+    h.state_mut().editor.set_selection(7, 7);
+    h.run_steps(2);
+    for key in ["<", "/"] {
+        h.get_by_label("XML editor").type_text(key);
+    }
+    h.run_steps(2);
+    assert_eq!(text(&h), "<a><b>x</b>");
+    // The text of an input method is text: no end tag.
+    let mut h = harness("");
+    h.get_by_label("XML editor").type_text("<a");
+    h.event(Event::Ime(ImeEvent::Commit(">".to_owned())));
+    h.run_steps(2);
+    assert_eq!(text(&h), "<a>");
 }
 
 #[test]

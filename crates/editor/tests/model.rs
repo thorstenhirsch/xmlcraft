@@ -62,7 +62,7 @@ const MOTIONS: &[Motion] = &[
 fn op() -> impl Strategy<Value = Op> {
     prop_oneof![
         3 => text().prop_map(Op::Type),
-        3 => proptest::collection::vec(proptest::sample::select(&["=", "\"", "'", "a", " ", ">", "<", "\n", "é"][..]), 1..3).prop_map(|v| Op::Input(v.concat())),
+        3 => proptest::collection::vec(proptest::sample::select(&["=", "\"", "'", "a", " ", ">", "<", "/", "\n", "é"][..]), 1..3).prop_map(|v| Op::Input(v.concat())),
         1 => text().prop_map(Op::Paste),
         2 => Just(Op::Backspace),
         1 => Just(Op::Delete),

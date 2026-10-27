@@ -155,11 +155,11 @@ title = "Auto-close tags on > and complete end tags on </"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["doc_type"]
+evidence = ["crates/editor/src/typing.rs::a_greater_than_that_ends_a_start_tag_writes_the_end_tag", "crates/editor/src/typing.rs::a_greater_than_anywhere_else_is_a_character", "crates/editor/src/typing.rs::a_slash_after_a_less_than_completes_the_end_tag_of_the_open_element", "crates/code-editor/tests/widget.rs::typing_a_start_tag_writes_its_end_tag_and_enter_splits_the_pair", "crates/automation/tests/documents.rs::typing_and_keys_work_as_the_keyboard_does"]
+notes = "Typing `>` that ends a start tag writes the end tag too, with the caret between (not for `/>`, an end tag, a declaration, a value, a comment, or where the end tag is already there); typing `/` after `<` writes the name of the element that is open and the `>`. Each caret decides for itself; `Settings::auto_close` turns both off. What an input method commits and what is pasted are not typing. The element for `</` comes from parsing the text before the caret (not for more than 8 MiB of it). Not yet: closing a `<!--` or a `<![CDATA[`, and completing the end tag from a schema (M2+)."
 
 [[feature]]
 id = "editor.auto-indent"
@@ -167,11 +167,11 @@ title = "Smart indentation on Enter"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "Splits <a>|</a> onto indented lines."
+tools = ["doc_key", "doc_type"]
+evidence = ["crates/editor/src/typing.rs::enter_indents_after_a_start_tag_and_splits_a_pair", "crates/editor/src/typing.rs::enter_follows_the_documents_line_ending_and_indent_style", "crates/code-editor/tests/widget.rs::typing_a_start_tag_writes_its_end_tag_and_enter_splits_the_pair", "crates/engine/src/document.rs::new_lines_use_the_files_line_ending_and_its_indentation"]
+notes = "Enter keeps the indentation of the line; after a start tag (`<a>`, not `</a>`, `<b/>`, a comment or a declaration) the new line is one level deeper, in the document's own indentation and line ending, and between a start tag and an end tag (`<a>|</a>`) the content gets a line and the end tag goes to a line of its own. `Settings::smart_indent` turns it off. Not yet: moving an end tag back one level when it is typed, and re-indenting a pasted block."
 
 [[feature]]
 id = "editor.auto-pairing"

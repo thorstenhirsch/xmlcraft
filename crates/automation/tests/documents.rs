@@ -422,13 +422,16 @@ fn typing_and_keys_work_as_the_keyboard_does() {
     assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], "<a />", "two characters before the caret");
     // Enter and Tab are keys too, and a line feed or a tab in the typed text are those keys.
     let id2 = ok(&mut a, "doc_new", json!({ "text": "" }))["id"].as_u64().expect("id");
-    ok(&mut a, "doc_type", json!({ "id": id2, "text": "<a>\n\t<b/>" }));
-    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], "<a>\n  <b/>", "a tab is an indent step");
-    // Typing is undone like any other editing.
-    ok(&mut a, "doc_undo", json!({ "id": id2 }));
-    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], "<a>\n", "the typing after the Enter is one step (the Enter is its own)");
-    ok(&mut a, "doc_undo", json!({ "id": id2 }));
-    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], "<a>");
+    ok(&mut a, "doc_type", json!({ "id": id2, "text": "<a>" }));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], "<a></a>", "the end tag is written with the start tag");
+    // Enter between them: a line for the content, and the end tag on its own; then a tab is another indent step.
+    ok(&mut a, "doc_type", json!({ "id": id2, "text": "\n\t<b/>" }));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], "<a>\n    <b/>\n</a>");
+    // Typing is undone like any other editing: the typing after the Enter is one step, the Enter another, and `<a>` with its end tag the first.
+    for (undone, expected) in [("the typing", "<a>\n  \n</a>"), ("the Enter", "<a></a>"), ("the start tag and its end tag", "")] {
+        ok(&mut a, "doc_undo", json!({ "id": id2 }));
+        assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], expected, "after undoing {undone}");
+    }
     // Line breaks of any kind are one Enter, and a call that cannot be done changes nothing.
     let id3 = ok(&mut a, "doc_new", json!({ "text": "" }))["id"].as_u64().expect("id");
     let typed = ok(&mut a, "doc_type", json!({ "id": id3, "text": "a\r\nb\rc\nd" }));
