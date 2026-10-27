@@ -1054,7 +1054,8 @@ impl<'a> Parser<'a> {
         let (is_entity, is_notation) = (keyword == "<!ENTITY", keyword == "<!NOTATION");
         self.tree.start(SyntaxKind::MarkupDecl);
         self.bump();
-        let mut first_name = true;
+        // Names seen so far: the declared name comes first, and `SYSTEM` or `PUBLIC` count only straight after it.
+        let mut names = 0usize;
         let mut external = false;
         let mut public_literals_left = 0;
         let mut closed = false;
@@ -1067,18 +1068,20 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Name => {
                     let name = self.slice(&t.range());
-                    if first_name && (is_entity || is_notation) && name.contains(':') {
+                    if names == 0 && (is_entity || is_notation) && name.contains(':') {
                         self.diag(Code::ColonInName, t.range(), vec![name.to_owned()]);
                     }
-                    first_name = false;
-                    match name {
-                        "SYSTEM" => external = true,
-                        "PUBLIC" => {
-                            external = true;
-                            public_literals_left = 1;
+                    if names == 1 {
+                        match name {
+                            "SYSTEM" => external = true,
+                            "PUBLIC" => {
+                                external = true;
+                                public_literals_left = 1;
+                            }
+                            _ => {}
                         }
-                        _ => {}
                     }
+                    names += 1;
                     self.bump();
                 }
                 TokenKind::PercentRef => {
@@ -1132,17 +1135,22 @@ impl<'a> Parser<'a> {
             let from = at + i;
             let rest = text.get(from..).unwrap_or_default();
             let bad = |this: &mut Self, c: &str| this.diag(Code::BadEntityValue, range.start + from..range.start + from + 1, vec![c.to_owned()]);
-            let name_end = |after: &str| -> Option<usize> {
+            // The length of the name at the start of `after` when `;` follows it.
+            let name_len = |after: &str| -> Option<usize> {
                 let end = after.find(|c| !crate::chars::is_name_char(c)).unwrap_or(after.len());
                 let valid = after.chars().next().is_some_and(is_name_start_char) && after.get(end..).is_some_and(|r| r.starts_with(';'));
-                valid.then_some(end + 1)
+                valid.then_some(end)
             };
             if rest.starts_with('&') {
                 let after = rest.get(1..).unwrap_or_default();
                 let length = if after.starts_with('#') {
                     after.find(';').filter(|e| char_ref_value(&format!("&{}", after.get(..=*e).unwrap_or_default())).is_some()).map(|e| e + 1)
                 } else {
-                    name_end(after)
+                    let len = name_len(after);
+                    if let Some(len) = len {
+                        self.colon_in_reference(range.start + from + 1, after.get(..len).unwrap_or_default());
+                    }
+                    len.map(|len| len + 1)
                 };
                 match length {
                     Some(n) => at = from + 1 + n,
@@ -1152,10 +1160,12 @@ impl<'a> Parser<'a> {
                     }
                 }
             } else {
-                match name_end(rest.get(1..).unwrap_or_default()) {
-                    Some(n) => {
-                        self.diag(Code::PeInDeclaration, range.start + from..range.start + from + 1 + n, Vec::new());
-                        at = from + 1 + n;
+                let after = rest.get(1..).unwrap_or_default();
+                match name_len(after) {
+                    Some(len) => {
+                        self.colon_in_reference(range.start + from + 1, after.get(..len).unwrap_or_default());
+                        self.diag(Code::PeInDeclaration, range.start + from..range.start + from + 2 + len, Vec::new());
+                        at = from + 2 + len;
                     }
                     None => {
                         bad(self, "%");
@@ -1163,6 +1173,13 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
+        }
+    }
+
+    /// Entity names are NCNames when namespaces are in force, so a reference to one may not contain a colon.
+    fn colon_in_reference(&mut self, start: usize, name: &str) {
+        if name.contains(':') {
+            self.diag(Code::ColonInName, start..start + name.len(), vec![name.to_owned()]);
         }
     }
 

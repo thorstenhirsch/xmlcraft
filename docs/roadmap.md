@@ -17,8 +17,8 @@ Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is 
 ## Exit criteria (MVP path)
 
 - **M0:** `cargo xtask ci` green on Ubuntu and Windows; a dry-run release builds, installs and launches on all six targets (win x64/arm64, macOS universal, linux x64/arm64).
-- **M1:** editor performance targets met (1 MB: keystroke-to-paint p95 under 8 ms; 100 MB: opens in under 3 s, scrolls at 60 fps); xmlconf not-well-formed 100%; byte-identical open/save round-trip property holds; an hour of fuzzing finds no panic.
-- **M2:** xmlconf valid and invalid at least 99%; DocBook 4.5 and XHTML documents validate offline; at least 99% verdict agreement with `xmllint --valid`.
+- **M1:** editor performance targets met (1 MB: keystroke-to-paint p95 under 8 ms; 100 MB: opens in under 3 s, scrolls at 60 fps); xmlconf not-well-formed 100% of the tests that need no DTD (the rest closes in M2, gap 16); byte-identical open/save round-trip property holds; an hour of fuzzing finds no panic.
+- **M2:** xmlconf not-well-formed 100% (the DTD and entity rules of gap 16) and valid and invalid at least 99%; DocBook 4.5 and XHTML documents validate offline; at least 99% verdict agreement with `xmllint --valid`.
 - **M3:** xsdtests at least 90%; at least 98% agreement with `xmllint --schema` on the curated set; a 10 MB document validates in under 1 s.
 - **M4:** every corpus document validates against both its inferred XSD and DTD; at least 95% of generated samples validate; xsdtests at least 95%; 0.1.0 released for all six targets.
 

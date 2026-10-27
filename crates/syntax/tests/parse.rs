@@ -183,6 +183,15 @@ fn entity_declaration_rules() {
     assert_eq!(problems("<!DOCTYPE a [<!ENTITY % p \"x\"><!ATTLIST a %p; CDATA #IMPLIED>]><a/>"), [p(Code::PeInDeclaration, "%p;")]);
     assert_eq!(problems("<!DOCTYPE a [<!ENTITY % p \"x\">%p;]><a/>"), vec![], "between declarations it is fine");
     assert_eq!(problems("<!DOCTYPE a [<!ENTITY a:b \"x\">]><a/>"), [p(Code::ColonInName, "a:b")]);
+    // A colon in the name of a referenced entity, general or parameter.
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY e \"&x:y;\">]><a/>"), [p(Code::ColonInName, "x:y")]);
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY e \"%x:y;\">]><a/>"), [p(Code::ColonInName, "x:y"), p(Code::PeInDeclaration, "%x:y;")]);
+    // `SYSTEM` and `PUBLIC` are keywords only straight after the name: an entity may be called that, and its value is still an entity value.
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY SYSTEM \"a&b\">]><a/>"), [p(Code::BadEntityValue, "&")]);
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY PUBLIC \"a&b\">]><a/>"), [p(Code::BadEntityValue, "&")]);
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY % SYSTEM \"a&b\">]><a/>"), [p(Code::BadEntityValue, "&")]);
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY e SYSTEM \"a&b\">]><a/>"), vec![], "an external identifier is not an entity value");
+    assert_eq!(problems("<!DOCTYPE a [<!ENTITY e PUBLIC \"-//x\" \"a&b\">]><a/>"), vec![]);
 }
 
 #[test]
