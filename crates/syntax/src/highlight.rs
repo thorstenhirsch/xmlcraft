@@ -125,25 +125,30 @@ fn classify(kind: TokenKind, before: Mode, after_open: bool) -> HighlightClass {
     }
 }
 
-/// The state at the start of `line`, guessed from the text just before it: inside a comment or a CDATA section when the last opener in
-/// the window before it has no closer after it, content otherwise.
+/// The stretch of text an estimate at `at` (the start of a line) lexes: from the first line that starts no further back than
+/// [`ESTIMATE_WINDOW`] bytes, to `at`. Counted in bytes, not lines, so a very long line before `at` cannot make it read more.
+fn window_before(buffer: &Buffer, at: usize) -> Range<usize> {
+    let wanted = at.saturating_sub(ESTIMATE_WINDOW);
+    let line = buffer.line_of(wanted);
+    let start = buffer.line_start(line).unwrap_or(0);
+    // A line that starts before the window is not read whole: the window begins at the next one.
+    let from = if start >= wanted { start } else { buffer.line_start(line + 1).unwrap_or(at) };
+    from.min(at)..at
+}
+
+/// The state at the start of `line`, guessed from the text just before it: the lexer is run over the window before it (see
+/// [`window_before`]) from the state of content, which is the state at the start of most lines. Everything the lexer knows is
+/// found that way (a comment, a CDATA section, a processing instruction, a tag, a value or a declaration that goes over lines, and what a
+/// comment inside a DOCTYPE returns to), as long as it begins in the window.
 fn estimate_start(buffer: &Buffer, line: usize) -> LineStart {
     let Some(at) = buffer.line_start(line) else { return LineStart::default() };
-    let from = buffer.line_start(buffer.line_of(at.saturating_sub(ESTIMATE_WINDOW))).unwrap_or(0);
-    let window = buffer.slice(from..at).unwrap_or_default();
-    // The last opener of a kind that has no closer after it; the later of the two kinds wins (a `<!--` inside a CDATA section is text).
-    let open = |opener: &str, closer: &str| match (window.rfind(opener), window.rfind(closer)) {
-        (Some(o), Some(c)) if o < c => None,
-        (Some(o), _) => Some(o),
-        (None, _) => None,
-    };
-    let mode = match (open("<!--", "-->"), open("<![CDATA[", "]]>")) {
-        (Some(comment), Some(cdata)) if comment > cdata => Mode::Comment(Return::Content),
-        (_, Some(_)) => Mode::Cdata,
-        (Some(_), None) => Mode::Comment(Return::Content),
-        (None, None) => Mode::Content,
-    };
-    LineStart { mode, after_open: false }
+    let Ok(window) = buffer.slice(window_before(buffer, at)) else { return LineStart::default() };
+    let mut state = LineStart::default();
+    for text in window.split_inclusive('\n') {
+        let (mode, after_open) = lex_line(text, state.mode, state.after_open, None);
+        state = LineStart { mode, after_open };
+    }
+    state
 }
 
 /// Colours the lines of a buffer, remembering the lexer's mode at the start of the lines it has looked at.
@@ -159,9 +164,10 @@ pub struct Highlighter {
 
 /// How a very large text is coloured at a place far past what has been looked at. The colour of a line depends on where the lexer is at
 /// its start, which is known exactly only by reading everything before it. For a text of 100 MB that is over a second, so a jump
-/// further than `lines` past what is known starts from an estimate instead: the state is worked out from the text just before (an
-/// unclosed comment or CDATA section, within a window of 256 KiB), and is right unless a construct that goes over lines is longer than
-/// that. It is corrected, as far as it is read, when the lines in between are looked at one by one.
+/// further than `lines` past what is known starts from an estimate instead: the lexer is run over the 256 KiB just before, from the
+/// state of content. That is right unless a construct that goes over lines (a comment, a CDATA section, a tag, a value, a processing
+/// instruction, a declaration) began before that and has not ended; the colours are wrong until it ends. It is corrected, as far as it
+/// is read, when the lines in between are looked at one by one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FarJump {
     /// A line further than this past the last one whose state is known starts from an estimate.
@@ -394,17 +400,59 @@ mod tests {
     }
 
     #[test]
-    fn a_comment_or_a_cdata_section_that_goes_over_lines_is_found_in_the_text_before() {
+    fn anything_that_goes_over_lines_is_found_in_the_text_before() {
         let body = (0..60).map(|i| format!("  line {i} of text")).collect::<Vec<_>>().join("\n");
-        for (open, close, name) in [("<!--", "-->", "comment"), ("<![CDATA[", "]]>", "cdata")] {
-            let text = format!("{}\n{open}\n{body}\n{close}\n{}", simple_lines(100), simple_lines(100));
+        let tag_body = (0..60).map(|i| format!("  a{i}=\"v{i}\"")).collect::<Vec<_>>().join("\n");
+        let value_body = (0..60).map(|i| format!("  value line {i}")).collect::<Vec<_>>().join("\n");
+        let cases = [
+            ("comment", "<!--".to_owned(), body.clone(), "-->"),
+            ("cdata", "<![CDATA[".to_owned(), body.clone(), "]]>"),
+            ("processing instruction", "<?target".to_owned(), body.clone(), "?>"),
+            ("tag", "<e".to_owned(), tag_body, ">"),
+            ("attribute value", "<e a=\"".to_owned(), value_body, "\" />"),
+            ("doctype", "<!DOCTYPE r [".to_owned(), "<!ELEMENT r ANY>\n<!-- c -->\n<!ENTITY e \"v\">".to_owned(), "]>"),
+            // Markers of one kind inside another are text, not the start of something.
+            ("comment holding markers", "<!--".to_owned(), "<![CDATA[ <?pi <e a=\" ]]> ".to_owned() + &body, "-->"),
+            ("cdata holding markers", "<![CDATA[".to_owned(), "<!-- <?pi ".to_owned() + &body, "]]>"),
+            ("comment inside a doctype", "<!DOCTYPE r [\n<!--".to_owned(), body, "-->\n]>"),
+        ];
+        for (name, open, inside, close) in cases {
+            let text = format!("{}\n{open}\n{inside}\n{close}\n{}", simple_lines(100), simple_lines(100));
             let buffer = Buffer::from_text(&text);
             let (mut exact, mut estimated) = exact_and_estimated(SMALL);
-            // In the middle of it, at its closing line, and after it.
-            for line in [130, 161, 162, 163, 170] {
-                assert_eq!(estimated.spans(&buffer, line), exact.spans(&buffer, line), "{name} line {line}");
+            // In the middle of it, near where it ends, and after it.
+            let end = 100 + buffer.line_count().saturating_sub(200);
+            for line in [130, end - 2, end - 1, end, end + 1, end + 10] {
+                assert_eq!(estimated.spans(&buffer, line), exact.spans(&buffer, line), "{name}, line {line}");
             }
         }
+    }
+
+    #[test]
+    fn the_window_is_counted_in_bytes_from_the_start_of_a_line_and_a_long_line_does_not_widen_it() {
+        let window_of = |text: &str, line: usize| {
+            let buffer = Buffer::from_text(text);
+            let at = buffer.line_start(line).expect("a line");
+            (window_before(&buffer, at), at, buffer)
+        };
+        // A short text: all of it.
+        let (window, at, _) = window_of("<a/>\n<b/>\n<c/>", 2);
+        assert_eq!((window.start, window.end), (0, at));
+        // Lines of 100 bytes: it starts at a line, and is not longer than the window.
+        let text = "x".repeat(99) + "\n";
+        let text = text.repeat((ESTIMATE_WINDOW / 100) * 3);
+        let (window, at, buffer) = window_of(&text, (ESTIMATE_WINDOW / 100) * 2);
+        assert!(window.len() <= ESTIMATE_WINDOW && window.len() > ESTIMATE_WINDOW - 100, "{}", window.len());
+        assert_eq!(buffer.line_start(buffer.line_of(window.start)), Some(window.start));
+        assert_eq!(window.end, at);
+        // One huge line before the one asked for: it is not read (the window is empty), however long it is.
+        let text = format!("{}\n<a/>", "y".repeat(ESTIMATE_WINDOW * 4));
+        let (window, at, _) = window_of(&text, 1);
+        assert_eq!((window.len(), window.end), (0, at));
+        // A long line that starts inside the window is read to its end, which is the window's end at most.
+        let text = format!("<a/>\n{}\n<b/>", "z".repeat(ESTIMATE_WINDOW / 2));
+        let (window, _, _) = window_of(&text, 2);
+        assert_eq!(window.start, 0);
     }
 
     #[test]
@@ -637,6 +685,21 @@ mod tests {
             lookbehind in 0usize..10,
         ) {
             let buffer = Buffer::from_text(&simple_lines(lines));
+            let (mut exact, mut estimated) = exact_and_estimated(FarJump { lines: far_lines, lookbehind });
+            for line in order {
+                prop_assert_eq!(estimated.spans(&buffer, line), exact.spans(&buffer, line), "line {}", line);
+            }
+        }
+
+        /// A text that fits in the window is read from its start by an estimate, so estimating is exact for any text at all.
+        #[test]
+        fn estimating_in_a_text_that_fits_the_window_is_exact_whatever_goes_over_lines(
+            pieces in proptest::collection::vec(proptest::sample::select(PIECES), 0..80),
+            order in proptest::collection::vec(0usize..40, 1..20),
+            far_lines in 1usize..6,
+            lookbehind in 0usize..4,
+        ) {
+            let buffer = Buffer::from_text(&pieces.concat());
             let (mut exact, mut estimated) = exact_and_estimated(FarJump { lines: far_lines, lookbehind });
             for line in order {
                 prop_assert_eq!(estimated.spans(&buffer, line), exact.spans(&buffer, line), "line {}", line);

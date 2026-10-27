@@ -189,21 +189,29 @@ impl Buffer {
         0
     }
 
-    /// The length in bytes of the longest line, line break not counted (a `\r` before a `\n` is). One pass over the text's chunks, without
-    /// asking for each line: for a text with millions of lines that is what the view needs to size its horizontal scroll.
-    pub fn longest_line_bytes(&self) -> usize {
-        let (mut longest, mut current) = (0usize, 0usize);
+    /// An upper bound of the display columns of the widest line, line break not counted (a `\r` before a `\n` is): its bytes, with every
+    /// tab counted as `tab_width` of them (a character of several bytes is one column or two, never more than its bytes). One pass over
+    /// the text's chunks, without asking for each line: for a text with millions of lines that is what the view needs to size its
+    /// horizontal scroll.
+    pub fn widest_line(&self, tab_width: usize) -> usize {
+        let extra = tab_width.saturating_sub(1);
+        let (mut widest, mut current) = (0usize, 0usize);
         for chunk in self.rope.chunks() {
             let mut rest = chunk.as_bytes();
-            while let Some(at) = rest.iter().position(|b| *b == b'\n') {
-                current += at;
-                longest = longest.max(current);
+            loop {
+                let (line, next) = match rest.iter().position(|b| *b == b'\n') {
+                    Some(at) => (rest.get(..at).unwrap_or_default(), rest.get(at + 1..)),
+                    None => (rest, None),
+                };
+                let tabs = line.iter().filter(|b| **b == b'\t').count();
+                current = current.saturating_add(line.len()).saturating_add(tabs.saturating_mul(extra));
+                let Some(next) = next else { break };
+                widest = widest.max(current);
                 current = 0;
-                rest = rest.get(at + 1..).unwrap_or_default();
+                rest = next;
             }
-            current += rest.len();
         }
-        longest.max(current)
+        widest.max(current)
     }
 
     /// The number of lines, at least 1: an empty text and a text ending in a line break each have a last, empty line to type in.
@@ -330,18 +338,30 @@ mod tests {
     }
 
     #[test]
-    fn the_longest_line_is_found_across_the_chunks_of_the_rope() {
-        assert_eq!(Buffer::from_text("").longest_line_bytes(), 0);
-        assert_eq!(Buffer::from_text("abc").longest_line_bytes(), 3);
-        assert_eq!(Buffer::from_text("ab\nabcd\n\nx").longest_line_bytes(), 4);
-        assert_eq!(Buffer::from_text("a\r\nbb\r\n").longest_line_bytes(), 3, "the CR is before the break, so it is counted");
-        assert_eq!(Buffer::from_text("é日\nx").longest_line_bytes(), 5, "bytes, not characters");
+    fn the_widest_line_is_found_across_the_chunks_of_the_rope() {
+        assert_eq!(Buffer::from_text("").widest_line(4), 0);
+        assert_eq!(Buffer::from_text("abc").widest_line(4), 3);
+        assert_eq!(Buffer::from_text("ab\nabcd\n\nx").widest_line(4), 4);
+        assert_eq!(Buffer::from_text("a\r\nbb\r\n").widest_line(4), 3, "the CR is before the break, so it is counted");
+        assert_eq!(Buffer::from_text("é日\nx").widest_line(4), 5, "bytes, not characters");
         // Lines that cross chunk boundaries (a rope has many) are counted whole.
         let long = "x".repeat(100_000);
         let text = format!("{long}\nshort\n{}\n{long}y", "z".repeat(150_000));
-        assert_eq!(Buffer::from_text(&text).longest_line_bytes(), 150_000);
+        assert_eq!(Buffer::from_text(&text).widest_line(4), 150_000);
         let one = format!("{long}{long}");
-        assert_eq!(Buffer::from_text(&one).longest_line_bytes(), 200_000);
+        assert_eq!(Buffer::from_text(&one).widest_line(4), 200_000);
+    }
+
+    #[test]
+    fn a_tab_counts_as_its_width_so_the_bound_covers_the_line_as_drawn() {
+        assert_eq!(Buffer::from_text("\t\tx").widest_line(4), 9);
+        assert_eq!(Buffer::from_text("\t\tx").widest_line(1), 3);
+        assert_eq!(Buffer::from_text("\t\tx").widest_line(0), 3, "a width of nothing is not less than a byte");
+        assert_eq!(Buffer::from_text("a\n\t\t\t\nbbbbbbbbbb").widest_line(8), 24, "the line with the tabs is the widest, though it has fewer bytes");
+        // Across chunks: tabs in the part of a line that comes after a chunk boundary count too.
+        let line = format!("{}{}", "x".repeat(60_000), "\t".repeat(50_000));
+        assert_eq!(Buffer::from_text(&format!("{line}\nab")).widest_line(4), 60_000 + 200_000);
+        assert_eq!(Buffer::from_text("\t").widest_line(usize::MAX), usize::MAX, "no overflow");
     }
 
     #[test]

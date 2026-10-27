@@ -14,7 +14,7 @@ reparse_1mb = 30
 [budget_ms]
 open_100mb = 3000
 scroll_100mb_far = 16
-first_frame_100mb = 100
+widest_line_100mb = 100
 keystroke_1mb = 8
 reparse_1mb = 30
 reparse_10mb = 400

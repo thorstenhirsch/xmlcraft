@@ -326,8 +326,8 @@ milestone = "M1"
 status = "partial"
 commands = []
 tools = []
-evidence = ["crates/syntax/src/highlight.rs::a_far_jump_starts_from_an_estimate_and_is_right_when_nothing_goes_over_lines", "crates/syntax/src/highlight.rs::estimating_agrees_with_reading_everything_when_no_construct_goes_over_lines", "crates/text/src/buffer.rs::the_longest_line_is_found_across_the_chunks_of_the_rope"]
-notes = "A 100 MB file opens in 0.13 s, the first look at its end takes 0.23 ms and the first frame 30 ms, and a keystroke in a 1 MB one 0.04 ms (cargo xtask bench). Above 1 MiB the colour of a far place starts from an estimate (docs/gaps.md 18). Missing: the large-file mode of the plan above 32 MB (streaming outline and validation, no syntax tree, a notice in the window): such a document is still not analysed (gap 17)."
+evidence = ["crates/syntax/src/highlight.rs::a_far_jump_starts_from_an_estimate_and_is_right_when_nothing_goes_over_lines", "crates/syntax/src/highlight.rs::anything_that_goes_over_lines_is_found_in_the_text_before", "crates/syntax/src/highlight.rs::estimating_in_a_text_that_fits_the_window_is_exact_whatever_goes_over_lines", "crates/syntax/src/highlight.rs::the_window_is_counted_in_bytes_from_the_start_of_a_line_and_a_long_line_does_not_widen_it", "crates/text/src/buffer.rs::the_widest_line_is_found_across_the_chunks_of_the_rope", "crates/text/src/buffer.rs::a_tab_counts_as_its_width_so_the_bound_covers_the_line_as_drawn"]
+notes = "A 100 MB file opens in 0.14 s, the first look at its end takes 0.9 ms and finding how wide it is 45 ms, and a keystroke in a 1 MB one 0.06 ms (cargo xtask bench). Above 1 MiB the colour of a far place starts from an estimate: the lexer is run over the 256 KiB before it (docs/gaps.md 18). Missing: the large-file mode of the plan above 32 MB (streaming outline and validation, no syntax tree, a notice in the window): such a document is still not analysed (gap 17)."
 
 [[feature]]
 id = "editor.ime"
