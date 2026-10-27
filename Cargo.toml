@@ -22,11 +22,14 @@ craft-settings = { git = "https://github.com/storytold/craft-libs", version = "0
 craft-window = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "ea4c823abb46fa9d21361604ed1c6d21c54e9ca8" }
 
 # internal
+xmlcraft-text = { path = "crates/text", version = "0.0.1" }
 xmlcraft-engine = { path = "crates/engine", version = "0.0.1" }
 xmlcraft-automation = { path = "crates/automation", version = "0.0.1" }
 xmlcraft-ui-egui = { path = "crates/ui-egui", version = "0.0.1" }
 
 # foundation
+crop = "0.4"
+encoding_rs = "0.8"
 thiserror = "2"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
