@@ -445,6 +445,24 @@ fn what_can_be_folded_is_listed_and_folding_it_hides_lines() {
 }
 
 #[test]
+fn typing_in_the_name_of_a_tag_renames_the_other_tag_of_the_element_too() {
+    let mut a = Automation::new();
+    let id = ok(&mut a, "doc_new", json!({ "text": "<a>\n  <item id=\"1\">x</item>\n</a>" }))["id"].as_u64().expect("id");
+    let text = |a: &mut Automation| ok(a, "doc_text", json!({ "id": id }))["text"].as_str().expect("text").to_owned();
+    // After `item` in the start tag.
+    ok(&mut a, "doc_type", json!({ "id": id, "text": "s", "line": 2, "column": 8 }));
+    assert_eq!(text(&mut a), "<a>\n  <items id=\"1\">x</items>\n</a>");
+    // Backspace in the end tag, twice: both names lose two letters, in one undo step.
+    ok(&mut a, "doc_key", json!({ "id": id, "key": "Backspace", "times": 2, "line": 2, "column": 25 }));
+    assert_eq!(text(&mut a), "<a>\n  <ite id=\"1\">x</ite>\n</a>");
+    ok(&mut a, "doc_undo", json!({ "id": id }));
+    assert_eq!(text(&mut a), "<a>\n  <items id=\"1\">x</items>\n</a>");
+    // A caret that is not in a name types as ever: an attribute value is not a name.
+    ok(&mut a, "doc_type", json!({ "id": id, "text": "9", "line": 2, "column": 14 }));
+    assert_eq!(text(&mut a), "<a>\n  <items id=\"91\">x</items>\n</a>");
+}
+
+#[test]
 fn typing_and_keys_work_as_the_keyboard_does() {
     let mut a = Automation::new();
     let id = ok(&mut a, "doc_new", json!({ "text": "<a b=/>" }))["id"].as_u64().expect("id");

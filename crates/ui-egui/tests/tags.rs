@@ -82,7 +82,8 @@ fn the_names_of_the_pair_the_caret_is_at_are_highlighted() {
     h.run_steps(1);
     assert_eq!(h.state().highlighted_tag_names(), None, "stale");
     wait(&mut h, "the new analysis", |app| app.highlighted_tag_names().is_some());
-    assert_eq!(h.state().highlighted_tag_names(), Some([open..open + 5, close + 1..close + 5]));
+    // The letter went into the end tag's name too (the names are linked): the pair is five letters long on both sides.
+    assert_eq!(h.state().highlighted_tag_names(), Some([open..open + 5, close + 1..close + 6]));
 }
 
 #[test]
@@ -145,4 +146,34 @@ fn a_jump_that_is_waiting_is_dropped_when_another_tab_is_shown() {
     h.state_mut().session.set_active(Some(first));
     h.run_steps(2);
     assert_eq!(caret(&h), before, "nor in the one that asked: it was dropped");
+}
+
+/// Run `f` on the editor of the document being shown.
+fn with_editor<R>(h: &mut Harness<'static, XmlCraftApp>, f: impl FnOnce(&mut xmlcraft_editor::Editor) -> R) -> R {
+    f(h.state_mut().session.active_document_mut().expect("a document").editor_mut())
+}
+
+#[test]
+fn typing_in_a_tag_name_renames_the_other_tag_of_the_element() {
+    let mut h = shell_with(TEXT);
+    let open = TEXT.find("book id").expect("there");
+    assert!(with_editor(&mut h, |e| e.linked_names().is_none()), "the caret is at the start of the text: no name");
+    // The caret in the start tag's name: a frame links the pair from the analysis.
+    put_caret(&mut h, open + 4);
+    h.run_steps(3);
+    assert!(with_editor(&mut h, |e| e.linked_names().is_some()));
+    with_editor(&mut h, |e| e.type_input("s"));
+    assert_eq!(with_editor(&mut h, |e| e.text()), TEXT.replace("book id", "books id").replace("</book>", "</books>"));
+    // Typing again at once, before the analysis of the new text is here: the link follows the text.
+    with_editor(&mut h, |e| e.type_input("t"));
+    assert_eq!(with_editor(&mut h, |e| e.text()), TEXT.replace("book id", "bookst id").replace("</book>", "</bookst>"));
+    with_editor(&mut h, |e| (e.backspace(), e.backspace()));
+    assert_eq!(with_editor(&mut h, |e| e.text()), TEXT);
+    // One undo step for all the typing and one for all the deleting, each holding both tags.
+    with_editor(&mut h, |e| e.undo());
+    assert_eq!(with_editor(&mut h, |e| e.text()), TEXT.replace("book id", "bookst id").replace("</book>", "</bookst>"));
+    // The caret leaves the names: after a frame nothing is linked.
+    put_caret(&mut h, TEXT.find("text").expect("there") + 1);
+    h.run_steps(3);
+    assert!(with_editor(&mut h, |e| e.linked_names().is_none()));
 }

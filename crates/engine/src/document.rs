@@ -156,6 +156,38 @@ impl Document {
         &mut self.editor
     }
 
+    /// Make typing in the name of a tag change the name in the element's other tag too, if the single caret is in a tag name. For a caller
+    /// that has no analysis of the text (a window has: it links with `Analysis::linked_names`); the text is analysed now. Returns whether
+    /// names are linked.
+    pub fn link_tag_names(&mut self) -> bool {
+        let editor = &mut self.editor;
+        let [caret] = editor.carets() else {
+            editor.unlink_names();
+            return false;
+        };
+        if !caret.is_empty() {
+            editor.unlink_names();
+            return false;
+        }
+        if editor.caret_in_linked_names() {
+            return true;
+        }
+        let at = caret.head();
+        // Only a caret in a tag can be in a name, and a text too large to analyse has no pairs: neither is worth copying the text for.
+        if editor.buffer().len() > crate::analysis::MAX_ANALYSED_BYTES || !editor.caret_in_tag() {
+            editor.unlink_names();
+            return false;
+        }
+        let analysis = crate::analysis::analyze_guarded(&editor.text(), editor.version());
+        match analysis.skipped.is_none().then(|| analysis.linked_names(at)).flatten() {
+            Some([a, b]) => editor.link_names(a, b),
+            None => {
+                editor.unlink_names();
+                false
+            }
+        }
+    }
+
     /// Whether the text, or how it would be written, differs from what was last saved. Undoing back to the saved text is clean again.
     pub fn is_dirty(&self) -> bool {
         self.editor.state_id() != self.saved_state || (self.encoding.encoding, self.encoding.bom) != self.saved_encoding
@@ -678,6 +710,37 @@ mod tests {
         assert_eq!(d.editor().text(), "<b/>");
         assert!(!d.is_dirty() && !d.editor().can_undo());
         assert_eq!(d.path(), Some(Path::new("/tmp/a.xml")));
+    }
+
+    #[test]
+    fn a_document_links_the_tag_names_the_caret_is_in_without_an_analysis_at_hand() {
+        let mut d = open(b"<a><b>x</b></a>");
+        d.editor_mut().set_selection(5, 5);
+        assert!(d.link_tag_names());
+        d.editor_mut().type_input("c");
+        assert_eq!(d.editor().text(), "<a><bc>x</bc></a>");
+        // Not in a name, with a selection: nothing is linked (and an earlier link is dropped).
+        d.editor_mut().set_selection(7, 7);
+        assert!(!d.link_tag_names());
+        assert_eq!(d.editor().linked_names(), None);
+        d.editor_mut().set_selection(4, 6);
+        assert!(!d.link_tag_names());
+        // A call while the caret is still in a linked name keeps the link without analysing again.
+        d.editor_mut().set_selection(5, 5);
+        assert!(d.link_tag_names() && d.link_tag_names());
+    }
+
+    #[test]
+    fn a_text_too_large_to_analyse_or_a_caret_outside_a_tag_is_not_worth_an_analysis() {
+        let text = format!("<a>{}</a>", "x".repeat(crate::analysis::MAX_ANALYSED_BYTES));
+        let mut d = open(text.as_bytes());
+        d.editor_mut().set_selection(2, 2);
+        assert!(!d.link_tag_names(), "too large: no pairs are known");
+        assert_eq!(d.editor().linked_names(), None);
+        // In text: no tag, so nothing to link.
+        let mut d = open(b"<a>text</a>");
+        d.editor_mut().set_selection(5, 5);
+        assert!(!d.link_tag_names());
     }
 
     #[test]

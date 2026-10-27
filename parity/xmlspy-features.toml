@@ -191,11 +191,11 @@ title = "Rename start and end tag together"
 area = "A"
 tier = "P1"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["doc_type", "doc_key"]
+evidence = ["crates/editor/src/linked.rs::typing_in_a_name_is_written_into_the_other_name_as_one_undo_step", "crates/editor/src/linked.rs::linked_names_never_drift_apart", "crates/editor/src/linked.rs::stepping_over_the_bracket_leaves_the_name_and_a_torn_tag_is_not_followed", "crates/engine/src/analysis.rs::the_names_to_link_are_those_of_the_tag_the_caret_is_in_the_name_of", "crates/automation/tests/documents.rs::typing_in_the_name_of_a_tag_renames_the_other_tag_of_the_element_too", "crates/ui-egui/tests/tags.rs::typing_in_a_tag_name_renames_the_other_tag_of_the_element"]
+notes = "With the single caret in or at the end of a tag name that has a partner, typing or deleting there is written into the other tag of the element as part of the same undo step, with the real keyboard path (the window links the pair from the analysis of the current text; the tools doc_type and doc_key analyse the text first). The link follows the text through edits and ends on a character that is not part of a name, a paste, a word deletion, a selection reaching out of the name, several carets, an undo, or when the names stop being tags. Missing: several carets, paste and word deletion inside a name, a preference to switch it off (Settings::sync_tag_names exists), and a link made while the caret rests in a name before the analysis of the text has arrived."
 
 [[feature]]
 id = "editor.comment-toggle"

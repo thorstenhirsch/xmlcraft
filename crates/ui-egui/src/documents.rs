@@ -194,6 +194,22 @@ impl XmlCraftApp {
         analysis.matching_tag(caret.head()).map(|m| [m.name, m.partner_name])
     }
 
+    /// Link the names of the two tags of the element the caret is in the name of, so that what is typed in one is written into the other.
+    /// A link follows the text through edits, so it is made from the analysis only when the caret is in no linked name, and only from an
+    /// analysis of the text as it is now.
+    fn link_tag_names(view: &DocView, editor: &mut xmlcraft_editor::Editor) {
+        if editor.caret_in_linked_names() {
+            return;
+        }
+        let caret = editor.primary();
+        let names =
+            view.analysis.as_ref().filter(|a| a.version == editor.version() && a.skipped.is_none()).and_then(|a| a.linked_names(caret.head()));
+        match names {
+            Some([a, b]) if editor.carets().len() == 1 && caret.is_empty() => drop(editor.link_names(a, b)),
+            _ => editor.unlink_names(),
+        }
+    }
+
     /// Where things were on the screen in the last frame of the editor of the document being shown (for tests and the control channel).
     pub fn editor_geometry(&self) -> Option<xmlcraft_code_editor::Geometry> {
         let id = self.session.active_document()?.id();
@@ -320,6 +336,7 @@ impl XmlCraftApp {
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
         view.styler.set_matches(matches);
         view.styler.set_tag_match(Self::matching_tag_names(view, doc.editor()));
+        Self::link_tag_names(view, doc.editor_mut());
         // What can be folded is right for the lines above the first one that changed since the analysis (and for none before there is one).
         let valid_before = view.analysis.as_ref().map_or(0, |a| doc.editor().first_changed_line_since(a.version).unwrap_or(usize::MAX));
         view.styler.set_folds_valid_before(valid_before);
