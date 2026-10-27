@@ -31,6 +31,8 @@ struct App {
     view: ViewState,
     read_only: bool,
     recorder: Recorder,
+    /// Whether the recorder is attached as the styler this frame.
+    styled: bool,
 }
 
 fn harness(text: &str) -> Harness<'static, App> {
@@ -39,14 +41,16 @@ fn harness(text: &str) -> Harness<'static, App> {
 
 /// A harness whose frames are `step_dt` seconds apart (two clicks must come within 0.3 s to be a double click).
 fn harness_with_step(text: &str, step_dt: f32) -> Harness<'static, App> {
-    let app = App { editor: Editor::new(text), view: ViewState::new(), read_only: false, recorder: Recorder::default() };
+    let app = App { editor: Editor::new(text), view: ViewState::new(), read_only: false, recorder: Recorder::default(), styled: true };
     let mut h = Harness::builder().with_size(egui::vec2(640.0, 360.0)).with_step_dt(step_dt).build_ui_state(
         |ui, app: &mut App| {
-            CodeEditor::new(Id::new("editor"), &mut app.editor, &mut app.view, EditorColors::light())
-                .blink(false)
-                .read_only(app.read_only)
-                .styler(&mut app.recorder)
-                .show(ui);
+            let editor =
+                CodeEditor::new(Id::new("editor"), &mut app.editor, &mut app.view, EditorColors::light()).blink(false).read_only(app.read_only);
+            if app.styled {
+                editor.styler(&mut app.recorder).show(ui)
+            } else {
+                editor.show(ui)
+            };
         },
         app,
     );
@@ -290,4 +294,37 @@ fn the_styler_hears_about_edits_and_styles_only_what_is_on_screen() {
     h.run_steps(3);
     assert_eq!(h.state().recorder.changed, vec![2]);
     assert!(h.state().recorder.styled.contains(&2), "the edited line is styled again");
+}
+
+#[test]
+fn a_reset_view_tells_the_styler_the_whole_text_changed() {
+    let mut h = harness("<a>\n<b/>\n</a>");
+    assert!(h.state().recorder.changed.is_empty());
+    // Another document in the same view, with an editor whose version counts from zero again: nothing in the edit history says the text
+    // changed, so only the reset can tell the styler its state from the old document is stale from the first line.
+    h.state_mut().editor = Editor::new("<x>\n<y/>\n</x>");
+    h.state_mut().view.reset();
+    h.run_steps(2);
+    assert_eq!(h.state().recorder.changed.first(), Some(&0), "{:?}", h.state().recorder.changed);
+    // Told once: the next frames have nothing to report.
+    let told = h.state().recorder.changed.len();
+    h.run_steps(3);
+    assert_eq!(h.state().recorder.changed.len(), told);
+}
+
+#[test]
+fn a_styler_attached_again_hears_what_changed_while_it_was_away() {
+    let mut h = harness("<a>\n<b/>\n</a>");
+    h.state_mut().styled = false;
+    h.run_steps(2);
+    // An edit on the second line while no styler is attached.
+    let second = "<a>\n".len();
+    h.state_mut().editor.set_selection(second, second);
+    h.run_steps(2);
+    h.get_by_label("XML editor").type_text("x");
+    h.run_steps(3);
+    assert!(h.state().recorder.changed.is_empty(), "no styler, nobody to tell");
+    h.state_mut().styled = true;
+    h.run_steps(3);
+    assert_eq!(h.state().recorder.changed, vec![1], "the edit made while it was detached");
 }

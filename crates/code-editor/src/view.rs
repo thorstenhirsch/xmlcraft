@@ -90,6 +90,8 @@ pub struct ViewState {
     pub highlight_version: u64,
     /// The editor's version when the styler was last told about changes.
     styled_version: u64,
+    /// The styler must be told the whole text changed (set by [`Self::reset`], cleared when a styler is next drawn with).
+    restyle_all: bool,
 }
 
 impl ViewState {
@@ -97,8 +99,9 @@ impl ViewState {
         Self::default()
     }
 
-    /// Forget everything about the text (after loading another file).
+    /// Forget everything about the text (after loading another file). A styler hears that the text changed from its first line.
     pub fn reset(&mut self) {
+        self.restyle_all = true;
         self.cache.clear();
         self.max_columns = 0;
         self.max_columns_known_for = None;
@@ -217,12 +220,15 @@ impl<'a> CodeEditor<'a> {
         }
 
         // The styler hears about edits before anything is drawn, so no frame shows colours of the text as it was.
-        if let Some(styler) = styler.as_mut()
-            && let Some(first_line) = editor.first_changed_line_since(view.styled_version)
-        {
-            styler.text_changed(first_line);
+        // `styled_version` moves only when there is a styler to tell: one attached again after some frames without hears of every edit.
+        if let Some(styler) = styler.as_mut() {
+            let from_edits = editor.first_changed_line_since(view.styled_version);
+            let from_reset = std::mem::take(&mut view.restyle_all).then_some(0);
+            if let Some(first_line) = from_edits.into_iter().chain(from_reset).min() {
+                styler.text_changed(first_line);
+            }
+            view.styled_version = editor.version();
         }
-        view.styled_version = editor.version();
 
         // --- geometry ---
         let line_count = editor.buffer().line_count();
@@ -669,7 +675,16 @@ mod tests {
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
             let painter = ui.painter().clone();
             let mut layout_with = |font: &FontId, column_w: f32| {
-                let frame = Frame { painter: &painter, font, colors: &colors, column_w, tab_width: 4, scroll_x: 0.0, version: 0, styler: std::cell::RefCell::new(None) };
+                let frame = Frame {
+                    painter: &painter,
+                    font,
+                    colors: &colors,
+                    column_w,
+                    tab_width: 4,
+                    scroll_x: 0.0,
+                    version: 0,
+                    styler: std::cell::RefCell::new(None),
+                };
                 layout_line(&mut view, &buffer, 0, &frame)
             };
             let mono = FontId::monospace(13.0);
