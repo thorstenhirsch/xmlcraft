@@ -85,6 +85,18 @@ pub fn prev_grapheme(buf: &Buffer, offset: usize) -> usize {
     cluster_boundary(buf, offset, false).filter(|boundary| *boundary < offset).unwrap_or_else(|| buf.prev_char(offset))
 }
 
+/// `offset` moved back to the start of the character cluster it is inside (itself, when it already is on a boundary). A click lands
+/// anywhere, including between a letter and its accent; the caret must not. A cluster longer than the search reads (about 16 KB of
+/// combining marks, see [`next_grapheme`]) counts as separate characters, so the caret can land inside one only in text built to do that.
+pub fn snap_to_cluster(buf: &Buffer, offset: usize) -> usize {
+    let offset = clamp(buf, offset);
+    let next = next_grapheme(buf, offset);
+    if next <= offset {
+        return offset; // at the end of the text
+    }
+    prev_grapheme(buf, next).min(offset)
+}
+
 /// What kind of character this is, for moving and selecting by word. Letters, digits and the characters of XML names (`_ - . :`) make
 /// words, so double-clicking `xs:element` selects all of it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -179,14 +191,16 @@ pub fn smart_home(buf: &Buffer, offset: usize) -> usize {
     if offset == first { start } else { first }
 }
 
-/// The width in display columns of `c` when it starts at `column`: tabs go to the next tab stop, wide characters take two, combining
-/// marks none.
+/// The width in display columns of `c` when it starts at `column`: tabs go to the next tab stop, control characters take one (they are
+/// drawn as a dot), wide characters take two, combining marks none.
 pub fn char_width(c: char, column: usize, tab_width: usize) -> usize {
     match c {
         '\t' => {
             let tab = tab_width.max(1);
             tab - column % tab
         }
+        // The view draws a control character as a one-column dot.
+        c if c.is_control() => 1,
         _ => UnicodeWidthChar::width(c).unwrap_or(0),
     }
 }
@@ -252,6 +266,21 @@ mod tests {
     }
 
     #[test]
+    fn snapping_goes_to_the_start_of_the_cluster() {
+        let buf = b("ae\u{301}x\u{1F468}\u{200D}\u{1F469}");
+        assert_eq!(snap_to_cluster(&buf, 0), 0);
+        assert_eq!(snap_to_cluster(&buf, 1), 1);
+        assert_eq!(snap_to_cluster(&buf, 2), 1, "between the letter and its accent");
+        assert_eq!(snap_to_cluster(&buf, 4), 4, "already on a boundary");
+        assert_eq!(snap_to_cluster(&buf, 5), 5);
+        assert_eq!(snap_to_cluster(&buf, 9), 5, "inside the joined emoji");
+        assert_eq!(snap_to_cluster(&buf, buf.len()), buf.len(), "the end of the text stays the end");
+        assert_eq!(snap_to_cluster(&buf, 999), buf.len());
+        assert_eq!(snap_to_cluster(&b(""), 0), 0);
+        assert_eq!(snap_to_cluster(&b("a\r\nb"), 2), 1, "inside a CRLF");
+    }
+
+    #[test]
     fn clusters_at_the_edges_and_out_of_range() {
         let buf = b("é");
         assert_eq!(next_grapheme(&buf, 0), 2);
@@ -284,6 +313,24 @@ mod tests {
         let buf = b(&hostile);
         assert_eq!(next_grapheme(&buf, 0), 1, "falls back to one character at a time");
         assert!(prev_grapheme(&buf, buf.len()) < buf.len());
+    }
+
+    #[test]
+    fn widths_in_columns() {
+        assert_eq!((char_width('a', 0, 4), char_width('日', 0, 4), char_width('\u{301}', 3, 4)), (1, 2, 0));
+        assert_eq!((char_width('\t', 0, 4), char_width('\t', 3, 4), char_width('\t', 4, 4), char_width('\t', 1, 0)), (4, 1, 4, 1));
+        assert_eq!((char_width('\u{1}', 0, 4), char_width('\0', 0, 4), char_width('\u{7f}', 0, 4)), (1, 1, 1), "drawn as a dot");
+        let buf = b("\u{1}\tx");
+        assert_eq!(display_column(&buf, 1, 4), 1);
+        assert_eq!(display_column(&buf, 2, 4), 4, "the tab stops at column 4, one dot in");
+    }
+
+    #[test]
+    fn snapping_inside_a_long_cluster_goes_to_its_start() {
+        let long = format!("a{}b", "\u{301}".repeat(3000));
+        let buf = b(&long);
+        assert_eq!(snap_to_cluster(&buf, 1 + 2 * 1500), 0, "in the middle of the marks");
+        assert_eq!(snap_to_cluster(&buf, 1 + 2 * 3000), 1 + 2 * 3000, "the `b` after them is on a boundary");
     }
 
     #[test]
