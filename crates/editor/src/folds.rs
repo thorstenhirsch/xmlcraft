@@ -51,7 +51,7 @@ impl FoldMap {
                 continue;
             }
             lines.push(first..last + 1);
-            zones.push((start, end));
+            zones.push(zone_of_fold(buffer, fold));
         }
         lines.sort_by_key(|r| (r.start, r.end));
         zones.sort_unstable();
@@ -113,6 +113,15 @@ impl FoldMap {
         let at = self.zones.partition_point(|z| z.0 < offset);
         at.checked_sub(1).and_then(|i| self.zones.get(i)).copied().filter(|z| offset <= z.1)
     }
+}
+
+/// The positions a fold hides, as (start, end]: after the end of the line that stands for it up to the start of the line after the
+/// last one it hides, less one (so that is every position in the line break of the last hidden line too, also the one in the middle of
+/// a CRLF).
+fn zone_of_fold(buffer: &Buffer, fold: &Fold) -> (usize, usize) {
+    let (start, end) = (fold.hidden.start, fold.hidden.end);
+    let after = buffer.line_start(buffer.line_of(end) + 1).map_or(end, |next| next.saturating_sub(1));
+    (start, after.max(end))
 }
 
 /// Join the ranges that overlap or touch. `items` are sorted by start.
@@ -242,7 +251,11 @@ impl Editor {
         }
         let heads: Vec<usize> = self.carets.iter().map(|c| c.head()).collect();
         let before = self.folds.len();
-        self.folds.retain(|f| !heads.iter().any(|&h| f.hidden.start < h && h <= f.hidden.end));
+        let buffer = &self.buffer;
+        self.folds.retain(|f| {
+            let (start, end) = zone_of_fold(buffer, f);
+            !heads.iter().any(|&h| start < h && h <= end)
+        });
         if self.folds.len() != before {
             self.rebuild_fold_map();
         }
@@ -476,6 +489,22 @@ mod tests {
         assert_eq!(head(&e), 5);
         e.undo();
         assert_eq!((e.folds().len(), e.text().len(), head(&e)), (0, 23, 7));
+    }
+
+    #[test]
+    fn a_caret_in_the_line_break_after_the_last_hidden_line_is_in_the_fold() {
+        // Found by the model property test: between the CR and the LF that end the last hidden line is a hidden position too.
+        let mut e = Editor::new("a\r\nb\r\nc\r\nd");
+        e.fold_lines(0, 1); // line 1 (`b`) is hidden: bytes 1..=4, its break is 4..6
+        assert_eq!(e.folds()[0].hidden, 1..4);
+        e.set_selection(5, 5);
+        assert!(e.folds().is_empty(), "position 5 is between the CR and the LF of the break after `b`");
+        let mut e = Editor::new("a\r\nb\r\nc");
+        e.fold_lines(0, 1);
+        e.set_selection(6, 6);
+        assert_eq!(e.folds().len(), 1, "the start of the next line is visible");
+        e.move_carets(Motion::Left, false);
+        assert_eq!(head(&e), 1, "back from there is the end of the line that stands for the fold");
     }
 
     #[test]

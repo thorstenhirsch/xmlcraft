@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 9b5590df9bb01d1fafd144c9eb602f6f0317b8b35b9e14245ef413345610908a # shrinks to initial = "a=a", ops = [Move(11, false), Newline, Input("="), Type("<!--\t\ta日\ta\taxy日é\t\r\n-->xy-->é\r\n\r\n"), Fold(0, 3), Place(42, false)]
