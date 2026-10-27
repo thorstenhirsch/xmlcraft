@@ -481,9 +481,13 @@ fn fold_chevron(painter: &egui::Painter, center: Pos2, folded: bool, color: Colo
     painter.add(egui::Shape::line(points.to_vec(), Stroke::new(1.4, color)));
 }
 
-/// Up to this size the first look at a document measures every line in display columns; past it a line counts its bytes, which is
-/// the same for text without tabs and larger for wide characters (large-file mode, M1.15, replaces the estimate).
+/// Up to this size the first look at a document measures every line in display columns; past it, one pass over the text finds an upper
+/// bound (a line counts its bytes, a tab as its width), which is the same for text without tabs and larger for wide characters.
 const EXACT_COLUMNS_UP_TO: usize = 8 * 1024 * 1024;
+
+/// Up to this size the first look at a document finds how wide it is (one pass: 30 ms for 100 MB); past it the range grows as the lines
+/// the carets are on are seen.
+const WIDTH_SCAN_UP_TO: usize = 256 * 1024 * 1024;
 
 /// Make sure the horizontal scroll range covers the widest line, in display columns (a tab is up to `tab_width` of them). The first
 /// time (and after a reset) every line is looked at; after that only the lines in the editor's carets and the version are cheap to
@@ -491,14 +495,13 @@ const EXACT_COLUMNS_UP_TO: usize = 8 * 1024 * 1024;
 fn update_max_columns(editor: &Editor, view: &mut ViewState) {
     let buffer = editor.buffer();
     let tab = editor.settings().tab_width;
-    if view.max_columns_known_for.is_none() && buffer.len() <= 32 * 1024 * 1024 {
-        let exact = buffer.len() <= EXACT_COLUMNS_UP_TO;
-        let mut widest = 0;
-        for line in 0..buffer.line_count() {
-            if let Some(range) = buffer.line_range(line) {
-                widest = widest.max(if exact { display_column(buffer, range.end, tab) } else { range.len() });
-            }
-        }
+    if view.max_columns_known_for.is_none() && buffer.len() <= WIDTH_SCAN_UP_TO {
+        let widest = if buffer.len() <= EXACT_COLUMNS_UP_TO {
+            (0..buffer.line_count()).filter_map(|line| buffer.line_range(line)).map(|range| display_column(buffer, range.end, tab)).max().unwrap_or(0)
+        } else {
+            // One pass over the text, not a question for each of millions of lines: bytes, with a tab counted as its width.
+            buffer.widest_line(tab)
+        };
         view.max_columns = view.max_columns.max(widest);
     }
     if view.max_columns_known_for != Some(editor.version()) {

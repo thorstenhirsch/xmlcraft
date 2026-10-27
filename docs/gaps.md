@@ -1,6 +1,6 @@
 # Where XmlCraft falls short of XMLSpy
 
-> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** gap 18 (colouring far into a very large document) · **Target:** Altova XMLSpy 2026 (public documentation)
+> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** gap 1 reworded, gap 18 narrowed (large-file colouring, M1.15) · **Target:** Altova XMLSpy 2026 (public documentation)
 
 The ranked gaps. Prefer fixing these over adding new features. Every gap states what is missing, why it matters and how it will be measured. At 0.0.1 the application does not exist yet, so the first entries are simply "the MVP".
 
@@ -8,7 +8,7 @@ The ranked gaps. Prefer fixing these over adding new features. Every gap states 
 
 | # | Gap | Priority | Closes with |
 |---|---|---|---|
-| 1 | The editor lacks find/replace, folding, matching tags, XML typing aids, formatting, recent files, autosave recovery and file watching (open, edit, colour, save and undo exist) | P0 | M1 |
+| 1 | The editor lacks recent files, autosave recovery, file watching, column selection, tag-rename sync and name completion (open, edit, colour, save, undo, find/replace, folding, matching tags, typing aids, comment toggle, selection expansion and formatting exist) | P0 | M1 |
 | 2 | No DTD or catalog support, no offline standard schemas | P0 | M2 |
 | 3 | No XSD engine, so no schema validation | P0 | M3 |
 | 4 | No schema inference or sample generation | P0 | M4 |
@@ -25,7 +25,7 @@ The ranked gaps. Prefer fixing these over adding new features. Every gap states 
 | 15 | No log file, only standard error | P2 | M1 |
 | 16 | 359 of 1017 not-well-formed xmlconf tests are accepted (DTD declaration syntax and entity rules) | P0 | M2.3, M2.6, M2.8 |
 | 17 | The analysis is whole-document and per edit: results can be a little behind the text, underlines are clamped (not shifted) through later edits, and a document over 32 MB is not analysed | P1 | M1.15 |
-| 18 | The first look at a far place in a very large document colours its lines from the start of the text: 1.2 s for 100 MB (target 16 ms) | P1 | M1.15 |
+| 18 | Colour at a far place in a text over 1 MiB is an estimate: a construct (comment, CDATA section, tag, …) that opens more than 256 KiB before it is coloured as content until it ends | P2 | M1.15 |
 
 ## The gaps
 
@@ -37,7 +37,7 @@ The ranked gaps. Prefer fixing these over adding new features. Every gap states 
 
 **17. Incremental analysis.** Every edit asks for a full parse of the text on a worker thread (only the newest request per document is kept). Until the answer arrives the window shows the previous result, and its underlines are clamped to the text rather than moved through the edits made since, so a squiggle can sit beside the wrong word for a moment. A document over 32 MB is not analysed at all. Large-file mode and an incremental reparse (M1.15, driven by `cargo xtask bench`) close it; measured by the keystroke-to-paint and reparse targets in `docs/target-app-parity.md`.
 
-**18. Colouring far into a very large document.** The colour of a line depends on where the lexer is at its start (inside a comment, a tag, a value), which is known only by reading everything before it. The first jump to the end of a 100 MB document reads it all: `cargo xtask bench` measures 1.2 s against the target of 16 ms (later jumps cost 0.05 ms at the 95th percentile, as `scroll_100mb_far` reports: the lexer's state at the start of every line it has read is kept). Large-file mode (M1.15) starts from a guess for a far place and corrects it when the real answer arrives, as the plan has it. The scenario `scroll_100mb_far` holds the number: its budget (1800 ms) is lowered as it improves.
+**18. Colouring far into a very large document.** The colour of a line depends on where the lexer is at its start (inside a comment, a tag, a value), which is known only by reading everything before it; the first jump to the end of a 100 MB document used to read it all (1.2 s against the target of 16 ms). Above 1 MiB the highlighter now starts a far place from a guess: it runs the lexer over the 256 KiB before the line (counted in bytes, from the first line that starts inside that, so a very long line cannot widen it), from the state of content. That finds everything the lexer knows that begins in the window: a comment, a CDATA section, a processing instruction, a tag, an attribute value or a declaration that goes over lines, and what a comment inside a DOCTYPE returns to. For a text that fits the window it is exact (property test `estimating_in_a_text_that_fits_the_window_is_exact_whatever_goes_over_lines`). What is left: a construct that began before the window and has not ended (a comment or CDATA section of more than 256 KiB, say) is not seen, and the lines in it are coloured as content until it ends, and then they are right again. The first jump is 0.9 ms for 100 MB (`scroll_100mb_far`, budget 16 ms). The other half of large-file mode is not done: the outline and the validation of a document over 32 MB are not streamed (gap 17), and the view finds the width of a document for its horizontal scroll in one pass up to 256 MB (45 ms for 100 MB, `widest_line_100mb`) and by the lines the carets visit beyond that.
 
 Details are added here as each gap is worked, including known approximations (for example in XSD particle restriction) and the test that measures them. Nothing may be marked closed here without a cited test.
 
@@ -47,3 +47,4 @@ Details are added here as each gap is worked, including known approximations (fo
 - 2026-10-27: gap 16 added with the first xmlconf numbers (M1.5); the M1 exit criterion for not-well-formed tests now covers only what needs no DTD.
 - 2026-10-27: gap 17 added with M1.13 (analysis is whole-document and may lag the text).
 - 2026-10-27: gap 18 added with `cargo xtask bench` (colouring far into a very large document takes 1.2 s for 100 MB).
+- 2026-10-27: gap 1 reworded (find/replace, folding, matching tags, typing aids and formatting have shipped); gap 18 narrowed to the estimate's rare wrong colour after the far-jump start (M1.15).
