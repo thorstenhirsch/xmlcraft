@@ -56,8 +56,15 @@ fn main() -> Result<(), String> {
         if let Some(theme) = theme {
             app.theme_preference = theme;
         }
-        app.tabs = tabs.clone();
-        app.active = active.filter(|i| *i < app.tabs.len());
+        for tab in &tabs {
+            if app.session.open(Some(std::path::PathBuf::from(&tab.name)), b"", None).is_ok()
+                && tab.dirty
+                && let Some(doc) = app.session.active_document_mut()
+            {
+                doc.editor_mut().type_text(" ");
+            }
+        }
+        app.session.set_active(active.filter(|i| *i < tabs.len()));
         app
     });
     // Let fonts install and layout settle; hover and press washes ease for a moment.

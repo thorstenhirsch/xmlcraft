@@ -66,8 +66,10 @@ fn clicking_by_label_does_what_the_user_would() {
     assert_eq!(r["label"], "Display theme: Use system setting");
     h.run_steps(2);
     assert_eq!(h.state().theme_preference, ThemePreference::Light);
-    // A disabled widget cannot be clicked, and an agent is told why.
-    let err = ask(&mut h, &c, "ui.click", json!({"label": "Open"})).expect_err("disabled");
+    // A disabled widget cannot be clicked, and an agent is told why: Save in the open menu, with no document to save.
+    ask(&mut h, &c, "ui.click", json!({"label": "Menu"})).expect("opens the menu");
+    h.run_steps(3);
+    let err = ask(&mut h, &c, "ui.click", json!({"label": "Save"})).expect_err("disabled");
     assert!(err.contains("no enabled clickable widget"), "{err}");
     let err = ask(&mut h, &c, "ui.click", json!({"label": "Nothing like this"})).expect_err("missing");
     assert!(err.contains("ui.inspect"), "{err}");
@@ -129,10 +131,11 @@ fn typing_and_keys_reach_the_focused_widget() {
 #[test]
 fn quitting_asks_first_when_something_would_be_lost() {
     let (mut h, c) = shell();
-    h.state_mut().tabs = vec![xmlcraft_ui_egui::TabInfo { name: "a.xml".into(), dirty: true }];
+    h.state_mut().session.open(Some("/x/a.xml".into()), b"<a/>", None).expect("opens");
+    h.state_mut().session.active_document_mut().expect("shown").editor_mut().type_text("x");
     let r = ask(&mut h, &c, "ui.quit", json!({})).expect("answers");
     assert_eq!(r, json!({"quitting": false, "needs_confirmation": true}), "an agent cannot discard unsaved work by quitting");
-    h.state_mut().tabs.clear();
+    h.state_mut().session.close(0);
     let r = ask(&mut h, &c, "ui.quit", json!({})).expect("answers");
     assert_eq!(r, json!({"quitting": true, "needs_confirmation": false}));
 }

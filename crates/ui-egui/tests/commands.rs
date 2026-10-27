@@ -116,7 +116,29 @@ fn every_shortcut_in_the_registry_is_wired_to_a_command_that_runs() {
     // A command with a shortcut must be one the frontend implements, or the shortcut would silently do nothing.
     let mut h = shell();
     for c in COMMANDS.iter().filter(|c| c.shortcut.is_some() && c.id != "file.quit") {
+        // Whatever the command needs: a document, something to undo, something to redo. File pickers are answered with a cancel.
+        if h.state().session.documents().is_empty() {
+            h.state_mut().session.new_document();
+        }
+        let doc = h.state_mut().session.active_document_mut().expect("a document is shown");
+        match c.id {
+            "edit.undo" => {
+                doc.editor_mut().type_text("x");
+            }
+            "edit.redo" => {
+                doc.editor_mut().type_text("x");
+                doc.editor_mut().undo();
+            }
+            _ => {}
+        }
+        h.state_mut().pick_override = Some(Vec::new());
         assert!(h.state_mut().execute(c.id), "{} has a shortcut but the frontend does not run it", c.id);
         h.state_mut().palette_open = false;
+        h.run_steps(3);
+        // Answer a question the command may have asked (closing a document with changes, say) with the safe choice.
+        if h.query_by_label("Cancel").is_some() {
+            h.get_by_label("Cancel").click();
+            h.run_steps(2);
+        }
     }
 }

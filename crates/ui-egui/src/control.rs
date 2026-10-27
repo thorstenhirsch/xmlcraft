@@ -166,6 +166,10 @@ pub(crate) trait Host {
     fn commands(&self) -> Value;
     /// Quit if nothing would be lost; false when the user must confirm first.
     fn quit(&mut self) -> bool;
+    /// Open the file at `path` in a new tab.
+    fn open(&mut self, path: &str) -> Reply;
+    /// The text of the open document at `index` (the one being shown when `None`).
+    fn document_text(&self, index: Option<usize>) -> Reply;
 }
 
 enum Handled {
@@ -272,6 +276,16 @@ impl Control {
                 Ok(Handled::Now(Ok(state)))
             }
             "ui.commands" => Ok(Handled::Now(Ok(host.commands()))),
+            "ui.open" => {
+                only_params(p, method, &["path"])?;
+                let opened = host.open(str_param("path")?)?;
+                Ok(Handled::AfterFrames(2, opened))
+            }
+            "ui.document_text" => {
+                only_params(p, method, &["index"])?;
+                let index = p.get("index").and_then(Value::as_u64).map(|i| i as usize);
+                Ok(Handled::Now(host.document_text(index)))
+            }
             "ui.command" => {
                 only_params(p, method, &["id"])?;
                 Ok(Handled::Now(host.command(str_param("id")?)))
@@ -600,8 +614,25 @@ impl Host for crate::XmlCraftApp {
             "version": crate::VERSION,
             "theme_preference": format!("{:?}", self.theme_preference).to_lowercase(),
             "theme": self.applied_theme().map(|k| format!("{k:?}").to_lowercase()),
-            "tabs": self.tabs.iter().map(|t| json!({ "name": t.name, "dirty": t.dirty })).collect::<Vec<_>>(),
-            "active": self.active,
+            "tabs": self.tabs().iter().map(|t| json!({ "name": t.name, "dirty": t.dirty })).collect::<Vec<_>>(),
+            "active": self.active(),
+            "documents": self.session.documents().iter().map(|d| {
+                let head = d.editor().primary().head();
+                let pos = d.editor().buffer().position(head);
+                json!({
+                    "name": d.name(),
+                    "path": d.path().map(|p| p.display().to_string()),
+                    "dirty": d.is_dirty(),
+                    "lossy": d.is_lossy(),
+                    "encoding": d.encoding().encoding.name(),
+                    "bom": d.encoding().bom,
+                    "bytes": d.editor().buffer().len(),
+                    "lines": d.editor().buffer().line_count(),
+                    "caret": { "line": pos.line + 1, "column": pos.col + 1 },
+                    "selected": d.editor().has_selection(),
+                })
+            }).collect::<Vec<_>>(),
+            "dialog": self.dialog.as_ref().map(|d| format!("{d:?}").split([' ', '{']).next().unwrap_or("").to_lowercase()),
             "mode": format!("{:?}", self.mode).to_lowercase(),
             "panes": { "outline": self.left_open, "entry_helpers": self.right.is_some(), "messages": self.bottom_open },
             "palette": { "open": self.palette_open, "query": self.palette_query },
@@ -639,6 +670,25 @@ impl Host for crate::XmlCraftApp {
     fn quit(&mut self) -> bool {
         // A document with unsaved changes needs the user's decision, so an agent can never discard work by asking to quit.
         !self.has_unsaved_changes()
+    }
+
+    fn open(&mut self, path: &str) -> Reply {
+        if self.open_path(std::path::Path::new(path)) {
+            Ok(json!({ "opened": path, "active": self.active() }))
+        } else {
+            Err(format!("could not open {path}: {}", self.status))
+        }
+    }
+
+    fn document_text(&self, index: Option<usize>) -> Reply {
+        let doc = match index {
+            Some(i) => self.session.document(i),
+            None => self.session.active_document(),
+        };
+        match doc {
+            Some(doc) => Ok(json!({ "name": doc.name(), "text": doc.editor().text() })),
+            None => Err("no such document".to_owned()),
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 Button "Home" [toggled=true]
-Button "Open" [disabled]
+Button "New"
+Button "Open"
 Button "Display theme: Light" [toggled=false]
 Button "Menu"
 Button "Text" [toggled=true]

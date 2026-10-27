@@ -1,52 +1,12 @@
 //! Files: read, write atomically, and notice outside changes.
 
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
-
-use xmlcraft_engine::{FileStamp, MAX_OPEN_BYTES};
+use xmlcraft_engine::FileStamp;
 
 /// A file's bytes and what it looked like when they were read.
 #[derive(Debug)]
 pub struct Loaded {
     pub bytes: Vec<u8>,
     pub stamp: FileStamp,
-}
-
-/// What a file looks like now.
-pub fn stamp_of(path: &Path) -> io::Result<FileStamp> {
-    let meta = fs::metadata(path)?;
-    Ok(FileStamp { len: meta.len(), modified: meta.modified().ok() })
-}
-
-/// Read a file. One larger than [`MAX_OPEN_BYTES`] is refused before any of it is read.
-pub fn read_file(path: &Path) -> io::Result<Loaded> {
-    let stamp = stamp_of(path)?;
-    if stamp.len > MAX_OPEN_BYTES as u64 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("the file is {} bytes, more than the {MAX_OPEN_BYTES} bytes XmlCraft opens", stamp.len),
-        ));
-    }
-    let bytes = fs::read(path)?;
-    // The file may have changed between the two looks; the stamp of the bytes read is the one that matters.
-    let stamp = stamp_of(path).unwrap_or(stamp);
-    Ok(Loaded { bytes, stamp })
-}
-
-/// The path a write should go to: a symbolic link is followed, so that saving replaces the file it points to and keeps the link.
-fn write_target(path: &Path) -> PathBuf {
-    match fs::symlink_metadata(path) {
-        Ok(meta) if meta.file_type().is_symlink() => fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf()),
-        _ => path.to_path_buf(),
-    }
-}
-
-/// Write a file atomically: the old bytes stay whole until the new ones are complete and on disk, and a failure leaves the old file as
-/// it was. Returns the stamp of the new file.
-pub fn write_file(path: &Path, bytes: &[u8]) -> io::Result<FileStamp> {
-    craft_atomic::atomic_write(&write_target(path), bytes)?;
-    stamp_of(path)
 }
 
 /// How a file compares with the stamp taken when it was read or written.
@@ -59,17 +19,100 @@ pub enum DiskChange {
     Missing,
 }
 
-pub fn changed_on_disk(path: &Path, stamp: &FileStamp) -> DiskChange {
-    match stamp_of(path) {
-        Ok(now) if now == *stamp => DiskChange::Unchanged,
-        Ok(_) => DiskChange::Modified,
-        Err(_) => DiskChange::Missing,
+pub use imp::{changed_on_disk, read_file, stamp_of, write_file};
+
+#[cfg(not(target_arch = "wasm32"))]
+mod imp {
+    use std::fs;
+    use std::io;
+    use std::path::{Path, PathBuf};
+
+    use xmlcraft_engine::{FileStamp, MAX_OPEN_BYTES};
+
+    use super::{DiskChange, Loaded};
+
+    /// What a file looks like now.
+    pub fn stamp_of(path: &Path) -> io::Result<FileStamp> {
+        let meta = fs::metadata(path)?;
+        Ok(FileStamp { len: meta.len(), modified: meta.modified().ok() })
+    }
+
+    /// Read a file. One larger than [`MAX_OPEN_BYTES`] is refused before any of it is read.
+    pub fn read_file(path: &Path) -> io::Result<Loaded> {
+        let stamp = stamp_of(path)?;
+        if stamp.len > MAX_OPEN_BYTES as u64 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("the file is {} bytes, more than the {MAX_OPEN_BYTES} bytes XmlCraft opens", stamp.len),
+            ));
+        }
+        let bytes = fs::read(path)?;
+        // The file may have changed between the two looks; the stamp of the bytes read is the one that matters.
+        let stamp = stamp_of(path).unwrap_or(stamp);
+        Ok(Loaded { bytes, stamp })
+    }
+
+    /// The path a write should go to: a symbolic link is followed, so that saving replaces the file it points to and keeps the link.
+    fn write_target(path: &Path) -> PathBuf {
+        match fs::symlink_metadata(path) {
+            Ok(meta) if meta.file_type().is_symlink() => fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf()),
+            _ => path.to_path_buf(),
+        }
+    }
+
+    /// Write a file atomically: the old bytes stay whole until the new ones are complete and on disk, and a failure leaves the old file as
+    /// it was. Returns the stamp of the new file.
+    pub fn write_file(path: &Path, bytes: &[u8]) -> io::Result<FileStamp> {
+        craft_atomic::atomic_write(&write_target(path), bytes)?;
+        stamp_of(path)
+    }
+
+    pub fn changed_on_disk(path: &Path, stamp: &FileStamp) -> DiskChange {
+        match stamp_of(path) {
+            Ok(now) if now == *stamp => DiskChange::Unchanged,
+            Ok(_) => DiskChange::Modified,
+            Err(_) => DiskChange::Missing,
+        }
     }
 }
 
-#[cfg(test)]
+/// On the web there are no files to open by path: every function says so.
+#[cfg(target_arch = "wasm32")]
+mod imp {
+    use std::io;
+    use std::path::Path;
+
+    use xmlcraft_engine::FileStamp;
+
+    use super::{DiskChange, Loaded};
+
+    fn unsupported<T>() -> io::Result<T> {
+        Err(io::Error::from(io::ErrorKind::Unsupported))
+    }
+
+    pub fn stamp_of(_path: &Path) -> io::Result<FileStamp> {
+        unsupported()
+    }
+
+    pub fn read_file(_path: &Path) -> io::Result<Loaded> {
+        unsupported()
+    }
+
+    pub fn write_file(_path: &Path, _bytes: &[u8]) -> io::Result<FileStamp> {
+        unsupported()
+    }
+
+    pub fn changed_on_disk(_path: &Path, _stamp: &FileStamp) -> DiskChange {
+        DiskChange::Missing
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::io;
+    use xmlcraft_engine::MAX_OPEN_BYTES;
 
     #[test]
     fn a_file_round_trips_and_its_stamp_follows() {

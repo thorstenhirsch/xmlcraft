@@ -39,7 +39,7 @@ Environment:
   XMLCRAFT_RENDERER=wgpu|gl   Choose the renderer (default: wgpu, then OpenGL if wgpu cannot start)
   RUST_LOG=...                Log filter, e.g. `debug` or `warn,xmlcraft_syntax=trace`
 
-Opening files from the command line arrives with the editor (milestone M1).";
+Files named on the command line are opened, each in its own tab.";
 
 fn main() -> eframe::Result {
     // First, so the panic hook and every start-up warning are recorded.
@@ -75,14 +75,11 @@ fn main() -> eframe::Result {
             _ => files.push(arg),
         }
     }
-    if !files.is_empty() {
-        log::warn!("opening files from the command line is not implemented yet; ignoring {} file(s)", files.len());
-    }
     let choice = renderer_choice(std::env::var("XMLCRAFT_RENDERER").ok().as_deref());
     // Set once the app is created, which is after the renderer has started.
     let started = Rc::new(Cell::new(false));
     let first = if choice == RendererChoice::Gl { eframe::Renderer::Glow } else { eframe::Renderer::Wgpu };
-    let result = eframe::run_native(APP_NAME, native_options(first), app_creator(Rc::clone(&started), control.clone()));
+    let result = eframe::run_native(APP_NAME, native_options(first), app_creator(Rc::clone(&started), control.clone(), files.clone()));
     let result = match result {
         // Only a renderer that couldn't start: without a window or display at all, OpenGL can't help either, and winit's own
         // error says more.
@@ -90,7 +87,7 @@ fn main() -> eframe::Result {
             // Old or unusual GPUs and drivers can't give wgpu a device; OpenGL usually still works there, so that's better than
             // quitting.
             log::error!("the GPU renderer (wgpu) didn't start: {e}. Starting with OpenGL instead; set XMLCRAFT_RENDERER=gl to skip wgpu.");
-            eframe::run_native(APP_NAME, native_options(eframe::Renderer::Glow), app_creator(started, control.clone()))
+            eframe::run_native(APP_NAME, native_options(eframe::Renderer::Glow), app_creator(started, control.clone(), files))
         }
         other => other,
     };
@@ -159,7 +156,7 @@ fn native_options(renderer: eframe::Renderer) -> eframe::NativeOptions {
     eframe::NativeOptions { viewport, renderer, ..Default::default() }
 }
 
-fn app_creator<'a>(started: Rc<Cell<bool>>, control: Option<PathBuf>) -> eframe::AppCreator<'a> {
+fn app_creator<'a>(started: Rc<Cell<bool>>, control: Option<PathBuf>, files: Vec<String>) -> eframe::AppCreator<'a> {
     Box::new(move |cc| {
         started.set(true);
         // winit's Quit (⌘Q) ends the process without asking about unsaved changes. This menu's Quit closes the window instead, so
@@ -169,6 +166,9 @@ fn app_creator<'a>(started: Rc<Cell<bool>>, control: Option<PathBuf>) -> eframe:
             log::warn!("couldn't install the app menu, so ⌘Q quits without asking to save: {e}");
         }
         let mut app = XmlCraftApp::new(cc);
+        for file in &files {
+            app.open_path(Path::new(file));
+        }
         if let Some(file) = &control {
             open_control_channel(&mut app, &cc.egui_ctx, file)?;
             app.set_control_file(file.clone());

@@ -138,6 +138,12 @@ impl Document {
         self.stamp.as_ref()
     }
 
+    /// Remember the file as it is on disk now, without reading it or touching the text: the user chose to keep their version, so the
+    /// change that was noticed is not asked about again.
+    pub fn set_stamp(&mut self, stamp: Option<FileStamp>) {
+        self.stamp = stamp;
+    }
+
     /// The line endings in the text now.
     pub fn line_endings(&self) -> LineEndings {
         LineEndings::count_chunks(self.editor.buffer().chunks())
@@ -332,6 +338,17 @@ mod tests {
         let big = vec![b'a'; MAX_OPEN_BYTES + 1];
         let result = Document::from_bytes(1, None, &big, None);
         assert!(matches!(result, Err(OpenError::TooLarge { .. })));
+    }
+
+    #[test]
+    fn keeping_ones_version_remembers_the_stamp_and_changes_nothing_else() {
+        let mut d = open(b"<a/>");
+        d.editor_mut().type_text("x");
+        let stamp = FileStamp { len: 9, modified: None };
+        d.set_stamp(Some(stamp));
+        assert_eq!(d.stamp(), Some(&stamp));
+        assert!(d.is_dirty(), "the text is still not saved");
+        assert_eq!(d.editor().text(), "x<a/>");
     }
 
     #[test]

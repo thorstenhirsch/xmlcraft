@@ -1,6 +1,6 @@
 # Where XmlCraft falls short of XMLSpy
 
-> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** gap 16 (xmlconf not-well-formed failures) · **Target:** Altova XMLSpy 2026 (public documentation)
+> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** gap 1 narrowed after M1.12; gap 16 (xmlconf not-well-formed failures) · **Target:** Altova XMLSpy 2026 (public documentation)
 
 The ranked gaps. Prefer fixing these over adding new features. Every gap states what is missing, why it matters and how it will be measured. At 0.0.1 the application does not exist yet, so the first entries are simply "the MVP".
 
@@ -8,7 +8,7 @@ The ranked gaps. Prefer fixing these over adding new features. Every gap states 
 
 | # | Gap | Priority | Closes with |
 |---|---|---|---|
-| 1 | No editor: nothing can be opened, edited or saved | P0 | M1 |
+| 1 | The editor lacks find/replace, folding, matching tags, XML typing aids, formatting, recent files, autosave recovery and file watching (open, edit, colour, save and undo exist) | P0 | M1 |
 | 2 | No DTD or catalog support, no offline standard schemas | P0 | M2 |
 | 3 | No XSD engine, so no schema validation | P0 | M3 |
 | 4 | No schema inference or sample generation | P0 | M4 |

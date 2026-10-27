@@ -132,6 +132,12 @@ impl CommandSpec {
         self
     }
 
+    /// The shortcut belongs to the focused text field while one has the focus (the editor does Undo, Redo and Select All itself).
+    const fn not_in_text(mut self) -> Self {
+        self.in_text = false;
+        self
+    }
+
     const fn sep(mut self) -> Self {
         self.separator_before = true;
         self
@@ -141,6 +147,7 @@ impl CommandSpec {
 use Needs::Nothing;
 
 const FILE: Option<&str> = Some("File");
+const EDIT: Option<&str> = Some("Edit");
 const VIEW: Option<&str> = Some("View");
 
 /// The top-level menus, in order.
@@ -148,7 +155,16 @@ pub const MENUS: &[&str] = &["File", "Edit", "View", "Help"];
 
 /// Every command, in menu order.
 pub const COMMANDS: &[CommandSpec] = &[
+    c("file.new", "New", FILE, Some(Shortcut::cmd("N")), Nothing, "file-plus"),
+    c("file.open", "Open…", FILE, Some(Shortcut::cmd("O")), Nothing, "folder-open"),
+    c("file.save", "Save", FILE, Some(Shortcut::cmd("S")), Needs::Document, "save").sep(),
+    c("file.save_as", "Save As…", FILE, Some(Shortcut::cmd_shift("S")), Needs::Document, "save"),
+    c("file.revert", "Revert", FILE, None, Needs::Document, "file-text"),
+    c("file.close", "Close", FILE, Some(Shortcut::cmd("W")), Needs::Document, "x").sep(),
     c("file.quit", "Quit", FILE, Some(Shortcut::cmd("Q")), Nothing, "x"),
+    c("edit.undo", "Undo", EDIT, Some(Shortcut::cmd("Z")), Needs::Undo, "undo-2").not_in_text(),
+    c("edit.redo", "Redo", EDIT, Some(Shortcut::cmd_shift("Z")), Needs::Redo, "redo-2").not_in_text(),
+    c("edit.select_all", "Select All", EDIT, Some(Shortcut::cmd("A")), Needs::Document, "align-left").sep().not_in_text(),
     c("view.palette", "Find tools and commands…", VIEW, Some(Shortcut::cmd("K")), Nothing, "search"),
     c("view.outline", "Outline", VIEW, None, Nothing, "list-tree").toggle().sep(),
     c("view.entry_helpers", "Entry Helpers", VIEW, None, Nothing, "braces").toggle(),
@@ -232,7 +248,11 @@ mod tests {
         let view: Vec<&str> = in_menu("View").map(|c| c.id).collect();
         assert_eq!(view.first(), Some(&"view.palette"));
         assert!(view.contains(&"view.theme.dark"));
-        assert_eq!(in_menu("File").map(|c| c.id).collect::<Vec<_>>(), ["file.quit"]);
+        assert_eq!(
+            in_menu("File").map(|c| c.id).collect::<Vec<_>>(),
+            ["file.new", "file.open", "file.save", "file.save_as", "file.revert", "file.close", "file.quit"]
+        );
+        assert_eq!(in_menu("Edit").map(|c| c.id).collect::<Vec<_>>(), ["edit.undo", "edit.redo", "edit.select_all"]);
         assert_eq!(in_menu("Nope").count(), 0);
     }
 

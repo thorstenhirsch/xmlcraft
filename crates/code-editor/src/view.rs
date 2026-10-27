@@ -93,7 +93,8 @@ impl ViewState {
         Self::default()
     }
 
-    /// Forget everything about the text (after loading another file).
+    /// Forget everything about the text (after loading another file). Also call it if the host changes the fonts: laid-out lines belong
+    /// to the fonts they were laid out with.
     pub fn reset(&mut self) {
         self.cache.clear();
         self.max_columns = 0;
@@ -532,6 +533,9 @@ fn handle_pointer(
 fn handle_events(ui: &mut Ui, editor: &mut Editor, view: &mut ViewState, mac: bool, read_only: bool, page: usize, now: f64) {
     let events = ui.input(|i| i.events.clone());
     for event in events {
+        if matches!(event, Event::Text(_) | Event::Paste(_) | Event::Cut | Event::Ime(_) | Event::Key { pressed: true, .. }) {
+            log::debug!("editor input: {event:?}");
+        }
         match event {
             Event::Text(text) if !read_only => {
                 let text: String = text.chars().filter(|c| !c.is_control()).collect();
