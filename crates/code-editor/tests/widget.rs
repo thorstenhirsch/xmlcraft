@@ -479,3 +479,35 @@ fn a_styler_attached_again_hears_what_changed_while_it_was_away() {
     h.run_steps(3);
     assert_eq!(h.state().recorder.changed, vec![1], "the edit made while it was detached");
 }
+
+#[test]
+fn dragging_with_alt_selects_a_rectangle_and_typing_edits_every_line_of_it() {
+    let mut h = harness("abcdef\nab\n\nabcdefgh\nabcdefgh");
+    let g = h.state().view.geometry().expect("drawn");
+    let mid = |row: usize, column: usize| g.point(row, column) + egui::vec2(0.0, g.row_height / 2.0);
+    let (from, to) = (mid(0, 1), mid(3, 3));
+    h.hover_at(from);
+    h.event(Event::ModifiersChanged(Modifiers::ALT));
+    h.event(Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::ALT });
+    h.run_steps(1);
+    h.event(Event::PointerMoved(mid(2, 2)));
+    h.run_steps(2);
+    h.event(Event::PointerMoved(to));
+    h.run_steps(2);
+    // Four lines, each from column 1 to column 3 (the short ones as far as they go).
+    assert_eq!(carets(&h), vec![(1, 3), (8, 9), (10, 10), (12, 14)]);
+    h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::ALT });
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    h.run_steps(2);
+    h.get_by_label("XML editor").type_text("X");
+    h.run_steps(2);
+    assert_eq!(h.state().editor.text(), "aXdef\naX\nX\naXdefgh\nabcdefgh");
+    // A drag without Alt is the stream selection again.
+    h.event(Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    h.event(Event::PointerMoved(to));
+    h.run_steps(2);
+    h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(2);
+    assert_eq!(h.state().editor.carets().len(), 1);
+}

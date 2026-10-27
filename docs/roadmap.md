@@ -51,3 +51,4 @@ Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is 
 - 2026-10-27: M1.10b: toggle comment (⌘/) and expand/shrink selection (⌥⌘→ and ⌥⌘←).
 - 2026-10-27: M1.15: `cargo xtask bench` and colouring far into a 100 MB document from an estimate (1.2 s → 0.9 ms); streaming outline and validation above 32 MB still to do.
 - 2026-10-27: M1.10c: typing in a tag name renames the element's other tag too.
+- 2026-10-27: M1.8: column selection (Alt-drag, `doc_select` with `columns`).
