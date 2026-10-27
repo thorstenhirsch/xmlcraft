@@ -4738,6 +4738,7 @@ dependencies = [
  "regex",
  "unicode-segmentation",
  "unicode-width",
+ "xmlcraft-syntax",
  "xmlcraft-text",
 ]
 

@@ -95,6 +95,32 @@ fn typing_inserts_text_at_the_caret() {
 }
 
 #[test]
+fn a_quote_typed_in_a_tag_is_paired_but_what_an_input_method_commits_is_not() {
+    let mut h = harness("");
+    h.get_by_label("XML editor").type_text("<a b=");
+    h.get_by_label("XML editor").type_text("\"");
+    h.run_steps(2);
+    assert_eq!((text(&h).as_str(), carets(&h)), ("<a b=\"\"", vec![(6, 6)]), "the pair, the caret between");
+    h.get_by_label("XML editor").type_text("x");
+    h.get_by_label("XML editor").type_text("\"");
+    h.run_steps(2);
+    assert_eq!((text(&h).as_str(), carets(&h)), ("<a b=\"x\"", vec![(8, 8)]), "the closing quote is stepped over");
+    // Backspace between the two quotes of an empty value takes both.
+    let mut h = harness("");
+    h.get_by_label("XML editor").type_text("<a b=\"");
+    h.key_press(Key::Backspace);
+    h.run_steps(2);
+    assert_eq!(text(&h), "<a b=");
+    // A quote committed by an input method is text, and so is a paste.
+    h.event(Event::Ime(ImeEvent::Commit("\"".to_owned())));
+    h.run_steps(2);
+    assert_eq!(text(&h), "<a b=\"");
+    h.event(Event::Paste("'".to_owned()));
+    h.run_steps(2);
+    assert_eq!(text(&h), "<a b=\"'");
+}
+
+#[test]
 fn keys_move_select_and_delete() {
     let mut h = harness("one two\nthree");
     h.key_press(Key::ArrowRight);

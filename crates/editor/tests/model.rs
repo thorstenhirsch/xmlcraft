@@ -6,7 +6,8 @@ use xmlcraft_editor::{Editor, Motion};
 use xmlcraft_text::Selection;
 
 /// Pieces of text: ASCII, line breaks of both kinds, tabs, multi-byte characters, a combining mark, an emoji.
-const PIECES: &[&str] = &["a", "b", "xy", " ", "  ", "\n", "\r\n", "\t", "<", "/>", "\"", "é", "日", "😀", "e\u{301}", "-", "."];
+const PIECES: &[&str] =
+    &["a", "b", "xy", " ", "  ", "\n", "\r\n", "\t", "<", "/>", "\"", "é", "日", "😀", "e\u{301}", "-", ".", "=", "'", "<a ", ">", "<!--", "-->"];
 
 fn text() -> impl Strategy<Value = String> {
     proptest::collection::vec(proptest::sample::select(PIECES), 0..30).prop_map(|v| v.concat())
@@ -19,6 +20,8 @@ fn ascii_text() -> impl Strategy<Value = String> {
 #[derive(Clone, Debug)]
 enum Op {
     Type(String),
+    /// Typing on the keyboard: with the aids.
+    Input(String),
     Paste(String),
     Backspace,
     Delete,
@@ -56,6 +59,7 @@ const MOTIONS: &[Motion] = &[
 fn op() -> impl Strategy<Value = Op> {
     prop_oneof![
         3 => text().prop_map(Op::Type),
+        3 => proptest::collection::vec(proptest::sample::select(&["=", "\"", "'", "a", " ", ">", "<", "\n", "é"][..]), 1..3).prop_map(|v| Op::Input(v.concat())),
         1 => text().prop_map(Op::Paste),
         2 => Just(Op::Backspace),
         1 => Just(Op::Delete),
@@ -79,6 +83,7 @@ fn op() -> impl Strategy<Value = Op> {
 fn apply(e: &mut Editor, op: &Op) {
     match op {
         Op::Type(t) => drop(e.type_text(t)),
+        Op::Input(t) => drop(e.type_input(t)),
         Op::Paste(t) => drop(e.paste(t)),
         Op::Backspace => drop(e.backspace()),
         Op::Delete => drop(e.delete_forward()),

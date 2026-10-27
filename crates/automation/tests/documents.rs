@@ -338,6 +338,37 @@ fn finding_in_a_file_says_when_it_was_not_read_exactly_and_when_a_match_is_cut()
 }
 
 #[test]
+fn typing_and_keys_work_as_the_keyboard_does() {
+    let mut a = Automation::new();
+    let id = ok(&mut a, "doc_new", json!({ "text": "<a b=/>" }))["id"].as_u64().expect("id");
+    // A quote after `=` is paired and the closing quote stepped over: the value is typed as it would be by hand.
+    let typed = ok(&mut a, "doc_type", json!({ "id": id, "text": "\"v\"", "line": 1, "column": 6 }));
+    assert_eq!(typed["typed"], 3);
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], "<a b=\"v\"/>");
+    assert_eq!((typed["carets"][0]["line"].as_u64(), typed["carets"][0]["column"].as_u64()), (Some(1), Some(9)), "after the closing quote");
+    // Backspace between an empty pair takes both quotes; a Backspace that is a Backspace takes one character.
+    ok(&mut a, "doc_set_text", json!({ "id": id, "text": "<a b=\"\"/>" }));
+    let after = ok(&mut a, "doc_key", json!({ "id": id, "key": "Backspace", "line": 1, "column": 7 }));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], "<a b=/>");
+    assert_eq!(after["carets"][0]["column"], 6);
+    ok(&mut a, "doc_key", json!({ "id": id, "key": "Backspace", "times": 2 }));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], "<a />", "two characters before the caret");
+    // Enter and Tab are keys too, and a line feed or a tab in the typed text are those keys.
+    let id2 = ok(&mut a, "doc_new", json!({ "text": "" }))["id"].as_u64().expect("id");
+    ok(&mut a, "doc_type", json!({ "id": id2, "text": "<a>\n\t<b/>" }));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"], "<a>\n  <b/>", "a tab is an indent step");
+    // Typing is undone like any other editing.
+    ok(&mut a, "doc_undo", json!({ "id": id2 }));
+    assert!(ok(&mut a, "doc_text", json!({ "id": id2 }))["text"].as_str().is_some_and(|t| t.len() < "<a>\n  <b/>".len()));
+    // Bad arguments say what is wrong.
+    assert!(err(&mut a, "doc_type", json!({ "id": id2, "text": "a\u{7}b" })).contains("control character"));
+    assert!(err(&mut a, "doc_type", json!({ "id": id2, "text": "" })).contains("doc_type"), "the schema wants something to type");
+    assert!(err(&mut a, "doc_key", json!({ "id": id2, "key": "F13" })).contains("doc_key"), "the schema lists the keys");
+    assert!(err(&mut a, "doc_type", json!({ "id": id2, "text": "x", "line": 9, "column": 1 })).contains("no line 9"));
+    assert!(err(&mut a, "doc_type", json!({ "id": 999, "text": "x" })).contains("no document"));
+}
+
+#[test]
 fn the_matching_tag_is_found_from_a_position_in_text_a_file_or_a_document() {
     let text = "<lib>\n  <book id=\"1\">x</book>\n  <br/>\n</lib>";
     let mut a = Automation::new();

@@ -588,7 +588,8 @@ fn handle_events(ui: &mut Ui, editor: &mut Editor, view: &mut ViewState, mac: bo
             Event::Text(text) if !read_only => {
                 let text: String = text.chars().filter(|c| !c.is_control()).collect();
                 if !text.is_empty() && view.preedit.is_none() {
-                    editor.type_text(&text);
+                    // The keyboard: typing aids apply (a quote in a tag is paired).
+                    editor.type_input(&text);
                     view.last_input = now;
                 }
             }
