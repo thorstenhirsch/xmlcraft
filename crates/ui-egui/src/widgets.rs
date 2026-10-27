@@ -58,6 +58,12 @@ pub fn ghost_button_sized(ui: &mut egui::Ui, icon: &str, label: &str, height: f3
     theme::hand(resp)
 }
 
+/// Give a widget the accessible name `name`. A text field shows a hint, which assistive technology reads as a placeholder, not as the
+/// field's name; this is what a screen reader (and a test) finds the field by.
+pub fn name_for_assistive_technology(ui: &egui::Ui, response: &Response, name: &str) {
+    ui.ctx().accesskit_node_builder(response.id, |node| node.set_label(name));
+}
+
 /// A search-field lookalike that opens the command palette. `shortcut` is shown at its right edge.
 pub fn search_box(ui: &mut egui::Ui, placeholder: &str, shortcut: &str, width: f32) -> Response {
     let t = Tokens::get(ui.ctx());

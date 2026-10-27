@@ -7,8 +7,9 @@
 use std::ops::RangeInclusive;
 
 use craft_ui::panes::{Edge, PaneContent, PaneHost, PaneLabels, PaneRequest, PaneState, Rail, RailItem, RailRequest, SidePolicy};
-use egui::{Align, Layout, Stroke};
+use egui::{Align, Layout, Stroke, vec2};
 use serde::{Deserialize, Serialize};
+use xmlcraft_engine::analysis::Skipped;
 
 use crate::i18n::tl;
 use crate::theme::{self, Tokens};
@@ -117,9 +118,9 @@ impl PaneContent<Pane> for Content<'_> {
     fn body(&mut self, ui: &mut egui::Ui, pane: &Pane) {
         let close = pane_header(ui, pane.title());
         match pane {
-            Pane::Outline => outline_body(ui),
+            Pane::Outline => outline_body(ui, self.app),
             Pane::EntryHelpers => entry_helpers_body(ui),
-            Pane::Messages => messages_body(ui),
+            Pane::Messages => messages_body(ui, self.app),
         }
         if close {
             match pane {
@@ -194,13 +195,166 @@ fn pane_hint(ui: &mut egui::Ui, text: &str) {
     });
 }
 
-fn outline_body(ui: &mut egui::Ui) {
-    widgets::empty_state(ui, 24.0, tl!("No document open"), tl!("The element tree of the open file appears here."));
+/// Rows of a list: tall enough to click.
+const ROW: f32 = 24.0;
+
+/// The Outline's rows (indexes into the analysis's outline) for one filter, one document and one analysis; kept between frames so that
+/// 50,000 names are not lowercased and compared again every frame.
+pub(crate) struct OutlineRows {
+    filter: String,
+    document: u64,
+    version: u64,
+    rows: Vec<usize>,
 }
 
-fn messages_body(ui: &mut egui::Ui) {
-    // Well-formedness errors will come first, then validity errors; each row jumps to its place in the document.
-    widgets::empty_state(ui, 6.0, tl!("No messages"), tl!("Well-formedness and validation results appear here."));
+fn outline_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
+    let t = Tokens::get(ui.ctx());
+    let Some(doc) = app.session.active_document() else {
+        widgets::empty_state(ui, 24.0, tl!("No document open"), tl!("The element tree of the open file appears here."));
+        return;
+    };
+    let (caret, document) = (doc.editor().primary().head(), doc.id());
+    egui::Frame::NONE.inner_margin(egui::Margin { left: 12, right: 12, top: 0, bottom: 6 }).show(ui, |ui| {
+        let filter = ui.add(egui::TextEdit::singleline(&mut app.outline_filter).hint_text(tl!("Filter elements")).desired_width(f32::INFINITY));
+        widgets::name_for_assistive_technology(ui, &filter, tl!("Filter elements"));
+    });
+    let filter = app.outline_filter.trim().to_lowercase();
+    let cached = app.outline_rows.take();
+    let Some(analysis) = app.active_analysis() else {
+        widgets::empty_state(ui, 12.0, tl!("Reading the document…"), "");
+        return;
+    };
+    match analysis.skipped {
+        Some(Skipped::TooLarge) => {
+            return widgets::empty_state(ui, 12.0, tl!("Not checked"), tl!("The document is too large for an outline while typing."));
+        }
+        Some(Skipped::Failed) => return widgets::empty_state(ui, 12.0, tl!("The check failed"), tl!("This is a bug. The document is unchanged.")),
+        None => {}
+    }
+    if analysis.outline.is_empty() {
+        widgets::empty_state(ui, 12.0, tl!("No elements"), tl!("The element tree appears once the document has a root element."));
+        return;
+    }
+    let rows = match cached.filter(|c| c.filter == filter && c.document == document && c.version == analysis.version) {
+        Some(rows) => rows,
+        None => {
+            let matching = analysis
+                .outline
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| {
+                    filter.is_empty()
+                        || item.name.to_lowercase().contains(&filter)
+                        || item.label.as_ref().is_some_and(|l| l.to_lowercase().contains(&filter))
+                })
+                .map(|(i, _)| i)
+                .collect();
+            OutlineRows { filter, document, version: analysis.version, rows: matching }
+        }
+    };
+    // The innermost element around the caret.
+    let current = analysis.outline.iter().rposition(|item| item.range.start <= caret && caret <= item.range.end);
+    // Above the list, where it is seen (below a list that fills the pane it never would be).
+    if analysis.outline_truncated {
+        pane_hint(ui, tl!("Only the first elements are listed."));
+    }
+    let mut clicked = None;
+    egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, ROW, rows.rows.len(), |ui, range| {
+        for &index in rows.rows.get(range).unwrap_or_default() {
+            let Some(item) = analysis.outline.get(index) else { continue };
+            let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), egui::Sense::click());
+            let label = match &item.label {
+                Some(label) => format!("{} {label}", item.name),
+                None => item.name.clone(),
+            };
+            response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label.clone()));
+            if Some(index) == current {
+                ui.painter().rect_filled(rect, 0.0, t.selected);
+            } else if response.hovered() {
+                ui.painter().rect_filled(rect, 0.0, t.hover);
+            }
+            let indent = 14.0 + item.depth.min(20) as f32 * 12.0;
+            let clip = ui.painter().with_clip_rect(rect);
+            let name = clip.text(rect.left_center() + vec2(indent, 0.0), egui::Align2::LEFT_CENTER, &item.name, theme::medium(12.5), t.text);
+            if let Some(hint) = &item.label {
+                clip.text(egui::pos2(name.right() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, hint, theme::regular(12.0), t.text_faint);
+            }
+            if response.clicked() {
+                clicked = Some(item.name_range.clone());
+            }
+        }
+    });
+    app.outline_rows = Some(rows);
+    if let Some(range) = clicked {
+        app.jump_to(range.start..range.start);
+    }
+}
+
+fn messages_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
+    let t = Tokens::get(ui.ctx());
+    let Some(doc) = app.session.active_document() else {
+        widgets::empty_state(ui, 6.0, tl!("No messages"), tl!("Well-formedness and validation results appear here."));
+        return;
+    };
+    let buffer = doc.editor().buffer();
+    let Some(analysis) = app.active_analysis() else {
+        widgets::empty_state(ui, 6.0, tl!("Checking…"), "");
+        return;
+    };
+    match analysis.skipped {
+        Some(Skipped::TooLarge) => {
+            widgets::empty_state(ui, 6.0, tl!("Not checked"), tl!("The document is too large to check while typing."));
+            return;
+        }
+        Some(Skipped::Failed) => {
+            widgets::empty_state(ui, 6.0, tl!("The check failed"), tl!("This is a bug. The document is unchanged."));
+            return;
+        }
+        None => {}
+    }
+    if analysis.diagnostics.is_empty() {
+        widgets::empty_state(ui, 6.0, tl!("No problems"), tl!("The document is well-formed."));
+        return;
+    }
+    let syntax = crate::editor_view::SyntaxTokens::for_kind(t.kind);
+    let mut clicked = None;
+    egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, ROW, analysis.diagnostics.len(), |ui, range| {
+        for index in range {
+            let Some(diagnostic) = analysis.diagnostics.get(index) else { continue };
+            let position = buffer.position(diagnostic.span.start.min(buffer.len()));
+            let message = diagnostic.message();
+            let place = crate::i18n::fmt(
+                tl!("Ln {line}, Col {col}"),
+                &[("line", &(position.line + 1).to_string()), ("col", &(position.col + 1).to_string())],
+            );
+            let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), egui::Sense::click());
+            response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("{message} ({place})")));
+            if response.hovered() {
+                ui.painter().rect_filled(rect, 0.0, t.hover);
+            }
+            let (icon, color) = match diagnostic.severity() {
+                xmlcraft_syntax::Severity::Error => ("circle-x", syntax.error),
+                xmlcraft_syntax::Severity::Warning => ("triangle-alert", syntax.warning),
+                xmlcraft_syntax::Severity::Info => ("info", syntax.info),
+            };
+            icons::paint(ui, egui::Rect::from_min_size(rect.left_center() + vec2(12.0, -8.0), vec2(16.0, 16.0)), icon, 15.0, color);
+            let place_galley = ui.painter().layout_no_wrap(place, theme::regular(11.5), t.text_faint);
+            let right = rect.right() - 14.0;
+            ui.painter().galley(
+                egui::pos2(right - place_galley.size().x, rect.center().y - place_galley.size().y / 2.0),
+                place_galley.clone(),
+                t.text_faint,
+            );
+            let clip = ui.painter().with_clip_rect(egui::Rect::from_min_max(rect.min, egui::pos2(right - place_galley.size().x - 10.0, rect.max.y)));
+            clip.text(rect.left_center() + vec2(36.0, 0.0), egui::Align2::LEFT_CENTER, message, theme::regular(12.5), t.text);
+            if response.clicked() {
+                clicked = Some(diagnostic.span.clone());
+            }
+        }
+    });
+    if let Some(span) = clicked {
+        app.jump_to(span);
+    }
 }
 
 fn entry_helpers_body(ui: &mut egui::Ui) {

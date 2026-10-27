@@ -40,6 +40,8 @@ pub(crate) enum Dialog {
     ConfirmRevert {
         id: u64,
     },
+    /// Asks for a line (and column) to go to; the answer is typed into the app's `goto_input`.
+    GoToLine,
     Message {
         title: String,
         text: String,
@@ -53,7 +55,7 @@ impl Dialog {
         match self {
             Dialog::Unsaved { then, .. } => *then == AfterClose::Quit,
             Dialog::OverwriteChanged { then, .. } | Dialog::Unmappable { then, .. } | Dialog::Lossy { then, .. } => *then == Some(AfterClose::Quit),
-            Dialog::Reload { .. } | Dialog::ConfirmRevert { .. } | Dialog::Message { .. } => false,
+            Dialog::Reload { .. } | Dialog::ConfirmRevert { .. } | Dialog::Message { .. } | Dialog::GoToLine => false,
         }
     }
 }
@@ -71,6 +73,7 @@ enum Choice {
     Reload,
     Keep,
     Revert,
+    Go,
     Ok,
 }
 
@@ -79,6 +82,8 @@ struct Describe {
     text: String,
     /// The buttons, the first being the default.
     buttons: Vec<(&'static str, Choice)>,
+    /// A line of text to type into.
+    input: bool,
 }
 
 impl XmlCraftApp {
@@ -92,11 +97,13 @@ impl XmlCraftApp {
                 title: fmt(tl!("Save changes to {name}?"), &[("name", &self.document_name(*id))]),
                 text: tl!("Your changes will be lost if you don't save them.").to_owned(),
                 buttons: vec![(tl!("Save"), Choice::Save), (tl!("Don't Save"), Choice::Discard), (tl!("Cancel"), Choice::Cancel)],
+                input: false,
             },
             Dialog::OverwriteChanged { id, .. } => Describe {
                 title: fmt(tl!("{name} changed on disk"), &[("name", &self.document_name(*id))]),
                 text: tl!("Another program changed the file after it was opened here. Saving now replaces its changes with yours.").to_owned(),
                 buttons: vec![(tl!("Cancel"), Choice::Cancel), (tl!("Overwrite"), Choice::Overwrite)],
+                input: false,
             },
             Dialog::Unmappable { id, character, .. } => Describe {
                 title: fmt(tl!("{name} has a character its encoding cannot hold"), &[("name", &self.document_name(*id))]),
@@ -109,23 +116,35 @@ impl XmlCraftApp {
                     (tl!("Write character references"), Choice::WriteReferences),
                     (tl!("Cancel"), Choice::Cancel),
                 ],
+                input: false,
             },
             Dialog::Lossy { id, .. } => Describe {
                 title: fmt(tl!("{name} cannot be saved over"), &[("name", &self.document_name(*id))]),
                 text: tl!("The file has bytes that are not valid in its encoding. They are shown as �, and saving over the file would replace them for good. Save a copy under another name instead.").to_owned(),
                 buttons: vec![(tl!("Save As…"), Choice::SaveAs), (tl!("Cancel"), Choice::Cancel)],
+                input: false,
             },
             Dialog::Reload { id } => Describe {
                 title: fmt(tl!("{name} changed on disk"), &[("name", &self.document_name(*id))]),
                 text: tl!("Another program changed the file, and you have unsaved changes here. Reloading discards your changes.").to_owned(),
                 buttons: vec![(tl!("Keep my version"), Choice::Keep), (tl!("Reload"), Choice::Reload), (tl!("Cancel"), Choice::Cancel)],
+                input: false,
             },
             Dialog::ConfirmRevert { id } => Describe {
                 title: fmt(tl!("Revert {name}?"), &[("name", &self.document_name(*id))]),
                 text: tl!("This discards your unsaved changes and reads the file again.").to_owned(),
                 buttons: vec![(tl!("Cancel"), Choice::Cancel), (tl!("Revert"), Choice::Revert)],
+                input: false,
             },
-            Dialog::Message { title, text } => Describe { title: title.clone(), text: text.clone(), buttons: vec![(tl!("OK"), Choice::Ok)] },
+            Dialog::GoToLine => Describe {
+                title: tl!("Go to Line").to_owned(),
+                text: tl!("Type a line number, or line:column.").to_owned(),
+                buttons: vec![(tl!("Go"), Choice::Go), (tl!("Cancel"), Choice::Cancel)],
+                input: true,
+            },
+            Dialog::Message { title, text } => {
+                Describe { title: title.clone(), text: text.clone(), buttons: vec![(tl!("OK"), Choice::Ok)], input: false }
+            }
         }
     }
 
@@ -140,6 +159,20 @@ impl XmlCraftApp {
             ui.label(egui::RichText::new(&described.title).font(theme::semibold(15.0)).color(t.text));
             ui.add_space(6.0);
             ui.label(egui::RichText::new(&described.text).font(theme::regular(13.0)).color(t.text_muted));
+            if described.input {
+                ui.add_space(8.0);
+                let id = egui::Id::new("xmlcraft-dialog-input");
+                let edit = ui
+                    .add(egui::TextEdit::singleline(&mut self.goto_input).id(id).hint_text(tl!("Line or line:column")).desired_width(f32::INFINITY));
+                crate::widgets::name_for_assistive_technology(ui, &edit, tl!("Line or line:column"));
+                // Given the keyboard once, when the dialog opens: asking every frame would take it back from Go and Cancel after a Tab.
+                if std::mem::take(&mut self.goto_focus) {
+                    edit.request_focus();
+                }
+                if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    chosen = Some(Choice::Go);
+                }
+            }
             ui.add_space(14.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 // Right to left: the last in the list is drawn first, at the right.
@@ -184,6 +217,14 @@ impl XmlCraftApp {
             }
             (Dialog::Reload { id }, Choice::Reload) | (Dialog::ConfirmRevert { id }, Choice::Revert) => self.reload_document(id),
             (Dialog::Reload { id }, Choice::Keep) => self.keep_version(id),
+            (Dialog::GoToLine, Choice::Go) => {
+                let input = std::mem::take(&mut self.goto_input);
+                if !self.go_to_line(&input) {
+                    self.status = fmt(tl!("'{text}' is not a line number"), &[("text", input.trim())]);
+                }
+                // A quit that was waiting for this question to be out of the way goes on.
+                self.continue_quit(ctx);
+            }
             // Anything else is a way out. A quit that was waiting for this answer is off; one that was only waiting for another question
             // to be out of the way goes on.
             (dialog, _) => {

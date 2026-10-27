@@ -6,6 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use xmlcraft_code_editor::{CodeEditor, ViewState};
+use xmlcraft_engine::analysis::{Analysis, Skipped};
 use xmlcraft_engine::{Document, SaveError};
 use xmlcraft_platform::files::{self, DiskChange};
 use xmlcraft_text::encoding::Encoding;
@@ -29,11 +30,21 @@ pub(crate) enum AfterClose {
 pub(crate) struct DocView {
     pub view: ViewState,
     pub styler: XmlStyler,
+    /// The latest analysis of the text (its problems and outline), which may be about an older version while a newer one is worked out.
+    pub analysis: Option<Analysis>,
+    /// The version of the text last handed to the analyzer.
+    requested: Option<u64>,
 }
 
 impl DocView {
     pub fn new(kind: ThemeKind) -> Self {
-        Self { view: ViewState::new(), styler: XmlStyler::new(kind) }
+        Self { view: ViewState::new(), styler: XmlStyler::new(kind), analysis: None, requested: None }
+    }
+
+    /// Keep `analysis` and underline its problems in the editor.
+    fn set_analysis(&mut self, analysis: Analysis) {
+        self.styler.set_problems(analysis.diagnostics.iter().map(|d| (d.span.clone(), d.severity())).collect());
+        self.analysis = Some(analysis);
     }
 }
 
@@ -116,6 +127,105 @@ impl XmlCraftApp {
         self.open_paths(dropped.iter().map(PathBuf::as_path));
     }
 
+    // --- analysis --------------------------------------------------------------------------------------------------------------
+
+    /// Collect finished analyses, ask for one of the document being shown if its text has changed since, and report a check (F7) that
+    /// was waiting for its result. Called every frame, after whatever changes a text.
+    pub(crate) fn pump_analysis(&mut self) {
+        let kind = self.applied.unwrap_or(ThemeKind::Light);
+        for (id, analysis) in self.analyzer.poll() {
+            if self.session.position_of(id).is_none() {
+                continue; // closed meanwhile
+            }
+            let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
+            if view.analysis.as_ref().is_none_or(|current| current.version <= analysis.version) {
+                view.set_analysis(analysis);
+            }
+        }
+        if let Some(doc) = self.session.active_document() {
+            let (id, version) = (doc.id(), doc.editor().version());
+            let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
+            if view.requested != Some(version) {
+                view.requested = Some(version);
+                self.analyzer.submit(id, version, doc.editor().buffer());
+            }
+        }
+        self.report_check();
+    }
+
+    /// If a check (F7) is waiting and the analysis of the text it asked about has arrived (or a later one), say what it found.
+    fn report_check(&mut self) {
+        let Some((id, version)) = self.check_pending else { return };
+        let Some(doc) = self.session.position_of(id).and_then(|i| self.session.document(i)) else {
+            self.check_pending = None; // closed meanwhile
+            return;
+        };
+        let name = doc.name().to_owned();
+        let Some(analysis) = self.views.get(&id).and_then(|v| v.analysis.as_ref()).filter(|a| a.version >= version) else { return };
+        self.status = match analysis.skipped {
+            Some(Skipped::TooLarge) => fmt(tl!("{name} is too large to check"), &[("name", &name)]),
+            Some(Skipped::Failed) => fmt(tl!("Checking {name} failed. This is a bug; the document is unchanged."), &[("name", &name)]),
+            None if analysis.error_count() == 0 => fmt(tl!("{name} is well-formed"), &[("name", &name)]),
+            None => fmt(tl!("{name}: {count} errors"), &[("name", &name), ("count", &analysis.error_count().to_string())]),
+        };
+        self.check_pending = None;
+    }
+
+    /// The analysis of the document being shown, if there is one.
+    pub(crate) fn active_analysis(&self) -> Option<&Analysis> {
+        let id = self.session.active_document()?.id();
+        self.views.get(&id)?.analysis.as_ref()
+    }
+
+    /// The problems found in the text of the document being shown, as (errors, warnings), once an analysis has arrived. It may be
+    /// about a version slightly older than the text while a newer one is worked out.
+    pub fn problems(&self) -> Option<(usize, usize)> {
+        self.active_analysis().filter(|a| a.skipped.is_none()).map(|a| (a.error_count(), a.warning_count()))
+    }
+
+    /// Check the document being shown now and show the result in Messages (F7). The check is the background analysis of the text as it
+    /// is now (asked for at once if it has not been yet), reported when it arrives: the window never waits for a parse.
+    pub(crate) fn check_now(&mut self) {
+        let kind = self.applied.unwrap_or(ThemeKind::Light);
+        let Some(doc) = self.session.active_document() else { return };
+        let (id, version) = (doc.id(), doc.editor().version());
+        let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
+        if view.requested != Some(version) {
+            view.requested = Some(version);
+            self.analyzer.submit(id, version, doc.editor().buffer());
+        }
+        self.check_pending = Some((id, version));
+        self.bottom_open = true;
+        self.report_check();
+    }
+
+    /// Select `range` in the document being shown and give the editor the keyboard (a message or an outline entry was clicked).
+    pub(crate) fn jump_to(&mut self, range: std::ops::Range<usize>) {
+        if let Some(doc) = self.session.active_document_mut() {
+            doc.editor_mut().break_undo_group();
+            doc.editor_mut().set_selection(range.start, range.end);
+            self.focus_editor = true;
+        }
+    }
+
+    /// Go to a position typed as `line` or `line:column` (both counted from 1).
+    pub(crate) fn go_to_line(&mut self, input: &str) -> bool {
+        let Some((line, column)) = parse_position(input) else { return false };
+        let Some(doc) = self.session.active_document() else { return false };
+        let buffer = doc.editor().buffer();
+        let line = line.saturating_sub(1).min(buffer.line_count().saturating_sub(1));
+        let offset = buffer.offset_of(xmlcraft_text::Position { line, col: column.saturating_sub(1) });
+        self.jump_to(offset..offset);
+        if let Some(doc) = self.session.active_document() {
+            let id = doc.id();
+            // Put the line near the top, where it is easy to find.
+            if let Some(view) = self.views.get_mut(&id) {
+                view.view.scroll_to_line(line.saturating_sub(3));
+            }
+        }
+        true
+    }
+
     // --- showing ---------------------------------------------------------------------------------------------------------------
 
     /// The middle of the window: the editor of the document being shown, or the home view.
@@ -125,7 +235,14 @@ impl XmlCraftApp {
             return;
         };
         let kind = self.applied.unwrap_or(ThemeKind::Light);
-        let focus = std::mem::take(&mut self.focus_editor);
+        // Not in the frame of a click: egui takes the focus back from the editor at a click that is not on it (a clicked message or
+        // outline entry asks for the editor in that very frame), so the request waits one frame.
+        let focus = self.focus_editor && !ui.input(|i| i.pointer.any_click());
+        if focus {
+            self.focus_editor = false;
+        } else if self.focus_editor {
+            ui.ctx().request_repaint();
+        }
         let tokens = Tokens::get(ui.ctx());
         let colors = editor_colors(&tokens);
         let Some(doc) = self.session.document_mut(index) else { return };
@@ -331,6 +448,9 @@ impl XmlCraftApp {
                 if let Some(view) = self.views.get_mut(&id) {
                     view.view.reset();
                     view.styler.reset();
+                    // What was worked out about the old text (its outline, its problems) is not about this one.
+                    view.analysis = None;
+                    view.requested = None;
                 }
             }
             Err(e) => self.message(
@@ -398,5 +518,28 @@ impl XmlCraftApp {
         self.quit_confirmed = true;
         self.release_control_file();
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+}
+
+/// `12` or `12:5`: a line, and optionally a column (counted in characters), from 1.
+fn parse_position(input: &str) -> Option<(usize, usize)> {
+    let (line, column) = match input.trim().split_once(':') {
+        Some((line, column)) => (line.trim().parse().ok()?, column.trim().parse().ok()?),
+        None => (input.trim().parse().ok()?, 1),
+    };
+    (line >= 1 && column >= 1).then_some((line, column))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn positions_are_a_line_and_maybe_a_column() {
+        assert_eq!(parse_position("12"), Some((12, 1)));
+        assert_eq!(parse_position(" 12 : 5 "), Some((12, 5)));
+        for bad in ["", "0", "0:3", "3:0", "a", "1:b", "-4", "1:2:3", ":"] {
+            assert_eq!(parse_position(bad), None, "{bad:?}");
+        }
     }
 }

@@ -97,7 +97,7 @@ impl Shortcut {
 pub struct CommandSpec {
     pub id: &'static str,
     pub label: &'static str,
-    /// Top-level menu it appears in (`File`, `Edit`, `View`, `Help`), if any.
+    /// Top-level menu it appears in (one of [`MENUS`]), if any.
     pub menu: Option<&'static str>,
     pub shortcut: Option<Shortcut>,
     pub needs: Needs,
@@ -148,10 +148,11 @@ use Needs::Nothing;
 
 const FILE: Option<&str> = Some("File");
 const EDIT: Option<&str> = Some("Edit");
+const XML: Option<&str> = Some("XML");
 const VIEW: Option<&str> = Some("View");
 
 /// The top-level menus, in order.
-pub const MENUS: &[&str] = &["File", "Edit", "View", "Help"];
+pub const MENUS: &[&str] = &["File", "Edit", "XML", "View", "Help"];
 
 /// Every command, in menu order.
 pub const COMMANDS: &[CommandSpec] = &[
@@ -165,6 +166,8 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("edit.undo", "Undo", EDIT, Some(Shortcut::cmd("Z")), Needs::Undo, "undo-2").not_in_text(),
     c("edit.redo", "Redo", EDIT, Some(Shortcut::cmd_shift("Z")), Needs::Redo, "redo-2").not_in_text(),
     c("edit.select_all", "Select All", EDIT, Some(Shortcut::cmd("A")), Needs::Document, "align-left").sep().not_in_text(),
+    c("edit.go_to_line", "Go to Line…", EDIT, Some(Shortcut::cmd("G")), Needs::Document, "align-left").sep(),
+    c("xml.check", "Check Well-formedness", XML, Some(Shortcut::key("F7")), Needs::Document, "file-check"),
     c("view.palette", "Find tools and commands…", VIEW, Some(Shortcut::cmd("K")), Nothing, "search"),
     c("view.outline", "Outline", VIEW, None, Nothing, "list-tree").toggle().sep(),
     c("view.entry_helpers", "Entry Helpers", VIEW, None, Nothing, "braces").toggle(),
@@ -252,7 +255,8 @@ mod tests {
             in_menu("File").map(|c| c.id).collect::<Vec<_>>(),
             ["file.new", "file.open", "file.save", "file.save_as", "file.revert", "file.close", "file.quit"]
         );
-        assert_eq!(in_menu("Edit").map(|c| c.id).collect::<Vec<_>>(), ["edit.undo", "edit.redo", "edit.select_all"]);
+        assert_eq!(in_menu("Edit").map(|c| c.id).collect::<Vec<_>>(), ["edit.undo", "edit.redo", "edit.select_all", "edit.go_to_line"]);
+        assert_eq!(in_menu("XML").map(|c| c.id).collect::<Vec<_>>(), ["xml.check"]);
         assert_eq!(in_menu("Nope").count(), 0);
     }
 

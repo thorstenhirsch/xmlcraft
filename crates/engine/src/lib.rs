@@ -3,6 +3,7 @@
 //! The engine: what every frontend (the egui app, the CLI, the MCP server, the control channel) drives. It owns the open
 //! documents and the command registry, and knows nothing about egui.
 
+pub mod analysis;
 pub mod commands;
 mod document;
 

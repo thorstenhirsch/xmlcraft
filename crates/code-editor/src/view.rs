@@ -321,6 +321,13 @@ impl<'a> CodeEditor<'a> {
                 let galley = layout.galley();
                 let dy = ((row_h - layout.size().y) / 2.0).max(0.0);
                 text_painter.galley(pos2(text_x + layout.x_origin(), y + dy), galley.clone(), colors.text);
+                let marks = frame.styler.borrow_mut().as_mut().map(|styler| styler.marks(editor.buffer(), line)).unwrap_or_default();
+                for mark in marks {
+                    let x0 = text_x + layout.x_of_byte(mark.range.start);
+                    // A problem at a point still shows: at least a character wide.
+                    let x1 = (text_x + layout.x_of_byte(mark.range.end)).max(x0 + column_w);
+                    wavy_underline(&text_painter, x0, x1, y + row_h - 2.0, mark.color);
+                }
                 layouts.push((line, layout));
             }
             view.cache.retain(|_, c| c.frame == view.frame);
@@ -662,6 +669,26 @@ fn draw_preedit(painter: &egui::Painter, preedit: &Preedit, caret: Rect, font: &
     if let Some(active) = &preedit.active {
         underline(active.start.min(total), active.end.min(total), 2.0);
     }
+}
+
+/// A zigzag line from `x0` to `x1` at height `y`, only as far as the painter's clip rectangle shows.
+fn wavy_underline(painter: &egui::Painter, x0: f32, x1: f32, y: f32, color: Color32) {
+    let clip = painter.clip_rect();
+    let (x0, x1) = (x0.max(clip.min.x), x1.min(clip.max.x));
+    if x1 <= x0 || !x0.is_finite() || !x1.is_finite() {
+        return;
+    }
+    const STEP: f32 = 2.5;
+    const AMPLITUDE: f32 = 1.4;
+    let mut points = Vec::new();
+    let (mut x, mut up) = (x0, false);
+    while x < x1 {
+        points.push(pos2(x, if up { y - AMPLITUDE } else { y + AMPLITUDE }));
+        x += STEP;
+        up = !up;
+    }
+    points.push(pos2(x1, if up { y - AMPLITUDE } else { y + AMPLITUDE }));
+    painter.add(egui::Shape::line(points, Stroke::new(1.0, color)));
 }
 
 #[cfg(test)]

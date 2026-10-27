@@ -25,6 +25,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use xmlcraft_engine::Session;
+use xmlcraft_engine::analysis::Analyzer;
 
 use crate::dialog::Dialog;
 use crate::documents::DocView;
@@ -96,6 +97,17 @@ pub struct XmlCraftApp {
     palette_selected: usize,
     /// The open documents and the commands that act on them.
     pub session: Session,
+    /// Works out each document's problems and outline in the background.
+    analyzer: Analyzer,
+    /// The text typed into the Outline's filter box.
+    outline_filter: String,
+    /// The Outline's rows for the filter and analysis they were worked out for, so a frame does not filter 50,000 names again.
+    outline_rows: Option<side_panels::OutlineRows>,
+    /// The text typed into Go to Line, and whether its field is still to be given the keyboard (once, when the dialog opens).
+    goto_input: String,
+    goto_focus: bool,
+    /// A check (F7) is waiting for the analysis of this version of this document, to report its result.
+    check_pending: Option<(u64, u64)>,
     /// What the editor keeps for each open document (layout caches, colouring), by document id.
     views: HashMap<u64, DocView>,
     /// The question being asked, if any.
@@ -135,6 +147,8 @@ impl XmlCraftApp {
         let prefs = Prefs::load(cc.storage.and_then(|s| s.get_string(STORAGE_KEY)).as_deref());
         let mut app = Self::with_prefs(prefs);
         app.ctx = Some(cc.egui_ctx.clone());
+        let repaint = cc.egui_ctx.clone();
+        app.analyzer.on_done(move || repaint.request_repaint());
         app
     }
 
@@ -150,6 +164,12 @@ impl XmlCraftApp {
             palette_last_query: String::new(),
             palette_selected: 0,
             session: Session::new(),
+            analyzer: Analyzer::new(),
+            outline_filter: String::new(),
+            outline_rows: None,
+            goto_input: String::new(),
+            goto_focus: false,
+            check_pending: None,
             views: HashMap::new(),
             dialog: None,
             pickers: Pickers::default(),
@@ -237,6 +257,8 @@ impl eframe::App for XmlCraftApp {
             self.check_disk_changes();
         }
         self.was_focused = focused;
+        // After everything above that can change a text, so that this frame asks for the analysis of the text it will draw.
+        self.pump_analysis();
         for command in self.viewport_commands.drain(..) {
             ctx.send_viewport_cmd(command);
         }

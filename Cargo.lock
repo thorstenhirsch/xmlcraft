@@ -4707,7 +4707,9 @@ dependencies = [
 name = "xmlcraft-engine"
 version = "0.0.1"
 dependencies = [
+ "log",
  "proptest",
+ "rowan",
  "xmlcraft-editor",
  "xmlcraft-syntax",
  "xmlcraft-text",

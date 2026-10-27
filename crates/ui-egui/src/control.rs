@@ -630,6 +630,7 @@ impl Host for crate::XmlCraftApp {
                 let head = d.editor().primary().head();
                 let pos = d.editor().buffer().position(head);
                 json!({
+                    "id": d.id(),
                     "name": d.name(),
                     "path": d.path().map(|p| p.display().to_string()),
                     "dirty": d.is_dirty(),
@@ -640,8 +641,15 @@ impl Host for crate::XmlCraftApp {
                     "lines": d.editor().buffer().line_count(),
                     "caret": { "line": pos.line + 1, "column": pos.col + 1 },
                     "selected": d.editor().has_selection(),
+                    "version": d.editor().version(),
                 })
             }).collect::<Vec<_>>(),
+            // What the analysis of the document being shown found, with which document and which version of its text it is about (the
+            // `version` of that document in `documents`): it may be a little behind the text while a newer one is worked out.
+            "problems": self.active_analysis().filter(|a| a.skipped.is_none()).and_then(|a| {
+                let doc = self.session.active_document()?;
+                Some(json!({ "document": doc.id(), "name": doc.name(), "version": a.version, "errors": a.error_count(), "warnings": a.warning_count() }))
+            }),
             "dialog": self.dialog.as_ref().map(|d| format!("{d:?}").split([' ', '{']).next().unwrap_or("").to_lowercase()),
             "mode": format!("{:?}", self.mode).to_lowercase(),
             "panes": { "outline": self.left_open, "entry_helpers": self.right.is_some(), "messages": self.bottom_open },
