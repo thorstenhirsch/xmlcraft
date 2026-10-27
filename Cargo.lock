@@ -4620,6 +4620,13 @@ name = "xmlcraft-engine"
 version = "0.0.1"
 
 [[package]]
+name = "xmlcraft-syntax"
+version = "0.0.1"
+dependencies = [
+ "proptest",
+]
+
+[[package]]
 name = "xmlcraft-text"
 version = "0.0.1"
 dependencies = [

@@ -2,7 +2,7 @@
 
 **Stage: pre-alpha** · now: M1 (text editor and XML syntax), M0 release dry run finishing
 
-> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** M1.1 and M1.2 · **Target:** Altova XMLSpy (feature set described in its public documentation)
+> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** M1.1–M1.3 · **Target:** Altova XMLSpy (feature set described in its public documentation)
 
 XmlCraft is a clean-room, open-source XML editor in the spirit of Altova XMLSpy, built in Rust with egui, like its sibling [PdfCraft](https://github.com/storytold/pdfcraft). The first release (0.1.0) is an XML editor with XSD and DTD support, validation, schema generation from XML, and sample XML generation from schemas. JSON and YAML follow.
 
@@ -23,6 +23,7 @@ XmlCraft is a clean-room, open-source XML editor in the spirit of Altova XMLSpy,
 
 ## Progress log
 
+- 2026-10-27: M1.3 `xmlcraft-syntax` lexer (L1): total, lossless and restartable. Its whole state is a `Mode`; no token spans a line break, so every line start is a checkpoint. Covers tags, attribute values, references, comments, CDATA, processing instructions, the XML declaration, and DOCTYPE with its internal subset; broken markup recovers at the next `<`. Properties: tokens tile any text exactly, lexing restarts at every token boundary, and it always finishes. The M0.11 release dry run is green on all six targets (PR #4 awaits merge).
 - 2026-10-27: M1.1 + M1.2 `xmlcraft-text` (L0): rope buffer with checked byte offsets and edits that return their inverse, undo history that merges typing and caps memory, line-ending counts and conversion, and encodings (byte-order mark, then XML declaration, then UTF-8; UTF-16; legacy encodings; unmappable characters are reported, never replaced). Property tests: buffer against a `String`, undo/redo through every text, and "any bytes are either flagged lossy or written back identically". M0.11 dry run: macOS and Linux built; Windows failed on a WiX component rule, fixed in PR #4.
 - 2026-10-27: M0.9 automation, CLI and control channel: `xmlcraft-automation` (JSON-Schema checked tool table, `--root` confinement that follows symbolic links, scripts, an opt-in MCP server, the control channel transport with token, deadline and connection limits), `xmlcraft-cli` (`tools`, `run`, `mcp`, `ui`), the egui control plugin (`xmlcraft --control FILE`; state, inspect, click, type, key, command, screenshot, quit), accessibility-tree text snapshots. Driven against the real window end to end.
 - 2026-10-27: M0.10 CI: `ci.yml` on Linux, Windows and macOS (first run found a lint only the newer CI compiler reports; fixed). Repo `thorstenhirsch/xmlcraft` created by the owner; history rebased onto its initial commit.
