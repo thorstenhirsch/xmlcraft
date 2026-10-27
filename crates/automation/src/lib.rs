@@ -107,8 +107,10 @@ impl Automation {
         let empty = Value::Object(serde_json::Map::new());
         let args = if args.is_null() { &empty } else { args };
         schema::validate(&def.input_schema, args).map_err(|e| ToolError::InvalidArgs(format!("{name}: {e}")))?;
-        // The schema takes `2.0` for an integer, so the handlers must too: they read integers with `as_u64`.
-        let args = &integral(args);
+        // The schema takes `2.0` for an integer, so the handlers must too: they read integers with `as_u64`. (Arguments with no such
+        // number are not copied: they can hold a whole document.)
+        let normalized = integral(args);
+        let args = normalized.as_ref().unwrap_or(args);
         match xmlcraft_engine::guard(|| (def.handler)(self, args)) {
             Ok(result) => result,
             Err(message) => {
@@ -120,19 +122,31 @@ impl Automation {
 }
 
 /// `value` with every number that is a whole number written as an integer (`2.0` is `2`), so the handlers' `as_u64` reads what the
-/// schema's "integer" lets through.
-fn integral(value: &Value) -> Value {
+/// schema's "integer" lets through; `None` when there is no such number (nothing is copied then).
+fn integral(value: &Value) -> Option<Value> {
     match value {
         Value::Number(n) if !(n.is_i64() || n.is_u64()) => match n.as_f64() {
+            // Whole and below 2^53, so the conversions lose nothing.
             Some(f) if f.is_finite() && f.fract() == 0.0 && f.abs() < 9.0e15 => {
-                // Whole and below 2^53, so the conversions lose nothing.
-                if f >= 0.0 { Value::from(f as u64) } else { Value::from(f as i64) }
+                Some(if f >= 0.0 { Value::from(f as u64) } else { Value::from(f as i64) })
             }
-            _ => value.clone(),
+            _ => None,
         },
-        Value::Array(items) => Value::Array(items.iter().map(integral).collect()),
-        Value::Object(map) => Value::Object(map.iter().map(|(k, v)| (k.clone(), integral(v))).collect()),
-        other => other.clone(),
+        Value::Array(items) => {
+            let changed: Vec<Option<Value>> = items.iter().map(integral).collect();
+            changed
+                .iter()
+                .any(Option::is_some)
+                .then(|| Value::Array(items.iter().zip(changed).map(|(old, new)| new.unwrap_or_else(|| old.clone())).collect()))
+        }
+        Value::Object(map) => {
+            let changed: Vec<Option<Value>> = map.values().map(integral).collect();
+            changed
+                .iter()
+                .any(Option::is_some)
+                .then(|| Value::Object(map.iter().zip(changed).map(|((key, old), new)| (key.clone(), new.unwrap_or_else(|| old.clone()))).collect()))
+        }
+        _ => None,
     }
 }
 
@@ -143,11 +157,12 @@ mod tests {
 
     #[test]
     fn whole_numbers_written_as_floats_are_integers_to_the_handlers() {
-        assert_eq!(
-            integral(&json!({"a": 2.0, "b": [3.0, 1.5, -4.0], "c": {"d": 7.0}, "e": "x", "f": 5})),
-            json!({"a": 2, "b": [3, 1.5, -4], "c": {"d": 7}, "e": "x", "f": 5})
-        );
-        assert!(integral(&json!(1.0e300)).is_f64(), "too big to be an integer stays as it is");
+        let normalized =
+            integral(&json!({"a": 2.0, "b": [3.0, 1.5, -4.0], "c": {"d": 7.0}, "e": "x", "f": 5})).expect("there are whole numbers to change");
+        assert_eq!(normalized, json!({"a": 2, "b": [3, 1.5, -4], "c": {"d": 7}, "e": "x", "f": 5}));
+        // Nothing to change, nothing copied: text, integers, fractions, numbers too big to be integers.
+        assert_eq!(integral(&json!({"text": "x".repeat(1000), "n": 5, "f": 1.5, "big": 1.0e300, "list": [1, "a", null, true]})), None);
+        assert_eq!(integral(&json!(1.0e300)), None, "too big to be an integer stays as it is");
         let mut a = Automation::new();
         let id = json_of(a.call("doc_new", &json!({ "text": "ab\ncd" })).expect("opens"))["id"].clone();
         let selected = a.call("doc_select", &json!({ "id": id, "line": 2.0, "column": 2.0 })).expect("2.0 is an integer");
