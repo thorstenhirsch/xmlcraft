@@ -84,7 +84,11 @@ fn apply(e: &mut Editor, op: &Op) {
     match op {
         Op::Type(t) => drop(e.type_text(t)),
         // Key by key, as they are typed: the aids look at what is before the caret.
-        Op::Input(t) => t.chars().for_each(|c| drop(e.type_input(&c.to_string()))),
+        Op::Input(t) => {
+            for c in t.chars() {
+                let _ = e.type_input(&c.to_string());
+            }
+        }
         Op::Paste(t) => drop(e.paste(t)),
         Op::Backspace => drop(e.backspace()),
         Op::Delete => drop(e.delete_forward()),

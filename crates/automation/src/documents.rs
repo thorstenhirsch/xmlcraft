@@ -560,7 +560,7 @@ fn doc_type(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
                 if c == '\r' && chars.peek() == Some(&'\n') {
                     chars.next();
                 }
-                drop(editor.insert_newline());
+                let _ = editor.insert_newline();
             }
             '\t' => drop(editor.indent()),
             c => drop(editor.type_input(&c.to_string())),
