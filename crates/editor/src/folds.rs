@@ -203,11 +203,18 @@ impl Editor {
         if added.is_empty() {
             return false;
         }
+        // Only what the new folds hide is moved: a caret in a fold that was there before is where its owner put it.
+        let mut new_zones: Vec<(usize, usize)> = added.iter().map(|f| zone_of_fold(&self.buffer, f)).collect();
+        new_zones.sort_unstable();
+        let new_zones = merge(new_zones, |z| z.0, |z| z.1, |a, b| (a.0, a.1.max(b.1)));
         self.folds.extend(added);
         self.folds.sort_by_key(|f| (f.hidden.start, f.hidden.end));
         self.rebuild_fold_map();
         // What was in the hidden lines goes to the end of the line that stands for them.
-        let out = |offset: usize| self.fold_map.zone_of(offset).map_or(offset, |(start, _)| start);
+        let out = |offset: usize| {
+            let at = new_zones.partition_point(|z| z.0 < offset);
+            at.checked_sub(1).and_then(|i| new_zones.get(i)).filter(|z| offset <= z.1).map_or(offset, |z| z.0)
+        };
         let moved: Vec<Caret> = self.carets.iter().map(|c| Caret::new(out(c.sel.anchor), out(c.sel.head))).collect();
         self.set_carets_raw(moved, self.primary);
         true
@@ -549,6 +556,21 @@ mod tests {
         assert_eq!(e.folds()[0].tail, 0);
         e.apply_edits(&[Edit::insert(4, "X")]);
         assert_eq!(e.folds().len(), 1, "the start of line 2 is after the fold");
+    }
+
+    #[test]
+    fn folding_moves_only_what_the_new_fold_hides() {
+        // A selection that goes from inside an old fold to outside it keeps its anchor when an unrelated fold is added.
+        let mut e = Editor::new("a0\na1\na2\na3\na4\na5\na6\na7");
+        e.fold_lines(0, 2); // hides lines 1 and 2: the positions 3 to 8
+        e.set_selection(4, 14); // the anchor is inside the fold, the head (line 4) is not
+        assert_eq!(e.folds().len(), 1, "the head is out of the fold: it stays");
+        assert!(e.fold_lines(4, 5));
+        assert_eq!(e.folds().len(), 2);
+        assert_eq!((e.primary().sel.anchor, e.primary().sel.head), (4, 14), "the unrelated fold moved nothing");
+        // What the new fold hides is moved, as always.
+        assert!(e.fold_lines(3, 6));
+        assert_eq!(e.primary().sel.head, 11, "the head was in the lines it hides");
     }
 
     #[test]
