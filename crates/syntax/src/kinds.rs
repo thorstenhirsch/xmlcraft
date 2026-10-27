@@ -57,7 +57,7 @@ pub enum SyntaxKind {
     EndTag,
     /// `name="value"` in a start tag.
     Attribute,
-    /// The quoted value of an attribute (quotes included).
+    /// The value of an attribute: the quoted text (quotes included), or the bare name token of an unquoted value, which is reported.
     AttrValue,
     Comment,
     CData,
@@ -193,6 +193,8 @@ mod tests {
         for (i, kind) in KINDS.iter().enumerate() {
             assert_eq!(*kind as usize, i, "{kind:?}");
         }
+        // `ProcessingInstruction` is the last kind, so a kind added without a table entry shows up as a length mismatch.
+        assert_eq!(KINDS.len(), SyntaxKind::ProcessingInstruction as usize + 1);
         assert_eq!(SyntaxKind::from_raw(u16::MAX), SyntaxKind::Error, "an unknown number is not a panic");
         assert_eq!(SyntaxKind::from_raw(SyntaxKind::Element as u16), SyntaxKind::Element);
     }

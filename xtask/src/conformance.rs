@@ -164,10 +164,11 @@ fn attributes(element: &SyntaxNode) -> BTreeMap<String, String> {
     out
 }
 
-/// The `xml:base` values from the outermost element down to `element`'s parents.
+/// The `xml:base` values from the outermost element down to `element` itself: a `URI` attribute is relative to the base of the element
+/// that carries it.
 fn bases(element: &SyntaxNode) -> Vec<String> {
     let mut chain: Vec<String> =
-        element.ancestors().skip(1).filter(|n| n.kind() == SyntaxKind::Element).filter_map(|n| attributes(&n).remove("xml:base")).collect();
+        element.ancestors().filter(|n| n.kind() == SyntaxKind::Element).filter_map(|n| attributes(&n).remove("xml:base")).collect();
     chain.reverse();
     chain
 }
@@ -339,7 +340,7 @@ fn xmlconf(fetch: bool, write: bool, verbose: bool) -> Result<()> {
     }
 
     let baseline_path = root().join("xtask/baselines/xmlconf.txt");
-    let baseline = read_baseline(&baseline_path);
+    let baseline = read_baseline(&baseline_path)?;
     if write {
         write_baseline(&baseline_path, &failed)?;
         println!("wrote {} ({} failing tests)", baseline_path.display(), failed.len());
@@ -365,8 +366,15 @@ fn xmlconf(fetch: bool, write: bool, verbose: bool) -> Result<()> {
     Ok(())
 }
 
-fn read_baseline(path: &Path) -> BTreeSet<String> {
-    fs::read_to_string(path).unwrap_or_default().lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).map(str::to_owned).collect()
+/// The listed failures. A missing file is an empty baseline (every failure is then new); a file that cannot be read is an error, so the
+/// ratchet is never checked against nothing by accident.
+fn read_baseline(path: &Path) -> Result<BTreeSet<String>> {
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e).with_context(|| format!("reading {}", path.display())),
+    };
+    Ok(text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).map(str::to_owned).collect())
 }
 
 fn write_baseline(path: &Path, failed: &BTreeSet<String>) -> Result<()> {
@@ -416,6 +424,20 @@ mod tests {
     }
 
     #[test]
+    fn a_unreadable_baseline_is_an_error_not_an_empty_one() {
+        // A directory where the file should be: reading it fails with something other than "not found".
+        assert!(read_baseline(&std::env::temp_dir()).is_err());
+    }
+
+    #[test]
+    fn a_test_element_is_relative_to_its_own_xml_base() {
+        let expanded = "<T xml:base=\"a/\"><TEST xml:base=\"b/\" TYPE=\"valid\" URI=\"x.xml\"/></T>";
+        let found = cases(expanded);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, "a/b/x.xml");
+    }
+
+    #[test]
     fn paths_are_joined_and_kept_inside_the_suite() {
         assert_eq!(join_path(&["a/".into(), "b/".into()], "c/d.xml").as_deref(), Some("a/b/c/d.xml"));
         assert_eq!(join_path(&["a/b/".into()], "../c.xml").as_deref(), Some("a/c.xml"));
@@ -451,10 +473,10 @@ mod tests {
         let path = dir.join("b.txt");
         let failed: BTreeSet<String> = ["b/2.xml", "a/1.xml"].iter().map(|s| (*s).to_owned()).collect();
         write_baseline(&path, &failed).expect("writes");
-        assert_eq!(read_baseline(&path), failed);
+        assert_eq!(read_baseline(&path).expect("reads"), failed);
         assert!(fs::read_to_string(&path).expect("reads").lines().filter(|l| !l.starts_with('#')).eq(["a/1.xml", "b/2.xml"]), "sorted");
         let _ = fs::remove_dir_all(&dir);
-        assert!(read_baseline(&dir.join("missing.txt")).is_empty());
+        assert!(read_baseline(&dir.join("missing.txt")).expect("a missing baseline is empty").is_empty());
     }
 
     #[test]

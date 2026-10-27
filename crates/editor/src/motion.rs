@@ -3,12 +3,16 @@
 //! All of it is pure and total: given a valid offset it returns a valid offset, and given an invalid one it clamps. Looking at the text
 //! is limited to a small window around the offset, so a one-megabyte line costs no more than a short one.
 
-use unicode_segmentation::GraphemeCursor;
+use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 use unicode_width::UnicodeWidthChar;
 use xmlcraft_text::Buffer;
 
-/// How far around an offset the text is read to find a cluster boundary, in bytes.
-const REACH: usize = 128;
+/// How much text is handed to the segmenter at a time, in bytes.
+const CHUNK: usize = 256;
+
+/// How many chunks one search may read. A cluster longer than this (about 16 KB of combining marks) is not one: the caret moves a
+/// character at a time through it, so a hostile line cannot make one keystroke expensive.
+const MAX_CHUNKS: usize = 64;
 
 fn floor_boundary(buf: &Buffer, mut offset: usize) -> usize {
     offset = offset.min(buf.len());
@@ -31,21 +35,45 @@ pub fn clamp(buf: &Buffer, offset: usize) -> usize {
     floor_boundary(buf, offset)
 }
 
+/// The text between `from` and `to` (widened to character boundaries) with where it starts.
+fn chunk(buf: &Buffer, from: usize, to: usize) -> Option<(usize, String)> {
+    let from = floor_boundary(buf, from);
+    let to = ceil_boundary(buf, to);
+    buf.slice(from..to).ok().map(|text| (from, text))
+}
+
+/// The cluster boundary after (`forward`) or before `offset`, reading only the text the segmenter asks for, or `None` when that is
+/// more than [`MAX_CHUNKS`] chunks.
+fn cluster_boundary(buf: &Buffer, offset: usize, forward: bool) -> Option<usize> {
+    let mut cursor = GraphemeCursor::new(offset, buf.len(), true);
+    let (mut start, mut text) =
+        if forward { chunk(buf, offset, offset.saturating_add(CHUNK))? } else { chunk(buf, offset.saturating_sub(CHUNK), offset)? };
+    for _ in 0..MAX_CHUNKS {
+        let found = if forward { cursor.next_boundary(&text, start) } else { cursor.prev_boundary(&text, start) };
+        match found {
+            Ok(boundary) => return Some(boundary.unwrap_or(if forward { buf.len() } else { 0 })),
+            Err(GraphemeIncomplete::NextChunk) => {
+                let end = start.saturating_add(text.len());
+                (start, text) = chunk(buf, end, end.saturating_add(CHUNK))?;
+            }
+            Err(GraphemeIncomplete::PrevChunk) => (start, text) = chunk(buf, start.saturating_sub(CHUNK), start)?,
+            Err(GraphemeIncomplete::PreContext(end)) => {
+                let (from, context) = chunk(buf, end.saturating_sub(CHUNK), end)?;
+                cursor.provide_context(&context, from);
+            }
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
 /// The end of the character cluster that starts at `offset` (the text length at the end).
 pub fn next_grapheme(buf: &Buffer, offset: usize) -> usize {
     let offset = clamp(buf, offset);
     if offset >= buf.len() {
         return buf.len();
     }
-    let start = floor_boundary(buf, offset.saturating_sub(REACH));
-    let end = ceil_boundary(buf, offset.saturating_add(REACH));
-    let Ok(window) = buf.slice(start..end) else { return buf.next_char(offset) };
-    let mut cursor = GraphemeCursor::new(offset - start, window.len(), true);
-    match cursor.next_boundary(&window, 0) {
-        Ok(Some(boundary)) => start + boundary,
-        // The window is not the whole text and the cluster is longer than it, or the window has no context: take one character.
-        _ => buf.next_char(offset),
-    }
+    cluster_boundary(buf, offset, true).filter(|boundary| *boundary > offset).unwrap_or_else(|| buf.next_char(offset))
 }
 
 /// The start of the character cluster that ends at `offset` (0 at the start).
@@ -54,14 +82,7 @@ pub fn prev_grapheme(buf: &Buffer, offset: usize) -> usize {
     if offset == 0 {
         return 0;
     }
-    let start = floor_boundary(buf, offset.saturating_sub(REACH));
-    let end = ceil_boundary(buf, offset.saturating_add(REACH));
-    let Ok(window) = buf.slice(start..end) else { return buf.prev_char(offset) };
-    let mut cursor = GraphemeCursor::new(offset - start, window.len(), true);
-    match cursor.prev_boundary(&window, 0) {
-        Ok(Some(boundary)) => start + boundary,
-        _ => buf.prev_char(offset),
-    }
+    cluster_boundary(buf, offset, false).filter(|boundary| *boundary < offset).unwrap_or_else(|| buf.prev_char(offset))
 }
 
 /// `offset` moved back to the start of the character cluster it is inside (itself, when it already is on a boundary). A click lands
@@ -273,10 +294,39 @@ mod tests {
         let buf = b(&text);
         assert_eq!(next_grapheme(&buf, 100_000), 100_003);
         assert_eq!(prev_grapheme(&buf, 100_003), 100_000);
-        // A cluster longer than the window falls back to single characters rather than failing.
-        let long = format!("a{}", "\u{301}".repeat(500));
+    }
+
+    #[test]
+    fn a_cluster_longer_than_one_chunk_is_not_split() {
+        // 'a' and 3000 combining marks (6000 bytes): far past one chunk, still one cluster in both directions.
+        let long = format!("a{}b", "\u{301}".repeat(3000));
         let buf = b(&long);
-        assert!(next_grapheme(&buf, 0) >= 1);
+        let end = 1 + 3000 * 2;
+        assert_eq!(next_grapheme(&buf, 0), end);
+        assert_eq!(prev_grapheme(&buf, end), 0);
+        assert_eq!(next_grapheme(&buf, end), end + 1);
+        // Past the cap the caret moves a character at a time, and always moves.
+        let hostile = format!("a{}", "\u{301}".repeat(MAX_CHUNKS * CHUNK));
+        let buf = b(&hostile);
+        assert_eq!(next_grapheme(&buf, 0), 1, "falls back to one character at a time");
+        assert!(prev_grapheme(&buf, buf.len()) < buf.len());
+    }
+
+    #[test]
+    fn a_flag_split_across_chunks_stays_whole() {
+        // Regional indicators pair up from the start of the run; the segmenter needs the text before the offset to know the parity.
+        let flags = "\u{1F1E9}\u{1F1EA}".repeat(200);
+        let buf = b(&flags);
+        let mut at = 0;
+        let mut count = 0;
+        while at < buf.len() {
+            let next = next_grapheme(&buf, at);
+            assert_eq!(next - at, 8, "each flag is two 4-byte characters (at {at})");
+            at = next;
+            count += 1;
+        }
+        assert_eq!(count, 200);
+        assert_eq!(prev_grapheme(&buf, buf.len() - 8 * 100), buf.len() - 8 * 101);
     }
 
     #[test]
