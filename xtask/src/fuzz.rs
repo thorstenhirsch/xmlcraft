@@ -344,6 +344,12 @@ fn run_one(exe: &Path, file: &Path, stderr_file: &Path, timeout: Duration) -> Re
     loop {
         match child.try_wait().context("waiting for the child")? {
             Some(status) if status.success() => return Ok((Outcome::Ok, String::new())),
+            // 126 and 127 are the shell saying it could not run the program (on Linux the child is started through `sh`): nothing the
+            // input did, and `check-one` never exits with them.
+            Some(status) if matches!(status.code(), Some(126 | 127)) => {
+                let err = std::fs::read(stderr_file).map(|bytes| String::from_utf8_lossy(&bytes).into_owned()).unwrap_or_default();
+                bail!("the child could not be run ({status}): {}", err.trim());
+            }
             Some(status) => {
                 let err = std::fs::read(stderr_file).map(|bytes| String::from_utf8_lossy(&bytes).into_owned()).unwrap_or_default();
                 return Ok((Outcome::Crash, format!("{status}; {}", reason(&err))));
@@ -633,10 +639,38 @@ mod tests {
         std::fs::write(&file, b"<a/>").expect("writes");
         let missing = dir.path().join("no-such-program");
         let err = run_one(&missing, &file, &dir.path().join("err"), Duration::from_secs(1)).expect_err("cannot start");
-        assert!(format!("{err:#}").contains("starting"), "{err:#}");
+        assert!(format!("{err:#}").contains("starting") || format!("{err:#}").contains("could not be run"), "{err:#}");
         // A work file that cannot be written is an error too.
         let err = run_one(&missing, &file, &dir.path().join("no-such-directory/err"), Duration::from_secs(1)).expect_err("cannot write");
         assert!(format!("{err:#}").contains("creating"), "{err:#}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exit_codes_126_and_127_are_the_shell_failing_to_run_the_program_not_a_finding() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("dir");
+        let file = dir.path().join("a.xml");
+        std::fs::write(&file, b"<a/>").expect("writes");
+        let script = |name: &str, body: &str| {
+            let path = dir.path().join(name);
+            std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("writes");
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+            path
+        };
+        let err = dir.path().join("err");
+        for code in [126, 127] {
+            let failing = script(&format!("exit{code}"), &format!("echo 'sh: no such program' >&2; exit {code}"));
+            let message = run_one(&failing, &file, &err, Duration::from_secs(5)).expect_err("infrastructure").to_string();
+            assert!(message.contains("could not be run") && message.contains("no such program"), "{message}");
+        }
+        // Any other failure of the child is the input's.
+        let crash = script("exit1", "echo 'xmlcraft-cli: self-check failed: x' >&2; exit 1");
+        let (outcome, what) = run_one(&crash, &file, &err, Duration::from_secs(5)).expect("a finding");
+        assert_eq!(outcome, Outcome::Crash);
+        assert!(what.contains("self-check failed"), "{what}");
+        let fine = script("exit0", "exit 0");
+        assert_eq!(run_one(&fine, &file, &err, Duration::from_secs(5)).expect("passes").0, Outcome::Ok);
     }
 
     #[test]

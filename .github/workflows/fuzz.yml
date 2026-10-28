@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       minutes:
-        description: "How long to fuzz, in minutes"
+        description: "How long to fuzz, in minutes (1 to 45)"
         default: "15"
   schedule:
     - cron: "17 3 * * *"
@@ -63,8 +63,9 @@ jobs:
           case "$MINUTES" in
             ''|*[!0-9]*) echo "minutes must be a whole number, not '$MINUTES'" >&2; exit 1 ;;
           esac
-          if [ "${#MINUTES}" -gt 3 ] || [ "$MINUTES" -lt 1 ]; then
-            echo "minutes must be between 1 and 999" >&2
+          # The job is cut off after 60 minutes, and the build and the suite's download come first.
+          if [ "${#MINUTES}" -gt 3 ] || [ "$((10#$MINUTES))" -lt 1 ] || [ "$((10#$MINUTES))" -gt 45 ]; then
+            echo "minutes must be between 1 and 45" >&2
             exit 1
           fi
           cargo xtask fuzz --time "$((10#$MINUTES * 60))" --seed "$RUN_NUMBER"

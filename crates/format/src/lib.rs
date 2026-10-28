@@ -89,6 +89,10 @@ pub fn pretty_print_settled(text: &str, options: &FormatOptions) -> Result<Vec<E
         options.eol = own.dominant();
     }
     let edits = pretty_print(text, &options)?;
+    // A text that uses one ending (or none) is written in it, so the result has the same: nothing to settle.
+    if !own.is_mixed() {
+        return Ok(edits);
+    }
     let result = endings_after(text, &edits, own);
     // The ending most of the result's breaks use, when that is another one: write that one.
     if result.total() > 0 && result.dominant() != options.eol {
