@@ -1028,10 +1028,10 @@ area = "E"
 tier = "P0"
 milestone = "M2"
 status = "partial"
-commands = []
-tools = []
-evidence = ["crates/validate/tests/validation.rs::element_content_follows_the_model_and_has_no_text", "crates/validate/tests/validation.rs::attributes_are_declared_required_fixed_and_of_their_type", "crates/validate/tests/validation.rs::ids_are_unique_and_idrefs_name_them", "crates/validate/tests/validation.rs::a_standalone_document_does_not_lean_on_declarations_outside_it", "crates/validate/tests/validation.rs::entities_in_content_are_read_in_the_place_they_are_referred_to"]
-notes = "A document with a DOCTYPE is checked against the grammar of its DTD (`xmlcraft_validate::check`): root element type, element valid (declared; EMPTY, ANY, mixed and element content through the automata; text and character references in element content), attributes (declared, required, fixed, types and enumerations, ID unique and IDREF resolved, ENTITY names an unparsed entity, no colon in those names), the standalone document declaration, the declarations' own constraints (duplicates, ID and NOTATION rules, the nesting of parameter entities in declarations, groups and conditional sections), with the replacement text of internal entities read in the place they are referred to. The W3C xmlconf suite is the measure: 721 of 721 valid documents have no error and 227 of 227 invalid ones have at least one (which one is not compared). Missing: nothing in the app runs it (F8, validate-on-edit, squiggles and the Messages pane are M2.10; the tools `xml_validate` and the CLI are M2.13), external general entities are not read in content, and the resolver that finds a DTD by catalog or by the network is M2.3."
+commands = ["xml.validate"]
+tools = ["xml_validate"]
+evidence = ["crates/ui-egui/tests/validation.rs::f8_says_a_valid_document_is_valid", "crates/automation/tests/validate.rs::the_external_subset_is_a_file_next_to_the_document_and_problems_in_it_name_the_file", "crates/validate/tests/validation.rs::element_content_follows_the_model_and_has_no_text", "crates/validate/tests/validation.rs::attributes_are_declared_required_fixed_and_of_their_type", "crates/validate/tests/validation.rs::ids_are_unique_and_idrefs_name_them", "crates/validate/tests/validation.rs::a_standalone_document_does_not_lean_on_declarations_outside_it", "crates/validate/tests/validation.rs::entities_in_content_are_read_in_the_place_they_are_referred_to"]
+notes = "A document with a DOCTYPE is checked against the grammar of its DTD (`xmlcraft_validate::check`): root element type, element valid (declared; EMPTY, ANY, mixed and element content through the automata; text and character references in element content), attributes (declared, required, fixed, types and enumerations, ID unique and IDREF resolved, ENTITY names an unparsed entity, no colon in those names), the standalone document declaration, the declarations' own constraints (duplicates, ID and NOTATION rules, the nesting of parameter entities in declarations, groups and conditional sections), with the replacement text of internal entities read in the place they are referred to. The W3C xmlconf suite is the measure: 721 of 721 valid documents have no error and 227 of 227 invalid ones have at least one (which one is not compared). In the app: Validate (F8, XML menu) checks the document being shown in the background and reports in the status bar, Messages and the underlines; an edit makes the result out of date. Headless: the tool `xml_validate` and `xmlcraft-cli validate` (external parts of the DTD are files, a relative system identifier from the document's folder, through the `--root` confinement for the tool; nothing is downloaded). Missing: validate while typing, external general entities are not read in content, the resolver that finds a DTD by catalog or by the network is M2.3, and the DTD is read again on every validation (no cache)."
 
 [[feature]]
 id = "validate.xsd"
@@ -1087,11 +1087,11 @@ title = "Squiggles, next and previous error, jump from Messages"
 area = "E"
 tier = "P0"
 milestone = "M2"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.check", "xml.validate"]
+tools = ["xml_wellformed", "xml_validate"]
+evidence = ["crates/ui-egui/tests/analysis.rs::problems_are_listed_and_a_click_goes_to_them", "crates/ui-egui/tests/validation.rs::validity_problems_are_listed_after_the_others_and_a_click_goes_to_them", "crates/ui-egui/tests/validation.rs::what_is_wrong_with_the_document_is_underlined_while_the_validation_is_current"]
+notes = "Problems of the well-formedness check and of the validation are underlined in the editor (validity ones while the validation is about the text as it is), listed in Messages with their line and column (a problem in an external text of the DTD names the file), and a click in Messages selects the place in the document. Missing: next and previous error commands, hover text on the underline, and opening the external text a problem is in."
 
 [[feature]]
 id = "validate.def-links"
@@ -1337,11 +1337,11 @@ title = "Bundled standard schemas that validate offline"
 area = "G"
 tier = "P0"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = "Core W3C and OASIS set at M2; the full ~150-file set at M4."
+evidence = ["crates/schemas/tests/bundle.rs::every_file_of_the_folder_is_in_the_bundle_byte_for_byte_and_nothing_else_is", "xtask/src/schemas.rs::a_file_that_is_not_the_one_in_the_manifest_is_refused", "xtask/src/schemas.rs::the_catalogs_may_lead_only_to_what_is_bundled"]
+notes = "The files, the catalogs that lead to them and the packing exist: `crates/schemas` embeds `schemas/` (deflated, read one file at a time), `schemas/manifest.toml` pins each file to its URL and SHA-256, and `cargo xtask schemas` (in ci) checks the hashes, the closed licence list, that no schema file is unlisted, that ATTRIBUTION.toml is the one the manifest makes, that every catalog entry leads to a bundled file, and the 250-file cap. In the bundle so far (10 files, W3C): the XML Schema schema, DTD and datatypes DTD, xml.xsd, and the XHTML 1.0 DTDs with their entity sets. Missing: nothing reads the bundle yet (the resolver is M2.3, so no document validates from it), the rest of the core W3C and OASIS set (XHTML 1.1, SVG, MathML, XML Signature, SOAP, WSDL, XSLT, DocBook, SAML, XLIFF) and the ~150-file set of M4."
 
 [[feature]]
 id = "catalog.disk-cache"

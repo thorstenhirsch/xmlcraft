@@ -129,6 +129,16 @@ fn element_content_follows_the_model_and_has_no_text() {
 }
 
 #[test]
+fn an_element_that_is_not_declared_is_said_to_be_so_and_once() {
+    assert_eq!(invalid(&doc("<!ELEMENT r (a)><!ELEMENT a EMPTY>", "<r><zzz/></r>")), [Code::VcElementNotDeclared]);
+    assert_eq!(invalid(&doc("<!ELEMENT r (#PCDATA | a)*><!ELEMENT a EMPTY>", "<r><zzz/></r>")), [Code::VcElementNotDeclared]);
+    // One that is declared, but not welcome, is said to be that.
+    assert_eq!(invalid(&doc("<!ELEMENT r (a)><!ELEMENT a EMPTY><!ELEMENT b EMPTY>", "<r><b/></r>")), [Code::VcChildNotAllowed]);
+    // An EMPTY element with an element in it is a mistake of its own.
+    assert_eq!(invalid(&doc("<!ELEMENT r EMPTY>", "<r><zzz/></r>")), [Code::VcEmptyHasContent, Code::VcElementNotDeclared]);
+}
+
+#[test]
 fn the_message_says_what_was_expected() {
     let text = doc("<!ELEMENT r (a, (b | c))><!ELEMENT a EMPTY><!ELEMENT b EMPTY><!ELEMENT c EMPTY>", "<r><a/><a/></r>");
     let p = problems(&text, &mut NoLoader);

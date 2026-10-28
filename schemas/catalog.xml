@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The catalog of the schemas that ship with XmlCraft (OASIS XML Catalogs 1.1). Written for XmlCraft; the files it points to are the
+     publishers' own and are not modified. Relative references are relative to the URI this catalog is read from (bundled:/catalog.xml). -->
+<catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog" prefer="public">
+  <nextCatalog catalog="w3c/catalog.xml"/>
+</catalog>
