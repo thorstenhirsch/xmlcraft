@@ -1,6 +1,6 @@
 # XmlCraft parity with Altova XMLSpy
 
-> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M1.12: recent files (partial); feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M2.1: OASIS catalogs (partial); feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
 
 The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -10,8 +10,8 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **6.6%** shipped, 16.4% with partial counted half (10 shipped + 30 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-28) |
-| Must-have (P0) features | 7.8% shipped, 25.8% weighted (5 shipped + 23 partial of 64) | measured |
+| **Feature breadth**, unweighted | **6.6%** shipped, 16.8% with partial counted half (10 shipped + 31 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-28) |
+| Must-have (P0) features | 7.8% shipped, 26.6% weighted (5 shipped + 24 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **64.7%** (658 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-27) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): no well-formedness error is reported on a well-formed document | measured (same run) |
 | W3C xsdtests (XSD 1.0) | not measured | arrives with M3 |
@@ -53,3 +53,4 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 - 2026-10-27: M1.10c: tag-rename sync (`editor.tag-rename-sync` planned → partial); 10 shipped and 28 partial, 15.8% weighted.
 - 2026-10-27: M1.8: column selection (`editor.column-selection` planned → partial); 10 shipped and 29 partial, 16.1% weighted.
 - 2026-10-28: M1.12: recent files (`editor.recent-files` planned → partial); 10 shipped and 30 partial, 16.4% weighted.
+- 2026-10-28: M2.1: OASIS XML Catalogs 1.1 resolution (`catalog.oasis-catalogs` planned → partial); 10 shipped and 31 partial, 16.8% weighted.
