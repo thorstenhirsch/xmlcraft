@@ -43,6 +43,20 @@ pub(crate) fn source_properties() -> Value {
     })
 }
 
+/// The properties that say which text, and a place in it: `line` and `column` (from 1) or a byte `offset`.
+pub(crate) fn source_and_position_properties() -> Value {
+    let mut properties = source_properties();
+    if let Some(map) = properties.as_object_mut() {
+        map.insert("line".into(), json!({ "type": "integer", "minimum": 1 }));
+        map.insert("column".into(), json!({ "type": "integer", "minimum": 1 }));
+        map.insert(
+            "offset".into(),
+            json!({ "type": "integer", "minimum": 0, "description": "A byte offset of the text, instead of line and column" }),
+        );
+    }
+    properties
+}
+
 /// The properties that say what to search for.
 fn search_properties() -> Value {
     json!({
@@ -374,18 +388,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
                           `column` (from 1) or as a byte `offset`. Returns the tag and its name, the other tag and its name, and where the caret would go \
                           (`jump_to`); `match` is null where the position is in no tag, or the tag has no other (an empty-element tag, an element that is not \
                           closed).",
-            input_schema: {
-                let mut properties = source_properties();
-                if let Some(map) = properties.as_object_mut() {
-                    map.insert("line".into(), json!({ "type": "integer", "minimum": 1 }));
-                    map.insert("column".into(), json!({ "type": "integer", "minimum": 1 }));
-                    map.insert(
-                        "offset".into(),
-                        json!({ "type": "integer", "minimum": 0, "description": "A byte offset of the text, instead of line and column" }),
-                    );
-                }
-                object(properties, &[])
-            },
+            input_schema: object(source_and_position_properties(), &[]),
             read_only: true,
             destructive: false,
             handler: xml_matching_tag,
@@ -476,6 +479,17 @@ fn describe(doc: &Document) -> Value {
 
 pub(crate) fn json_result(value: Value) -> Result<Vec<Content>> {
     Ok(vec![Content::Json(value)])
+}
+
+/// The place in `text` that `line` and `column` (from 1) or `offset` (a byte offset on a character boundary) name.
+pub(crate) fn position_arg(text: &str, buffer: &Buffer, args: &Value) -> Result<usize> {
+    match args.get("offset").and_then(Value::as_u64) {
+        Some(offset) => usize::try_from(offset)
+            .ok()
+            .filter(|o| *o <= text.len() && text.is_char_boundary(*o))
+            .ok_or_else(|| ToolError::InvalidArgs(format!("offset: not a position in the text ({} bytes, on a character boundary)", text.len()))),
+        None => offset_from(buffer, args.get("line").and_then(Value::as_u64), args.get("column").and_then(Value::as_u64), "position"),
+    }
 }
 
 /// A 1-based (line, column) argument pair to an offset; the end defaults to the start.
@@ -1024,12 +1038,7 @@ fn range_json(buffer: &Buffer, range: &std::ops::Range<usize>) -> Value {
 fn xml_matching_tag(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let source = source(a, args)?;
     let buffer = Buffer::from_text(&source.text);
-    let offset = match args.get("offset").and_then(Value::as_u64) {
-        Some(offset) => usize::try_from(offset).ok().filter(|o| *o <= source.text.len() && source.text.is_char_boundary(*o)).ok_or_else(|| {
-            ToolError::InvalidArgs(format!("offset: not a position in the text ({} bytes, on a character boundary)", source.text.len()))
-        })?,
-        None => offset_from(&buffer, args.get("line").and_then(Value::as_u64), args.get("column").and_then(Value::as_u64), "position")?,
-    };
+    let offset = position_arg(&source.text, &buffer, args)?;
     let analysis = analysis_of(&source)?;
     let found = analysis.matching_tag(offset).map(|m| {
         json!({

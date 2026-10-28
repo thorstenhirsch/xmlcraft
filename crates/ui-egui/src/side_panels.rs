@@ -119,7 +119,7 @@ impl PaneContent<Pane> for Content<'_> {
         let close = pane_header(ui, pane.title());
         match pane {
             Pane::Outline => outline_body(ui, self.app),
-            Pane::EntryHelpers => entry_helpers_body(ui),
+            Pane::EntryHelpers => crate::entry_helpers::body(ui, self.app),
             Pane::Messages => messages_body(ui, self.app),
         }
         if close {
@@ -391,17 +391,6 @@ fn messages_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     });
     if let Some(span) = clicked {
         app.jump_to(span);
-    }
-}
-
-fn entry_helpers_body(ui: &mut egui::Ui) {
-    pane_hint(ui, tl!("What the schema allows at the cursor appears here."));
-    for section in [tl!("Elements"), tl!("Attributes"), tl!("Entities")] {
-        egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 0)).show(ui, |ui| {
-            widgets::section_title(ui, section);
-            let t = Tokens::get(ui.ctx());
-            ui.label(egui::RichText::new(tl!("Nothing to show")).font(theme::regular(12.5)).color(t.text_muted));
-        });
     }
 }
 

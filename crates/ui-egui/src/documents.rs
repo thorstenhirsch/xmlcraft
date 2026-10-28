@@ -40,11 +40,21 @@ pub(crate) struct DocView {
     requested: Option<u64>,
     /// The version of the text last handed to the validator.
     validation_requested: Option<u64>,
+    /// The grammar of the DOCTYPE, and what Entry Helpers offer from it.
+    pub(crate) helpers: crate::entry_helpers::HelperState,
 }
 
 impl DocView {
     pub fn new(kind: ThemeKind) -> Self {
-        Self { view: ViewState::new(), styler: XmlStyler::new(kind), analysis: None, validation: None, requested: None, validation_requested: None }
+        Self {
+            view: ViewState::new(),
+            styler: XmlStyler::new(kind),
+            analysis: None,
+            validation: None,
+            requested: None,
+            validation_requested: None,
+            helpers: Default::default(),
+        }
     }
 
     /// Keep `analysis`, underline its problems in the editor and offer what it says can be folded.
@@ -180,6 +190,11 @@ impl XmlCraftApp {
                 self.views.entry(id).or_insert_with(|| DocView::new(kind)).set_validation(validation);
             }
         }
+        for (id, schema) in self.schemas.poll() {
+            if let Some(view) = self.views.get_mut(&id) {
+                view.helpers.accept(schema);
+            }
+        }
         for (id, analysis) in self.analyzer.poll() {
             if self.session.position_of(id).is_none() {
                 continue; // closed meanwhile
@@ -197,9 +212,36 @@ impl XmlCraftApp {
                 self.analyzer.submit(id, version, doc.editor().buffer());
             }
         }
+        self.request_schema();
         self.report_check();
         self.report_validation();
         self.finish_waiting();
+    }
+
+    /// Ask for the grammar of the DOCTYPE of the document being shown when the DOCTYPE (or the place the document is at) is not the one
+    /// the grammar was asked for, once per analysis.
+    fn request_schema(&mut self) {
+        let Some(doc) = self.session.active_document() else { return };
+        let id = doc.id();
+        let Some(view) = self.views.get_mut(&id) else { return };
+        let Some(analysis) = view.analysis.as_ref() else { return };
+        if view.helpers.checked_version == Some(analysis.version) {
+            return;
+        }
+        view.helpers.checked_version = Some(analysis.version);
+        let Some(range) = analysis.doctype.clone() else {
+            // No DOCTYPE any more: no grammar.
+            view.helpers.requested_key = None;
+            view.helpers.grammar_key = None;
+            view.helpers.grammar = None;
+            return;
+        };
+        let Ok(text) = doc.editor().buffer().slice(range.clone()) else { return };
+        let key = xmlcraft_engine::schema::key_of(&text, doc.path());
+        if view.helpers.requested_key != Some(key) {
+            view.helpers.requested_key = Some(key);
+            self.schemas.submit(id, key, text, range.start, doc.path());
+        }
     }
 
     /// If a validation (F8) is waiting and its result has arrived (for the text it asked about or a later one), say what it found.
@@ -318,6 +360,12 @@ impl XmlCraftApp {
     /// about a version slightly older than the text while a newer one is worked out.
     pub fn problems(&self) -> Option<(usize, usize)> {
         self.active_analysis().filter(|a| a.skipped.is_none()).map(|a| (a.error_count(), a.warning_count()))
+    }
+
+    /// Whether the grammar of the DOCTYPE of the document being shown has been read (what Entry Helpers offer comes from it).
+    pub fn has_grammar(&self) -> bool {
+        let Some(id) = self.session.active_document().map(Document::id) else { return false };
+        self.views.get(&id).is_some_and(|v| v.helpers.grammar.is_some())
     }
 
     /// The places in the text of the document being shown that are underlined as wrong: the ranges and how serious each is.
