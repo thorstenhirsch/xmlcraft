@@ -626,4 +626,10 @@ fn the_files_that_were_opened_are_listed_newest_first_and_the_list_can_be_cleare
     assert_eq!((cleared["count"].as_u64(), cleared["cleared"].as_bool()), (Some(2), Some(true)));
     assert!(cleared["files"][0].as_str().is_some_and(|f| f.ends_with("first.xml")));
     assert_eq!(ok(&mut a, "recent_files", json!({}))["count"], 0);
+    // A file written by doc_save is a recent file too (save as: a new path).
+    let id = ok(&mut a, "doc_new", json!({ "text": "<d/>" }))["id"].as_u64().expect("id");
+    let target = dir.path().join("saved.xml");
+    ok(&mut a, "doc_save", json!({ "id": id, "path": target.to_str().expect("utf-8") }));
+    let listed = ok(&mut a, "recent_files", json!({}));
+    assert!(listed["files"][0].as_str().is_some_and(|f| f.ends_with("saved.xml")), "{listed}");
 }

@@ -476,15 +476,16 @@ fn the_home_view_lists_the_files_opened_lately_and_a_click_opens_one() {
     let names: Vec<String> =
         h.state().recent_files().iter().map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()).collect();
     assert_eq!(names, ["beta.xml", "alpha.xml"]);
-    h.get_by_label("alpha.xml").click();
+    h.get_by_label_contains("alpha.xml").click();
     h.run_steps(4);
     assert_eq!(h.state().tabs().iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), ["alpha.xml"]);
     // A file that is gone is reported, and dropped from the list.
     h.state_mut().execute("file.close");
     h.run_steps(3);
     std::fs::remove_file(&b).expect("removes");
-    h.get_by_label("beta.xml").click();
+    h.get_by_label_contains("beta.xml").click();
     h.run_steps(4);
+    assert!(h.query_by_label("Couldn't open the file").is_some(), "the reason is shown");
     assert!(h.state().tabs().is_empty(), "it could not be opened");
     assert!(!h.state().recent_files().iter().any(|p| p.ends_with("beta.xml")), "and it is not listed any more");
     // The command empties the list.

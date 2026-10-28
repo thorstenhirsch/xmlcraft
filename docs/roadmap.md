@@ -1,6 +1,6 @@
 # XmlCraft roadmap: milestones and what's next
 
-> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** M1.1–M1.8, M1.9a–c, M1.10a–c, M1.11–M1.14 done, M1.15 begun (bench, colouring far into large files), M1.16 fuzz tooling added (the hour without a panic is still to be measured) · **Target:** Altova XMLSpy (feature set described in its public documentation)
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M1.1–M1.8, M1.9a–c, M1.10a–c, M1.11–M1.14 done, M1.15 begun (bench, colouring far into large files), M1.16 fuzz tooling added (the hour without a panic is still to be measured) · **Target:** Altova XMLSpy (feature set described in its public documentation)
 
 Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is done when its **exit criteria** are met and measured, not when its tasks are merged. [ROADMAP.md](../ROADMAP.md) is the one-page summary.
 
@@ -40,7 +40,7 @@ Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is 
 - 2026-10-27: M1.6b (`xmlcraft-code-editor`): the egui editor widget.
 - 2026-10-27: M1.7: XML colouring (per-line lexing from checkpoints) and its theme colours.
 - 2026-10-27: M1.12a: the document model (`xmlcraft-engine::Document`, `Session`) and native file I/O (`xmlcraft-platform`).
-- 2026-10-27: M1.12b: the editor in the app (open, edit, save, prompts, drag and drop). Still to do for M1.12: recent files, autosave recovery, watching the open files (they are looked at when the window gets the focus back), a single running instance and Apple events (files opened from the Finder), and Edit ▸ Paste (egui can receive a paste but not read the clipboard).
+- 2026-10-27: M1.12b: the editor in the app (open, edit, save, prompts, drag and drop). Still to do for M1.12 (recent files came later, below): autosave recovery, watching the open files (they are looked at when the window gets the focus back), a single running instance and Apple events (files opened from the Finder), and Edit ▸ Paste (egui can receive a paste but not read the clipboard).
 - 2026-10-27: M1.13: problems (squiggles, status badge, Messages), the Outline pane and Go to Line; well-formedness is checked on a worker thread after every edit and at once with F7. Still to do: a result can be about a slightly older text than the one shown, and the underlines are clamped rather than shifted through the edits made since (incremental analysis, with large-file mode in M1.15).
 - 2026-10-27: M1.11 and M1.14: `xmlcraft-format` (pretty-print and minify as minimal edits of the white space between nodes), the document and XML tools of the automation table and `xmlcraft-cli check` / `format`.
 - 2026-10-27: M1.8: find and replace (`xmlcraft-editor::find`, the find bar, `doc_find`, `doc_replace`) and ⌘D next occurrence.

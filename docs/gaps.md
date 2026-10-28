@@ -1,6 +1,6 @@
 # Where XmlCraft falls short of XMLSpy
 
-> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** gap 1 reworded (recent files and column selection shipped), gap 18 narrowed (large-file colouring, M1.15) · **Target:** Altova XMLSpy 2026 (public documentation)
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** gap 1 reworded (recent files and column selection shipped), gap 18 narrowed (large-file colouring, M1.15) · **Target:** Altova XMLSpy 2026 (public documentation)
 
 The ranked gaps. Prefer fixing these over adding new features. Every gap states what is missing, why it matters and how it will be measured. At 0.0.1 the application does not exist yet, so the first entries are simply "the MVP".
 

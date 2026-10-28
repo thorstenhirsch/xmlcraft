@@ -89,7 +89,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
         ToolDef {
             name: "recent_files",
             title: "Recent files",
-            description: "The files opened or saved lately in this session (and, in the app, in earlier ones), newest first, at most 12. With `clear` true the list is emptied \
+            description: "The files opened or saved lately in this session (a tool session starts with none), newest first, at most 12. With `clear` true the list is emptied \
                           after it is read. Only paths are listed; nothing is opened.",
             input_schema: object(json!({ "clear": { "type": "boolean" } }), &[]),
             read_only: false,
@@ -920,7 +920,9 @@ fn doc_save(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     };
     let stamp = files::write_file(&target, &bytes).map_err(|e| ToolError::Failed(format!("{}: {e}", target.display())))?;
     doc.mark_saved(target.clone(), Some(stamp));
-    json_result(json!({ "saved": target.display().to_string(), "bytes": bytes.len(), "document": describe(doc) }))
+    let described = describe(doc);
+    a.session.remember_recent(target.clone());
+    json_result(json!({ "saved": target.display().to_string(), "bytes": bytes.len(), "document": described }))
 }
 
 fn unmappable_error(doc: &Document, e: xmlcraft_text::encoding::EncodeError) -> ToolError {
