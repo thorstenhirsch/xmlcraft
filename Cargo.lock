@@ -4878,6 +4878,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-xsd"
+version = "0.0.1"
+dependencies = [
+ "proptest",
+ "rowan",
+ "xmlcraft-datatypes",
+ "xmlcraft-grammar",
+ "xmlcraft-syntax",
+]
+
+[[package]]
 name = "xmlwriter"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

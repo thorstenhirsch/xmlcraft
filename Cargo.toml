@@ -28,6 +28,7 @@ xmlcraft-format = { path = "crates/format", version = "0.0.1" }
 xmlcraft-catalog = { path = "crates/catalog", version = "0.0.1" }
 xmlcraft-pattern = { path = "crates/pattern", version = "0.0.1" }
 xmlcraft-datatypes = { path = "crates/datatypes", version = "0.0.1" }
+xmlcraft-xsd = { path = "crates/xsd", version = "0.0.1" }
 xmlcraft-dtd = { path = "crates/dtd", version = "0.0.1" }
 xmlcraft-grammar = { path = "crates/grammar", version = "0.0.1" }
 xmlcraft-validate = { path = "crates/validate", version = "0.0.1" }
