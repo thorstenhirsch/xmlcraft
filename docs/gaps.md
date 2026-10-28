@@ -1,6 +1,6 @@
 # Where XmlCraft falls short of XMLSpy
 
-> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** gap 2 reworded (catalog rules exist), gap 16 closed (xmlconf 100%, M2.9), gap 18 narrowed (large-file colouring, M1.15), gap 19 added (content-model automata, M2.5), gap 20 added (Entry Helpers, M2.11) · **Target:** Altova XMLSpy 2026 (public documentation)
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** gap 2: the resolver exists as a library, gap 2 reworded (catalog rules exist), gap 16 closed (xmlconf 100%, M2.9), gap 18 narrowed (large-file colouring, M1.15), gap 19 added (content-model automata, M2.5), gap 20 added (Entry Helpers, M2.11) · **Target:** Altova XMLSpy 2026 (public documentation)
 
 The ranked gaps. Prefer fixing these over adding new features. Every gap states what is missing, why it matters and how it will be measured. At 0.0.1 the application does not exist yet, so the first entries are simply "the MVP".
 
@@ -60,3 +60,4 @@ Details are added here as each gap is worked, including known approximations (fo
 - 2026-10-28: gap 16 closed: the last two xmlconf not-well-formed tests (namespace declarations read as the DTD makes them) pass with M2.9; the numbers are 100% for not-wf, valid and invalid.
 - 2026-10-28: gap 2 reworded: DTD support exists (M2.6–M2.9) and ten W3C files are bundled with catalogs (M2.2); what is left is the resolver, the rest of the bundle and the download.
 - 2026-10-28: gap 20 added: Entry Helpers from the DTD (M2.11) and what they do not do yet.
+- 2026-10-28: gap 2: `xmlcraft-resolve` (M2.3) is the resolver, with the cache rules and the download policy, but no HTTP client, no disk cache and no wiring into the DTD loader yet (M2.4).

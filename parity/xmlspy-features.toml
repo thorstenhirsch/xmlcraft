@@ -1353,7 +1353,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "The freshness rules exist in `xmlcraft-resolve` (M2.3, with a cache in memory): a copy is current for 30 days, then asked about with its ETag / Last-Modified, renewed on *not modified*, replaced on a new body, kept and marked stale when the server cannot be reached. The cache on disk is M2.4."
 
 [[feature]]
 id = "catalog.auto-download"
@@ -1365,7 +1365,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = "Catalog first; http(s) only; size, time and count limits."
+notes = "Catalog first; http(s) only; size, time and count limits. The rule exists in `xmlcraft-resolve` (M2.3, tested against a fake server): `auto_download` on by default, an http URL is tried as https first, limits of 10 MiB per download and 256 resources and 64 MiB per load. There is no HTTP client yet (M2.4) and no preference."
 
 [[feature]]
 id = "catalog.offline-mode"
@@ -1377,7 +1377,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "The rule exists in `xmlcraft-resolve` (M2.3): offline, nothing is asked of the network and a copy past its time is still served (marked stale). There is no preference or switch yet."
 
 [[feature]]
 id = "catalog.user-catalogs"
@@ -1389,7 +1389,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "`xmlcraft-resolve` (M2.3) reads the catalogs it is given before the bundled ones and notes those that cannot be used; nothing lets the user name catalogs yet (Preferences ▸ Schemas, M2.12)."
 
 [[feature]]
 id = "catalog.resolution-trail"
@@ -1401,7 +1401,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "`xmlcraft-resolve` (M2.3) records every place it looked in and what each said (`Trail`); nothing shows it yet."
 
 [[feature]]
 id = "catalog.schema-browser"
