@@ -13,11 +13,13 @@ pub struct ResolvingLoader<'r> {
     budget: Budget,
     /// For each reference asked: what it was and where it was found, or why it was not.
     pub log: Vec<String>,
+    /// The documents that were read, as (location, text): to say where in them a problem is.
+    pub read: Vec<(String, String)>,
 }
 
 impl<'r> ResolvingLoader<'r> {
     pub fn new(resolver: &'r Resolver) -> Self {
-        Self { resolver, budget: Budget::default(), log: Vec::new() }
+        Self { resolver, budget: Budget::default(), log: Vec::new(), read: Vec::new() }
     }
 
     fn ask(&mut self, reference: &str, base: &str) -> Result<Loaded, String> {
@@ -28,6 +30,7 @@ impl<'r> ResolvingLoader<'r> {
                     return Err(format!("{}: it has bytes that are not valid in its encoding", found.location));
                 }
                 self.log.push(format!("{reference}: found at {}", found.location));
+                self.read.push((found.location.clone(), decoded.text.clone()));
                 Ok(Loaded { text: decoded.text, location: found.location })
             }
             Err(failure) => {

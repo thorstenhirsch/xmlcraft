@@ -4733,9 +4733,11 @@ dependencies = [
  "xmlcraft-engine",
  "xmlcraft-format",
  "xmlcraft-platform",
+ "xmlcraft-resolve",
  "xmlcraft-syntax",
  "xmlcraft-text",
  "xmlcraft-validate",
+ "xmlcraft-xsd",
 ]
 
 [[package]]

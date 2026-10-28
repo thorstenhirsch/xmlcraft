@@ -502,7 +502,7 @@ impl<'s> XsdValidator<'s> {
                 if frame.unknown_text || frame.reported {
                     return;
                 }
-                self.simple_content(&frame.shown, &frame.text, ty, frame.constraint, close, ns);
+                self.simple_content(&frame.shown, &frame.text, ty, frame.constraint, &frame.range, ns);
             }
             Content::Elements { model: Some(model), state, .. } => {
                 if !frame.reported && !model.is_accepting(state) {
@@ -536,14 +536,14 @@ impl<'s> XsdValidator<'s> {
         }
     }
 
-    /// The text of an element with a simple type (or simple content).
+    /// The text of an element with a simple type (or simple content); problems are reported at `at`, the name of the element.
     fn simple_content(
         &mut self,
         shown: &str,
         text: &str,
         ty: &SimpleType,
         constraint: Option<&ValueConstraint>,
-        close: &Range<usize>,
+        at: &Range<usize>,
         ns: &dyn NamespaceContext,
     ) {
         let what = format!("the element '{shown}'");
@@ -553,15 +553,15 @@ impl<'s> XsdValidator<'s> {
         }
         match ty.validate(text, ns) {
             Err(violation) => {
-                self.report(Code::CvcInvalidValue, close.clone(), &[&what, &format!("{}: {}", violation.kind.code(), violation.message)]);
+                self.report(Code::CvcInvalidValue, at.clone(), &[&what, &format!("{}: {}", violation.kind.code(), violation.message)]);
             }
             Ok(value) => {
                 if let Some(fixed) = constraint.filter(|c| c.fixed)
                     && !value.equals(&fixed.value)
                 {
-                    self.report(Code::CvcFixedValue, close.clone(), &[&what, &fixed.lexical]);
+                    self.report(Code::CvcFixedValue, at.clone(), &[&what, &fixed.lexical]);
                 }
-                self.track_ids(ty, text, close);
+                self.track_ids(ty, text, at);
             }
         }
     }

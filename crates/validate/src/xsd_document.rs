@@ -220,10 +220,12 @@ pub fn schema_hints(root: &SyntaxNode) -> Vec<SchemaHint> {
         let words: Vec<&str> = value.split(|c: char| xmlcraft_syntax::is_xml_space(c)).filter(|w| !w.is_empty()).collect();
         match expanded.local.as_str() {
             "schemaLocation" => {
-                pairs.extend(words.chunks_exact(2).map(|pair| SchemaHint {
-                    namespace: pair.first().map(|w| (*w).to_owned()),
-                    location: pair.get(1).map(|w| (*w).to_owned()).unwrap_or_default(),
-                }));
+                let (whole, _odd) = words.as_chunks::<2>();
+                pairs.extend(
+                    whole
+                        .iter()
+                        .map(|[namespace, location]| SchemaHint { namespace: Some((*namespace).to_owned()), location: (*location).to_owned() }),
+                );
             }
             "noNamespaceSchemaLocation" => {
                 if let Some(word) = words.first() {
