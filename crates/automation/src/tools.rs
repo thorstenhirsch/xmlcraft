@@ -58,6 +58,7 @@ pub fn tools() -> &'static [ToolDef] {
             },
         ];
         table.extend(crate::documents::tools());
+        table.extend(crate::catalog::tools());
         table
     })
 }

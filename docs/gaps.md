@@ -1,6 +1,6 @@
 # Where XmlCraft falls short of XMLSpy
 
-> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** gap 1 reworded (recent files and column selection shipped), gap 18 narrowed (large-file colouring, M1.15) · **Target:** Altova XMLSpy 2026 (public documentation)
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** gap 2 reworded (catalog rules exist), gap 18 narrowed (large-file colouring, M1.15) · **Target:** Altova XMLSpy 2026 (public documentation)
 
 The ranked gaps. Prefer fixing these over adding new features. Every gap states what is missing, why it matters and how it will be measured. At 0.0.1 the application does not exist yet, so the first entries are simply "the MVP".
 
@@ -9,7 +9,7 @@ The ranked gaps. Prefer fixing these over adding new features. Every gap states 
 | # | Gap | Priority | Closes with |
 |---|---|---|---|
 | 1 | The editor lacks autosave recovery, file watching while the window is not focused and name completion (open, edit, colour, save, undo, find/replace, folding, matching tags, typing aids, tag-rename sync, comment toggle, selection expansion and formatting exist) | P0 | M1 |
-| 2 | No DTD or catalog support, no offline standard schemas | P0 | M2 |
+| 2 | No DTD support, no resolver that asks the catalogs (the catalog rules exist: M2.1), no offline standard schemas | P0 | M2 |
 | 3 | No XSD engine, so no schema validation | P0 | M3 |
 | 4 | No schema inference or sample generation | P0 | M4 |
 | 5 | No JSON or YAML support | P1 | M5 |
@@ -51,3 +51,4 @@ Details are added here as each gap is worked, including known approximations (fo
 - 2026-10-27: gap 1: tag-rename sync shipped (M1.10c).
 - 2026-10-27: gap 1: column selection shipped (M1.8).
 - 2026-10-28: gap 1: recent files shipped (M1.12); a changed file is noticed when the window gets the focus back, not while it is watched.
+- 2026-10-28: gap 2: the OASIS catalog resolution rules exist (`xmlcraft-catalog`, M2.1), but nothing asks them yet.
