@@ -326,7 +326,9 @@ fn a_literal_does_not_run_on_from_a_replacement_text_into_the_text_that_refers_t
     assert!(parsed.dtd.element("b").is_some(), "reading goes on after it");
     assert!(parsed.dtd.general_entity("a").is_none());
     // The same for a system literal and a public identifier.
-    for text in ["<!ENTITY % e \"<!ENTITY a SYSTEM 'x\"> %e; '> <!ELEMENT b EMPTY>", "<!ENTITY % e \"<!NOTATION n PUBLIC 'x\"> %e; '> <!ELEMENT b EMPTY>"] {
+    for text in
+        ["<!ENTITY % e \"<!ENTITY a SYSTEM 'x\"> %e; '> <!ELEMENT b EMPTY>", "<!ENTITY % e \"<!NOTATION n PUBLIC 'x\"> %e; '> <!ELEMENT b EMPTY>"]
+    {
         let parsed = internal(text);
         assert!(codes(&parsed).contains(&Code::UnterminatedLiteral), "{text}: {:?}", parsed.diagnostics);
         assert!(parsed.dtd.element("b").is_some());
