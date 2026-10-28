@@ -1,0 +1,91 @@
+# The schemas that ship with XmlCraft (AGENTS.md section 1.6), one entry per file. `cargo xtask schemas` checks every file against it
+# and `cargo xtask schemas --update` fills in what the publisher serves now (hash, date) and writes the schema entries of
+# ATTRIBUTION.toml. The files are byte for byte the publisher's: a fix is a catalog rewrite, never an edit.
+# Written by `cargo xtask schemas --update`; edit by adding an entry with an empty `sha256`, then run it.
+
+[[set]]
+name = "w3c"
+title = "W3C"
+author = "World Wide Web Consortium (MIT, ERCIM, Keio, Beihang)"
+licence = "W3C-20150513"
+licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
+
+[[file]]
+set = "w3c"
+path = "w3c/xmlschema/XMLSchema.xsd"
+title = "XML Schema: the schema for schemas (structures)"
+url = "https://www.w3.org/2001/XMLSchema.xsd"
+sha256 = "e767a159c179bd6e4dc2bac2a63a62f50cbd027ec19d6b5cc9eb1c2f33e0cb2e"
+retrieved = "2026-10-28"
+
+[[file]]
+set = "w3c"
+path = "w3c/xmlschema/XMLSchema.dtd"
+title = "XML Schema: the DTD for schemas"
+url = "https://www.w3.org/2001/XMLSchema.dtd"
+sha256 = "2032ead9fd47a61b22fe56aa02be1840bd9bb9015b0c0d3f1e8aac75dd91c3b9"
+retrieved = "2026-10-28"
+
+[[file]]
+set = "w3c"
+path = "w3c/xmlschema/datatypes.dtd"
+title = "XML Schema: the datatypes DTD"
+url = "https://www.w3.org/2001/datatypes.dtd"
+sha256 = "6946432ca7af2e9584f91b48564111fd2c73c8debbbcd9a0e3f5ddd382eeb51c"
+retrieved = "2026-10-28"
+
+[[file]]
+set = "w3c"
+path = "w3c/xml/xml.xsd"
+title = "The XML namespace: xml:lang, xml:space, xml:base, xml:id"
+url = "https://www.w3.org/2001/xml.xsd"
+sha256 = "61960fb3131e38022caad5360e2f33a3382578ab3c80cd58bd74320ede61b20c"
+retrieved = "2026-10-28"
+
+[[file]]
+set = "w3c"
+path = "w3c/xhtml1/xhtml1-strict.dtd"
+title = "XHTML 1.0 Strict DTD"
+url = "https://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"
+sha256 = "c477851fac23a922dcfdbde97d2f8c3cdc6dbf3e5abc298b31b6601369e71d40"
+retrieved = "2026-10-28"
+
+[[file]]
+set = "w3c"
+path = "w3c/xhtml1/xhtml1-transitional.dtd"
+title = "XHTML 1.0 Transitional DTD"
+url = "https://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"
+sha256 = "28905cd059167bfa1a5866053799d55fd335c0717920a7048de400c8a32b9d93"
+retrieved = "2026-10-28"
+
+[[file]]
+set = "w3c"
+path = "w3c/xhtml1/xhtml1-frameset.dtd"
+title = "XHTML 1.0 Frameset DTD"
+url = "https://www.w3.org/TR/xhtml1/DTD/xhtml1-frameset.dtd"
+sha256 = "6110f1b3409ad7dd00e6acc1eebd2c5b29220d4fd3f57a81a7d8b7c5355bc3f9"
+retrieved = "2026-10-28"
+
+[[file]]
+set = "w3c"
+path = "w3c/xhtml1/xhtml-lat1.ent"
+title = "XHTML 1.0 Latin 1 character entities"
+url = "https://www.w3.org/TR/xhtml1/DTD/xhtml-lat1.ent"
+sha256 = "3da1daad08f93b8aff7a32d5447f94853d517561d9c7d0c7bc3ee5c002d12a38"
+retrieved = "2026-10-28"
+
+[[file]]
+set = "w3c"
+path = "w3c/xhtml1/xhtml-symbol.ent"
+title = "XHTML 1.0 symbol character entities"
+url = "https://www.w3.org/TR/xhtml1/DTD/xhtml-symbol.ent"
+sha256 = "a6cd0f9c59e488b8c8e2de80c31c6811f316a3919cd9a0725b5390a8fc785d61"
+retrieved = "2026-10-28"
+
+[[file]]
+set = "w3c"
+path = "w3c/xhtml1/xhtml-special.ent"
+title = "XHTML 1.0 special character entities"
+url = "https://www.w3.org/TR/xhtml1/DTD/xhtml-special.ent"
+sha256 = "7f9518026c59ccee47a02ed74e43f8946d92207d438a7f540a0f3c28f05fa27e"
+retrieved = "2026-10-28"

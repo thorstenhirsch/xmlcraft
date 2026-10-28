@@ -11,6 +11,7 @@ mod fuzz;
 mod gates;
 mod layers;
 mod parity;
+mod schemas;
 mod vendor;
 mod version;
 
@@ -23,7 +24,7 @@ const COMMANDS: &[(&str, &str, Command)] = &[
     ("layers", "Enforce the crate dependency layering (docs/architecture.md)", gates::layers),
     ("wasm", "cargo check --target wasm32-unknown-unknown for every crate below L8, in one call", gates::wasm),
     ("deny", "Dependency licences, bans, sources and advisories (deny.toml; needs cargo-deny)", gates::deny),
-    ("ci", "fmt --check, clippy -D warnings, test, layers, wasm, assets, parity, deny (stops at first failure)", gates::ci),
+    ("ci", "fmt --check, clippy -D warnings, test, layers, wasm, assets, schemas, parity, deny (stops at first failure)", gates::ci),
     ("test", "Workspace tests: cargo nextest (cargo test when it is missing), then doctests", gates::test),
     ("assets", "Enforce the asset policy (AGENTS.md §1) against ATTRIBUTION.toml; --write regenerates ATTRIBUTION.md", assets::run),
     (
@@ -41,6 +42,7 @@ const COMMANDS: &[(&str, &str, Command)] = &[
         "Mutation-fuzz open/save/analyse/format/edit in child processes and keep the findings in fuzz-out/: `fuzz [--time 300] [--iterations N] [--seed 1] [--jobs N] [--timeout 10]`",
         fuzz::run,
     ),
+    ("schemas", "Check the bundled schemas against schemas/manifest.toml and ATTRIBUTION.toml: `schemas [--fetch] [--update [SET…]]`", schemas::run),
     ("parity", "Validate parity/xmlspy-features.toml against the registry, tools and tests; report progress (--json, --partial)", parity::run),
 ];
 
