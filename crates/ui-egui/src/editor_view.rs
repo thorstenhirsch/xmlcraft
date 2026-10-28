@@ -220,6 +220,10 @@ impl XmlStyler {
 
     /// The problems to underline (replacing the last ones). Ranges are in bytes of the whole text; they may be empty (a problem at a
     /// point).
+    pub fn problems(&self) -> &[(Range<usize>, Severity)] {
+        &self.problems
+    }
+
     pub fn set_problems(&mut self, mut problems: Vec<(Range<usize>, Severity)>) {
         problems.sort_by_key(|(range, _)| (range.start, range.end));
         let mut farthest = 0;

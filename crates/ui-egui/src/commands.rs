@@ -166,6 +166,7 @@ impl XmlCraftApp {
             }
             "edit.select_all_occurrences" => self.select_all_occurrences(),
             "xml.check" => self.check_now(),
+            "xml.validate" => self.validate_now(),
             "xml.pretty_print" => self.reformat(false),
             "xml.minify" => self.reformat(true),
             "edit.select_all" => {
