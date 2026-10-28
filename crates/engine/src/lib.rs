@@ -9,6 +9,8 @@ mod document;
 pub mod folding;
 pub mod recent;
 pub mod selfcheck;
+pub mod validation;
+mod worker;
 
 pub use document::{Document, FileStamp, MAX_OPEN_BYTES, OpenError, SaveError};
 pub use recent::Recent;

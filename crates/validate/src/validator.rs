@@ -78,7 +78,9 @@ impl<'g> Validator<'g> {
     /// A start tag. `name_range` is where the element name is, `attributes` are those of the tag.
     pub fn start_element(&mut self, name: &str, name_range: Range<usize>, attributes: &[Attribute<'_>]) {
         let qname = Name::local(name);
-        self.check_as_child(&qname, name, &name_range);
+        let decl = self.grammar.element(&qname);
+        // An element that is not declared is said to be so; that it is not welcome in its parent is not said again.
+        self.check_as_child(&qname, name, &name_range, decl.is_some() || self.grammar.incomplete);
         if self.stack.is_empty() {
             if !self.root_seen
                 && let Some(root) = &self.grammar.root
@@ -88,7 +90,6 @@ impl<'g> Validator<'g> {
             }
             self.root_seen = true;
         }
-        let decl = self.grammar.element(&qname);
         if decl.is_none() && !self.grammar.incomplete {
             self.report(Code::VcElementNotDeclared, name_range.clone(), &[name]);
         }
@@ -103,7 +104,7 @@ impl<'g> Validator<'g> {
     }
 
     /// The element `name` is a child of the element being read: does the content model of that one allow it here?
-    fn check_as_child(&mut self, qname: &Name, name: &str, range: &Range<usize>) {
+    fn check_as_child(&mut self, qname: &Name, name: &str, range: &Range<usize>, say: bool) {
         let Some(top) = self.stack.last_mut() else { return };
         let Some(decl) = top.decl else { return };
         let parent = top.name.clone();
@@ -118,6 +119,9 @@ impl<'g> Validator<'g> {
             Content::Mixed(names) => {
                 if !names.contains(qname) && !top.content_broken {
                     top.content_broken = true;
+                    if !say {
+                        return;
+                    }
                     let allowed: Vec<String> = names.iter().map(|n| n.local.clone()).collect();
                     let detail = if allowed.is_empty() {
                         format!("'{parent}' has text only")
@@ -136,6 +140,10 @@ impl<'g> Validator<'g> {
                     Some(step) => top.state = Some(step.state),
                     None => {
                         top.content_broken = true;
+                        if !say {
+                            top.state = Some(state);
+                            return;
+                        }
                         let expected: Vec<String> = content.automaton.expected(&state).iter().map(|e| e.term.to_string()).collect();
                         let detail = if expected.is_empty() {
                             format!("'{parent}' cannot have more elements")

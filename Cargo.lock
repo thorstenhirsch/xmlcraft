@@ -4777,6 +4777,7 @@ dependencies = [
  "xmlcraft-format",
  "xmlcraft-syntax",
  "xmlcraft-text",
+ "xmlcraft-validate",
 ]
 
 [[package]]
@@ -4802,7 +4803,9 @@ version = "0.0.1"
 dependencies = [
  "craft-atomic",
  "tempfile",
+ "xmlcraft-dtd",
  "xmlcraft-engine",
+ "xmlcraft-text",
 ]
 
 [[package]]
