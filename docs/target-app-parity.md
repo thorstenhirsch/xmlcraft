@@ -1,6 +1,6 @@
 # XmlCraft parity with Altova XMLSpy
 
-> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M3.3: the schema document reader (a note only), M3.2: XSD datatypes (notes only), M3.1: XSD regular expressions (a note only), M2.2 (first part): bundled schemas (`catalog.bundled-schemas` planned → partial), M2.9: validation against a DTD (partial); xmlconf now validating: not-wf, valid and invalid all 100%; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M3.3: the schema document reader (a note only), M2.3 (first part): the resolver library (notes only), M3.2: XSD datatypes (notes only), M2.11: Entry Helpers from the DTD (`view.entry-helpers` planned → partial), M3.1: XSD regular expressions (a note only), M2.2 (first part): bundled schemas (`catalog.bundled-schemas` planned → partial), M2.9: validation against a DTD (partial); xmlconf now validating: not-wf, valid and invalid all 100%; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
 
 The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -10,8 +10,8 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **6.6%** shipped, 20.7% with partial counted half (10 shipped + 43 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-28) |
-| Must-have (P0) features | 7.8% shipped, 33.6% weighted (5 shipped + 33 partial of 64) | measured |
+| **Feature breadth**, unweighted | **6.6%** shipped, 21.1% with partial counted half (10 shipped + 44 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-28) |
+| Must-have (P0) features | 7.8% shipped, 34.4% weighted (5 shipped + 34 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **100%** (1017 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): a valid document has no well-formedness or validity error, an invalid one is well-formed and has at least one validity error (which one is not compared; 73 of the 227 are documents with no DOCTYPE, invalid because there is nothing to validate against) | measured (same run) |
 | W3C xsdtests (XSD 1.0) | not measured | arrives with M3 |
@@ -61,5 +61,7 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 - 2026-10-28: M2.10 and M2.13 (first parts): Validate (F8) in the app, the tool `xml_validate` and `xmlcraft-cli validate` (`validate.dtd` gets its commands and tools, `validate.error-positions` planned → partial); 10 shipped and 42 partial, 20.4% weighted.
 - 2026-10-28: M3.1: `xmlcraft-pattern` (XSD regular expressions); the note of `xsd.regex-patterns` says what exists; the status stays planned (nothing a user can reach uses it yet).
 - 2026-10-28: M2.2 (first part): the bundled schemas, ten W3C files with their catalogs (`catalog.bundled-schemas` planned → partial); 10 shipped and 43 partial of 152 counted, 20.7% weighted, P0 33.6%.
+- 2026-10-28: M2.11: Entry Helpers from the DTD and the tool `xml_entry_helpers` (`view.entry-helpers` planned → partial); 10 shipped and 44 partial of 152 counted, 21.1% weighted, P0 34.4%.
+- 2026-10-28: M2.3 (first part): `xmlcraft-resolve` (the chain, the cache rules, the policy); notes of `catalog.auto-download`, `catalog.disk-cache`, `catalog.offline-mode`, `catalog.user-catalogs` and `catalog.resolution-trail` say what exists; no status changes (nothing is reachable by a user yet).
 - 2026-10-28: M3.2: `xmlcraft-datatypes`; the notes of `xsd.simple-types` and `xsd.date-time-types` say what exists; the statuses stay planned (nothing a user can reach uses it yet).
 - 2026-10-28: M3.3: `xmlcraft-xsd::read`; the note of `xsd.read-1-0` says what exists; the status stays planned (no tool or command reaches it yet).

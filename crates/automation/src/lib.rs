@@ -12,6 +12,7 @@
 
 mod catalog;
 mod documents;
+mod entry_helpers;
 pub mod file_access;
 mod lines;
 mod schema;

@@ -363,7 +363,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = "DTD-driven at M2, XSD-driven at M3."
+notes = "DTD-driven at M2, XSD-driven at M3. The choices (what the DTD allows at a place, and the text to insert) exist as `xmlcraft-complete` and are shown in Entry Helpers (`view.entry-helpers`); the popup in the editor that offers them while typing is not there yet."
 
 [[feature]]
 id = "editor.completion-values"
@@ -508,11 +508,11 @@ title = "Entry Helpers: allowed elements, attributes and entities at the cursor"
 area = "B"
 tier = "P0"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "Mandatory items marked, used items greyed, double-click inserts (with mandatory content when enabled)."
+tools = ["xml_entry_helpers"]
+evidence = ["crates/ui-egui/tests/entry_helpers.rs::a_double_click_puts_an_element_with_what_it_requires_and_undo_takes_it_back", "crates/ui-egui/tests/entry_helpers.rs::the_elements_the_content_model_allows_here_are_listed_with_the_required_ones_marked", "crates/ui-egui/tests/entry_helpers.rs::attributes_of_the_element_are_offered_and_added_to_its_start_tag", "crates/ui-egui/tests/entry_helpers.rs::the_option_decides_whether_the_children_a_declaration_requires_are_put_too", "crates/ui-egui/tests/entry_helpers.rs::an_entity_is_put_as_a_reference", "crates/complete/tests/choices.rs::the_text_for_an_element_has_what_its_declaration_requires", "crates/automation/tests/entry_helpers.rs::the_attributes_of_the_start_tag_say_which_are_given_and_where_a_new_one_goes"]
+notes = "From the DTD of the DOCTYPE (the internal subset and the external parts that are files): the pane lists the elements the content model of the enclosing element allows after the children before the caret (required ones marked, EMPTY ones shown), the attributes of the element the caret is in (required marked, those the start tag has greyed, an enumeration's values shown) and the entities that can be referred to. A double click puts the choice in the text as one undoable step: an element with the attributes it requires and, with \"Insert required content\" (on by default), the children it requires and theirs (to a depth of 6 and 16 KiB), the caret in the first value to fill in; an attribute goes at the end of the start tag with the first value of an enumeration; an entity as a reference; a selection is replaced. The DTD is read on a worker when the DOCTYPE or the file's place changes. Headless: the tool `xml_entry_helpers`. Missing: the XSD as a source (M3.12), the completion popup in the editor (M1.10d), the list checks only what comes before the caret, not what the content model needs after it, a DTD file that changes on disk is not read again until the DOCTYPE changes, no namespaces (a prefixed name is just a name), no Info pane beside the choices, and the option is not in Preferences."
 
 [[feature]]
 id = "view.info-window"
@@ -1353,7 +1353,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "The freshness rules exist in `xmlcraft-resolve` (M2.3, with a cache in memory): a copy is current for 30 days, then asked about with its ETag / Last-Modified, renewed on *not modified*, replaced on a new body, kept and marked stale when the server cannot be reached. The cache on disk is M2.4."
 
 [[feature]]
 id = "catalog.auto-download"
@@ -1365,7 +1365,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = "Catalog first; http(s) only; size, time and count limits."
+notes = "Catalog first; http(s) only; size, time and count limits. The rule exists in `xmlcraft-resolve` (M2.3, tested against a fake server): `auto_download` on by default, an http URL is tried as https first, limits of 10 MiB per download and 256 resources and 64 MiB per load. There is no HTTP client yet (M2.4) and no preference."
 
 [[feature]]
 id = "catalog.offline-mode"
@@ -1377,7 +1377,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "The rule exists in `xmlcraft-resolve` (M2.3): offline, nothing is asked of the network and a copy past its time is still served (marked stale). There is no preference or switch yet."
 
 [[feature]]
 id = "catalog.user-catalogs"
@@ -1389,7 +1389,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "`xmlcraft-resolve` (M2.3) reads the catalogs it is given before the bundled ones and notes those that cannot be used; nothing lets the user name catalogs yet (Preferences ▸ Schemas, M2.12)."
 
 [[feature]]
 id = "catalog.resolution-trail"
@@ -1401,7 +1401,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "`xmlcraft-resolve` (M2.3) records every place it looked in and what each said (`Trail`); nothing shows it yet."
 
 [[feature]]
 id = "catalog.schema-browser"

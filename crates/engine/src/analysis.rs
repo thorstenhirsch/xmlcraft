@@ -60,6 +60,8 @@ pub struct Analysis {
     /// What can be folded, in the order it starts, and whether there was more than [`crate::folding::MAX_FOLD_RANGES`] of it.
     pub folds: Vec<FoldRange>,
     pub folds_truncated: bool,
+    /// The DOCTYPE declaration, if the text has one: a byte range of the text.
+    pub doctype: Option<Range<usize>>,
     /// The text was not analysed, and why.
     pub skipped: Option<Skipped>,
 }
@@ -122,6 +124,7 @@ impl Analysis {
             outline_truncated: false,
             folds: Vec::new(),
             folds_truncated: false,
+            doctype: None,
             skipped: Some(why),
         }
     }
@@ -177,7 +180,8 @@ pub fn analyze(text: &str, version: u64) -> Analysis {
     diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
     let (outline, outline_truncated) = outline_of(&parsed.syntax(), text);
     let (folds, folds_truncated) = fold_ranges(&parsed.syntax(), text);
-    Analysis { version, diagnostics, outline, outline_truncated, folds, folds_truncated, skipped: None }
+    let doctype = xmlcraft_dtd::doctype_parts(&parsed.syntax()).map(|p| p.range);
+    Analysis { version, diagnostics, outline, outline_truncated, folds, folds_truncated, doctype, skipped: None }
 }
 
 fn outline_of(root: &xmlcraft_syntax::SyntaxNode, text: &str) -> (Vec<OutlineItem>, bool) {

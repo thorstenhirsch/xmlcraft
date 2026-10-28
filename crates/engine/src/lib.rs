@@ -8,6 +8,7 @@ pub mod commands;
 mod document;
 pub mod folding;
 pub mod recent;
+pub mod schema;
 pub mod selfcheck;
 pub mod validation;
 mod worker;
