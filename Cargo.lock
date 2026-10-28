@@ -4858,7 +4858,6 @@ dependencies = [
 name = "xmlcraft-validate"
 version = "0.0.1"
 dependencies = [
- "proptest",
  "rowan",
  "xmlcraft-dtd",
  "xmlcraft-grammar",

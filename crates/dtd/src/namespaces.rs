@@ -62,15 +62,16 @@ fn duplicates(attrs: &[Attr], scope: &NsScope) -> HashMap<usize, usize> {
     out
 }
 
+/// Whether [`check_namespaces`] has anything to look at in a document with this DTD. The two readings of a declaration can differ only
+/// when entities are replaced or a type normalises the value, so most DTDs need no grammar for it.
+pub(crate) fn namespaces_need_grammar(dtd: &Dtd) -> bool {
+    !dtd.general_entities.is_empty() || dtd.attlists.iter().any(|a| a.defs.iter().any(|d| d.name == "xmlns" || d.name.starts_with("xmlns:")))
+}
+
 /// The namespace problems that only show once the values of the declarations are read the way the DTD says: two attributes of an element
-/// with the same expanded name. `grammar` is the DTD compiled (for the types of the declarations and the entities).
-pub fn check_namespaces(root: &SyntaxNode, dtd: &Dtd, grammar: &Grammar) -> Vec<DtdDiagnostic> {
-    // The two readings of a declaration can differ only when entities are replaced or a type normalises the value.
-    let relevant =
-        !dtd.general_entities.is_empty() || dtd.attlists.iter().any(|a| a.defs.iter().any(|d| d.name == "xmlns" || d.name.starts_with("xmlns:")));
-    if !relevant {
-        return Vec::new();
-    }
+/// with the same expanded name. `grammar` is the DTD compiled (for the types of the declarations and the entities); it is needed only
+/// when [`namespaces_need_grammar`] says so.
+pub(crate) fn check_namespaces(root: &SyntaxNode, grammar: &Grammar) -> Vec<DtdDiagnostic> {
     let reader = ValueReader::new(grammar);
     let mut written = NsScope::new();
     let mut read = NsScope::new();
