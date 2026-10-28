@@ -154,7 +154,7 @@ pub fn choices_at(root: &SyntaxNode, offset: usize, grammar: &Grammar) -> Choice
             .map(|a| AttributeChoice {
                 name: a.name.local.clone(),
                 mandatory: matches!(a.default, AttributeDefault::Required),
-                used: given.iter().any(|g| *g == a.name.local),
+                used: given.contains(&a.name.local),
                 values: match &a.ty {
                     AttributeType::Enumeration(values) | AttributeType::Notation(values) => values.clone(),
                     _ => Vec::new(),

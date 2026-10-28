@@ -103,6 +103,16 @@ pub struct Checked {
     pub root_name: Option<String>,
 }
 
+/// The DTD of a document that has a DOCTYPE: the internal subset and the external parts that `loader` reads, and the name the DOCTYPE
+/// gives the root element. Nothing is checked beyond reading.
+pub fn read_doctype(root: &SyntaxNode, text: &str, location: &str, loader: &mut dyn SubsetLoader) -> Option<(Parsed, Option<String>)> {
+    let parts = doctype_parts(root)?;
+    let internal = parts.subset.clone().and_then(|range| text.get(range.clone()).map(|subset| (subset, range.start)));
+    let external = (parts.system.is_some() || parts.public.is_some())
+        .then_some(ExternalRef { public: parts.public.as_deref(), system: parts.system.as_deref() });
+    Some((parse_doctype(&DoctypeInput { external, internal, location }, loader), parts.name))
+}
+
 /// [`problems_of_document`], and the DTD that was read to find them (so that it need not be read again).
 pub fn check_document(root: &SyntaxNode, text: &str, syntax: &[Diagnostic], location: &str, loader: &mut dyn SubsetLoader) -> Checked {
     let parts = doctype_parts(root);

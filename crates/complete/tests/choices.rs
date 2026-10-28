@@ -77,7 +77,7 @@ fn the_attributes_of_the_element_the_position_is_in_are_offered_with_what_is_giv
     let by_name = |n: &str| c.attributes.iter().find(|a| a.name == n).cloned().expect("offered");
     assert_eq!((by_name("id").mandatory, by_name("id").used), (true, true));
     assert_eq!((by_name("kind").mandatory, by_name("kind").used, by_name("kind").values), (false, false, vec!["x".to_owned(), "y".to_owned()]));
-    assert_eq!(by_name("note").used, false);
+    assert!(!by_name("note").used);
     // New attributes go after the last one, before `>`.
     let text = "<r id=\"1\" >text</r>";
     assert_eq!(c.attribute_at, Some(text.find("\"1\"").expect("there") + 3));
