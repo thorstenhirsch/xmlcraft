@@ -1007,7 +1007,7 @@ status = "partial"
 commands = ["xml.check"]
 tools = ["xml_wellformed"]
 evidence = ["crates/engine/src/analysis.rs::problems_are_sorted_by_position_and_counted", "crates/ui-egui/tests/analysis.rs::f7_checks_now_and_opens_messages", "crates/ui-egui/tests/analysis.rs::the_analysis_follows_the_typing", "crates/automation/tests/documents.rs::well_formedness_is_reported_for_a_document_a_file_or_text"]
-notes = "XML 1.0 5th edition and Namespaces, on a worker thread after every edit (squiggles, status badge, Messages), at once with F7, and headlessly with the `xml_wellformed` tool and `xmlcraft-cli check`. Of the W3C xmlconf not-well-formed tests 94.8% are rejected (the DTD is read since M2.6; what is left are the rules that tie entity references to the declarations, M2.8: docs/gaps.md, gap 16)."
+notes = "XML 1.0 5th edition and Namespaces, on a worker thread after every edit (squiggles, status badge, Messages), at once with F7, and headlessly with the `xml_wellformed` tool and `xmlcraft-cli check`. The DTD is read and the rules that tie entity references to its declarations are applied (M2.6, M2.8, M2.9): every applicable not-well-formed test of the W3C xmlconf suite is rejected (1017 of 1017) and no well-formed one is."
 
 [[feature]]
 id = "validate.namespaces"
@@ -1027,11 +1027,11 @@ title = "Validate against a DTD (F8)"
 area = "E"
 tier = "P0"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/validate/tests/validation.rs::element_content_follows_the_model_and_has_no_text", "crates/validate/tests/validation.rs::attributes_are_declared_required_fixed_and_of_their_type", "crates/validate/tests/validation.rs::ids_are_unique_and_idrefs_name_them", "crates/validate/tests/validation.rs::a_standalone_document_does_not_lean_on_declarations_outside_it", "crates/validate/tests/validation.rs::entities_in_content_are_read_in_the_place_they_are_referred_to"]
+notes = "A document with a DOCTYPE is checked against the grammar of its DTD (`xmlcraft_validate::check`): root element type, element valid (declared; EMPTY, ANY, mixed and element content through the automata; text and character references in element content), attributes (declared, required, fixed, types and enumerations, ID unique and IDREF resolved, ENTITY names an unparsed entity, no colon in those names), the standalone document declaration, the declarations' own constraints (duplicates, ID and NOTATION rules, the nesting of parameter entities in declarations, groups and conditional sections), with the replacement text of internal entities read in the place they are referred to. The W3C xmlconf suite is the measure: 721 of 721 valid documents have no error and 227 of 227 invalid ones have at least one (which one is not compared). Missing: nothing in the app runs it (F8, validate-on-edit, squiggles and the Messages pane are M2.10; the tools `xml_validate` and the CLI are M2.13), external general entities are not read in content, and the resolver that finds a DTD by catalog or by the network is M2.3."
 
 [[feature]]
 id = "validate.xsd"
@@ -1123,11 +1123,11 @@ title = "Entity expansion and resource limits"
 area = "E"
 tier = "P0"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "Never-crash rule; regression tests for billion-laughs and quadratic blowup."
+tools = ["xml_wellformed"]
+evidence = ["crates/dtd/tests/references.rs::entities_that_multiply_cost_no_more_than_their_declarations", "crates/dtd/tests/compile.rs::entities_that_multiply_are_cut_off", "crates/validate/tests/validation.rs::entities_that_multiply_and_documents_that_nest_are_bounded"]
+notes = "Entity references are checked without expanding them (each entity is analysed once, nesting is cut off at 256), attribute values are expanded with a limit of 1 MiB and 40 levels, and the validator reads the replacement text of entities with a budget of 5 million nodes and 40 levels (what is over is taken as unknown content, with a note). Billion-laughs and quadratic-blowup documents are regression tests. Missing: external entities are not read (no network entities by default, by design), and the budgets are not settings."
 
 [[feature]]
 id = "validate.streaming-large"

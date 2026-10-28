@@ -21,12 +21,13 @@ mod attribute;
 mod compile;
 mod doctype;
 mod model;
+mod namespaces;
 mod parse;
 mod references;
 
 pub use attribute::{MAX_VALUE_BYTES, MAX_VALUE_DEPTH, ValueProblem, ValueReader, check_value};
 pub use compile::{Compiled, compile};
-pub use doctype::{DoctypeParts, doctype_parts, problems_in_text, problems_of_document};
+pub use doctype::{Checked, DoctypeParts, check_document, doctype_parts, problems_in_text, problems_of_document};
 pub use model::{
     AttDef, AttType, AttlistDecl, ContentSpec, Default, Dtd, ElementDecl, EntityDecl, EntityValue, ExternalId, NotationDecl, Occurs, Particle,
     ParticleKind, Place,
@@ -35,4 +36,4 @@ pub use parse::{
     DoctypeInput, DtdDiagnostic, ExternalRef, LoadRequest, Loaded, MAX_DECLARATIONS, MAX_DIAGNOSTICS, MAX_EXPANDED_BYTES, MAX_GROUP_DEPTH,
     MAX_LOADED_BYTES, MAX_LOADS, MAX_PE_DEPTH, NoLoader, Parsed, SubsetLoader, parse_doctype, parse_external_subset, parse_internal_subset,
 };
-pub use references::check_references;
+pub use references::{check_references, is_standalone};

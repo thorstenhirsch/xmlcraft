@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 xmlcraft-grammar = { workspace = true }
 xmlcraft-syntax = { workspace = true }
+rowan = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
