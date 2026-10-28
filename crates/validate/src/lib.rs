@@ -18,6 +18,7 @@ mod check;
 mod document;
 mod validator;
 mod xsd_document;
+mod xsd_identity;
 mod xsd_validator;
 
 pub use check::{Problems, check};

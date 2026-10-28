@@ -174,6 +174,11 @@ codes! {
     CvcAttributeRequired => ("cvc.attribute-required", Error, "The element '{0}' needs the attribute '{1}'."),
     CvcDuplicateId => ("cvc.duplicate-id", Error, "The ID '{0}' is used more than once."),
     CvcIdrefNotFound => ("cvc.idref-has-no-id", Error, "No element has the ID '{0}'."),
+    CvcKeyDuplicate => ("cvc.duplicate-key-value", Error, "The value ({1}) is not unique for the constraint '{0}'."),
+    CvcKeyMissing => ("cvc.key-field-missing", Error, "The key '{0}' needs {1}."),
+    CvcFieldMultiple => ("cvc.field-selects-many", Error, "A field of the constraint '{0}' selects {1}."),
+    CvcFieldNotSimple => ("cvc.field-not-simple", Error, "A field of the constraint '{0}' selects the element '{1}', which does not have a simple type."),
+    CvcKeyrefNoKey => ("cvc.keyref-has-no-key", Error, "The value ({1}) of the keyref '{0}' matches no key."),
     CvcLimit => ("cvc.limit", Error, "The document is too deep to be validated against the schema: {0}."),
     // Namespaces
     InvalidQName => ("ns.invalid-qname", Error, "'{0}' is not a valid qualified name."),

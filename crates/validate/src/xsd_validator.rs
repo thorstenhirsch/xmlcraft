@@ -4,8 +4,8 @@
 //! types and the values that are fixed are as fixed, `xsi:nil` is used where the declaration allows it, and the IDs and ID references
 //! of the document match. It knows nothing of trees or files; a driver feeds it.
 
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -14,9 +14,11 @@ use xmlcraft_grammar::Name;
 use xmlcraft_syntax::{Code, Diagnostic, is_xml_space};
 use xmlcraft_xsd::model::{ProcessContents, QName};
 use xmlcraft_xsd::schema::{
-    AttributeDecl, AttributeUse, ContentType, ElementDecl, ElementId, NamespaceSet, Schema, TypeId, TypeKind, ValueConstraint, Wildcard,
+    AttributeDecl, AttributeUse, ConstraintId, ContentType, ElementDecl, ElementId, NamespaceSet, Schema, TypeId, TypeKind, ValueConstraint, Wildcard,
 };
 use xmlcraft_xsd::{ContentModel, ModelState, Symbol};
+
+use crate::xsd_identity::{RowRef, Run};
 
 /// The namespace of `xsi:type`, `xsi:nil` and the other attributes the schema language gives every element.
 pub const XSI_NAMESPACE: &str = "http://www.w3.org/2001/XMLSchema-instance";
@@ -39,7 +41,7 @@ pub struct XsdAttribute<'a> {
     pub range: Range<usize>,
 }
 
-enum Content<'s> {
+pub(crate) enum Content<'s> {
     /// Not checked: skipped by a wildcard, or inside something that was reported.
     Skip,
     /// No type: the elements in it are checked if they are declared (a wildcard that is lax lets in an element that is not).
@@ -55,18 +57,31 @@ enum Content<'s> {
     },
 }
 
-struct Frame<'s> {
-    shown: String,
-    content: Content<'s>,
+pub(crate) struct Frame<'s> {
+    pub(crate) shown: String,
+    /// The expanded name of the element, for the paths of identity constraints.
+    pub(crate) name: QName,
+    /// Where the name of the element is written.
+    pub(crate) range: Range<usize>,
+    pub(crate) content: Content<'s>,
+    /// The identity constraints the declaration has: the element is their context.
+    pub(crate) constraints: &'s [ConstraintId],
+    /// The attribute uses and the wildcard of the type, to find the type of an attribute.
+    pub(crate) uses: Option<(&'s [AttributeUse], Option<&'s Wildcard>)>,
+    pub(crate) runs: Vec<Run>,
+    /// The rows and fields this element is a value of.
+    pub(crate) targets: Vec<(RowRef, usize)>,
+    /// The keys of the key and unique constraints made in the element and below it.
+    pub(crate) tables: HashMap<ConstraintId, HashSet<String>>,
     /// `xsi:nil="true"` on an element whose declaration allows it.
-    nil: bool,
+    pub(crate) nil: bool,
     /// The default or fixed value of the declaration.
-    constraint: Option<&'s ValueConstraint>,
-    text: String,
+    pub(crate) constraint: Option<&'s ValueConstraint>,
+    pub(crate) text: String,
     /// A reference to an entity was in the text, which is not known here, so the text is not checked.
-    unknown_text: bool,
+    pub(crate) unknown_text: bool,
     /// What was wrong with the content has been said; nothing more is said of it.
-    reported: bool,
+    pub(crate) reported: bool,
 }
 
 /// What a child element is matched to.
@@ -78,8 +93,10 @@ enum Selected {
 
 /// A validator for the elements of one document.
 pub struct XsdValidator<'s> {
-    schema: &'s Schema,
-    stack: Vec<Frame<'s>>,
+    pub(crate) schema: &'s Schema,
+    pub(crate) stack: Vec<Frame<'s>>,
+    /// The rows of identity constraints whose node is still open, innermost last.
+    pub(crate) open_rows: Vec<RowRef>,
     ids: HashMap<String, Range<usize>>,
     idrefs: Vec<(String, Range<usize>)>,
     diagnostics: Vec<Diagnostic>,
@@ -88,17 +105,32 @@ pub struct XsdValidator<'s> {
 
 impl<'s> XsdValidator<'s> {
     pub fn new(schema: &'s Schema) -> Self {
-        Self { schema, stack: Vec::new(), ids: HashMap::new(), idrefs: Vec::new(), diagnostics: Vec::new(), limit_reported: false }
+        Self {
+            schema,
+            stack: Vec::new(),
+            open_rows: Vec::new(),
+            ids: HashMap::new(),
+            idrefs: Vec::new(),
+            diagnostics: Vec::new(),
+            limit_reported: false,
+        }
     }
 
-    fn report(&mut self, code: Code, range: Range<usize>, args: &[&str]) {
+    pub(crate) fn report(&mut self, code: Code, range: Range<usize>, args: &[&str]) {
         self.diagnostics.push(Diagnostic::new(code, range, args.iter().map(|a| (*a).to_owned()).collect()));
     }
 
-    fn push(&mut self, shown: &str, content: Content<'s>) {
+    fn push(&mut self, name: &QName, shown: &str, range: &Range<usize>, content: Content<'s>) {
         self.stack.push(Frame {
             shown: shown.to_owned(),
+            name: name.clone(),
+            range: range.clone(),
             content,
+            constraints: &[],
+            uses: None,
+            runs: Vec::new(),
+            targets: Vec::new(),
+            tables: HashMap::new(),
             nil: false,
             constraint: None,
             text: String::new(),
@@ -109,21 +141,27 @@ impl<'s> XsdValidator<'s> {
 
     /// The start of an element. `range` is where its name is written, `ns` the namespace declarations in scope at the element.
     pub fn start_element(&mut self, name: &QName, shown: &str, range: Range<usize>, attributes: &[XsdAttribute<'_>], ns: &dyn NamespaceContext) {
+        self.open(name, shown, &range, attributes, ns);
+        self.identity_start(&range, attributes, ns);
+    }
+
+    fn open(&mut self, name: &QName, shown: &str, range: &Range<usize>, attributes: &[XsdAttribute<'_>], ns: &dyn NamespaceContext) {
+        let range = range.clone();
         if self.stack.len() >= MAX_OPEN {
             if !self.limit_reported {
                 self.limit_reported = true;
-                self.report(Code::CvcLimit, range, &[&format!("more than {MAX_OPEN} elements open at once")]);
+                self.report(Code::CvcLimit, range.clone(), &[&format!("more than {MAX_OPEN} elements open at once")]);
             }
-            self.push(shown, Content::Skip);
+            self.push(name, shown, &range, Content::Skip);
             return;
         }
         let id = match self.select(name, shown, &range) {
             Selected::Declared(id) => id,
-            Selected::Lax => return self.push(shown, Content::Lax),
-            Selected::Skip => return self.push(shown, Content::Skip),
+            Selected::Lax => return self.push(name, shown, &range, Content::Lax),
+            Selected::Skip => return self.push(name, shown, &range, Content::Skip),
         };
         let schema = self.schema;
-        let Some(decl) = schema.element(id) else { return self.push(shown, Content::Skip) };
+        let Some(decl) = schema.element(id) else { return self.push(name, shown, &range, Content::Skip) };
         if decl.abstract_ {
             self.report(Code::CvcAbstractElement, range.clone(), &[shown]);
         }
@@ -132,7 +170,7 @@ impl<'s> XsdValidator<'s> {
             Some(a) => match self.xsi_type(decl, a, shown, ns) {
                 Some(t) => t,
                 // The type it names cannot be used; nothing is known of what the element should be, so nothing more is said of it.
-                None => return self.push(shown, Content::Skip),
+                None => return self.push(name, shown, &range, Content::Skip),
             },
             None => decl.type_id,
         };
@@ -140,7 +178,7 @@ impl<'s> XsdValidator<'s> {
             Some(a) => self.xsi_nil(decl, a, shown),
             None => false,
         };
-        let Some(entry) = schema.type_entry(type_id) else { return self.push(shown, Content::Skip) };
+        let Some(entry) = schema.type_entry(type_id) else { return self.push(name, shown, &range, Content::Skip) };
         let content = match &entry.kind {
             TypeKind::Simple(t) => {
                 self.attributes(shown, &range, &[], None, attributes, ns);
@@ -172,10 +210,15 @@ impl<'s> XsdValidator<'s> {
                 }
             }
         };
-        self.push(shown, content);
+        self.push(name, shown, &range, content);
         if let Some(frame) = self.stack.last_mut() {
             frame.nil = nil;
             frame.constraint = decl.value_constraint.as_ref();
+            frame.constraints = &decl.identity_constraints;
+            frame.uses = match &entry.kind {
+                TypeKind::Complex(c) => Some((&c.attributes, c.attribute_wildcard.as_ref())),
+                TypeKind::Simple(_) => None,
+            };
         }
     }
 
@@ -445,19 +488,26 @@ impl<'s> XsdValidator<'s> {
 
     /// The end of the open element; `close` is where its end tag is, and `ns` the declarations in scope at it.
     pub fn end_element(&mut self, close: Range<usize>, ns: &dyn NamespaceContext) {
+        self.identity_node_end(ns);
         let Some(frame) = self.stack.pop() else { return };
-        match frame.content {
+        self.content_end(&frame, &close, ns);
+        self.identity_context_end(frame);
+    }
+
+    /// What the content of the element that ends has to be.
+    fn content_end(&mut self, frame: &Frame<'s>, close: &Range<usize>, ns: &dyn NamespaceContext) {
+        match &frame.content {
             Content::Skip | Content::Lax | Content::Empty => {}
             Content::Simple(ty) => {
                 if frame.unknown_text || frame.reported {
                     return;
                 }
-                self.simple_content(&frame.shown, &frame.text, &ty, frame.constraint, &close, ns);
+                self.simple_content(&frame.shown, &frame.text, ty, frame.constraint, close, ns);
             }
             Content::Elements { model: Some(model), state, .. } => {
-                if !frame.reported && !model.is_accepting(&state) {
-                    let expected = self.describe_expected(model, &state);
-                    self.report(Code::CvcContentIncomplete, close, &[&frame.shown, &expected]);
+                if !frame.reported && !model.is_accepting(state) {
+                    let expected = self.describe_expected(model, state);
+                    self.report(Code::CvcContentIncomplete, close.clone(), &[&frame.shown, &expected]);
                 }
             }
             Content::Elements { model: None, .. } => {}
