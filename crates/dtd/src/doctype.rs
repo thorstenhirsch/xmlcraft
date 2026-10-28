@@ -4,8 +4,8 @@ use std::ops::Range;
 
 use xmlcraft_syntax::{Diagnostic, SyntaxKind, SyntaxNode};
 
-use crate::compile::compile;
-use crate::namespaces::check_namespaces;
+use crate::compile::{Compiled, compile};
+use crate::namespaces::{check_namespaces, namespaces_need_grammar};
 use crate::parse::{DoctypeInput, DtdDiagnostic, ExternalRef, NoLoader, Parsed, SubsetLoader, parse_doctype};
 use crate::references::check_references;
 
@@ -101,6 +101,9 @@ pub struct Checked {
     pub dtd: Option<Parsed>,
     /// The name the DOCTYPE gives the root element.
     pub root_name: Option<String>,
+    /// The DTD compiled, when finding the problems needed it (the namespace rules do, for a DTD with entities or `xmlns` attributes): a
+    /// caller that compiles it anyway takes it from here instead of doing the work twice. It is `None` for most documents.
+    pub compiled: Option<Compiled>,
 }
 
 /// The DTD of a document that has a DOCTYPE: the internal subset and the external parts that `loader` reads, and the name the DOCTYPE
@@ -123,18 +126,22 @@ pub fn check_document(root: &SyntaxNode, text: &str, syntax: &[Diagnostic], loca
         .map(|d| DtdDiagnostic { source: 0, diagnostic: d.clone() })
         .collect();
     let mut dtd = None;
+    let mut compiled = None;
     if let Some(parts) = &parts {
         let internal = parts.subset.clone().and_then(|range| text.get(range.clone()).map(|subset| (subset, range.start)));
         let external = (parts.system.is_some() || parts.public.is_some())
             .then_some(ExternalRef { public: parts.public.as_deref(), system: parts.system.as_deref() });
         let mut read = parse_doctype(&DoctypeInput { external, internal, location }, loader);
         all.extend(check_references(root, &read.dtd, location, loader));
-        all.extend(check_namespaces(root, &read.dtd, &compile(&read.dtd, parts.name.as_deref()).grammar));
+        if namespaces_need_grammar(&read.dtd) {
+            let grammar = compiled.insert(compile(&read.dtd, parts.name.as_deref()));
+            all.extend(check_namespaces(root, &grammar.grammar));
+        }
         all.append(&mut read.diagnostics);
         dtd = Some(read);
     }
     all.sort_by_key(|d| (d.source, d.diagnostic.span.start, d.diagnostic.span.end));
-    Checked { problems: all, dtd, root_name: parts.and_then(|p| p.name) }
+    Checked { problems: all, dtd, root_name: parts.and_then(|p| p.name), compiled }
 }
 
 /// [`problems_of_document`] with no external part read: what is wrong in the document itself (its own text, its internal subset).
@@ -157,6 +164,19 @@ mod tests {
 
     fn parts(text: &str) -> Option<DoctypeParts> {
         doctype_parts(&parse(text).syntax())
+    }
+
+    #[test]
+    fn the_dtd_is_compiled_for_the_problems_only_when_the_namespace_rules_need_it() {
+        let checked = |text: &str| {
+            let parsed = parse(text);
+            check_document(&parsed.syntax(), text, parsed.diagnostics(), "", &mut NoLoader)
+        };
+        assert!(checked("<!DOCTYPE r [<!ELEMENT r ANY>]><r/>").compiled.is_none(), "nothing to read twice: no grammar is made");
+        assert!(checked("<r/>").compiled.is_none());
+        assert!(checked("<!DOCTYPE r [<!ELEMENT r ANY><!ENTITY e 'x'>]><r/>").compiled.is_some(), "an entity can change what a declaration says");
+        assert!(checked("<!DOCTYPE r [<!ELEMENT r ANY><!ATTLIST r xmlns CDATA #IMPLIED>]><r/>").compiled.is_some());
+        assert!(checked("<!DOCTYPE r [<!ELEMENT r ANY><!ATTLIST r xmlns:a CDATA #IMPLIED>]><r/>").compiled.is_some());
     }
 
     #[test]
