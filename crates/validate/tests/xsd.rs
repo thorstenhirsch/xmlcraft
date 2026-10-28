@@ -338,3 +338,46 @@ fn a_document_that_is_not_there_has_nothing_wrong_with_it() {
         assert!(validate_against_schema(&parsed.syntax(), &assembly.schema).is_empty(), "{xml:?}");
     }
 }
+
+#[test]
+fn a_namespace_declaration_is_in_scope_for_its_element_only() {
+    let schema = "<xs:element name=\"r\"><xs:complexType><xs:sequence><xs:element name=\"a\" type=\"xs:QName\"/><xs:element name=\"b\" type=\"xs:QName\"/></xs:sequence></xs:complexType></xs:element>";
+    assert_eq!(keys(schema, "<r><a xmlns:p=\"urn:n\">p:x</a><b xmlns:p=\"urn:m\">p:y</b></r>"), []);
+    assert_eq!(keys(schema, "<r><a xmlns:p=\"urn:n\">p:x</a><b>p:y</b></r>"), ["cvc.invalid-value"], "p is not declared for b");
+    assert_eq!(keys(schema, "<r xmlns:p=\"urn:n\"><a>p:x</a><b>p:y</b></r>"), [], "declared on the parent, it holds for the children");
+}
+
+#[test]
+fn the_value_of_an_attribute_has_its_references_replaced() {
+    let schema = "<xs:element name=\"r\"><xs:complexType><xs:attribute name=\"s\" type=\"xs:string\" fixed=\"a&amp;b&lt;c\"/><xs:attribute name=\"n\" type=\"xs:int\"/></xs:complexType></xs:element>";
+    assert_eq!(keys(schema, "<r s=\"a&amp;b&lt;c\"/>"), []);
+    assert_eq!(keys(schema, "<r s=\"a&#38;b&#x3C;c\"/>"), [], "the same by character references");
+    assert_eq!(keys(schema, "<r s=\"a&amp;b\"/>"), ["cvc.fixed-value"]);
+    assert_eq!(keys(schema, "<r n=\"&#49;&#50;\"/>"), []);
+    assert_eq!(keys(schema, "<!DOCTYPE r [<!ENTITY e \"1\">]><r n=\"&e;\"/>"), ["cvc.invalid-value"], "an entity in a value is not replaced here");
+}
+
+#[test]
+fn a_long_list_of_what_could_come_is_cut_short() {
+    let names = ["a", "b", "c", "d", "e", "f", "g", "h"];
+    let choice: String = names.iter().map(|n| format!("<xs:element name=\"{n}\"/>")).collect();
+    let schema = format!("<xs:element name=\"r\"><xs:complexType><xs:choice>{choice}</xs:choice></xs:complexType></xs:element>");
+    let found = problems(&schema, "<r/>");
+    assert!(found[0].1.contains("one of 'a', 'b', 'c', 'd', 'e', 'f' or 2 more"), "{found:?}");
+    let two = problems(
+        "<xs:element name=\"r\"><xs:complexType><xs:choice><xs:element name=\"a\"/><xs:element name=\"b\"/></xs:choice></xs:complexType></xs:element>",
+        "<r><c/></r>",
+    );
+    assert!(two[0].1.contains("expected one of 'a', 'b'") && !two[0].1.contains("more"), "{two:?}");
+}
+
+#[test]
+fn what_a_wildcard_lets_in_is_said_in_words() {
+    let any = "<xs:element name=\"r\"><xs:complexType><xs:sequence><xs:any/><xs:any namespace=\"##other\"/><xs:any namespace=\"urn:a ##local\"/></xs:sequence></xs:complexType></xs:element>";
+    let found = problems(any, "<r/>");
+    assert!(found.iter().any(|p| p.1.contains("'any element'")), "{found:?}");
+    let other = problems(any, "<r><x/></r>");
+    assert!(other.iter().any(|p| p.1.contains("'any element from another namespace'")), "{other:?}");
+    let list = problems(any, "<r><x/><y xmlns=\"urn:z\"/></r>");
+    assert!(list.iter().any(|p| p.1.contains("'any element from urn:a or no namespace'")), "{list:?}");
+}
