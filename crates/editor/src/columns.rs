@@ -23,22 +23,22 @@ impl Editor {
         // Towards the head from the anchor, as far as the cap allows.
         let reach = head_line.abs_diff(anchor_line).min(MAX_COLUMN_LINES - 1);
         let (first, last) = if head_line >= anchor_line { (anchor_line, anchor_line + reach) } else { (anchor_line - reach, anchor_line) };
-        let end_line = if head_line >= anchor_line { last } else { first };
         let mut carets = Vec::new();
-        let mut primary = 0;
         for line in first..=last {
             if self.fold_map.is_hidden(line) {
                 continue;
             }
             let (start, end) = (offset_at_column(&self.buffer, line, left, tab), offset_at_column(&self.buffer, line, right, tab));
-            if line == end_line {
-                primary = carets.len();
-            }
             carets.push(if backwards { Caret::new(end, start) } else { Caret::new(start, end) });
         }
         if carets.is_empty() {
+            // Every line of it is hidden by a fold: the rectangle is the point it was asked to end at, and an earlier one is not kept.
+            self.set_carets_raw(vec![Caret::at(head)], 0);
             return;
         }
+        // The primary caret is the one nearest the head: the last when the rectangle runs down to it, the first when it runs up (the
+        // head's own line may be hidden by a fold).
+        let primary = if head_line >= anchor_line { carets.len() - 1 } else { 0 };
         self.set_carets_raw(carets, primary);
     }
 }
@@ -108,6 +108,20 @@ mod tests {
         assert!(e.fold_lines(0, 2));
         e.select_columns(0, 6);
         assert_eq!(e.carets().len(), 2, "lines 1 and 2 are hidden");
+        // The head's line is hidden: the primary caret is the nearest visible one, whichever way the rectangle runs.
+        let mut e = Editor::new("a\nb\nc\nd\ne\n");
+        assert!(e.fold_lines(2, 3)); // lines 3 and 4 hidden
+        e.select_columns(0, 6); // from line 0 down to line 3 (hidden)
+        assert_eq!(e.carets().len(), 3, "lines 0, 1, 2");
+        assert_eq!(e.primary_index(), 2);
+        e.select_columns(6, 0);
+        assert_eq!(e.primary_index(), 0);
+        // Nothing but hidden lines: a caret at the head, not the earlier selection.
+        let mut e = Editor::new("a\nb\nc\nd\n");
+        e.set_selection(0, 1);
+        assert!(e.fold_lines(0, 2));
+        e.select_columns(2, 4);
+        assert_eq!(selections(&e), [(4, 4)], "lines 1 and 2 are hidden");
         let long = "x\n".repeat(super::MAX_COLUMN_LINES + 500);
         let mut e = Editor::new(&long);
         e.select_columns(0, long.len() - 2);

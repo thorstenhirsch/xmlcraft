@@ -509,5 +509,5 @@ fn dragging_with_alt_selects_a_rectangle_and_typing_edits_every_line_of_it() {
     h.run_steps(2);
     h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(2);
-    assert_eq!(h.state().editor.carets().len(), 1);
+    assert_eq!(carets(&h), vec![(1, 14)], "one selection from the first corner to the second");
 }

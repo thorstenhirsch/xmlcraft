@@ -114,6 +114,7 @@ impl ViewState {
         self.max_columns = 0;
         self.max_columns_known_for = None;
         self.preedit = None;
+        self.column_anchor = None;
     }
 
     /// Scroll so that `line` (0-based) is at the top, the next time the editor is drawn.
