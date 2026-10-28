@@ -4786,6 +4786,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-grammar"
+version = "0.0.1"
+dependencies = [
+ "proptest",
+]
+
+[[package]]
 name = "xmlcraft-platform"
 version = "0.0.1"
 dependencies = [
