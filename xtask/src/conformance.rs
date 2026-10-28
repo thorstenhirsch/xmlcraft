@@ -325,10 +325,9 @@ fn reject_reason(bytes: &[u8], path: &Path, suite: &Path) -> Option<String> {
     }
     let parsed = parse(&decoded.text);
     // The problems of the document and of its DTD: the internal subset is read by the DTD reader, the external parts come from the suite.
-    let parts = xmlcraft_dtd::doctype_parts(&parsed.syntax());
     let location = path.to_string_lossy();
     let mut files = SuiteFiles { suite, rejected: None };
-    let problems = xmlcraft_dtd::problems_of_document(&decoded.text, parsed.diagnostics(), parts.as_ref(), &location, &mut files);
+    let problems = xmlcraft_dtd::problems_of_document(&parsed.syntax(), &decoded.text, parsed.diagnostics(), &location, &mut files);
     problems
         .iter()
         .find(|d| d.diagnostic.severity() == xmlcraft_syntax::Severity::Error)

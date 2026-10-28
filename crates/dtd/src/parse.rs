@@ -413,6 +413,7 @@ impl<'a> Parser<'a> {
     /// The replacement text of the parameter entity `name`: its text, and when that is an external text the source it is in and where in
     /// the source the text begins.
     fn pe_text(&mut self, name: &str, start: (usize, usize)) -> Option<(String, Option<(usize, usize)>)> {
+        self.dtd.has_parameter_entity_references = true;
         let Some(decl) = self.dtd.parameter_entity(name).cloned() else {
             if self.dtd.has_external_parts {
                 self.dtd.incomplete = true;
@@ -579,6 +580,9 @@ impl<'a> Parser<'a> {
                 self.stopped = true;
                 return;
             }
+            // The text being read is not settled onto what referred to it until something is read from it, so a construct that began in
+            // the text of a parameter entity and ended after it leaves fewer texts on the stack.
+            let depth = self.frames.len();
             match c {
                 '<' => {
                     if self.starts_with("<!--") {
@@ -618,6 +622,11 @@ impl<'a> Parser<'a> {
                     }
                     self.report(Code::UnexpectedCharacter, vec![shown], start);
                 }
+            }
+            // WFC "PE Between Declarations": what a reference between declarations stands for is whole declarations (a reference inside a
+            // declaration is another matter, and only a validity constraint).
+            if self.frames.len() < depth {
+                self.report(Code::DtdPeBetweenDeclarations, Vec::new(), start);
             }
         }
     }
@@ -1402,13 +1411,15 @@ pub(crate) struct TextDecl {
     pub content: usize,
     /// How much of the text is the declaration, for reporting.
     pub span: usize,
+    /// The version it gives.
+    pub version: Option<String>,
     /// What is wrong with it.
     pub problem: Option<&'static str>,
 }
 
 /// Take the text declaration (`<?xml version? encoding?>`) off the front of an external entity, and read it for what is wrong with it.
 pub(crate) fn split_text_decl(text: &str) -> TextDecl {
-    let none = TextDecl { content: 0, span: 0, problem: None };
+    let none = TextDecl { content: 0, span: 0, version: None, problem: None };
     let Some(rest) = text.strip_prefix("<?xml") else { return none };
     if rest.chars().next().is_some_and(|c| !is_xml_space(c) && c != '?') {
         return none;
@@ -1417,18 +1428,23 @@ pub(crate) fn split_text_decl(text: &str) -> TextDecl {
         return TextDecl { span: 5, problem: Some("it is not closed: expected '?>'"), ..none };
     };
     let body = rest.get(..end).unwrap_or_default();
-    TextDecl { content: 5 + end + 2, span: 5 + end + 2, problem: text_decl_problem(body) }
+    let (version, problem) = match text_decl_parts(body) {
+        Ok(version) => (version, None),
+        Err(problem) => (None, Some(problem)),
+    };
+    TextDecl { content: 5 + end + 2, span: 5 + end + 2, version, problem }
 }
 
-/// What is wrong with the pseudo-attributes of a text declaration: `version="1.x"`? then `encoding="..."` (required), nothing else.
-fn text_decl_problem(body: &str) -> Option<&'static str> {
-    let mut seen_version = false;
+/// The version of a text declaration, or what is wrong with its pseudo-attributes: `version="1.x"`? then `encoding="..."` (required),
+/// nothing else.
+fn text_decl_parts(body: &str) -> Result<Option<String>, &'static str> {
+    let mut version: Option<String> = None;
     let mut seen_encoding = false;
     let mut rest = body;
     loop {
         let trimmed = rest.trim_start_matches(is_xml_space);
         if trimmed.len() == rest.len() && !rest.is_empty() {
-            return Some("white space is needed between the parts");
+            return Err("white space is needed between the parts");
         }
         rest = trimmed;
         if rest.is_empty() {
@@ -1437,18 +1453,17 @@ fn text_decl_problem(body: &str) -> Option<&'static str> {
         let name_end = rest.find(|c: char| !is_name_char(c)).unwrap_or(rest.len());
         let name = rest.get(..name_end).unwrap_or_default();
         rest = rest.get(name_end..).unwrap_or_default().trim_start_matches(is_xml_space);
-        let Some(after_equals) = rest.strip_prefix('=') else { return Some("expected '=' after the name") };
-        rest = after_equals.trim_start_matches(is_xml_space);
-        let Some(quote) = rest.chars().next().filter(|c| matches!(c, '"' | '\'')) else { return Some("a value must be in quotes") };
-        let Some(value_end) = rest.get(1..).and_then(|after| after.find(quote)) else { return Some("a value is not closed") };
+        rest = rest.strip_prefix('=').ok_or("expected '=' after the name")?.trim_start_matches(is_xml_space);
+        let Some(quote) = rest.chars().next().filter(|c| matches!(c, '"' | '\'')) else { return Err("a value must be in quotes") };
+        let value_end = rest.get(1..).and_then(|after| after.find(quote)).ok_or("a value is not closed")?;
         let value = rest.get(1..1 + value_end).unwrap_or_default();
         rest = rest.get(value_end + 2..).unwrap_or_default();
         match name {
-            "version" if !seen_version && !seen_encoding => {
+            "version" if version.is_none() && !seen_encoding => {
                 if !(value.starts_with("1.") && value.len() > 2 && value.get(2..).is_some_and(|d| d.chars().all(|c| c.is_ascii_digit()))) {
-                    return Some("the version is not a number like 1.0");
+                    return Err("the version is not a number like 1.0");
                 }
-                seen_version = true;
+                version = Some(value.to_owned());
             }
             "encoding" if !seen_encoding => {
                 seen_encoding = true;
@@ -1456,14 +1471,14 @@ fn text_decl_problem(body: &str) -> Option<&'static str> {
                 if !(chars.next().is_some_and(|c| c.is_ascii_alphabetic())
                     && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')))
                 {
-                    return Some("the encoding name is not valid");
+                    return Err("the encoding name is not valid");
                 }
             }
-            "version" | "encoding" => return Some("the parts are in the wrong order or repeated"),
-            _ => return Some("only version and encoding are allowed"),
+            "version" | "encoding" => return Err("the parts are in the wrong order or repeated"),
+            _ => return Err("only version and encoding are allowed"),
         }
     }
-    if seen_encoding { None } else { Some("the encoding is missing") }
+    if seen_encoding { Ok(version) } else { Err("the encoding is missing") }
 }
 
 /// `PubidChar`.

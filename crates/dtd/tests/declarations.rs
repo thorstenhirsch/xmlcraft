@@ -331,6 +331,29 @@ fn parameter_entities_between_declarations_bring_their_declarations() {
 }
 
 #[test]
+fn a_reference_between_declarations_stands_for_whole_declarations() {
+    // WFC "PE Between Declarations": what begins in the text of the entity ends in it.
+    mistake("<!ENTITY % e '<!ELEMENT a '> %e; ANY>", Code::DtdPeBetweenDeclarations);
+    mistake("<!ENTITY % e '<!--'> %e; -->", Code::DtdPeBetweenDeclarations);
+    mistake("<!ENTITY % e '<?pi'> %e; ?>", Code::DtdPeBetweenDeclarations);
+    // Several declarations, comments and instructions, whole, are what it is for; so is nothing at all, and nested references.
+    clean("<!ENTITY % e '<!-- c --><?pi x?><!ELEMENT a ANY>'> %e;");
+    clean("<!ENTITY % e ''> %e;");
+    // Nested references are for the external subset (the internal one does not take a reference in an entity value).
+    let nested = parse_external_subset("<!ENTITY % inner '<!ELEMENT a ANY>'><!ENTITY % outer '%inner; <!ELEMENT b ANY>'> %outer;");
+    assert!(nested.diagnostics.is_empty() && nested.dtd.element("b").is_some(), "{:?}", nested.diagnostics);
+    let split = parse_external_subset("<!ENTITY % inner '<!ELEMENT a '><!ENTITY % outer '%inner;'> %outer; ANY>");
+    assert!(codes(&split).contains(&Code::DtdPeBetweenDeclarations), "{:?}", split.diagnostics);
+    // A reference inside a declaration of the external subset is another matter (a validity constraint only).
+    let parsed = parse_external_subset("<!ENTITY % e 'ANY>'><!ELEMENT a %e;");
+    assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+    // The first problem is where the construct begins.
+    let parsed = internal("<!ELEMENT z ANY><!ENTITY % e '<!--'> %e; -->");
+    let at = parsed.diagnostics.iter().find(|d| d.diagnostic.code == Code::DtdPeBetweenDeclarations).map(|d| d.diagnostic.span.start);
+    assert!(at.is_some(), "{:?}", parsed.diagnostics);
+}
+
+#[test]
 fn a_literal_does_not_run_on_from_a_replacement_text_into_the_text_that_refers_to_it() {
     // The entity's text ends inside a literal: the closing quote that follows the reference cannot belong to it.
     let parsed = internal("<!ENTITY % e \"<!ENTITY a 'x\"> %e; '> <!ELEMENT b EMPTY>");

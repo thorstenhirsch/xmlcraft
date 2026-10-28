@@ -174,9 +174,7 @@ pub fn analyze(text: &str, version: u64) -> Analysis {
     let parsed = parse_with(text, &Limits::default());
     // The problems of the text and of the declarations of its internal subset (which the DTD reader reads); the external parts of the
     // DTD are not read here.
-    let tree = parsed.syntax();
-    let parts = xmlcraft_dtd::doctype_parts(&tree);
-    let mut diagnostics = xmlcraft_dtd::problems_in_text(text, parsed.diagnostics(), parts.as_ref());
+    let mut diagnostics = xmlcraft_dtd::problems_in_text(&parsed.syntax(), text, parsed.diagnostics());
     diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
     let (outline, outline_truncated) = outline_of(&parsed.syntax(), text);
     let (folds, folds_truncated) = fold_ranges(&parsed.syntax(), text);
@@ -412,6 +410,22 @@ mod tests {
         assert_eq!(codes("<!DOCTYPE a [%nowhere;]><a/>"), [Code::DtdUndeclaredPe]);
         // The problems count as errors of the document.
         assert!(!analyze("<!DOCTYPE a [<!ELEMENT a>]><a/>", 1).is_well_formed());
+    }
+
+    #[test]
+    fn references_to_entities_are_checked_against_the_declarations_of_the_document() {
+        use xmlcraft_syntax::Code;
+        let codes = |text: &str| analyze(text, 1).diagnostics.iter().map(|d| d.code).collect::<Vec<_>>();
+        assert_eq!(codes("<!DOCTYPE a [<!ENTITY e 'v'>]><a x='&e;'>&e;</a>"), []);
+        assert_eq!(codes("<!DOCTYPE a [<!ELEMENT a ANY>]><a>&nope;</a>"), [Code::UndeclaredEntity]);
+        assert_eq!(codes("<!DOCTYPE a [<!ENTITY e '&e;'>]><a>&e;</a>"), [Code::DtdRecursiveEntity]);
+        assert_eq!(codes("<!DOCTYPE a [<!ENTITY e SYSTEM 'e.ent'>]><a x='&e;'/>"), [Code::EntityExternalInAttribute]);
+        // An external entity is not read here, and a declaration that may be outside the document is not missing.
+        assert_eq!(codes("<!DOCTYPE a [<!ENTITY e SYSTEM 'e.ent'>]><a>&e;</a>"), []);
+        assert_eq!(codes("<!DOCTYPE a SYSTEM 'a.dtd'><a>&nope;</a>"), []);
+        // Without a DOCTYPE the parser has said it already, once.
+        assert_eq!(codes("<a>&nope;</a>"), [Code::UndeclaredEntity]);
+        assert!(!analyze("<!DOCTYPE a [<!ENTITY e '&e;'>]><a>&e;</a>", 1).is_well_formed());
     }
 
     use super::*;

@@ -5,6 +5,7 @@ use std::ops::Range;
 use xmlcraft_syntax::{Diagnostic, SyntaxKind, SyntaxNode};
 
 use crate::parse::{DoctypeInput, DtdDiagnostic, ExternalRef, NoLoader, SubsetLoader, parse_doctype};
+use crate::references::check_references;
 
 /// The parts of a DOCTYPE declaration.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -76,27 +77,30 @@ pub fn doctype_parts(root: &SyntaxNode) -> Option<DoctypeParts> {
     Some(parts)
 }
 
-/// Every problem in the DTD of a document: what the syntax tree found (`syntax`) except inside the internal subset, whose declarations
-/// this crate reads and reports better, and what reading the DTD found. `loader` is where the external parts come from. Sorted by
-/// where they are (those of the document first).
+/// Every problem in the DTD of a document and in its references to entities: what the syntax tree found (`syntax`) except inside the
+/// internal subset, whose declarations this crate reads and reports better, what reading the DTD found, and what the references to
+/// general entities break (declared, parsed, not external in an attribute value, not recursive, well-formed). `loader` is where the
+/// external parts come from. Sorted by where they are (those of the document first).
 pub fn problems_of_document(
+    root: &SyntaxNode,
     text: &str,
     syntax: &[Diagnostic],
-    parts: Option<&DoctypeParts>,
     location: &str,
     loader: &mut dyn SubsetLoader,
 ) -> Vec<DtdDiagnostic> {
-    let inside = parts.and_then(|p| p.subset.clone());
+    let parts = doctype_parts(root);
+    let inside = parts.as_ref().and_then(|p| p.subset.clone());
     let mut all: Vec<DtdDiagnostic> = syntax
         .iter()
         .filter(|d| !inside.as_ref().is_some_and(|range| d.span.start >= range.start && d.span.end <= range.end))
         .map(|d| DtdDiagnostic { source: 0, diagnostic: d.clone() })
         .collect();
-    if let Some(parts) = parts {
+    if let Some(parts) = &parts {
         let internal = parts.subset.clone().and_then(|range| text.get(range.clone()).map(|subset| (subset, range.start)));
         let external = (parts.system.is_some() || parts.public.is_some())
             .then_some(ExternalRef { public: parts.public.as_deref(), system: parts.system.as_deref() });
         let read = parse_doctype(&DoctypeInput { external, internal, location }, loader);
+        all.extend(check_references(root, &read.dtd, location, loader));
         all.extend(read.diagnostics);
     }
     all.sort_by_key(|d| (d.source, d.diagnostic.span.start, d.diagnostic.span.end));
@@ -104,9 +108,9 @@ pub fn problems_of_document(
 }
 
 /// [`problems_of_document`] with no external part read: what is wrong in the document itself (its own text, its internal subset).
-pub fn problems_in_text(text: &str, syntax: &[Diagnostic], parts: Option<&DoctypeParts>) -> Vec<Diagnostic> {
+pub fn problems_in_text(root: &SyntaxNode, text: &str, syntax: &[Diagnostic]) -> Vec<Diagnostic> {
     use xmlcraft_syntax::Code;
-    problems_of_document(text, syntax, parts, "", &mut NoLoader)
+    problems_of_document(root, text, syntax, "", &mut NoLoader)
         .into_iter()
         // What is not read is not a problem of the text.
         .filter(|d| d.source == 0 && !matches!(d.diagnostic.code, Code::DtdExternalNotRead | Code::DtdUndeclaredPeUnread))
