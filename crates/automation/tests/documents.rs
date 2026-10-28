@@ -371,6 +371,13 @@ fn comments_and_selections_work_on_the_structure() {
     assert_eq!(still["carets"], placed["carets"], "a refused call leaves the selection where it was");
     ok(&mut a, "doc_toggle_comment", json!({ "id": id, "line": 2, "column": 1, "end_line": 4, "end_column": 5 }));
     assert_eq!(ok(&mut a, "doc_text", json!({ "id": id }))["text"], text);
+    // A rectangle: a selection on each line, and typing edits them all.
+    let rows = ok(&mut a, "doc_new", json!({ "text": "abcdef\nab\n\nabcdefgh\n" }))["id"].as_u64().expect("id");
+    let rect = ok(&mut a, "doc_select", json!({ "id": rows, "line": 1, "column": 2, "end_line": 4, "end_column": 4, "columns": true }));
+    assert_eq!(rect["carets"].as_array().map(Vec::len), Some(4));
+    ok(&mut a, "doc_type", json!({ "id": rows, "text": "X" }));
+    assert_eq!(ok(&mut a, "doc_text", json!({ "id": rows }))["text"], "aXdef\naX\nX\naXdefgh\n");
+    assert!(err(&mut a, "doc_select", json!({ "id": rows, "line": 1, "column": 1, "columns": true })).contains("end_line"));
     // Bad arguments.
     assert!(err(&mut a, "doc_select", json!({ "id": id, "line": 1, "column": 1, "end_line": 2 })).contains("go together"));
     assert!(err(&mut a, "doc_select", json!({ "id": id, "line": 99, "column": 1 })).contains("no line 99"));

@@ -75,7 +75,7 @@ status = "partial"
 commands = ["edit.select_next_occurrence", "edit.select_all_occurrences"]
 tools = []
 evidence = ["crates/editor/tests/model.rs::typing_matches_a_hand_rebuilt_string", "crates/editor/src/find.rs::the_next_occurrence_is_added_one_at_a_time", "crates/ui-egui/tests/find.rs::control_d_adds_the_next_occurrence_and_typing_changes_all_of_them"]
-notes = "Every command works on several carets; a command-click adds one; ⌘D (Ctrl+D) selects the word and then adds the next occurrence, ⇧⌘L (Ctrl+Shift+L) a caret on every occurrence (or every match of the find bar), and Find can select all matches. Not yet: Alt-click and Alt-drag (column selection, a feature of its own), a headless tool for the two occurrence commands (they are registry commands only), and the gestures' tests in the widget."
+notes = "Every command works on several carets; a command-click adds one; ⌘D (Ctrl+D) selects the word and then adds the next occurrence, ⇧⌘L (Ctrl+Shift+L) a caret on every occurrence (or every match of the find bar), and Find can select all matches. Alt-drag is column selection, a feature of its own. Not yet: a headless tool for the two occurrence commands (they are registry commands only), and the gestures' tests in the widget."
 
 [[feature]]
 id = "editor.column-selection"
@@ -83,11 +83,11 @@ title = "Column (rectangular) selection"
 area = "A"
 tier = "P1"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["doc_select"]
+evidence = ["crates/editor/src/columns.rs::a_rectangle_is_one_selection_per_line_and_short_lines_are_cut_at_their_end", "crates/editor/src/columns.rs::dragging_to_the_left_selects_backwards_and_upwards_makes_the_first_line_the_primary", "crates/editor/src/columns.rs::typing_replaces_every_line_of_the_rectangle_in_one_undo_step", "crates/editor/src/columns.rs::lines_hidden_by_a_fold_are_left_out_and_the_number_of_lines_is_capped", "crates/code-editor/tests/widget.rs::dragging_with_alt_selects_a_rectangle_and_typing_edits_every_line_of_it", "crates/automation/tests/documents.rs::comments_and_selections_work_on_the_structure"]
+notes = "An Alt-drag (Option on macOS) selects a rectangle: a selection on every line between the two corners, from the display column of one to the display column of the other (a tab is as wide as it is drawn; a shorter line gets a caret at its end; lines hidden by a fold are left out; at most 20,000 lines), the head's line is the primary caret, and typing, deleting and pasting then edit every line as one undo step. Headless: doc_select with columns. Missing: keyboard extension of the rectangle (Shift+Alt+arrows), the rectangle following the text as it changes, and Alt-drag where the window manager takes it (Linux: use the tool or the multi-caret commands)."
 
 [[feature]]
 id = "editor.find-replace"
