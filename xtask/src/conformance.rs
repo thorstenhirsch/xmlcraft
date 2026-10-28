@@ -245,8 +245,47 @@ fn upstream_path(suite: &Path, path: &str) -> String {
 
 // --- running ----------------------------------------------------------------------------------------------------------------
 
-/// What XmlCraft says about a document's bytes: `None` for well-formed, else the first problem.
-fn reject_reason(bytes: &[u8]) -> Option<String> {
+/// Reads the external parts of a DTD from the suite's files: a system identifier is a path relative to the file that has it, and
+/// nothing outside the suite (and no URL) is read.
+struct SuiteFiles<'a> {
+    suite: &'a Path,
+}
+
+impl xmlcraft_dtd::SubsetLoader for SuiteFiles<'_> {
+    fn load(&mut self, request: &xmlcraft_dtd::LoadRequest<'_>) -> Result<xmlcraft_dtd::Loaded, String> {
+        if request.system.contains("://") || request.system.starts_with('/') {
+            return Err("not a path inside the suite".to_owned());
+        }
+        let base = Path::new(request.base);
+        let path = base.parent().unwrap_or(Path::new("")).join(request.system);
+        // Normalise `..` without touching the disk, and stay inside the suite.
+        let mut parts: Vec<std::ffi::OsString> = Vec::new();
+        for part in path.components() {
+            match part {
+                std::path::Component::ParentDir => {
+                    parts.pop();
+                }
+                std::path::Component::CurDir => {}
+                other => parts.push(other.as_os_str().to_owned()),
+            }
+        }
+        let resolved: PathBuf = parts.iter().collect();
+        if !resolved.starts_with(self.suite) {
+            return Err("outside the suite".to_owned());
+        }
+        let bytes = fs::read(&resolved).map_err(|e| e.to_string())?;
+        let detected = sniff(&bytes);
+        let decoded = decode(&bytes, &detected);
+        if decoded.lossy {
+            return Err(format!("not valid {:?}", detected.encoding));
+        }
+        Ok(xmlcraft_dtd::Loaded { text: decoded.text, location: resolved.to_string_lossy().into_owned() })
+    }
+}
+
+/// What XmlCraft says about a document's bytes: `None` for well-formed, else the first problem. `path` is where the document is, for the
+/// external parts of its DTD.
+fn reject_reason(bytes: &[u8], path: &Path, suite: &Path) -> Option<String> {
     let detected = sniff(bytes);
     let decoded = decode(bytes, &detected);
     if decoded.lossy {
@@ -256,7 +295,14 @@ fn reject_reason(bytes: &[u8]) -> Option<String> {
         return Some(format!("declares {:?} but is {:?}", detected.declared.unwrap_or_default(), detected.encoding));
     }
     let parsed = parse(&decoded.text);
-    parsed.diagnostics().iter().find(|d| d.severity() == xmlcraft_syntax::Severity::Error).map(|d| d.message())
+    // The problems of the document and of its DTD: the internal subset is read by the DTD reader, the external parts come from the suite.
+    let parts = xmlcraft_dtd::doctype_parts(&parsed.syntax());
+    let location = path.to_string_lossy();
+    let problems = xmlcraft_dtd::problems_of_document(&decoded.text, parsed.diagnostics(), parts.as_ref(), &location, &mut SuiteFiles { suite });
+    problems
+        .iter()
+        .find(|d| d.diagnostic.severity() == xmlcraft_syntax::Severity::Error)
+        .map(|d| if d.source == 0 { d.diagnostic.message() } else { format!("in external text {}: {}", d.source, d.diagnostic.message()) })
 }
 
 #[derive(Default)]
@@ -299,7 +345,8 @@ fn xmlconf(fetch: bool, write: bool, verbose: bool) -> Result<()> {
         let Some(bytes) = fs::read(suite.join(upstream_path(&suite, &case.path))).ok() else {
             bail!("the test file {} is missing", case.path);
         };
-        let verdict = reject_reason(&bytes);
+        let file = suite.join(upstream_path(&suite, &case.path));
+        let verdict = reject_reason(&bytes, &file, &suite);
         let expect_wf = case.kind != "not-wf";
         let passed = verdict.is_none() == expect_wf;
         let group = case.path.split('/').next().unwrap_or_default().to_owned();
@@ -488,10 +535,22 @@ mod tests {
 
     #[test]
     fn verdicts_cover_encoding_and_syntax() {
-        assert_eq!(reject_reason(b"<a/>"), None);
-        assert!(reject_reason(b"<a>").is_some());
-        assert!(reject_reason(b"<a>\xFF</a>").is_some(), "invalid UTF-8");
-        assert!(reject_reason(b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><a>\xE9</a>").is_none());
-        assert!(reject_reason(b"\xEF\xBB\xBF<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><a/>").is_some(), "the mark says UTF-8");
+        let verdict = |bytes: &[u8]| reject_reason(bytes, Path::new("test.xml"), Path::new("."));
+        assert_eq!(verdict(b"<a/>"), None);
+        assert!(verdict(b"<a>").is_some());
+        assert!(verdict(b"<a>\xFF</a>").is_some(), "invalid UTF-8");
+        assert!(verdict(b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><a>\xE9</a>").is_none());
+        assert!(verdict(b"\xEF\xBB\xBF<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><a/>").is_some(), "the mark says UTF-8");
+    }
+
+    #[test]
+    fn the_dtd_is_read_and_its_mistakes_reject_the_document() {
+        let verdict = |text: &str| reject_reason(text.as_bytes(), Path::new("test.xml"), Path::new("."));
+        assert_eq!(verdict("<!DOCTYPE a [<!ELEMENT a EMPTY>]><a/>"), None);
+        let reason = verdict("<!DOCTYPE a [<!ELEMENT a>]><a/>").expect("a mistake in a declaration");
+        assert!(reason.contains("content model"), "{reason}");
+        assert!(verdict("<!DOCTYPE a [<!ATTLIST a b BOGUS #IMPLIED>]><a/>").is_some());
+        // An external subset that cannot be read is not a mistake of the document.
+        assert_eq!(verdict("<!DOCTYPE a SYSTEM \"missing.dtd\"><a/>"), None);
     }
 }

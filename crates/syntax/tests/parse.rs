@@ -151,7 +151,17 @@ fn doctype_problems() {
     assert_eq!(problems("<!DOCTYPE><a/>"), [p(Code::MissingDoctypeName, "<!DOCTYPE")]);
     assert_eq!(problems("<!DOCTYPE a SYSTEM><a/>"), [p(Code::BadDoctype, "SYSTEM")]);
     assert_eq!(problems("<!DOCTYPE a PUBLIC \"x\"><a/>"), [p(Code::BadDoctype, "PUBLIC")]);
-    assert_eq!(problems("<!DOCTYPE a \"x\"><a/>"), [p(Code::BadDoctype, "<!DOCTYPE")]);
+    assert_eq!(problems("<!DOCTYPE a \"x\"><a/>"), [p(Code::BadDoctype, "x")]);
+    // The words and the quoted strings are in the order the grammar has, each after white space.
+    assert_eq!(problems("<!DOCTYPE a PUBLIC \"p\"\"s\"><a/>"), [p(Code::MissingSpace, "s")]);
+    assert_eq!(problems("<!DOCTYPE a PUBLIC\"p\" \"s\"><a/>"), [p(Code::MissingSpace, "p")]);
+    assert_eq!(problems("<!DOCTYPE a SYSTEM\"s\"><a/>"), [p(Code::MissingSpace, "s")]);
+    assert_eq!(problems("<!DOCTYPE a \"p\" \"s\" PUBLIC><a/>"), [p(Code::BadDoctype, "p")]);
+    assert_eq!(problems("<!DOCTYPE a PUBLIC PUBLIC \"p\" \"s\"><a/>"), [p(Code::BadDoctype, "PUBLIC")]);
+    assert_eq!(problems("<!DOCTYPE a SYSTEM \"s\" \"t\"><a/>"), [p(Code::BadDoctype, "t")]);
+    assert_eq!(problems("<!DOCTYPE a SYSTEM \"s\" extra><a/>"), [p(Code::BadDoctype, "extra")]);
+    assert_eq!(problems("<!DOCTYPE a PUBLIC \"p\" \"s\" [ ]><a/>"), vec![]);
+    assert_eq!(problems("<!DOCTYPE a SYSTEM \"\" [ ]><a/>"), vec![], "an empty literal is a literal");
     assert_eq!(problems("<!DOCTYPE a FOO \"x\"><a/>"), [p(Code::BadDoctype, "FOO")]);
     assert!(problems("<!DOCTYPE a [<!ELEMENT a EMPTY><a/>").iter().any(|(c, _)| *c == Code::UnterminatedDoctype));
     assert_eq!(problems("<!DOCTYPE a [<!ELEMENT a\n<!ELEMENT b EMPTY>]><a/>"), [p(Code::UnterminatedDecl, "<!ELEMENT")]);

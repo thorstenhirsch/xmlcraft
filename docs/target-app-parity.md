@@ -1,6 +1,6 @@
 # XmlCraft parity with Altova XMLSpy
 
-> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M1.12: recent files (partial); feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M2.6: the DTD reader (partial); xmlconf not-wf 94.8%; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
 
 The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -10,9 +10,9 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **6.6%** shipped, 16.4% with partial counted half (10 shipped + 30 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-28) |
-| Must-have (P0) features | 7.8% shipped, 25.8% weighted (5 shipped + 23 partial of 64) | measured |
-| W3C xmlconf, not-well-formed | **64.7%** (658 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-27) |
+| **Feature breadth**, unweighted | **6.6%** shipped, 18.4% with partial counted half (10 shipped + 36 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-28) |
+| Must-have (P0) features | 7.8% shipped, 28.9% weighted (5 shipped + 27 partial of 64) | measured |
+| W3C xmlconf, not-well-formed | **94.8%** (964 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-27) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): no well-formedness error is reported on a well-formed document | measured (same run) |
 | W3C xsdtests (XSD 1.0) | not measured | arrives with M3 |
 | Verdict agreement with `xmllint` | not measured | arrives with M2 (`cargo xtask oracle`) |
@@ -30,11 +30,11 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | Kind | Passed | Of | Rate |
 |---|---:|---:|---:|
-| not-wf | 658 | 1017 | 64.7% |
+| not-wf | 964 | 1017 | 94.8% |
 | valid | 721 | 721 | 100% |
 | invalid | 227 | 227 | 100% |
 
-**What the 359 known failures are.** Every one is a not-well-formed test that needs the DTD, which XmlCraft reads from M2: the syntax of `<!ELEMENT>`, `<!ATTLIST>` and `<!ENTITY>` declarations and conditional sections (about 310 tests), and rules that need the declarations or the files behind them: an entity must be declared, parsed, not external inside an attribute value, not recursive, with a well-formed replacement text, and the external subset must itself be well-formed (about 50). The internal subset is lexed and what does not need its declarations is checked (its extent, comments, processing instructions, public identifiers, `&` and `%` in entity values, parameter-entity references inside declarations, unknown declarations), but the declarations are not parsed. They close with the DTD parser (M2.6), the resolver (M2.3) and entity expansion (M2.8); `docs/gaps.md` tracks them as gap 16.
+**What the 53 known failures are.** All are not-well-formed tests that need the declarations to be used or the files behind them: an entity reference must name a declared, parsed entity (not an unparsed one), not an external one inside an attribute value, not a recursive one, and its replacement text must be well-formed content (and have no `<` in an attribute value); and a few about external entities and text declarations. The DTD itself (declarations, parameter entities, conditional sections, the external subset) is read since M2.6 and closed 306 of the 359 tests this started with. They close with the entity expansion (M2.8); `docs/gaps.md` tracks them as gap 16.
 
 ## Revision history
 
@@ -53,3 +53,4 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 - 2026-10-27: M1.10c: tag-rename sync (`editor.tag-rename-sync` planned → partial); 10 shipped and 28 partial, 15.8% weighted.
 - 2026-10-27: M1.8: column selection (`editor.column-selection` planned → partial); 10 shipped and 29 partial, 16.1% weighted.
 - 2026-10-28: M1.12: recent files (`editor.recent-files` planned → partial); 10 shipped and 30 partial, 16.4% weighted.
+- 2026-10-28: M2.6: the DTD reader (six `dtd.*` features planned → partial); xmlconf not-well-formed 64.7% → 94.8%; 10 shipped and 36 partial, 18.4% weighted.

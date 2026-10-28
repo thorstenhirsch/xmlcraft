@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 xmlcraft-text = { workspace = true }
 xmlcraft-editor = { workspace = true }
+xmlcraft-dtd = { workspace = true }
 xmlcraft-syntax = { workspace = true }
 xmlcraft-format = { workspace = true }
 rowan = { workspace = true }
