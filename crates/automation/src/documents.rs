@@ -87,6 +87,16 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             handler: doc_list,
         },
         ToolDef {
+            name: "recent_files",
+            title: "Recent files",
+            description: "The files opened or saved lately in this session (a tool session starts with none), newest first, at most 12. With `clear` true the list is emptied \
+                          after it is read. Only paths are listed; nothing is opened.",
+            input_schema: object(json!({ "clear": { "type": "boolean" } }), &[]),
+            read_only: false,
+            destructive: false,
+            handler: recent_files,
+        },
+        ToolDef {
             name: "doc_text",
             title: "Read a document's text",
             description: "The text of a document, or of the lines from `from_line` to `to_line` (counted from 1, both included). At most 4 MiB are returned.",
@@ -574,6 +584,14 @@ fn doc_list(a: &mut Automation, _: &Value) -> Result<Vec<Content>> {
     json_result(json!({ "documents": documents, "count": documents.len() }))
 }
 
+fn recent_files(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let files: Vec<String> = a.session.recent().paths().iter().map(|path| path.display().to_string()).collect();
+    if flag(args, "clear") {
+        a.session.clear_recent();
+    }
+    json_result(json!({ "files": files, "count": files.len(), "cleared": flag(args, "clear") }))
+}
+
 fn doc_text(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let index = index_of(a, id_arg(args)?)?;
     let Some(doc) = a.session.document(index) else { return fail("the document disappeared") };
@@ -902,7 +920,9 @@ fn doc_save(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     };
     let stamp = files::write_file(&target, &bytes).map_err(|e| ToolError::Failed(format!("{}: {e}", target.display())))?;
     doc.mark_saved(target.clone(), Some(stamp));
-    json_result(json!({ "saved": target.display().to_string(), "bytes": bytes.len(), "document": describe(doc) }))
+    let described = describe(doc);
+    a.session.remember_recent(target.clone());
+    json_result(json!({ "saved": target.display().to_string(), "bytes": bytes.len(), "document": described }))
 }
 
 fn unmappable_error(doc: &Document, e: xmlcraft_text::encoding::EncodeError) -> ToolError {

@@ -419,11 +419,11 @@ title = "Recent files"
 area = "A"
 tier = "P1"
 milestone = "M1"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["file.clear_recent"]
+tools = ["recent_files"]
+evidence = ["crates/engine/src/recent.rs::the_newest_is_first_a_path_is_there_once_and_the_list_is_capped", "crates/engine/src/lib.rs::files_that_are_opened_or_saved_are_remembered_newest_first", "crates/ui-egui/src/lib.rs::the_recent_files_are_saved_with_the_preferences_and_read_back", "crates/ui-egui/tests/documents.rs::the_home_view_lists_the_files_opened_lately_and_a_click_opens_one", "crates/automation/tests/documents.rs::the_files_that_were_opened_are_listed_newest_first_and_the_list_can_be_cleared"]
+notes = "The last 12 files opened or saved are kept (newest first, no path twice), saved with the preferences, listed on the home view (a click opens one; a file that is gone is reported and dropped) and emptied by File > Clear Recent Files; `recent_files` lists (and clears) them headlessly. Missing: an Open Recent menu or palette entries (the command registry is static), pinning, and a list that follows files that were moved."
 
 [[feature]]
 id = "editor.autosave-recovery"

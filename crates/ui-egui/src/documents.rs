@@ -60,6 +60,11 @@ impl DocView {
 }
 
 impl XmlCraftApp {
+    /// The files opened or saved lately, newest first (what the home view lists).
+    pub fn recent_files(&self) -> &[PathBuf] {
+        self.session.recent().paths()
+    }
+
     /// The tabs: one per open document.
     pub fn tabs(&self) -> Vec<TabInfo> {
         self.session.documents().iter().map(|d| TabInfo { name: d.name().to_owned(), dirty: d.is_dirty() }).collect()
@@ -113,7 +118,7 @@ impl XmlCraftApp {
     fn try_open(&mut self, path: &Path) -> Result<(), String> {
         let failed = |e: &dyn std::fmt::Display| fmt(tl!("{path}: {error}"), &[("path", &path.display().to_string()), ("error", &e.to_string())]);
         let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-        let loaded = files::read_file(&canonical).map_err(|e| failed(&e))?;
+        let loaded = files::read_file(&canonical).inspect_err(|_| self.session.forget_recent(&canonical)).map_err(|e| failed(&e))?;
         self.session.open(Some(canonical), &loaded.bytes, Some(loaded.stamp)).map_err(|e| failed(&e))?;
         self.focus_editor = true;
         if let Some(doc) = self.session.active_document()
@@ -314,7 +319,9 @@ impl XmlCraftApp {
     /// The middle of the window: the editor of the document being shown, or the home view.
     pub(crate) fn central(&mut self, ui: &mut egui::Ui) {
         let Some(index) = self.session.active() else {
-            crate::home::show(ui);
+            if let Some(path) = crate::home::show(ui, self.session.recent().paths()) {
+                self.open_path(&path);
+            }
             return;
         };
         let kind = self.applied.unwrap_or(ThemeKind::Light);
@@ -455,9 +462,10 @@ impl XmlCraftApp {
             Ok(stamp) => {
                 let canonical = std::fs::canonicalize(&path).unwrap_or(path);
                 if let Some(doc) = self.session.document_mut(index) {
-                    doc.mark_saved(canonical, Some(stamp));
+                    doc.mark_saved(canonical.clone(), Some(stamp));
                     self.status = fmt(tl!("Saved {name}"), &[("name", doc.name())]);
                 }
+                self.session.remember_recent(canonical);
                 self.after_save(ctx, id, then);
             }
             Err(e) => {

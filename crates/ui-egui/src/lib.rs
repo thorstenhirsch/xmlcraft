@@ -64,6 +64,8 @@ struct Prefs {
     right: Option<RightPanel>,
     bottom_open: bool,
     side_panels: SidePanels,
+    /// The files opened or saved lately, newest first (paths that are not valid text are not kept).
+    recent: Vec<String>,
 }
 
 impl Default for Prefs {
@@ -74,6 +76,7 @@ impl Default for Prefs {
             right: Some(RightPanel::EntryHelpers),
             bottom_open: true,
             side_panels: SidePanels::default(),
+            recent: Vec::new(),
         }
     }
 }
@@ -159,6 +162,8 @@ impl XmlCraftApp {
     }
 
     fn with_prefs(prefs: Prefs) -> Self {
+        let mut session = Session::new();
+        session.set_recent(xmlcraft_engine::Recent::from_paths(prefs.recent.iter().map(std::path::PathBuf::from)));
         Self {
             theme_preference: prefs.theme,
             mode: Mode::default(),
@@ -169,7 +174,7 @@ impl XmlCraftApp {
             palette_query: String::new(),
             palette_last_query: String::new(),
             palette_selected: 0,
-            session: Session::new(),
+            session,
             analyzer: Analyzer::new(),
             outline_filter: String::new(),
             outline_rows: None,
@@ -204,6 +209,7 @@ impl XmlCraftApp {
             right: self.right,
             bottom_open: self.bottom_open,
             side_panels: self.side_panels,
+            recent: self.session.recent().paths().iter().filter_map(|path| path.to_str().map(str::to_owned)).collect(),
         }
     }
 
@@ -308,6 +314,21 @@ impl eframe::App for XmlCraftApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_recent_files_are_saved_with_the_preferences_and_read_back() {
+        let prefs = Prefs { recent: vec!["/x/a.xml".into(), "/x/b.xml".into(), "/x/a.xml".into()], ..Prefs::default() };
+        let app = XmlCraftApp::with_prefs(prefs);
+        // Read back without the repeat, newest first.
+        assert_eq!(app.recent_files(), [std::path::PathBuf::from("/x/a.xml"), "/x/b.xml".into()]);
+        let saved = serde_json::to_string(&app.prefs()).expect("serialises");
+        let again = XmlCraftApp::with_prefs(Prefs::load(Some(&saved)));
+        assert_eq!(again.recent_files(), app.recent_files());
+        // Preferences from before there were recent files, and unreadable ones, give an empty list.
+        assert!(XmlCraftApp::with_prefs(Prefs::load(Some(r#"{"left_open":false}"#))).recent_files().is_empty());
+        assert!(XmlCraftApp::with_prefs(Prefs::load(Some("not json"))).recent_files().is_empty());
+        assert!(XmlCraftApp::with_prefs(Prefs::load(Some(r#"{"recent":"nope"}"#))).recent_files().is_empty());
+    }
 
     fn app_with_tabs(n: usize) -> XmlCraftApp {
         let mut app = XmlCraftApp::with_prefs(Prefs::default());
