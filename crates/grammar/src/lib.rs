@@ -2,6 +2,9 @@
 
 //! xmlcraft-grammar: the grammar model that DTDs and XML Schemas are compiled into.
 //!
+//! - A [`Grammar`] holds what is declared: elements with their [`Content`] and attributes, general entities and notations, each with the
+//!   [`Origin`] it was written at.
+//!
 //! - **Layer:** L2, no UI and no I/O, so it compiles for the web too.
 //! - A content model is a tree of [`Particle`]s (elements and wildcards, sequences and choices, each with a count). [`Automaton::compile`]
 //!   turns it into a Glushkov automaton, which
@@ -15,9 +18,14 @@
 //!   dropped when the model is compiled).
 
 mod automaton;
+mod model;
 mod name;
 mod particle;
 
 pub use automaton::{Ambiguity, Automaton, CompileError, Expected, MAX_DEPTH, MAX_POSITIONS, MAX_WORK, State, Step, Symbol};
+pub use model::{
+    AttributeDecl, AttributeDefault, AttributeType, Content, ElementDecl, EntityDecl, EntityKind, Grammar, NO_DECLARATION, NotationDecl, Origin,
+    SchemaKind,
+};
 pub use name::{Name, NamespaceConstraint, Term};
 pub use particle::{Occurs, Particle, ParticleKind};

@@ -52,6 +52,8 @@ pub struct Ambiguity {
     /// The tokens of the two particles.
     pub first: usize,
     pub second: usize,
+    /// What they compete for (the term of the first).
+    pub term: Term,
 }
 
 /// What may come next, as far as [`Automaton::expected`] tells.
@@ -618,7 +620,10 @@ impl Automaton {
     }
 
     fn ambiguity_in(&self, items: &[u32]) -> Option<Ambiguity> {
-        let ambiguity = |a: u32, b: u32| Some(Ambiguity { first: self.leaf(a)?.token, second: self.leaf(b)?.token });
+        let ambiguity = |a: u32, b: u32| {
+            let first = self.leaf(a)?;
+            Some(Ambiguity { first: first.token, second: self.leaf(b)?.token, term: first.term.clone() })
+        };
         let mut seen: HashMap<&Name, u32> = HashMap::new();
         let mut wildcards: Vec<u32> = Vec::new();
         for &p in items {

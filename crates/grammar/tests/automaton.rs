@@ -152,9 +152,18 @@ fn a_model_that_is_not_deterministic_is_found_and_both_particles_are_named() {
     ok(&el("a", 0).occurring(Occurs::new(2, Some(5))));
     ok(&Particle::choice(vec![el("a", 0), el("b", 1), el("c", 2)]).occurring(Occurs::ZERO_OR_MORE));
     // `(a | a)`, `(a?, a)`, `(a*, a)`, `((a, b) | (a, c))`.
-    assert_eq!(ambiguous(&Particle::choice(vec![el("a", 0), el("a", 1)])), Err(Ambiguity { first: 0, second: 1 }));
-    assert_eq!(ambiguous(&Particle::sequence(vec![el("a", 0).occurring(Occurs::OPTIONAL), el("a", 1)])), Err(Ambiguity { first: 0, second: 1 }));
-    assert_eq!(ambiguous(&Particle::sequence(vec![el("a", 0).occurring(Occurs::ZERO_OR_MORE), el("a", 1)])), Err(Ambiguity { first: 0, second: 1 }));
+    assert_eq!(
+        ambiguous(&Particle::choice(vec![el("a", 0), el("a", 1)])),
+        Err(Ambiguity { first: 0, second: 1, term: Term::Element(Name::local("a")) })
+    );
+    assert_eq!(
+        ambiguous(&Particle::sequence(vec![el("a", 0).occurring(Occurs::OPTIONAL), el("a", 1)])),
+        Err(Ambiguity { first: 0, second: 1, term: Term::Element(Name::local("a")) })
+    );
+    assert_eq!(
+        ambiguous(&Particle::sequence(vec![el("a", 0).occurring(Occurs::ZERO_OR_MORE), el("a", 1)])),
+        Err(Ambiguity { first: 0, second: 1, term: Term::Element(Name::local("a")) })
+    );
     assert!(
         ambiguous(&Particle::choice(vec![Particle::sequence(vec![el("a", 0), el("b", 1)]), Particle::sequence(vec![el("a", 2), el("c", 3)])]))
             .is_err()
@@ -166,7 +175,10 @@ fn a_model_that_is_not_deterministic_is_found_and_both_particles_are_named() {
     assert!(ambiguous(&Particle::sequence(vec![el("a", 0), el("b", 1).occurring(Occurs::OPTIONAL)]).occurring(Occurs::new(0, Some(3)))).is_ok());
     // Wildcards compete with the elements they let in, and with each other.
     let any = || Particle::wildcard(NamespaceConstraint::Any, 9);
-    assert_eq!(ambiguous(&Particle::sequence(vec![el("a", 0).occurring(Occurs::OPTIONAL), any()])), Err(Ambiguity { first: 0, second: 9 }));
+    assert_eq!(
+        ambiguous(&Particle::sequence(vec![el("a", 0).occurring(Occurs::OPTIONAL), any()])),
+        Err(Ambiguity { first: 0, second: 9, term: Term::Element(Name::local("a")) })
+    );
     let ns = |n: &str| Particle::wildcard(NamespaceConstraint::Set(vec![Some(n.to_owned())]), 5);
     ok(&Particle::choice(vec![ns("urn:a"), ns("urn:b")]));
     assert!(ambiguous(&Particle::choice(vec![ns("urn:a"), ns("urn:a")])).is_err());
