@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use xmlcraft_code_editor::{CodeEditor, ViewState};
 use xmlcraft_engine::analysis::{Analysis, Skipped};
+use xmlcraft_engine::validation::{Validation, Verdict};
 use xmlcraft_engine::{Document, SaveError};
 use xmlcraft_platform::files::{self, DiskChange};
 use xmlcraft_text::encoding::Encoding;
@@ -33,20 +34,45 @@ pub(crate) struct DocView {
     pub styler: XmlStyler,
     /// The latest analysis of the text (its problems and outline), which may be about an older version while a newer one is worked out.
     pub analysis: Option<Analysis>,
+    /// The latest validation against the DTD (asked for with F8), which may be about an older version than the text.
+    pub validation: Option<Validation>,
     /// The version of the text last handed to the analyzer.
     requested: Option<u64>,
+    /// The version of the text last handed to the validator.
+    validation_requested: Option<u64>,
 }
 
 impl DocView {
     pub fn new(kind: ThemeKind) -> Self {
-        Self { view: ViewState::new(), styler: XmlStyler::new(kind), analysis: None, requested: None }
+        Self { view: ViewState::new(), styler: XmlStyler::new(kind), analysis: None, validation: None, requested: None, validation_requested: None }
     }
 
     /// Keep `analysis`, underline its problems in the editor and offer what it says can be folded.
     fn set_analysis(&mut self, analysis: Analysis) {
-        self.styler.set_problems(analysis.diagnostics.iter().map(|d| (d.span.clone(), d.severity())).collect());
         self.styler.set_folds(analysis.folds.clone());
         self.analysis = Some(analysis);
+        self.refresh_underlines();
+    }
+
+    /// Keep `validation` (a newer one replaces an older one) and underline the problems it found in the text.
+    fn set_validation(&mut self, validation: Validation) {
+        if self.validation.as_ref().is_none_or(|current| current.version <= validation.version) {
+            self.validation = Some(validation);
+            self.refresh_underlines();
+        }
+    }
+
+    /// The validation, when it is about the same version of the text as the analysis (an edit makes it out of date).
+    pub(crate) fn current_validation(&self) -> Option<&Validation> {
+        let analysis = self.analysis.as_ref()?;
+        self.validation.as_ref().filter(|v| v.version == analysis.version)
+    }
+
+    /// Underline the problems of the text: the well-formedness ones, and the validity ones while they are about the same text.
+    fn refresh_underlines(&mut self) {
+        let mut problems: Vec<_> = self.analysis.iter().flat_map(|a| a.diagnostics.iter()).map(|d| (d.span.clone(), d.severity())).collect();
+        problems.extend(self.current_validation().into_iter().flat_map(|v| v.in_document()).map(|d| (d.span.clone(), d.severity())));
+        self.styler.set_problems(problems);
     }
 
     /// The version of the text last handed to the analyzer.
@@ -149,6 +175,11 @@ impl XmlCraftApp {
     /// was waiting for its result. Called every frame, after whatever changes a text.
     pub(crate) fn pump_analysis(&mut self) {
         let kind = self.applied.unwrap_or(ThemeKind::Light);
+        for (id, validation) in self.validator.poll() {
+            if self.session.position_of(id).is_some() {
+                self.views.entry(id).or_insert_with(|| DocView::new(kind)).set_validation(validation);
+            }
+        }
         for (id, analysis) in self.analyzer.poll() {
             if self.session.position_of(id).is_none() {
                 continue; // closed meanwhile
@@ -167,7 +198,51 @@ impl XmlCraftApp {
             }
         }
         self.report_check();
+        self.report_validation();
         self.finish_waiting();
+    }
+
+    /// If a validation (F8) is waiting and its result has arrived (for the text it asked about or a later one), say what it found.
+    fn report_validation(&mut self) {
+        let Some((id, version)) = self.validate_pending else { return };
+        let Some(doc) = self.session.position_of(id).and_then(|i| self.session.document(i)) else {
+            self.validate_pending = None; // closed meanwhile
+            return;
+        };
+        let name = doc.name().to_owned();
+        let Some(validation) = self.views.get(&id).and_then(|v| v.validation.as_ref()).filter(|v| v.version >= version) else { return };
+        let count = validation.error_count().to_string();
+        self.status = match validation.verdict {
+            Verdict::Valid => fmt(tl!("{name} is valid"), &[("name", &name)]),
+            Verdict::Invalid => fmt(tl!("{name}: {count} validity errors"), &[("name", &name), ("count", &count)]),
+            Verdict::NotWellFormed => fmt(tl!("{name} is not well-formed, so it cannot be validated"), &[("name", &name)]),
+            Verdict::Skipped(Skipped::TooLarge) => fmt(tl!("{name} is too large to validate"), &[("name", &name)]),
+            Verdict::Skipped(Skipped::Failed) => fmt(tl!("Validating {name} failed. This is a bug; the document is unchanged."), &[("name", &name)]),
+        };
+        self.validate_pending = None;
+    }
+
+    /// Validate the document being shown now against its DTD and show the result in Messages (F8). The work is done in the background
+    /// (the external parts of the DTD are files, read there) and reported when it arrives.
+    pub(crate) fn validate_now(&mut self) {
+        let kind = self.applied.unwrap_or(ThemeKind::Light);
+        let Some(doc) = self.session.active_document() else { return };
+        let (id, version) = (doc.id(), doc.editor().version());
+        let name = doc.name().to_owned();
+        let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
+        // The well-formedness analysis of the same text is what Messages shows with it.
+        if view.requested != Some(version) {
+            view.requested = Some(version);
+            self.analyzer.submit(id, version, doc.editor().buffer());
+        }
+        if view.validation_requested != Some(version) {
+            view.validation_requested = Some(version);
+            self.validator.submit(id, version, doc.editor().buffer(), doc.path());
+        }
+        self.validate_pending = Some((id, version));
+        self.bottom_open = true;
+        self.status = fmt(tl!("Validating {name}…"), &[("name", &name)]);
+        self.report_validation();
     }
 
     /// If a check (F7) is waiting and the analysis of the text it asked about has arrived (or a later one), say what it found.
@@ -233,10 +308,28 @@ impl XmlCraftApp {
         self.views.get(&id)?.analysis.as_ref()
     }
 
+    /// The validation of the document being shown, if one was asked for (F8) and it is about the text as the analysis last saw it.
+    pub(crate) fn active_validation(&self) -> Option<&Validation> {
+        let id = self.session.active_document()?.id();
+        self.views.get(&id)?.current_validation()
+    }
+
     /// The problems found in the text of the document being shown, as (errors, warnings), once an analysis has arrived. It may be
     /// about a version slightly older than the text while a newer one is worked out.
     pub fn problems(&self) -> Option<(usize, usize)> {
         self.active_analysis().filter(|a| a.skipped.is_none()).map(|a| (a.error_count(), a.warning_count()))
+    }
+
+    /// The places in the text of the document being shown that are underlined as wrong: the ranges and how serious each is.
+    pub fn underlined(&self) -> Vec<(std::ops::Range<usize>, xmlcraft_syntax::Severity)> {
+        let Some(id) = self.session.active_document().map(Document::id) else { return Vec::new() };
+        self.views.get(&id).map(|v| v.styler.problems().to_vec()).unwrap_or_default()
+    }
+
+    /// The validity problems found in the text of the document being shown, as (errors, warnings), once a validation of the text as it is
+    /// now has arrived (an edit makes it out of date, and it is not shown again until F8 is pressed).
+    pub fn validity(&self) -> Option<(usize, usize)> {
+        self.active_validation().map(|v| (v.error_count(), v.warning_count()))
     }
 
     /// Comment out the lines the carets are on, or bring them back (⌘/); say why when that cannot be done.
@@ -645,5 +738,16 @@ mod tests {
         for bad in ["", "0", "0:3", "3:0", "a", "1:b", "-4", "1:2:3", ":"] {
             assert_eq!(parse_position(bad), None, "{bad:?}");
         }
+    }
+
+    #[test]
+    fn a_validation_that_comes_late_does_not_replace_a_newer_one() {
+        let validation = |version| Validation { version, verdict: Verdict::Valid, problems: Vec::new(), truncated: false };
+        let mut view = DocView::new(ThemeKind::Light);
+        view.set_validation(validation(5));
+        view.set_validation(validation(3));
+        assert_eq!(view.validation.as_ref().map(|v| v.version), Some(5));
+        view.set_validation(validation(6));
+        assert_eq!(view.validation.as_ref().map(|v| v.version), Some(6));
     }
 }

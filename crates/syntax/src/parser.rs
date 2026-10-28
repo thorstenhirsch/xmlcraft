@@ -1262,7 +1262,7 @@ impl<'a> Parser<'a> {
 }
 
 /// The character a reference like `&#65;` or `&#x41;` stands for, if it is one XML allows.
-fn char_ref_value(reference: &str) -> Option<char> {
+pub fn char_ref_value(reference: &str) -> Option<char> {
     let digits = reference.strip_prefix("&#")?.strip_suffix(';')?;
     let code = match digits.strip_prefix('x') {
         Some(hex) => u32::from_str_radix(hex, 16).ok()?,
@@ -1272,7 +1272,7 @@ fn char_ref_value(reference: &str) -> Option<char> {
 }
 
 /// `raw` with the predefined entities and valid character references replaced; anything else is left as written.
-fn decode_references(raw: &str) -> String {
+pub fn decode_references(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut rest = raw;
     while let Some(i) = rest.find('&') {

@@ -1,5 +1,3 @@
 # xmlconf tests XmlCraft does not pass yet, one path per line (relative to the suite).
 # A new failure fails `cargo xtask conformance xmlconf`; so does a test that now passes and is still listed.
 # Regenerate with `cargo xtask conformance xmlconf --write`.
-eduni/namespaces/1.0/011.xml
-eduni/namespaces/1.0/012.xml

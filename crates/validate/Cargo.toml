@@ -1,0 +1,17 @@
+[package]
+name = "xmlcraft-validate"
+description = "XmlCraft's validator: a document checked against the grammar its DTD declares"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-dtd = { workspace = true }
+xmlcraft-grammar = { workspace = true }
+xmlcraft-syntax = { workspace = true }
+rowan = { workspace = true }

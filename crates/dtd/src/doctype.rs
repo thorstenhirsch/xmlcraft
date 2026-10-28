@@ -4,7 +4,9 @@ use std::ops::Range;
 
 use xmlcraft_syntax::{Diagnostic, SyntaxKind, SyntaxNode};
 
-use crate::parse::{DoctypeInput, DtdDiagnostic, ExternalRef, NoLoader, SubsetLoader, parse_doctype};
+use crate::compile::{Compiled, compile};
+use crate::namespaces::{check_namespaces, namespaces_need_grammar};
+use crate::parse::{DoctypeInput, DtdDiagnostic, ExternalRef, NoLoader, Parsed, SubsetLoader, parse_doctype};
 use crate::references::check_references;
 
 /// The parts of a DOCTYPE declaration.
@@ -88,6 +90,24 @@ pub fn problems_of_document(
     location: &str,
     loader: &mut dyn SubsetLoader,
 ) -> Vec<DtdDiagnostic> {
+    check_document(root, text, syntax, location, loader).problems
+}
+
+/// What [`check_document`] found.
+pub struct Checked {
+    /// The problems, sorted by where they are (those of the document first): see [`problems_of_document`].
+    pub problems: Vec<DtdDiagnostic>,
+    /// The DTD that was read, when the document has a DOCTYPE.
+    pub dtd: Option<Parsed>,
+    /// The name the DOCTYPE gives the root element.
+    pub root_name: Option<String>,
+    /// The DTD compiled, when finding the problems needed it (the namespace rules do, for a DTD with entities or `xmlns` attributes): a
+    /// caller that compiles it anyway takes it from here instead of doing the work twice. It is `None` for most documents.
+    pub compiled: Option<Compiled>,
+}
+
+/// [`problems_of_document`], and the DTD that was read to find them (so that it need not be read again).
+pub fn check_document(root: &SyntaxNode, text: &str, syntax: &[Diagnostic], location: &str, loader: &mut dyn SubsetLoader) -> Checked {
     let parts = doctype_parts(root);
     let inside = parts.as_ref().and_then(|p| p.subset.clone());
     let mut all: Vec<DtdDiagnostic> = syntax
@@ -95,16 +115,23 @@ pub fn problems_of_document(
         .filter(|d| !inside.as_ref().is_some_and(|range| d.span.start >= range.start && d.span.end <= range.end))
         .map(|d| DtdDiagnostic { source: 0, diagnostic: d.clone() })
         .collect();
+    let mut dtd = None;
+    let mut compiled = None;
     if let Some(parts) = &parts {
         let internal = parts.subset.clone().and_then(|range| text.get(range.clone()).map(|subset| (subset, range.start)));
         let external = (parts.system.is_some() || parts.public.is_some())
             .then_some(ExternalRef { public: parts.public.as_deref(), system: parts.system.as_deref() });
-        let read = parse_doctype(&DoctypeInput { external, internal, location }, loader);
+        let mut read = parse_doctype(&DoctypeInput { external, internal, location }, loader);
         all.extend(check_references(root, &read.dtd, location, loader));
-        all.extend(read.diagnostics);
+        if namespaces_need_grammar(&read.dtd) {
+            let grammar = compiled.insert(compile(&read.dtd, parts.name.as_deref()));
+            all.extend(check_namespaces(root, &grammar.grammar));
+        }
+        all.append(&mut read.diagnostics);
+        dtd = Some(read);
     }
     all.sort_by_key(|d| (d.source, d.diagnostic.span.start, d.diagnostic.span.end));
-    all
+    Checked { problems: all, dtd, root_name: parts.and_then(|p| p.name), compiled }
 }
 
 /// [`problems_of_document`] with no external part read: what is wrong in the document itself (its own text, its internal subset).
@@ -112,8 +139,10 @@ pub fn problems_in_text(root: &SyntaxNode, text: &str, syntax: &[Diagnostic]) ->
     use xmlcraft_syntax::Code;
     problems_of_document(root, text, syntax, "", &mut NoLoader)
         .into_iter()
-        // What is not read is not a problem of the text.
-        .filter(|d| d.source == 0 && !matches!(d.diagnostic.code, Code::DtdExternalNotRead | Code::DtdUndeclaredPeUnread))
+        // What is not read is not a problem of the text, and the validity constraints are for validation to say.
+        .filter(|d| {
+            d.source == 0 && !matches!(d.diagnostic.code, Code::DtdExternalNotRead | Code::DtdUndeclaredPeUnread) && !d.diagnostic.code.is_validity()
+        })
         .map(|d| d.diagnostic)
         .collect()
 }
@@ -125,6 +154,19 @@ mod tests {
 
     fn parts(text: &str) -> Option<DoctypeParts> {
         doctype_parts(&parse(text).syntax())
+    }
+
+    #[test]
+    fn the_dtd_is_compiled_for_the_problems_only_when_the_namespace_rules_need_it() {
+        let checked = |text: &str| {
+            let parsed = parse(text);
+            check_document(&parsed.syntax(), text, parsed.diagnostics(), "", &mut NoLoader)
+        };
+        assert!(checked("<!DOCTYPE r [<!ELEMENT r ANY>]><r/>").compiled.is_none(), "nothing to read twice: no grammar is made");
+        assert!(checked("<r/>").compiled.is_none());
+        assert!(checked("<!DOCTYPE r [<!ELEMENT r ANY><!ENTITY e 'x'>]><r/>").compiled.is_some(), "an entity can change what a declaration says");
+        assert!(checked("<!DOCTYPE r [<!ELEMENT r ANY><!ATTLIST r xmlns CDATA #IMPLIED>]><r/>").compiled.is_some());
+        assert!(checked("<!DOCTYPE r [<!ELEMENT r ANY><!ATTLIST r xmlns:a CDATA #IMPLIED>]><r/>").compiled.is_some());
     }
 
     #[test]

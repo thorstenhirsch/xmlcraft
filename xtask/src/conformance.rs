@@ -314,25 +314,38 @@ impl xmlcraft_dtd::SubsetLoader for SuiteFiles<'_> {
 
 /// What XmlCraft says about a document's bytes: `None` for well-formed, else the first problem. `path` is where the document is, for the
 /// external parts of its DTD.
+#[cfg(test)]
 fn reject_reason(bytes: &[u8], path: &Path, suite: &Path) -> Option<String> {
+    judge(bytes, path, suite).0
+}
+
+/// The first problem of the first kind in a list, with where it is.
+fn first_error(problems: &[xmlcraft_dtd::DtdDiagnostic]) -> Option<String> {
+    problems
+        .iter()
+        .find(|d| d.diagnostic.severity() == xmlcraft_syntax::Severity::Error)
+        .map(|d| if d.source == 0 { d.diagnostic.message() } else { format!("in external text {}: {}", d.source, d.diagnostic.message()) })
+}
+
+/// What XmlCraft says about a document's bytes: the first well-formedness problem (`None` for well-formed) and, for a well-formed
+/// document that has a DOCTYPE, the first validity problem (`None` for valid).
+fn judge(bytes: &[u8], path: &Path, suite: &Path) -> (Option<String>, Option<String>) {
     let detected = sniff(bytes);
     let decoded = decode(bytes, &detected);
     if decoded.lossy {
-        return Some(format!("not valid {:?}", detected.encoding));
+        return (Some(format!("not valid {:?}", detected.encoding)), None);
     }
     if !detected.declaration_matches() {
-        return Some(format!("declares {:?} but is {:?}", detected.declared.unwrap_or_default(), detected.encoding));
+        return (Some(format!("declares {:?} but is {:?}", detected.declared.unwrap_or_default(), detected.encoding)), None);
     }
     let parsed = parse(&decoded.text);
     // The problems of the document and of its DTD: the internal subset is read by the DTD reader, the external parts come from the suite.
     let location = path.to_string_lossy();
     let mut files = SuiteFiles { suite, rejected: None };
-    let problems = xmlcraft_dtd::problems_of_document(&parsed.syntax(), &decoded.text, parsed.diagnostics(), &location, &mut files);
-    problems
-        .iter()
-        .find(|d| d.diagnostic.severity() == xmlcraft_syntax::Severity::Error)
-        .map(|d| if d.source == 0 { d.diagnostic.message() } else { format!("in external text {}: {}", d.source, d.diagnostic.message()) })
-        .or(files.rejected)
+    let problems = xmlcraft_validate::check(&parsed.syntax(), &decoded.text, parsed.diagnostics(), &location, &mut files);
+    let not_well_formed = first_error(&problems.well_formedness).or(files.rejected);
+    let invalid = if not_well_formed.is_none() { first_error(&problems.validity) } else { None };
+    (not_well_formed, invalid)
 }
 
 #[derive(Default)]
@@ -376,9 +389,17 @@ fn xmlconf(fetch: bool, write: bool, verbose: bool) -> Result<()> {
             bail!("the test file {} is missing", case.path);
         };
         let file = suite.join(upstream_path(&suite, &case.path));
-        let verdict = reject_reason(&bytes, &file, &suite);
-        let expect_wf = case.kind != "not-wf";
-        let passed = verdict.is_none() == expect_wf;
+        let (not_well_formed, invalid) = judge(&bytes, &file, &suite);
+        // A valid document has no problem of either kind; an invalid one is well-formed and has a validity problem.
+        let passed = match case.kind.as_str() {
+            "not-wf" => not_well_formed.is_some(),
+            "valid" => not_well_formed.is_none() && invalid.is_none(),
+            _ => not_well_formed.is_none() && invalid.is_some(),
+        };
+        if verbose && case.kind == "invalid" {
+            println!("  invalid {}: {}", case.path, invalid.as_deref().unwrap_or("-"));
+        }
+        let verdict = not_well_formed.or(invalid);
         let group = case.path.split('/').next().unwrap_or_default().to_owned();
         let tally = tallies.entry((case.kind.clone(), group)).or_default();
         tally.run += 1;
@@ -399,7 +420,7 @@ fn xmlconf(fetch: bool, write: bool, verbose: bool) -> Result<()> {
         }
     }
 
-    println!("xmlconf (XML 1.0 fifth edition, non-validating, namespace-aware):");
+    println!("xmlconf (XML 1.0 fifth edition, validating, namespace-aware):");
     for kind in ["not-wf", "valid", "invalid"] {
         let (run, passed) = tallies.iter().filter(|((k, _), _)| k == kind).fold((0, 0), |(r, p), (_, t)| (r + t.run, p + t.passed));
         let percent = if run == 0 { 100.0 } else { 100.0 * passed as f64 / run as f64 };

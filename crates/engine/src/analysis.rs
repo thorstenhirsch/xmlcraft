@@ -5,11 +5,10 @@
 //! which version of the text it is about.
 
 use std::ops::Range;
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
-
 use xmlcraft_syntax::{Diagnostic, Limits, Severity, SyntaxKind, parse_with};
 
 use crate::folding::{FoldRange, fold_ranges};
+use crate::worker::Worker;
 use xmlcraft_text::Buffer;
 
 /// Documents larger than this are not analysed on every edit (large-file mode, M1.15, takes over).
@@ -236,59 +235,6 @@ fn item_of(node: &xmlcraft_syntax::SyntaxNode, text: &str, depth: usize) -> Opti
     Some(OutlineItem { depth, name: name_token.text().to_owned(), label, range, name_range, start_tag: range_of(&tag), end_tag, end_name_range })
 }
 
-/// What the analyzer calls when a result is ready (the app asks for a repaint).
-type Callback = Arc<dyn Fn() + Send + Sync>;
-
-/// A text waiting to be analysed (only the native worker takes them: on the web `submit` analyses at once).
-#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-struct Job {
-    document: u64,
-    version: u64,
-    text: Buffer,
-}
-
-/// The requests that have not started: at most one per document, because only the newest is worth doing.
-#[derive(Default)]
-struct Pending {
-    jobs: Vec<Job>,
-    /// The analyzer was dropped: the worker finishes what it has and ends.
-    closed: bool,
-}
-
-impl Pending {
-    /// Add a request, replacing an older one for the same document.
-    fn push(&mut self, job: Job) {
-        match self.jobs.iter_mut().find(|j| j.document == job.document) {
-            Some(slot) => *slot = job,
-            None => self.jobs.push(job),
-        }
-    }
-}
-
-#[derive(Default)]
-struct Shared {
-    pending: Mutex<Pending>,
-    wake: Condvar,
-    finished: Mutex<Vec<(u64, Analysis)>>,
-    on_done: Mutex<Option<Callback>>,
-}
-
-impl Shared {
-    fn lock_pending(&self) -> MutexGuard<'_, Pending> {
-        self.pending.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// Publish a result and tell whoever is waiting for one. The callback runs outside every lock, so it may do anything (even set
-    /// another callback).
-    fn finish(&self, document: u64, analysis: Analysis) {
-        self.finished.lock().unwrap_or_else(PoisonError::into_inner).push((document, analysis));
-        let callback = self.on_done.lock().unwrap_or_else(PoisonError::into_inner).clone();
-        if let Some(callback) = callback {
-            callback();
-        }
-    }
-}
-
 /// The largest text analysed in the caller's own thread. On the web there is no other thread and a frame must not wait long, so it
 /// is small there; a native analyzer whose worker could not start has the same limit as the worker.
 #[cfg(target_arch = "wasm32")]
@@ -298,9 +244,7 @@ const INLINE_LIMIT: usize = MAX_ANALYSED_BYTES;
 
 /// Runs [`analyze`] on a worker thread. `submit` returns at once; `poll` collects what has finished.
 pub struct Analyzer {
-    shared: Arc<Shared>,
-    /// Whether a worker thread is running; without one (the web, or a thread that could not start) `submit` analyses at once.
-    threaded: bool,
+    worker: Worker<(u64, Buffer), Analysis>,
 }
 
 impl Default for Analyzer {
@@ -309,53 +253,38 @@ impl Default for Analyzer {
     }
 }
 
-impl Drop for Analyzer {
-    fn drop(&mut self) {
-        self.shared.lock_pending().closed = true;
-        self.shared.wake.notify_all();
-    }
+fn run((version, text): (u64, Buffer)) -> Analysis {
+    analyze_guarded(&text.text(), version)
 }
 
 impl Analyzer {
     pub fn new() -> Self {
-        let shared = Arc::new(Shared::default());
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let worker_shared = shared.clone();
-            let started = std::thread::Builder::new().name("analysis".into()).spawn(move || worker(&worker_shared)).is_ok();
-            Self { shared, threaded: started }
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            Self { shared, threaded: false }
-        }
+        Self { worker: Worker::new("analysis", run) }
     }
 
     /// An analyzer with no thread: `submit` analyses in the caller's thread (what the web does, and handy for tests).
     pub fn inline() -> Self {
-        Self { shared: Arc::new(Shared::default()), threaded: false }
+        Self { worker: Worker::inline(run) }
     }
 
     /// Called whenever a result is ready (the app asks for a repaint).
     pub fn on_done(&self, notify: impl Fn() + Send + Sync + 'static) {
-        *self.shared.on_done.lock().unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(notify));
+        self.worker.on_done(notify);
     }
 
     /// Ask for `text` (version `version` of the document with this id) to be analysed. A request that has not started is replaced by a
     /// newer one for the same document, so a slow analysis never leaves a queue behind it.
     pub fn submit(&self, document: u64, version: u64, text: &Buffer) {
-        if self.threaded {
-            self.shared.lock_pending().push(Job { document, version, text: text.clone() });
-            self.shared.wake.notify_one();
+        if !self.worker.threaded() && text.len() > INLINE_LIMIT {
+            self.worker.finish(document, Analysis::skipped(version, Skipped::TooLarge));
             return;
         }
-        let analysis = if text.len() > INLINE_LIMIT { Analysis::skipped(version, Skipped::TooLarge) } else { analyze_guarded(&text.text(), version) };
-        self.shared.finish(document, analysis);
+        self.worker.submit(document, (version, text.clone()));
     }
 
     /// The analyses that finished since the last call, oldest first.
     pub fn poll(&self) -> Vec<(u64, Analysis)> {
-        std::mem::take(&mut *self.shared.finished.lock().unwrap_or_else(PoisonError::into_inner))
+        self.worker.poll()
     }
 }
 
@@ -365,26 +294,6 @@ pub fn analyze_guarded(text: &str, version: u64) -> Analysis {
         log::error!("analysis failed: {message}");
         Analysis::skipped(version, Skipped::Failed)
     })
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn worker(shared: &Shared) {
-    loop {
-        let jobs = {
-            let mut pending = shared.lock_pending();
-            while pending.jobs.is_empty() && !pending.closed {
-                pending = shared.wake.wait(pending).unwrap_or_else(PoisonError::into_inner);
-            }
-            if pending.jobs.is_empty() {
-                return; // closed, and nothing left to do
-            }
-            std::mem::take(&mut pending.jobs)
-        };
-        for job in jobs {
-            let analysis = analyze_guarded(&job.text.text(), job.version);
-            shared.finish(job.document, analysis);
-        }
-    }
 }
 
 #[cfg(test)]
@@ -673,44 +582,5 @@ mod tests {
         let two = results.iter().find(|(d, _)| *d == 2).map(|(_, a)| a).expect("document two");
         assert_eq!((two.version, two.is_well_formed()), (5, false));
         assert!(analyzer.poll().is_empty());
-    }
-
-    #[test]
-    fn a_request_that_has_not_started_is_replaced_by_a_newer_one_for_the_same_document() {
-        let mut pending = Pending::default();
-        let job = |document, version| Job { document, version, text: Buffer::from_text("<a/>") };
-        for version in 0..1000 {
-            pending.push(job(1, version));
-        }
-        pending.push(job(2, 7));
-        pending.push(job(1, 1000));
-        assert_eq!(
-            pending.jobs.iter().map(|j| (j.document, j.version)).collect::<Vec<_>>(),
-            [(1, 1000), (2, 7)],
-            "no queue builds up behind a slow analysis"
-        );
-    }
-
-    #[test]
-    fn without_a_thread_the_result_is_there_at_once_and_the_callback_is_called() {
-        let analyzer = Analyzer::inline();
-        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let counted = calls.clone();
-        analyzer.on_done(move || {
-            counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        });
-        analyzer.submit(3, 9, &Buffer::from_text("<a>"));
-        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1, "whoever waits is told");
-        let results = analyzer.poll();
-        assert_eq!((results.len(), results[0].0, results[0].1.version, results[0].1.is_well_formed()), (1, 3, 9, false));
-    }
-
-    #[test]
-    fn a_callback_may_replace_itself_without_deadlock() {
-        let analyzer = Arc::new(Analyzer::inline());
-        let again = analyzer.clone();
-        analyzer.on_done(move || again.on_done(|| {}));
-        analyzer.submit(1, 1, &Buffer::from_text("<a/>"));
-        assert_eq!(analyzer.poll().len(), 1);
     }
 }

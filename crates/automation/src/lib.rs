@@ -17,6 +17,7 @@ mod lines;
 mod schema;
 mod script;
 mod tools;
+mod validate;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod control;

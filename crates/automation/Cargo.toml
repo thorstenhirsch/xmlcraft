@@ -17,6 +17,8 @@ mcp = []
 
 [dependencies]
 xmlcraft-catalog = { workspace = true }
+xmlcraft-dtd = { workspace = true }
+xmlcraft-validate = { workspace = true }
 xmlcraft-engine = { workspace = true }
 xmlcraft-editor = { workspace = true }
 xmlcraft-platform = { workspace = true }
