@@ -4743,6 +4743,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-complete"
+version = "0.0.1"
+dependencies = [
+ "proptest",
+ "xmlcraft-dtd",
+ "xmlcraft-grammar",
+ "xmlcraft-syntax",
+]
+
+[[package]]
 name = "xmlcraft-dtd"
 version = "0.0.1"
 dependencies = [
