@@ -1,0 +1,153 @@
+//! `xml_validate`: a document against its DTD, the external parts read from files through the root confinement.
+
+use std::path::Path;
+
+use serde_json::{Value, json};
+use xmlcraft_automation::{Automation, Content, ToolError};
+
+fn call(a: &mut Automation, args: Value) -> Result<Value, ToolError> {
+    a.call("xml_validate", &args).map(|content| match content.into_iter().next() {
+        Some(Content::Json(v)) => v,
+        None => Value::Null,
+    })
+}
+
+fn write(dir: &Path, name: &str, text: &str) -> String {
+    let path = dir.join(name);
+    std::fs::create_dir_all(path.parent().expect("a folder")).expect("folder");
+    std::fs::write(&path, text).expect("writes");
+    path.to_str().expect("utf-8").to_owned()
+}
+
+fn codes(result: &Value) -> Vec<String> {
+    result["problems"].as_array().into_iter().flatten().filter_map(|p| p["code"].as_str().map(str::to_owned)).collect()
+}
+
+#[test]
+fn a_document_is_checked_against_its_internal_subset() {
+    let mut a = Automation::new();
+    let valid = call(&mut a, json!({ "text": "<!DOCTYPE r [<!ELEMENT r (a+)><!ELEMENT a EMPTY>]><r><a/><a/></r>" })).expect("runs");
+    assert_eq!((valid["well_formed"].clone(), valid["valid"].clone(), valid["errors"].clone()), (json!(true), json!(true), json!(0)), "{valid}");
+    let text = "<!DOCTYPE r [<!ELEMENT r (a+)><!ELEMENT a EMPTY>]>\n<r>\n  <b/>\n</r>";
+    let invalid = call(&mut a, json!({ "text": text })).expect("runs");
+    assert_eq!((invalid["well_formed"].clone(), invalid["valid"].clone()), (json!(true), json!(false)), "{invalid}");
+    assert!(codes(&invalid).contains(&"vc.element-not-declared".to_owned()), "{invalid}");
+    let problem = invalid["problems"].as_array().and_then(|p| p.iter().find(|p| p["code"] == "vc.element-not-declared")).expect("a problem");
+    assert_eq!(
+        (problem["kind"].clone(), problem["line"].clone(), problem["column"].clone(), problem["file"].clone()),
+        (json!("validity"), json!(3), json!(4), Value::Null)
+    );
+}
+
+#[test]
+fn a_document_that_is_not_well_formed_is_not_validated() {
+    let mut a = Automation::new();
+    let result = call(&mut a, json!({ "text": "<!DOCTYPE r [<!ELEMENT r EMPTY>]><r><x></r>" })).expect("runs");
+    assert_eq!(
+        (result["well_formed"].clone(), result["valid"].clone(), result["validated"].clone()),
+        (json!(false), json!(false), json!(false)),
+        "{result}"
+    );
+    assert!(result["problems"].as_array().into_iter().flatten().all(|p| p["kind"] == "well-formedness"), "{result}");
+}
+
+#[test]
+fn a_document_with_no_doctype_has_nothing_to_be_valid_against() {
+    let mut a = Automation::new();
+    let result = call(&mut a, json!({ "text": "<r/>" })).expect("runs");
+    assert_eq!((result["well_formed"].clone(), result["valid"].clone()), (json!(true), json!(false)), "{result}");
+    assert_eq!(codes(&result), ["vc.no-dtd"]);
+}
+
+#[test]
+fn the_external_subset_is_a_file_next_to_the_document_and_problems_in_it_name_the_file() {
+    let dir = tempfile::tempdir().expect("dir");
+    write(dir.path(), "sub/r.dtd", "<!ELEMENT r (a)>\n<!ELEMENT a EMPTY>\n<!ATTLIST a x ID #FIXED 'v'>\n");
+    let doc = write(dir.path(), "sub/doc.xml", "<!DOCTYPE r SYSTEM \"r.dtd\">\n<r><a/></r>");
+    let mut a = Automation::new();
+    let result = call(&mut a, json!({ "path": doc })).expect("runs");
+    // The declaration in the DTD breaks a constraint, and the problem is in the DTD's file at its line.
+    let problem = result["problems"].as_array().and_then(|p| p.iter().find(|p| p["code"] == "vc.id-attribute-default")).expect("a problem");
+    assert!(problem["file"].as_str().is_some_and(|f| f.ends_with("sub/r.dtd") || f.ends_with("sub\\r.dtd")), "{result}");
+    assert_eq!(problem["line"], json!(3), "{result}");
+    // The document itself is fine against the elements the DTD declares.
+    write(dir.path(), "sub/good.dtd", "<!ELEMENT r (a)><!ELEMENT a EMPTY>");
+    let doc2 = write(dir.path(), "sub/doc2.xml", "<!DOCTYPE r SYSTEM \"good.dtd\"><r><a/></r>");
+    let ok = call(&mut a, json!({ "path": doc2 })).expect("runs");
+    assert_eq!(ok["valid"], json!(true), "{ok}");
+    let bad = write(dir.path(), "sub/doc3.xml", "<!DOCTYPE r SYSTEM \"good.dtd\"><r><a/><a/></r>");
+    assert_eq!(call(&mut a, json!({ "path": bad })).expect("runs")["valid"], json!(false));
+}
+
+#[test]
+fn an_open_document_is_checked_from_where_it_is_saved() {
+    let dir = tempfile::tempdir().expect("dir");
+    write(dir.path(), "r.dtd", "<!ELEMENT r EMPTY>");
+    let doc = write(dir.path(), "doc.xml", "<!DOCTYPE r SYSTEM \"r.dtd\"><r>text</r>");
+    let mut a = Automation::new();
+    let opened = a.call("doc_open", &json!({ "path": doc })).expect("opens");
+    let Some(Content::Json(opened)) = opened.into_iter().next() else { panic!("json") };
+    let result = call(&mut a, json!({ "id": opened["id"] })).expect("runs");
+    assert_eq!(codes(&result), ["vc.empty-element-has-content"], "{result}");
+}
+
+#[test]
+fn nothing_outside_the_root_is_read_and_nothing_is_downloaded() {
+    let outside = tempfile::tempdir().expect("outside");
+    let root = tempfile::tempdir().expect("root");
+    write(outside.path(), "r.dtd", "<!ELEMENT r EMPTY>");
+    let outside_dtd = outside.path().join("r.dtd");
+    // The DTD is outside the root: not read, so the document cannot be called invalid for what is in it.
+    let doc = write(root.path(), "doc.xml", &format!("<!DOCTYPE r SYSTEM \"{}\"><r>text</r>", outside_dtd.display()));
+    let mut confined = Automation::with_root(root.path()).expect("a root");
+    let result = call(&mut confined, json!({ "path": doc })).expect("runs");
+    assert_eq!((result["valid"].clone(), result["errors"].clone()), (json!(true), json!(0)), "{result}");
+    assert!(codes(&result).contains(&"dtd.external-not-read".to_owned()), "{result}");
+    // Without the root it is read, which shows the test is about the root.
+    let mut free = Automation::new();
+    let result = call(&mut free, json!({ "path": doc })).expect("runs");
+    assert_eq!(codes(&result), ["vc.empty-element-has-content"], "{result}");
+    // A URL is never fetched.
+    let url = write(root.path(), "url.xml", "<!DOCTYPE r SYSTEM \"http://example.invalid/r.dtd\"><r>text</r>");
+    let result = call(&mut confined, json!({ "path": url })).expect("runs");
+    assert!(codes(&result).contains(&"dtd.external-not-read".to_owned()) && result["valid"] == json!(true), "{result}");
+    // Not even when a file by that name is there (on a system that allows a colon in a name).
+    #[cfg(unix)]
+    {
+        write(root.path(), "http:/example.invalid/r.dtd", "<!ELEMENT r EMPTY>");
+        let result = call(&mut confined, json!({ "path": url })).expect("runs");
+        assert!(codes(&result).contains(&"dtd.external-not-read".to_owned()) && result["valid"] == json!(true), "{result}");
+    }
+    // Text has no folder: a relative identifier is not found.
+    let result = call(&mut free, json!({ "text": "<!DOCTYPE r SYSTEM \"r.dtd\"><r/>" })).expect("runs");
+    assert!(codes(&result).contains(&"dtd.external-not-read".to_owned()), "{result}");
+}
+
+#[test]
+fn the_arguments_are_checked() {
+    let mut a = Automation::new();
+    assert!(call(&mut a, json!({})).is_err());
+    assert!(call(&mut a, json!({ "text": "<r/>", "path": "x" })).is_err());
+    assert!(call(&mut a, json!({ "path": "/definitely/not/there.xml" })).is_err());
+}
+
+#[test]
+fn an_external_text_that_is_too_big_or_not_text_is_not_read() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut a = Automation::new();
+    // Not valid in its encoding.
+    std::fs::write(dir.path().join("bad.dtd"), b"<!ELEMENT r EMPTY> \xFF\xFE\xFD").expect("writes");
+    let doc = write(dir.path(), "bad.xml", "<!DOCTYPE r SYSTEM \"bad.dtd\"><r>text</r>");
+    let result = call(&mut a, json!({ "path": doc })).expect("runs");
+    assert!(codes(&result).contains(&"dtd.external-not-read".to_owned()) && result["valid"] == json!(true), "{result}");
+    // Over the limit: a sparse file, so nothing is written.
+    #[cfg(unix)]
+    {
+        let big = std::fs::File::create(dir.path().join("big.dtd")).expect("creates");
+        big.set_len(20 * 1024 * 1024).expect("sets the length");
+        let doc = write(dir.path(), "big.xml", "<!DOCTYPE r SYSTEM \"big.dtd\"><r>text</r>");
+        let result = call(&mut a, json!({ "path": doc })).expect("runs");
+        let note = result["problems"].as_array().and_then(|p| p.iter().find(|p| p["code"] == "dtd.external-not-read")).expect("a note");
+        assert!(note["message"].as_str().is_some_and(|m| m.contains("over")), "{result}");
+    }
+}
