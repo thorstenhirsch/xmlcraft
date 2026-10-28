@@ -1,6 +1,6 @@
 # Where XmlCraft falls short of XMLSpy
 
-> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** gap 2 reworded (catalog rules exist), gap 18 narrowed (large-file colouring, M1.15) · **Target:** Altova XMLSpy 2026 (public documentation)
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** gap 2 reworded (catalog rules exist), gap 16 narrowed (the DTD reader, M2.6), gap 18 narrowed (large-file colouring, M1.15) · **Target:** Altova XMLSpy 2026 (public documentation)
 
 The ranked gaps. Prefer fixing these over adding new features. Every gap states what is missing, why it matters and how it will be measured. At 0.0.1 the application does not exist yet, so the first entries are simply "the MVP".
 
@@ -23,7 +23,7 @@ The ranked gaps. Prefer fixing these over adding new features. Every gap states 
 | 13 | No Preferences ▸ Animation effects, and the system "reduce motion" request is not read | P3 | M6+ |
 | 14 | No window buttons drawn by the app on GNOME/Wayland (the desktop frame is used everywhere except macOS's integrated bar) | P2 | M6+ |
 | 15 | No log file, only standard error | P2 | M1 |
-| 16 | 359 of 1017 not-well-formed xmlconf tests are accepted (DTD declaration syntax and entity rules) | P0 | M2.3, M2.6, M2.8 |
+| 16 | 53 of 1017 not-well-formed xmlconf tests are accepted (the rules about entity references and the files behind them) | P0 | M2.3, M2.8 |
 | 17 | The analysis is whole-document and per edit: results can be a little behind the text, underlines are clamped (not shifted) through later edits, and a document over 32 MB is not analysed | P1 | M1.15 |
 | 18 | Colour at a far place in a text over 1 MiB is an estimate: a construct (comment, CDATA section, tag, …) that opens more than 256 KiB before it is coloured as content until it ends | P2 | M1.15 |
 
@@ -33,7 +33,7 @@ The ranked gaps. Prefer fixing these over adding new features. Every gap states 
 
 **12. Tab strip.** Tabs have a fixed natural width; many open documents will overflow. PdfCraft's strip shrinks tabs, then scrolls with arrows, and lets a tab be dragged to a new position. It arrives with the document lifecycle (M1.12), when there are documents to drag.
 
-**16. DTD declarations and entities in the well-formedness check.** `cargo xtask conformance xmlconf` accepts 359 of the 1017 applicable not-well-formed tests (64.7% rejected, 100% of valid and invalid documents accepted). All are in the DTD: declaration syntax (`<!ELEMENT>` content models, `<!ATTLIST>` types and defaults, `<!ENTITY>` forms, conditional sections, name tokens), entity rules (an entity must be declared, parsed, not external inside an attribute value, not recursive, with well-formed replacement text) and external subsets (which must be read, through the resolver of M2.3, and be well-formed themselves). The lexer and parser keep the internal subset's extent and check what does not need the declarations; the declarations are read by the DTD parser (M2.6) and the entity expansion with its caps (M2.8), whose diagnostics join the document's. The ratchet file `xtask/baselines/xmlconf.txt` lists them and shrinks as they close; the M1 exit criterion "100% of not-well-formed" moves to M2 for these reasons.
+**16. Entity references in the well-formedness check.** `cargo xtask conformance xmlconf` accepts 53 of the 1017 applicable not-well-formed tests (94.8% rejected, 100% of valid and invalid documents accepted). The declarations of the DTD are read since M2.6 (`xmlcraft-dtd`: element, attribute-list, entity and notation declarations, parameter entities, conditional sections, with the syntax errors reported, up to the reader's limit of 1,000; the xmlconf run gives it the suite's files for the external parts), which closed 306 of the 359 tests this gap started with. What is left needs the declarations to be *used*: an entity reference must name a declared entity (about 20 tests: `&e;` in content, in an attribute value, in a default value), a parsed one (not an unparsed `NDATA` entity), one that is not external inside an attribute value, not recursive (directly or through other entities), with a replacement text that is well-formed content (about 12) and has no `<` once it is in an attribute value; and a few about external entities (`<?xml` text declarations that are not first, `ibm78n01`, the entity files of `ext-sa`). They close with the entity expansion and its caps (M2.8) and, in the app, the resolver (M2.3) that lets the editor read the external parts at all. The ratchet file `xtask/baselines/xmlconf.txt` lists them and shrinks as they close.
 
 **17. Incremental analysis.** Every edit asks for a full parse of the text on a worker thread (only the newest request per document is kept). Until the answer arrives the window shows the previous result, and its underlines are clamped to the text rather than moved through the edits made since, so a squiggle can sit beside the wrong word for a moment. A document over 32 MB is not analysed at all. Large-file mode and an incremental reparse (M1.15, driven by `cargo xtask bench`) close it; measured by the keystroke-to-paint and reparse targets in `docs/target-app-parity.md`.
 
@@ -52,3 +52,4 @@ Details are added here as each gap is worked, including known approximations (fo
 - 2026-10-27: gap 1: column selection shipped (M1.8).
 - 2026-10-28: gap 1: recent files shipped (M1.12); a changed file is noticed when the window gets the focus back, not while it is watched.
 - 2026-10-28: gap 2: the OASIS catalog resolution rules exist (`xmlcraft-catalog`, M2.1), but nothing asks them yet.
+- 2026-10-28: gap 16 narrowed from 359 to 53 tests by the DTD reader (M2.6); the rest need entity references checked against the declarations (M2.8).

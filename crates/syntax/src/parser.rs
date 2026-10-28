@@ -108,6 +108,13 @@ impl Tree {
     }
 }
 
+/// A word or a quoted string in the head of a DOCTYPE.
+struct DoctypeItem {
+    word: bool,
+    range: Range<usize>,
+    space_before: bool,
+}
+
 /// An element whose end tag has not come yet.
 struct Open {
     /// The name in its start tag (or, if it has none, the `<`).
@@ -945,37 +952,48 @@ impl<'a> Parser<'a> {
         self.seen_doctype = true;
         self.tree.start(SyntaxKind::Doctype);
         self.bump();
-        let mut words: Vec<Range<usize>> = Vec::new();
-        let mut literals = 0usize;
+        // What the head of the declaration is made of, in order: a word or a quoted string, and whether white space came before it.
+        let mut items: Vec<DoctypeItem> = Vec::new();
+        let mut space = true;
         let mut after_subset = false;
         let mut closed = false;
         while let Some(t) = self.peek() {
             match t.kind {
                 TokenKind::Whitespace => {
                     self.bump();
+                    space = true;
                 }
                 TokenKind::Name => {
                     if after_subset {
                         let text = self.slice(&t.range()).to_owned();
                         self.diag(Code::BadDoctype, t.range(), vec![format!("unexpected '{text}' after the internal subset")]);
                     } else {
-                        words.push(t.range());
+                        items.push(DoctypeItem { word: true, range: t.range(), space_before: space });
                     }
                     self.bump();
+                    space = false;
                 }
                 TokenKind::Quote => {
                     let range = self.literal();
-                    literals += 1;
-                    if literals == 1
-                        && let Some(range) = range
-                        && words.get(1).is_some_and(|w| self.slice(w) == "PUBLIC")
-                    {
-                        self.check_pubid(range);
+                    if !after_subset {
+                        let first_literal = !items.iter().any(|item| !item.word);
+                        items.push(DoctypeItem { word: false, range: range.clone().unwrap_or_else(|| t.range()), space_before: space });
+                        if first_literal
+                            && let Some(range) = range
+                            && items.get(1).is_some_and(|w| w.word && self.slice(&w.range) == "PUBLIC")
+                        {
+                            self.check_pubid(range);
+                        }
+                    } else if let Some(range) = range {
+                        let text = self.slice(&range).to_owned();
+                        self.diag(Code::BadDoctype, range, vec![format!("unexpected '{text}' after the internal subset")]);
                     }
+                    space = false;
                 }
                 TokenKind::LBracket => {
                     self.subset();
                     after_subset = true;
+                    space = false;
                 }
                 TokenKind::Gt => {
                     self.bump();
@@ -994,26 +1012,59 @@ impl<'a> Parser<'a> {
             self.diag(Code::UnterminatedDoctype, start.range(), Vec::new());
         }
         self.tree.finish();
-        self.check_doctype_head(&start, &words, literals);
+        self.check_doctype_head(&start, &items);
     }
 
-    fn check_doctype_head(&mut self, start: &Token, words: &[Range<usize>], literals: usize) {
-        if words.is_empty() {
+    /// `<!DOCTYPE` S Name (S `SYSTEM` S SystemLiteral | S `PUBLIC` S PubidLiteral S SystemLiteral)? ...: the words and quoted strings in
+    /// that order, each after white space.
+    fn check_doctype_head(&mut self, start: &Token, items: &[DoctypeItem]) {
+        let Some(name) = items.first().filter(|item| item.word) else {
             self.diag(Code::MissingDoctypeName, start.range(), Vec::new());
             return;
-        }
-        let keyword = words.get(1).map(|r| (self.slice(r), r.clone()));
-        let problem = match keyword {
-            None if literals != 0 => Some(("a quoted string needs SYSTEM or PUBLIC before it".to_owned(), start.range())),
-            Some(("SYSTEM", span)) if literals != 1 => Some(("SYSTEM must be followed by one quoted string".to_owned(), span)),
-            Some(("PUBLIC", span)) if literals != 2 => Some(("PUBLIC must be followed by two quoted strings".to_owned(), span)),
-            Some((other, span)) if other != "SYSTEM" && other != "PUBLIC" => Some((format!("unexpected '{other}', expected SYSTEM or PUBLIC"), span)),
-            _ => None,
         };
-        if let Some((message, span)) = problem {
-            self.diag(Code::BadDoctype, span, vec![message]);
-        } else if let Some(extra) = words.get(2) {
-            self.diag(Code::BadDoctype, extra.clone(), vec!["unexpected extra name".to_owned()]);
+        if !name.space_before {
+            self.diag(Code::MissingSpace, name.range.clone(), vec!["the DOCTYPE's name".to_owned()]);
+        }
+        let Some(second) = items.get(1) else { return };
+        if !second.word {
+            self.diag(Code::BadDoctype, second.range.clone(), vec!["a quoted string needs SYSTEM or PUBLIC before it".to_owned()]);
+            return;
+        }
+        let keyword = self.slice(&second.range).to_owned();
+        let wanted = match keyword.as_str() {
+            "SYSTEM" => 1,
+            "PUBLIC" => 2,
+            other => {
+                self.diag(Code::BadDoctype, second.range.clone(), vec![format!("unexpected '{other}', expected SYSTEM or PUBLIC")]);
+                return;
+            }
+        };
+        if !second.space_before {
+            self.diag(Code::MissingSpace, second.range.clone(), vec![keyword.clone()]);
+        }
+        let plural = if wanted == 1 { "" } else { "s" };
+        let mut literals = 0;
+        for item in items.get(2..).unwrap_or_default() {
+            if item.word {
+                let message = if literals < wanted {
+                    format!("{keyword} must be followed by {wanted} quoted string{plural}")
+                } else {
+                    "unexpected extra name".to_owned()
+                };
+                self.diag(Code::BadDoctype, item.range.clone(), vec![message]);
+                return;
+            }
+            literals += 1;
+            if literals > wanted {
+                self.diag(Code::BadDoctype, item.range.clone(), vec!["unexpected extra quoted string".to_owned()]);
+                return;
+            }
+            if !item.space_before {
+                self.diag(Code::MissingSpace, item.range.clone(), vec!["the quoted string".to_owned()]);
+            }
+        }
+        if literals < wanted {
+            self.diag(Code::BadDoctype, second.range.clone(), vec![format!("{keyword} must be followed by {wanted} quoted string{plural}")]);
         }
     }
 

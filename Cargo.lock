@@ -4741,6 +4741,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-dtd"
+version = "0.0.1"
+dependencies = [
+ "proptest",
+ "xmlcraft-syntax",
+]
+
+[[package]]
 name = "xmlcraft-editor"
 version = "0.0.1"
 dependencies = [
@@ -4760,6 +4768,7 @@ dependencies = [
  "log",
  "proptest",
  "rowan",
+ "xmlcraft-dtd",
  "xmlcraft-editor",
  "xmlcraft-format",
  "xmlcraft-syntax",
@@ -4847,6 +4856,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "toml",
+ "xmlcraft-dtd",
  "xmlcraft-editor",
  "xmlcraft-engine",
  "xmlcraft-format",
