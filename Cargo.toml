@@ -26,6 +26,7 @@ xmlcraft-text = { path = "crates/text", version = "0.0.1" }
 xmlcraft-syntax = { path = "crates/syntax", version = "0.0.1" }
 xmlcraft-format = { path = "crates/format", version = "0.0.1" }
 xmlcraft-catalog = { path = "crates/catalog", version = "0.0.1" }
+xmlcraft-schemas = { path = "crates/schemas", version = "0.0.1" }
 xmlcraft-pattern = { path = "crates/pattern", version = "0.0.1" }
 xmlcraft-datatypes = { path = "crates/datatypes", version = "0.0.1" }
 xmlcraft-xsd = { path = "crates/xsd", version = "0.0.1" }
@@ -48,6 +49,7 @@ regex = { version = "1", default-features = false, features = ["std", "unicode",
 regex-syntax = { version = "0.8", default-features = false, features = ["std", "unicode"] }
 regex-automata = { version = "0.4", default-features = false, features = ["std", "syntax", "meta", "nfa", "dfa-onepass", "hybrid", "perf", "unicode"] }
 encoding_rs = "0.8"
+miniz_oxide = { version = "0.9", default-features = false, features = ["with-alloc"] }
 thiserror = "2"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"

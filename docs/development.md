@@ -43,6 +43,19 @@ cargo xtask ci        # the full gate; CI runs it on every PR
 
 Scope builds to the crates you touched; a full `--workspace` build is CI's job.
 
+## Bundled schemas
+
+The standard schemas that ship in the binary live in `schemas/` (AGENTS.md §1.6) and are packed by `crates/schemas/build.rs`. `schemas/manifest.toml` lists every file with its source URL, SHA-256 and the day it was fetched; the catalogs (`schemas/catalog.xml` and one per set) are written by hand and say which public identifier, system identifier or namespace is which file.
+
+```sh
+cargo xtask schemas                      # verify: hashes, licences, no unlisted file, ATTRIBUTION.toml, catalog targets, file count
+cargo xtask schemas --fetch              # download the listed files that are missing
+cargo xtask schemas --update [SET…]      # fetch the new entries (or every entry of the named sets) and record what is served now
+cargo xtask assets --write               # then regenerate ATTRIBUTION.md
+```
+
+To add a file: add a `[[file]]` to the manifest with an empty `sha256`, run `--update`, add the catalog entries that lead to it, run the verify. A file is never edited: if it needs a fix, write a catalog `rewrite…` entry. A new set, or a licence outside the closed list, needs the owner's approval first.
+
 ## Measuring performance
 
 - `cargo xtask bench` measures the editor's performance targets on synthetic documents (it re-runs itself in release mode; `--list`, `--only NAME`, `--json`, `--no-release`; with `--json` the table goes to standard error and standard output is the JSON). It fails when a scenario is over its budget in `xtask/baselines/bench.toml`; a budget above its target is a known shortfall in `docs/gaps.md` and is only ever lowered. It is not part of `xtask ci` (timings on shared runners are noise).
@@ -61,3 +74,4 @@ Scope builds to the crates you touched; a full `--workspace` build is CI's job.
 - 2026-10-27: created.
 - 2026-10-27: `cargo xtask bench` described (under "Measuring performance").
 - 2026-10-27: `cargo xtask fuzz` and `xmlcraft-cli check-one` described.
+- 2026-10-28: `cargo xtask schemas` described (under "Bundled schemas").
