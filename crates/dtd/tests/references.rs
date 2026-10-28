@@ -298,3 +298,36 @@ fn the_problems_are_where_the_reference_is() {
     let problem = all.iter().find(|d| d.diagnostic.code == Code::UndeclaredEntity).expect("a problem");
     assert!(text[problem.diagnostic.span.clone()].contains("a CDATA"), "{:?}", &text[problem.diagnostic.span.clone()]);
 }
+
+#[test]
+fn namespace_declarations_are_read_the_way_the_dtd_makes_them() {
+    let dtd = |type_b: &str| {
+        format!(
+            "<!DOCTYPE foo [<!ELEMENT foo ANY><!ATTLIST foo xmlns:a CDATA #IMPLIED xmlns:b {type_b} #IMPLIED>\
+             <!ELEMENT bar ANY><!ATTLIST bar a:attr CDATA #IMPLIED b:attr CDATA #IMPLIED><!ENTITY tilde \"~\">]>"
+        )
+    };
+    // An entity in the value of a declaration: the same namespace name once it is replaced.
+    broken(
+        &format!(
+            "{}<foo xmlns:a='http://example.org/~wilbur' xmlns:b='http://example.org/&tilde;wilbur'><bar a:attr='1' b:attr='2'/></foo>",
+            dtd("CDATA")
+        ),
+        Code::DuplicateExpandedAttribute,
+    );
+    // A type that trims the value.
+    broken(
+        &format!("{}<foo xmlns:a='urn:xyzzy' xmlns:b=' urn:xyzzy '><bar a:attr='1' b:attr='2'/></foo>", dtd("NMTOKEN")),
+        Code::DuplicateExpandedAttribute,
+    );
+    // Spaces in a CDATA value are part of the name: different namespaces.
+    clean(&format!("{}<foo xmlns:a='urn:xyzzy' xmlns:b=' urn:xyzzy '><bar a:attr='1' b:attr='2'/></foo>", dtd("CDATA")));
+    clean(&format!("{}<foo xmlns:a='urn:a' xmlns:b='urn:&tilde;'><bar a:attr='1' b:attr='2'/></foo>", dtd("CDATA")));
+    // What the parser finds from the text is reported once, not twice.
+    assert_eq!(
+        errors(&format!("{}<foo xmlns:a='urn:x' xmlns:b='urn:x'><bar a:attr='1' b:attr='2'/></foo>", dtd("CDATA"))),
+        vec![Code::DuplicateExpandedAttribute]
+    );
+    // A scope ends with its element.
+    clean(&format!("{}<foo xmlns:a='urn:a' xmlns:b='urn:b'><bar a:attr='1' b:attr='2'/><bar xmlns:b='urn:a' a:attr='1'/></foo>", dtd("CDATA")));
+}

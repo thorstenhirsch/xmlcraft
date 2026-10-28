@@ -129,6 +129,8 @@ pub fn parse_external_subset(text: &str) -> Parsed {
 
 /// One text being read.
 struct Frame {
+    /// Which text this is, among those that have been read (so that two places can be asked whether they are in the same one).
+    id: usize,
     text: String,
     pos: usize,
     /// The text is something that was read (the internal subset, an external subset or parameter entity) and its offsets are its own;
@@ -178,6 +180,7 @@ struct Parser<'a> {
     /// Reading has been given up (a limit was passed).
     stopped: bool,
     capped: bool,
+    next_frame_id: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -197,6 +200,7 @@ impl<'a> Parser<'a> {
             external_pes: HashMap::new(),
             stopped: false,
             capped: false,
+            next_frame_id: 1,
         }
     }
 
@@ -253,6 +257,24 @@ impl<'a> Parser<'a> {
         while self.frames.len() > 1 && self.frames.last().is_some_and(|f| f.pos >= f.text.len()) {
             self.frames.pop();
         }
+    }
+
+    /// Put a text on the stack, giving it its own id.
+    fn push_frame(&mut self, mut frame: Frame) {
+        frame.id = self.next_frame_id;
+        self.next_frame_id = self.next_frame_id.wrapping_add(1);
+        self.frames.push(frame);
+    }
+
+    /// Which text the next character is in.
+    fn top_id(&mut self) -> usize {
+        self.settle();
+        self.frames.last().map_or(0, |f| f.id)
+    }
+
+    /// The validity constraints on nesting: what began in one text of a parameter entity ended in another.
+    fn nesting(&mut self, what: &str, from: (usize, usize)) {
+        self.report(Code::VcPeNesting, vec![what.to_owned()], from);
     }
 
     fn rest(&mut self) -> &str {
@@ -497,6 +519,7 @@ impl<'a> Parser<'a> {
         let frame = match source {
             // A text that was read: its own source and offsets.
             Some((source, offset)) => Frame {
+                id: 0,
                 text: format!(" {text} "),
                 pos: 0,
                 real: true,
@@ -508,6 +531,7 @@ impl<'a> Parser<'a> {
                 name: Some(name),
             },
             None => Frame {
+                id: 0,
                 text: format!(" {text} "),
                 pos: 0,
                 real: false,
@@ -519,15 +543,26 @@ impl<'a> Parser<'a> {
                 name: Some(name),
             },
         };
-        self.frames.push(frame);
+        self.push_frame(frame);
         true
     }
 
     // --- the subsets ---
 
     fn run_internal(&mut self, text: &str, offset: usize) {
-        self.frames.push(Frame { text: text.to_owned(), pos: 0, real: true, source: 0, base: offset, pad: 0, origin: 0, internal: true, name: None });
-        self.declarations_loop(false);
+        self.push_frame(Frame {
+            id: 0,
+            text: text.to_owned(),
+            pos: 0,
+            real: true,
+            source: 0,
+            base: offset,
+            pad: 0,
+            origin: 0,
+            internal: true,
+            name: None,
+        });
+        self.declarations_loop(None);
         self.frames.clear();
     }
 
@@ -542,13 +577,13 @@ impl<'a> Parser<'a> {
     fn run_text(&mut self, text: &str, source: usize) {
         let (text, offset) = strip_text_decl(self, text, source);
         self.frames.clear();
-        self.frames.push(Frame { text, pos: 0, real: true, source, base: offset, pad: 0, origin: 0, internal: false, name: None });
-        self.declarations_loop(false);
+        self.push_frame(Frame { id: 0, text, pos: 0, real: true, source, base: offset, pad: 0, origin: 0, internal: false, name: None });
+        self.declarations_loop(None);
         self.frames.clear();
     }
 
     /// The declarations of a subset (or of an `INCLUDE` section, which ends at `]]>`).
-    fn declarations_loop(&mut self, in_section: bool) {
+    fn declarations_loop(&mut self, section: Option<usize>) {
         loop {
             if self.stopped {
                 return;
@@ -569,7 +604,7 @@ impl<'a> Parser<'a> {
             }
             let start = self.here();
             let Some(c) = self.peek() else {
-                if in_section {
+                if section.is_some() {
                     self.report(Code::DtdBadConditional, vec!["the section is not closed: expected ']]>'".to_owned()], start);
                 }
                 return;
@@ -583,6 +618,7 @@ impl<'a> Parser<'a> {
             // The text being read is not settled onto what referred to it until something is read from it, so a construct that began in
             // the text of a parameter entity and ended after it leaves fewer texts on the stack.
             let depth = self.frames.len();
+            let mut declaration = false;
             match c {
                 '<' => {
                     if self.starts_with("<!--") {
@@ -590,12 +626,16 @@ impl<'a> Parser<'a> {
                     } else if self.starts_with("<?") {
                         self.processing_instruction();
                     } else if self.starts_with("<!ELEMENT") {
+                        declaration = true;
                         self.element_decl();
                     } else if self.starts_with("<!ATTLIST") {
+                        declaration = true;
                         self.attlist_decl();
                     } else if self.starts_with("<!ENTITY") {
+                        declaration = true;
                         self.entity_decl();
                     } else if self.starts_with("<!NOTATION") {
+                        declaration = true;
                         self.notation_decl();
                     } else if self.starts_with("<![") {
                         self.conditional_section();
@@ -606,7 +646,10 @@ impl<'a> Parser<'a> {
                         self.skip_declaration();
                     }
                 }
-                ']' if in_section && self.starts_with("]]>") => {
+                ']' if section.is_some() && self.starts_with("]]>") => {
+                    if section.is_some_and(|open| open != self.top_id()) {
+                        self.nesting("the conditional section", start);
+                    }
                     self.advance(3);
                     return;
                 }
@@ -627,6 +670,9 @@ impl<'a> Parser<'a> {
             // declaration is another matter, and only a validity constraint).
             if self.frames.len() < depth {
                 self.report(Code::DtdPeBetweenDeclarations, Vec::new(), start);
+            } else if declaration && self.frames.len() > depth {
+                // VC "Proper Declaration/PE Nesting": the declaration ends in the text of a parameter entity that it did not begin in.
+                self.nesting("the declaration", start);
             }
         }
     }
@@ -759,10 +805,11 @@ impl<'a> Parser<'a> {
         }
         // `(` S? `#PCDATA` is the mixed form; anything else is a group of children.
         let mark = self.mark();
+        let open_id = self.top_id();
         self.advance(1);
         self.s();
         if self.starts_with("#PCDATA") {
-            return self.mixed();
+            return self.mixed(open_id);
         }
         self.reset(mark);
         let particle = self.group(0)?;
@@ -783,12 +830,17 @@ impl<'a> Parser<'a> {
     }
 
     /// `(#PCDATA | a | b)*` or `(#PCDATA)`; the `(` and the white space after it are read, the cursor is at `#PCDATA`.
-    fn mixed(&mut self) -> Option<ContentSpec> {
+    fn mixed(&mut self, open_id: usize) -> Option<ContentSpec> {
+        let open = self.here();
         self.advance("#PCDATA".len());
         let mut names = Vec::new();
         loop {
             self.s();
-            if self.eat(")") {
+            if self.peek() == Some(')') {
+                if self.top_id() != open_id {
+                    self.nesting("the parenthesized group", open);
+                }
+                self.advance(1);
                 break;
             }
             if !self.eat("|") {
@@ -819,6 +871,8 @@ impl<'a> Parser<'a> {
             self.stopped = true;
             return None;
         }
+        let open = self.here();
+        let open_id = self.top_id();
         self.advance(1);
         self.s();
         let mut items = vec![self.particle(depth)?];
@@ -827,6 +881,9 @@ impl<'a> Parser<'a> {
             self.s();
             match self.peek() {
                 Some(')') => {
+                    if self.top_id() != open_id {
+                        self.nesting("the parenthesized group", open);
+                    }
                     self.advance(1);
                     break;
                 }
@@ -1344,6 +1401,7 @@ impl<'a> Parser<'a> {
     fn conditional_section(&mut self) {
         let start = self.here();
         let internal = self.frames.last().is_some_and(|f| f.internal);
+        let open_id = self.top_id();
         self.advance(3);
         if internal {
             self.report(Code::DtdConditionalInInternal, Vec::new(), start);
@@ -1359,26 +1417,33 @@ impl<'a> Parser<'a> {
             return self.skip_declaration();
         };
         self.s();
+        let bracket_id = self.top_id();
         if !self.eat("[") {
             self.fail(Code::DtdBadConditional, "expected '[' after INCLUDE or IGNORE");
             return self.skip_declaration();
         }
+        if bracket_id != open_id {
+            self.nesting("the conditional section", start);
+        }
         self.in_decl = false;
         if include {
-            self.declarations_loop(true);
+            self.declarations_loop(Some(open_id));
         } else {
-            self.ignore_section(start);
+            self.ignore_section(start, open_id);
         }
     }
 
     /// The content of an `IGNORE` section, to its closing `]]>`; sections inside it nest.
-    fn ignore_section(&mut self, start: (usize, usize)) {
+    fn ignore_section(&mut self, start: (usize, usize), open_id: usize) {
         let mut depth = 1usize;
         while depth > 0 {
             if self.starts_with("<![") {
                 self.advance(3);
                 depth += 1;
             } else if self.starts_with("]]>") {
+                if depth == 1 && self.top_id() != open_id {
+                    self.nesting("the conditional section", start);
+                }
                 self.advance(3);
                 depth -= 1;
             } else {

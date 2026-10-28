@@ -1,6 +1,6 @@
 # XmlCraft parity with Altova XMLSpy
 
-> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M2.1: OASIS catalogs, M2.6: the DTD reader, M2.7: the DTD as a grammar and M2.8: entity-reference rules (partial); xmlconf not-wf 99.8%; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M2.9: validation against a DTD (partial); xmlconf now validating: not-wf, valid and invalid all 100%; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
 
 The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -10,10 +10,10 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **6.6%** shipped, 19.4% with partial counted half (10 shipped + 39 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-28) |
-| Must-have (P0) features | 7.8% shipped, 30.5% weighted (5 shipped + 29 partial of 64) | measured |
-| W3C xmlconf, not-well-formed | **99.8%** (1015 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
-| W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): no well-formedness error is reported on a well-formed document | measured (same run) |
+| **Feature breadth**, unweighted | **6.6%** shipped, 20.1% with partial counted half (10 shipped + 41 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-28) |
+| Must-have (P0) features | 7.8% shipped, 32.0% weighted (5 shipped + 31 partial of 64) | measured |
+| W3C xmlconf, not-well-formed | **100%** (1017 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
+| W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): a valid document has no well-formedness or validity error, an invalid one is well-formed and has at least one validity error (which one is not compared; 73 of the 227 are documents with no DOCTYPE, invalid because there is nothing to validate against) | measured (same run) |
 | W3C xsdtests (XSD 1.0) | not measured | arrives with M3 |
 | Verdict agreement with `xmllint` | not measured | arrives with M2 (`cargo xtask oracle`) |
 | **Stage** | **pre-alpha** | |
@@ -26,15 +26,15 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 ## W3C XML conformance (xmlconf, 23 September 2013)
 
-`cargo xtask conformance xmlconf [--fetch]` runs the applicable tests of the suite through the same path the editor uses (encoding detection and decoding, then the parser) and compares the failures with `xtask/baselines/xmlconf.txt`. Applicable means XML 1.0 fifth edition, non-validating, namespace-aware: XML 1.1 tests (266), tests for earlier editions only (312), processor-dependent `error` tests (33) and namespace-unaware tests (9) are skipped. A test counts as passed when the verdict (well-formed or not) is the one the suite expects.
+`cargo xtask conformance xmlconf [--fetch]` runs the applicable tests of the suite through the same path the editor uses (encoding detection and decoding, then the parser, the DTD reader and the validator, with the external parts of the DTD read from the suite's files) and compares the failures with `xtask/baselines/xmlconf.txt`. Applicable means XML 1.0 fifth edition, namespace-aware: XML 1.1 tests (266), tests for earlier editions only (312), processor-dependent `error` tests (33) and namespace-unaware tests (9) are skipped. A not-well-formed test passes when a well-formedness error is reported; a valid test when no well-formedness or validity error is reported; an invalid test when the document is well-formed and a validity error is reported. External general entities are not read in content (their content is taken as unknown), and the validity errors are not compared with the test's section, only counted.
 
 | Kind | Passed | Of | Rate |
 |---|---:|---:|---:|
-| not-wf | 1015 | 1017 | 99.8% |
+| not-wf | 1017 | 1017 | 100% |
 | valid | 721 | 721 | 100% |
 | invalid | 227 | 227 | 100% |
 
-**What the 2 known failures are.** Both are in the namespaces group and need a namespace declaration to be seen as the DTD makes it: `eduni/namespaces/1.0/011` writes one namespace name with an entity (`http://example.org/&tilde;wilbur` is `~wilbur`), and `012` declares `xmlns:b` as `NMTOKEN` so that ` urn:xyzzy ` is normalised to the name of `xmlns:a`; in both, two attributes of an element end up with the same expanded name. They close with attribute-value normalisation in the validator (M2.9); `docs/gaps.md` tracks them as gap 16. The 359 tests this started with closed in two steps: the DTD reader (M2.6, 306) and the rules that tie references to declarations (M2.8, 51): an entity must be declared (where the document has all of its declarations, and always when it is standalone), parsed, not external in an attribute value, without `<` in one, not recursive, with a replacement text that is well-formed where it is used; external entities are read through the loader with their text declaration; a parameter entity between declarations holds whole declarations.
+The baseline is empty. How the 359 not-well-formed tests that needed the DTD closed: the DTD reader (M2.6, 306), the rules that tie references to declarations (M2.8, 51: an entity must be declared where the document has all of its declarations and always when standalone, parsed, not external inside an attribute value, without `<` in one, not recursive, with a replacement text that is well-formed where it is used) and the namespace declarations read as the DTD makes them (M2.9, 2: entities in the value of a declaration, and a type that trims it). The invalid tests are caught by: no DOCTYPE (73), an element that is not declared or not complete or not allowed (about 50), attribute declarations and values (about 50: types, defaults, enumerations, ID and IDREF, ENTITY, required, fixed), the standalone document declaration (14), the nesting of parameter entities in declarations, groups and conditional sections (9), and the validity constraints on the declarations (duplicates, ID and NOTATION rules, undeclared notations; about 20).
 
 ## Revision history
 
@@ -57,3 +57,4 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 - 2026-10-28: M2.6: the DTD reader (six `dtd.*` features planned → partial); xmlconf not-well-formed 64.7% → 94.8%; 10 shipped and 37 partial, 18.8% weighted.
 - 2026-10-28: M2.8: entity references checked against the declarations (`dtd.general-entities` planned → partial); xmlconf not-well-formed 94.8% → 99.8%; 10 shipped and 38 partial, 19.1% weighted.
 - 2026-10-28: M2.7: the DTD compiled to a grammar (`dtd.determinism-warning` planned → partial; the notes of `dtd.content-models`, `dtd.attlist` and `dtd.notations` say what the compile checks); 10 shipped and 39 partial, 19.4% weighted.
+- 2026-10-28: M2.9: validation against a DTD (`validate.dtd` and `validate.entity-limits` planned → partial); xmlconf now validating, not-well-formed 99.8% → 100%, valid and invalid 100%; 10 shipped and 41 partial, 20.1% weighted.
