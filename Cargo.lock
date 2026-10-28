@@ -4865,6 +4865,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-resolve"
+version = "0.0.1"
+dependencies = [
+ "proptest",
+ "xmlcraft-catalog",
+ "xmlcraft-schemas",
+]
+
+[[package]]
 name = "xmlcraft-schemas"
 version = "0.0.1"
 dependencies = [
