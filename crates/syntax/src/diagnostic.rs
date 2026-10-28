@@ -30,10 +30,10 @@ macro_rules! codes {
                 match self { $(Code::$variant => $key),* }
             }
 
-            /// Whether the problem is the breaking of a validity constraint (the key starts with `vc.`): the document is well-formed, but it
-            /// does not meet its DTD.
+            /// Whether the problem is the breaking of a validity constraint (the key starts with `vc.`, or `cvc.` for a schema): the
+            /// document is well-formed, but it does not meet its DTD or schema.
             pub fn is_validity(self) -> bool {
-                self.key().starts_with("vc.")
+                self.key().starts_with("vc.") || self.key().starts_with("cvc.")
             }
 
             pub fn severity(self) -> Severity {
@@ -155,6 +155,26 @@ codes! {
     VcIdrefNotFound => ("vc.idref-has-no-id", Error, "No element has the ID '{0}'."),
     VcEntityAttribute => ("vc.entity-attribute-not-unparsed", Error, "'{0}' is not the name of an unparsed entity."),
     VcStandalone => ("vc.standalone-document", Error, "The document is standalone, but {0}."),
+    CvcNotDeclared => ("cvc.element-not-declared", Error, "No declaration was found for the element '{0}'."),
+    CvcWildcardNotDeclared => ("cvc.wildcard-element-not-declared", Error, "No declaration was found for the element '{0}', which a wildcard of its parent lets in but asks to be validated."),
+    CvcAbstractElement => ("cvc.abstract-element", Error, "The element '{0}' is abstract, so it cannot appear in a document."),
+    CvcAbstractType => ("cvc.abstract-type", Error, "The type '{1}' of the element '{0}' is abstract; the element needs an xsi:type that names a type derived from it."),
+    CvcXsiType => ("cvc.xsi-type", Error, "The xsi:type of the element '{0}' cannot be used: {1}."),
+    CvcNotNillable => ("cvc.not-nillable", Error, "The element '{0}' is not nillable, so it cannot have xsi:nil=\"true\"."),
+    CvcNilContent => ("cvc.nilled-element-has-content", Error, "The element '{0}' has xsi:nil=\"true\", so it must have no content: {1}."),
+    CvcNilFixed => ("cvc.nilled-element-is-fixed", Error, "The element '{0}' has xsi:nil=\"true\", but its declaration fixes the value '{1}'."),
+    CvcBadNil => ("cvc.bad-xsi-nil", Error, "The value of xsi:nil on '{0}' is not valid: {1}."),
+    CvcChildNotAllowed => ("cvc.child-not-allowed", Error, "The element '{0}' is not allowed here: {1}."),
+    CvcContentIncomplete => ("cvc.content-incomplete", Error, "The element '{0}' is not complete: {1}."),
+    CvcTextNotAllowed => ("cvc.text-not-allowed", Error, "The element '{0}' cannot contain text: {1}."),
+    CvcInvalidValue => ("cvc.invalid-value", Error, "The value of {0} is not valid: {1}."),
+    CvcFixedValue => ("cvc.fixed-value", Error, "The value of {0} must be '{1}'."),
+    CvcAttributeNotAllowed => ("cvc.attribute-not-allowed", Error, "The attribute '{1}' is not allowed on the element '{0}'."),
+    CvcAttributeNotDeclared => ("cvc.attribute-not-declared", Error, "No declaration was found for the attribute '{1}' of the element '{0}', which a wildcard lets in but asks to be validated."),
+    CvcAttributeRequired => ("cvc.attribute-required", Error, "The element '{0}' needs the attribute '{1}'."),
+    CvcDuplicateId => ("cvc.duplicate-id", Error, "The ID '{0}' is used more than once."),
+    CvcIdrefNotFound => ("cvc.idref-has-no-id", Error, "No element has the ID '{0}'."),
+    CvcLimit => ("cvc.limit", Error, "The document is too deep to be validated against the schema: {0}."),
     // Namespaces
     InvalidQName => ("ns.invalid-qname", Error, "'{0}' is not a valid qualified name."),
     UnboundPrefix => ("ns.unbound-prefix", Error, "The namespace prefix '{0}' is not declared."),
