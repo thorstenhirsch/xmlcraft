@@ -1325,11 +1325,11 @@ title = "OASIS XML Catalogs 1.1 resolution"
 area = "G"
 tier = "P0"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "system, public, uri, rewrite*, delegate*, nextCatalog, prefer."
+tools = ["catalog_lookup"]
+evidence = ["crates/catalog/tests/resolution.rs::the_entries_are_tried_in_the_order_of_the_spec_and_the_longest_match_wins", "crates/catalog/tests/resolution.rs::a_delegated_catalog_answers_alone_and_a_failed_delegation_does_not_go_back_to_the_list", "crates/catalog/tests/resolution.rs::delegation_restarts_with_only_the_identifier_that_matched", "crates/catalog/tests/resolution.rs::next_catalogs_are_consulted_right_after_the_catalog_that_names_them_and_cycles_end", "crates/catalog/tests/resolution.rs::prefer_decides_whether_a_public_entry_counts_when_a_system_identifier_is_given_too", "crates/catalog/tests/resolution.rs::publicid_urns_are_unwrapped_in_requests_and_entries", "crates/catalog/tests/resolution.rs::uris_are_resolved_by_uri_rewriteuri_urisuffix_and_delegateuri", "crates/automation/tests/catalog.rs::identifiers_and_uris_are_mapped_through_the_catalogs_in_order"]
+notes = "The resolution rules of XML Catalogs 1.1 are in `xmlcraft-catalog` (system, public, uri, rewrite*, *Suffix, delegate*, nextCatalog, group, xml:base, prefer; urn:publicid: unwrapping; limits on entries and loads) and reachable headlessly through `catalog_lookup`. Not yet: nothing in the editor or the validators asks the catalogs (the resolver of M2.3 will), no user catalogs setting, and the TR9401 text syntax is not read."
 
 [[feature]]
 id = "catalog.bundled-schemas"

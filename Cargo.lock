@@ -4700,12 +4700,21 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "xmlcraft-catalog",
  "xmlcraft-editor",
  "xmlcraft-engine",
  "xmlcraft-format",
  "xmlcraft-platform",
  "xmlcraft-syntax",
  "xmlcraft-text",
+]
+
+[[package]]
+name = "xmlcraft-catalog"
+version = "0.0.1"
+dependencies = [
+ "proptest",
+ "xmlcraft-syntax",
 ]
 
 [[package]]

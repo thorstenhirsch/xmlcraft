@@ -91,7 +91,7 @@ fn quoted_after(src: &str, prefixes: &[&str]) -> HashSet<String> {
 }
 
 /// The files that define tools (`ToolDef { name: "…", … }`): the table itself and the tool modules it collects.
-const TOOL_FILES: &[&str] = &["crates/automation/src/tools.rs", "crates/automation/src/documents.rs"];
+const TOOL_FILES: &[&str] = &["crates/automation/src/tools.rs", "crates/automation/src/documents.rs", "crates/automation/src/catalog.rs"];
 
 /// The names of every tool in the automation table.
 fn tool_names(read: &dyn Fn(&str) -> String) -> HashSet<String> {
