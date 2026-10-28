@@ -639,7 +639,9 @@ mod tests {
         std::fs::write(&file, b"<a/>").expect("writes");
         let missing = dir.path().join("no-such-program");
         let err = run_one(&missing, &file, &dir.path().join("err"), Duration::from_secs(1)).expect_err("cannot start");
-        assert!(format!("{err:#}").contains("starting") || format!("{err:#}").contains("could not be run"), "{err:#}");
+        // Linux starts the child through `sh`, which fails with 127; elsewhere the program itself fails to start.
+        let expected = if cfg!(target_os = "linux") { "could not be run" } else { "starting" };
+        assert!(format!("{err:#}").contains(expected), "{err:#}");
         // A work file that cannot be written is an error too.
         let err = run_one(&missing, &file, &dir.path().join("no-such-directory/err"), Duration::from_secs(1)).expect_err("cannot write");
         assert!(format!("{err:#}").contains("creating"), "{err:#}");
