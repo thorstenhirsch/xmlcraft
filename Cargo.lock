@@ -4701,12 +4701,14 @@ dependencies = [
  "serde_json",
  "tempfile",
  "xmlcraft-catalog",
+ "xmlcraft-dtd",
  "xmlcraft-editor",
  "xmlcraft-engine",
  "xmlcraft-format",
  "xmlcraft-platform",
  "xmlcraft-syntax",
  "xmlcraft-text",
+ "xmlcraft-validate",
 ]
 
 [[package]]
@@ -4775,6 +4777,7 @@ dependencies = [
  "xmlcraft-format",
  "xmlcraft-syntax",
  "xmlcraft-text",
+ "xmlcraft-validate",
 ]
 
 [[package]]
@@ -4809,7 +4812,9 @@ version = "0.0.1"
 dependencies = [
  "craft-atomic",
  "tempfile",
+ "xmlcraft-dtd",
  "xmlcraft-engine",
+ "xmlcraft-text",
 ]
 
 [[package]]

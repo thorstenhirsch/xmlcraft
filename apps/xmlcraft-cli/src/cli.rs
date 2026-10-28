@@ -1,6 +1,8 @@
 //! What `xmlcraft-cli` does: parse the command line, then run it.
 //!
 //! - `check FILE… [--root DIR] [--json]`: check the files for well-formedness; the problems are printed as `file:line:column: severity: message`.
+//! - `validate FILE… [--root DIR] [--json]`: check the files for well-formedness and, when they are well-formed, validity against their DTD; the
+//!   problems are printed as `file:line:column: severity: message` (a problem in an external text of the DTD names that file).
 //! - `format FILE [--minify] [--indent N | --tabs] [--blank-lines keep|remove] [--check | --in-place] [--root DIR]`: pretty-print (or minify) a
 //!   file; the result goes to standard output unless `--in-place`.
 //! - `check-one FILE [--edit]`: hold the engine to its promises on one file (what the fuzzer runs): exit 1 and the broken promise on standard
@@ -23,6 +25,7 @@ use xmlcraft_automation::{Automation, Content};
 
 pub const USAGE: &str = "Usage:
   xmlcraft-cli check FILE... [--root DIR] [--json]
+  xmlcraft-cli validate FILE... [--root DIR] [--json]
   xmlcraft-cli format FILE [--minify] [--indent N | --tabs] [--blank-lines keep|remove] [--check | --in-place] [--root DIR]
   xmlcraft-cli tools [--json]
   xmlcraft-cli check-one FILE [--edit]
@@ -41,6 +44,11 @@ pub enum Command {
     Version,
     Help,
     Check {
+        files: Vec<String>,
+        root: Option<PathBuf>,
+        json: bool,
+    },
+    Validate {
         files: Vec<String>,
         root: Option<PathBuf>,
         json: bool,
@@ -156,16 +164,16 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
             let [file] = <[String; 1]>::try_from(rest).map_err(|rest| format!("check-one takes one file, not {}", rest.len()))?;
             Ok(Command::CheckOne { file: PathBuf::from(file), edit })
         }
-        "check" => {
+        command @ ("check" | "validate") => {
             let root = take_option(&mut rest, "--root")?.map(PathBuf::from);
             let json = take_flag(&mut rest, "--json");
             if let Some(flag) = rest.iter().find(|a| a.starts_with("--")) {
                 return Err(format!("unknown option {flag}"));
             }
             if rest.is_empty() {
-                return Err("check needs at least one file".into());
+                return Err(format!("{command} needs at least one file"));
             }
-            Ok(Command::Check { files: rest, root, json })
+            Ok(if command == "check" { Command::Check { files: rest, root, json } } else { Command::Validate { files: rest, root, json } })
         }
         "format" => {
             let root = take_option(&mut rest, "--root")?.map(PathBuf::from);
@@ -293,7 +301,8 @@ pub fn execute(command: Command, out: &mut impl Write, err: &mut impl Write) -> 
                 },
             }
         }
-        Command::Check { files, root, json } => check(&files, root, json, out, err),
+        Command::Check { files, root, json } => check("xml_wellformed", &files, root, json, out, err),
+        Command::Validate { files, root, json } => check("xml_validate", &files, root, json, out, err),
         Command::Format { file, options, root, mode } => format_file(&file, options, root, mode, out, err),
         Command::Run { tool, args, root } => {
             let mut automation = match automation(root) {
@@ -383,15 +392,15 @@ fn value_of(content: Vec<Content>) -> Value {
     }
 }
 
-/// `check`: every file through `xml_wellformed`. Exit 1 if any file has an error or cannot be read.
-fn check(files: &[String], root: Option<PathBuf>, as_json: bool, out: &mut impl Write, err: &mut impl Write) -> u8 {
+/// `check` and `validate`: every file through `xml_wellformed` or `xml_validate`. Exit 1 if any file has an error or cannot be read.
+fn check(tool: &str, files: &[String], root: Option<PathBuf>, as_json: bool, out: &mut impl Write, err: &mut impl Write) -> u8 {
     let mut automation = match automation(root) {
         Ok(a) => a,
         Err(e) => return fail(err, &e),
     };
     let (mut code, mut results) = (0u8, Vec::new());
     for file in files {
-        match automation.call("xml_wellformed", &json!({ "path": file })) {
+        match automation.call(tool, &json!({ "path": file })) {
             Ok(content) => {
                 let result = value_of(content);
                 if result["errors"].as_u64().unwrap_or(0) > 0 {
@@ -407,10 +416,12 @@ fn check(files: &[String], root: Option<PathBuf>, as_json: bool, out: &mut impl 
                 }
                 if !as_json {
                     for p in result["problems"].as_array().into_iter().flatten() {
+                        // A problem in an external text of the DTD is in that file.
+                        let place = p["file"].as_str().unwrap_or(file);
                         say(
                             out,
                             &format!(
-                                "{file}:{}:{}: {}: {}",
+                                "{place}:{}:{}: {}: {}",
                                 p["line"].as_u64().unwrap_or(0),
                                 p["column"].as_u64().unwrap_or(0),
                                 p["severity"].as_str().unwrap_or("error"),
@@ -418,8 +429,8 @@ fn check(files: &[String], root: Option<PathBuf>, as_json: bool, out: &mut impl 
                             ),
                         );
                     }
-                    if result["well_formed"] == true && result["warnings"].as_u64() == Some(0) {
-                        say(out, &format!("{file}: well-formed"));
+                    if result["well_formed"] == true && result["warnings"].as_u64() == Some(0) && result["errors"].as_u64() == Some(0) {
+                        say(out, &format!("{file}: {}", if tool == "xml_validate" { "valid" } else { "well-formed" }));
                     }
                 }
                 results.push(json!({ "file": file, "result": result }));
@@ -763,6 +774,35 @@ mod tests {
         let (code, _, err) = run(Command::Check { files: vec![format!("{good}.missing")], root: None, json: false });
         assert_eq!(code, 1);
         assert!(err.contains("missing"), "{err}");
+    }
+
+    #[test]
+    fn validate_checks_against_the_dtd_and_names_the_file_a_problem_is_in() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = |name: &str, text: &str| {
+            let p = dir.path().join(name);
+            std::fs::write(&p, text).expect("writes");
+            p.to_str().expect("utf-8").to_owned()
+        };
+        path("r.dtd", "<!ELEMENT r (a)>\n<!ELEMENT a EMPTY>\n<!ATTLIST a x ID #FIXED 'v'>");
+        let good = path("good.xml", "<!DOCTYPE r [<!ELEMENT r EMPTY>]><r/>");
+        let bad = path("bad.xml", "<!DOCTYPE r [<!ELEMENT r EMPTY>]>\n<r>text</r>");
+        let external = path("external.xml", "<!DOCTYPE r SYSTEM \"r.dtd\">\n<r><a/></r>");
+        let (code, out, _) = run(Command::Validate { files: vec![good.clone()], root: None, json: false });
+        assert_eq!((code, out.trim()), (0, format!("{good}: valid").as_str()));
+        let (code, out, _) = run(Command::Validate { files: vec![bad.clone()], root: None, json: false });
+        assert_eq!(code, 1);
+        assert!(out.contains(&format!("{bad}:2:4: error: The element 'r' is declared EMPTY, but it has content.")), "{out}");
+        // A well-formedness check does not look at validity.
+        assert_eq!(run(Command::Check { files: vec![bad.clone()], root: None, json: false }).0, 0);
+        // A problem in the DTD's own file is named by that file and its line.
+        let (code, out, _) = run(Command::Validate { files: vec![external], root: None, json: false });
+        assert_eq!(code, 1);
+        assert!(out.contains("r.dtd:3:") && out.contains("must be #IMPLIED or #REQUIRED"), "{out}");
+        let (code, out, _) = run(Command::Validate { files: vec![bad], root: None, json: true });
+        assert_eq!((code, serde_json::from_str::<Value>(&out).expect("JSON")[0]["result"]["valid"].clone()), (1, json!(false)));
+        assert_eq!(parse(&args("validate a.xml --json")), Ok(Command::Validate { files: vec!["a.xml".into()], root: None, json: true }));
+        assert!(parse(&args("validate")).expect_err("no file").contains("validate needs at least one file"));
     }
 
     #[test]
