@@ -74,7 +74,14 @@ pub enum Content {
     /// `(#PCDATA | a | b)*` and `(#PCDATA)`: text, and the elements listed, in any order and number.
     Mixed(Vec<Name>),
     /// Elements only, in the order the model says (white space between them is not content).
-    Elements { particle: Particle, automaton: Automaton },
+    Elements(Box<ElementContent>),
+}
+
+/// A content model of elements only: as it was written, and compiled.
+#[derive(Clone, Debug)]
+pub struct ElementContent {
+    pub particle: Particle,
+    pub automaton: Automaton,
 }
 
 #[derive(Clone, Debug)]
@@ -188,6 +195,11 @@ impl Grammar {
 
     pub fn element(&self, name: &Name) -> Option<&ElementDecl> {
         self.element_index.get(name).and_then(|&i| self.elements.get(i))
+    }
+
+    pub fn element_mut(&mut self, name: &Name) -> Option<&mut ElementDecl> {
+        let i = *self.element_index.get(name)?;
+        self.elements.get_mut(i)
     }
 
     /// The position of an element declaration (what the tokens of the particles that stand for it are).

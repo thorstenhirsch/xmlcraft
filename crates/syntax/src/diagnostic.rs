@@ -119,6 +119,18 @@ codes! {
     DtdBadTextDecl => ("dtd.bad-text-declaration", Error, "The text declaration is malformed: {0}."),
     DtdExternalNotRead => ("dtd.external-not-read", Warning, "The external {0} was not read: {1}."),
     DtdLimit => ("dtd.limit", Error, "The DTD is too large or nested too deeply: {0}."),
+    // The declarations of a DTD: validity constraints (XML 1.0 §3.2 to §4.7) and the non-normative determinism rule (appendix E)
+    VcDuplicateElement => ("vc.duplicate-element-declaration", Error, "The element '{0}' is declared more than once."),
+    VcDuplicateMixedName => ("vc.duplicate-mixed-content-name", Error, "The name '{0}' appears more than once in the mixed content model."),
+    DtdNonDeterministic => ("dtd.non-deterministic-content-model", Warning, "The content model of '{0}' is not deterministic: an element '{1}' can be matched in more than one way."),
+    VcOneIdPerElement => ("vc.one-id-attribute-per-element", Error, "The element '{0}' has more than one attribute of type ID."),
+    VcIdAttributeDefault => ("vc.id-attribute-default", Error, "The ID attribute '{1}' of '{0}' must be #IMPLIED or #REQUIRED."),
+    VcOneNotationPerElement => ("vc.one-notation-attribute-per-element", Error, "The element '{0}' has more than one attribute of type NOTATION."),
+    VcNotationOnEmpty => ("vc.notation-attribute-on-empty-element", Error, "The NOTATION attribute '{1}' is declared for the EMPTY element '{0}'."),
+    VcDuplicateToken => ("vc.duplicate-enumeration-token", Error, "'{1}' is listed more than once in the type of the attribute '{0}'."),
+    VcNotationNotDeclared => ("vc.notation-not-declared", Error, "The notation '{0}' is not declared."),
+    VcAttributeDefault => ("vc.attribute-default-value", Error, "The default value of the attribute '{0}' is not valid for its type: {1}."),
+    VcDuplicateNotation => ("vc.duplicate-notation-declaration", Error, "The notation '{0}' is declared more than once."),
     // Namespaces
     InvalidQName => ("ns.invalid-qname", Error, "'{0}' is not a valid qualified name."),
     UnboundPrefix => ("ns.unbound-prefix", Error, "The namespace prefix '{0}' is not declared."),

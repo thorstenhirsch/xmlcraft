@@ -24,8 +24,8 @@ mod particle;
 
 pub use automaton::{Ambiguity, Automaton, CompileError, Expected, MAX_DEPTH, MAX_POSITIONS, MAX_WORK, State, Step, Symbol};
 pub use model::{
-    AttributeDecl, AttributeDefault, AttributeType, Content, ElementDecl, EntityDecl, EntityKind, Grammar, NO_DECLARATION, NotationDecl, Origin,
-    SchemaKind,
+    AttributeDecl, AttributeDefault, AttributeType, Content, ElementContent, ElementDecl, EntityDecl, EntityKind, Grammar, NO_DECLARATION,
+    NotationDecl, Origin, SchemaKind,
 };
 pub use name::{Name, NamespaceConstraint, Term};
 pub use particle::{Occurs, Particle, ParticleKind};

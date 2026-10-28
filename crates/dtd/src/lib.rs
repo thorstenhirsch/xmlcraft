@@ -17,11 +17,15 @@
 //! - Everything is bounded: the depth of parameter-entity nesting, the characters an expansion may produce, the number of external
 //!   texts loaded and the number of declarations.
 
+mod attribute;
+mod compile;
 mod doctype;
 mod model;
 mod parse;
 mod references;
 
+pub use attribute::{MAX_VALUE_BYTES, MAX_VALUE_DEPTH, ValueProblem, ValueReader, check_value};
+pub use compile::{Compiled, compile};
 pub use doctype::{DoctypeParts, doctype_parts, problems_in_text, problems_of_document};
 pub use model::{
     AttDef, AttType, AttlistDecl, ContentSpec, Default, Dtd, ElementDecl, EntityDecl, EntityValue, ExternalId, NotationDecl, Occurs, Particle,

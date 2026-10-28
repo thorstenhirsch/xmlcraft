@@ -4745,6 +4745,7 @@ name = "xmlcraft-dtd"
 version = "0.0.1"
 dependencies = [
  "proptest",
+ "xmlcraft-grammar",
  "xmlcraft-syntax",
 ]
 
