@@ -10,8 +10,8 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **6.6%** shipped, 20.1% with partial counted half (10 shipped + 41 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-28) |
-| Must-have (P0) features | 7.8% shipped, 32.0% weighted (5 shipped + 31 partial of 64) | measured |
+| **Feature breadth**, unweighted | **6.6%** shipped, 20.4% with partial counted half (10 shipped + 42 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-28) |
+| Must-have (P0) features | 7.8% shipped, 32.8% weighted (5 shipped + 32 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **100%** (1017 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): a valid document has no well-formedness or validity error, an invalid one is well-formed and has at least one validity error (which one is not compared; 73 of the 227 are documents with no DOCTYPE, invalid because there is nothing to validate against) | measured (same run) |
 | W3C xsdtests (XSD 1.0) | not measured | arrives with M3 |
@@ -58,4 +58,5 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 - 2026-10-28: M2.8: entity references checked against the declarations (`dtd.general-entities` planned → partial); xmlconf not-well-formed 94.8% → 99.8%; 10 shipped and 38 partial, 19.1% weighted.
 - 2026-10-28: M2.7: the DTD compiled to a grammar (`dtd.determinism-warning` planned → partial; the notes of `dtd.content-models`, `dtd.attlist` and `dtd.notations` say what the compile checks); 10 shipped and 39 partial, 19.4% weighted.
 - 2026-10-28: M2.9: validation against a DTD (`validate.dtd` and `validate.entity-limits` planned → partial); xmlconf now validating, not-well-formed 99.8% → 100%, valid and invalid 100%; 10 shipped and 41 partial, 20.1% weighted.
+- 2026-10-28: M2.10 and M2.13 (first parts): Validate (F8) in the app, the tool `xml_validate` and `xmlcraft-cli validate` (`validate.dtd` gets its commands and tools, `validate.error-positions` planned → partial); 10 shipped and 42 partial, 20.4% weighted.
 - 2026-10-28: M3.1: `xmlcraft-pattern` (XSD regular expressions); the note of `xsd.regex-patterns` says what exists; the status stays planned (nothing a user can reach uses it yet).

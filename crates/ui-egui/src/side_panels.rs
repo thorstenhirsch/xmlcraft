@@ -290,6 +290,41 @@ fn outline_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     }
 }
 
+/// One line of Messages: a problem of the well-formedness check or of the validation.
+struct MessageRow {
+    severity: xmlcraft_syntax::Severity,
+    message: String,
+    /// Where it is: `Ln 3, Col 7` in the document; the name of the file for a problem in an external text of the DTD.
+    place: String,
+    /// What a click selects in the document; none for a problem in another file.
+    jump: Option<std::ops::Range<usize>>,
+}
+
+/// The rows of Messages: what is wrong with the text as XML first, then, when a validation of the same text has been asked for, what is
+/// wrong with it as a document of its DTD.
+fn message_rows(app: &XmlCraftApp, analysis: &xmlcraft_engine::analysis::Analysis, buffer: &xmlcraft_text::Buffer) -> Vec<MessageRow> {
+    let at = |offset: usize| {
+        let position = buffer.position(offset.min(buffer.len()));
+        crate::i18n::fmt(tl!("Ln {line}, Col {col}"), &[("line", &(position.line + 1).to_string()), ("col", &(position.col + 1).to_string())])
+    };
+    let mut rows: Vec<MessageRow> = analysis
+        .diagnostics
+        .iter()
+        .map(|d| MessageRow { severity: d.severity(), message: d.message(), place: at(d.span.start), jump: Some(d.span.clone()) })
+        .collect();
+    let validation = app.active_validation();
+    rows.extend(validation.into_iter().flat_map(|v| v.problems.iter()).map(|p| MessageRow {
+        severity: p.diagnostic.severity(),
+        message: p.diagnostic.message(),
+        place: match &p.file {
+            None => at(p.diagnostic.span.start),
+            Some(file) => std::path::Path::new(file).file_name().map_or_else(|| file.clone(), |n| n.to_string_lossy().into_owned()),
+        },
+        jump: p.file.is_none().then(|| p.diagnostic.span.clone()),
+    }));
+    rows
+}
+
 fn messages_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     let t = Tokens::get(ui.ctx());
     let Some(doc) = app.session.active_document() else {
@@ -312,27 +347,29 @@ fn messages_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
         }
         None => {}
     }
-    if analysis.diagnostics.is_empty() {
-        widgets::empty_state(ui, 6.0, tl!("No problems"), tl!("The document is well-formed."));
+    let rows = message_rows(app, analysis, buffer);
+    if rows.is_empty() {
+        let valid = app.active_validation().is_some_and(|v| v.is_valid());
+        widgets::empty_state(
+            ui,
+            6.0,
+            tl!("No problems"),
+            if valid { tl!("The document is well-formed and valid.") } else { tl!("The document is well-formed.") },
+        );
         return;
     }
     let syntax = crate::editor_view::SyntaxTokens::for_kind(t.kind);
     let mut clicked = None;
-    egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, ROW, analysis.diagnostics.len(), |ui, range| {
+    egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, ROW, rows.len(), |ui, range| {
         for index in range {
-            let Some(diagnostic) = analysis.diagnostics.get(index) else { continue };
-            let position = buffer.position(diagnostic.span.start.min(buffer.len()));
-            let message = diagnostic.message();
-            let place = crate::i18n::fmt(
-                tl!("Ln {line}, Col {col}"),
-                &[("line", &(position.line + 1).to_string()), ("col", &(position.col + 1).to_string())],
-            );
+            let Some(row) = rows.get(index) else { continue };
+            let (message, place) = (row.message.as_str(), row.place.clone());
             let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), egui::Sense::click());
             response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("{message} ({place})")));
             if response.hovered() {
                 ui.painter().rect_filled(rect, 0.0, t.hover);
             }
-            let (icon, color) = match diagnostic.severity() {
+            let (icon, color) = match row.severity {
                 xmlcraft_syntax::Severity::Error => ("circle-x", syntax.error),
                 xmlcraft_syntax::Severity::Warning => ("triangle-alert", syntax.warning),
                 xmlcraft_syntax::Severity::Info => ("info", syntax.info),
@@ -348,7 +385,7 @@ fn messages_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
             let clip = ui.painter().with_clip_rect(egui::Rect::from_min_max(rect.min, egui::pos2(right - place_galley.size().x - 10.0, rect.max.y)));
             clip.text(rect.left_center() + vec2(36.0, 0.0), egui::Align2::LEFT_CENTER, message, theme::regular(12.5), t.text);
             if response.clicked() {
-                clicked = Some(diagnostic.span.clone());
+                clicked = row.jump.clone();
             }
         }
     });
