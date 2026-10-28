@@ -5,6 +5,7 @@ use std::rc::Rc;
 use super::wildcards::intersect_wildcards;
 use super::*;
 use crate::schema as s;
+use crate::xpath::{ConstraintPaths, parse_field, parse_selector};
 
 impl<'a> Builder<'a> {
     // ---- elements ----
@@ -278,12 +279,13 @@ impl<'a> Builder<'a> {
     fn identity_constraints(&mut self, doc: usize, e: &'a ElementDecl) -> Vec<ConstraintId> {
         let mut ids = Vec::new();
         for c in &e.identity_constraints {
-            let (Some(name), Some((selector, _))) = (c.name.as_deref(), c.selector.as_ref()) else { continue };
+            let (Some(name), Some((selector, selector_span))) = (c.name.as_deref(), c.selector.as_ref()) else { continue };
             let qname = self.named(doc, name);
             if self.constraint_names.contains_key(&qname) {
                 self.report(doc, Code::XsdDuplicateComponent, c.name_span.clone(), &["identity constraint", &qname.to_string()]);
                 continue;
             }
+            let paths = self.constraint_paths(doc, &qname, selector, selector_span, c);
             let id = ConstraintId(self.schema.constraints.len());
             self.schema.constraints.push(s::IdentityConstraint {
                 kind: c.kind,
@@ -292,6 +294,7 @@ impl<'a> Builder<'a> {
                 selector: selector.clone(),
                 fields: c.fields.iter().map(|(f, _)| f.clone()).collect(),
                 namespaces: c.namespaces.clone(),
+                paths,
                 origin: Self::origin(doc, &c.span),
             });
             self.constraint_names.insert(qname, id);
@@ -303,6 +306,41 @@ impl<'a> Builder<'a> {
             ids.push(id);
         }
         ids
+    }
+
+    /// The selector and the fields of a constraint, parsed; what is wrong with them is reported.
+    fn constraint_paths(
+        &mut self,
+        doc: usize,
+        name: &QName,
+        selector: &str,
+        selector_span: &Range<usize>,
+        c: &IdentityConstraintDef,
+    ) -> Option<ConstraintPaths> {
+        let shown = format!("the identity constraint '{name}'");
+        let mut ok = true;
+        let selector = match parse_selector(selector, &c.namespaces) {
+            Ok(path) => Some(path),
+            Err(problem) => {
+                self.report(doc, Code::XsdComponent, selector_span.clone(), &[&shown, &format!("its selector is not valid: {problem}")]);
+                ok = false;
+                None
+            }
+        };
+        let mut fields = Vec::new();
+        for (text, span) in &c.fields {
+            match parse_field(text, &c.namespaces) {
+                Ok(path) => fields.push(path),
+                Err(problem) => {
+                    self.report(doc, Code::XsdComponent, span.clone(), &[&shown, &format!("the field '{text}' is not valid: {problem}")]);
+                    ok = false;
+                }
+            }
+        }
+        match (ok, selector) {
+            (true, Some(selector)) => Some(ConstraintPaths { selector, fields }),
+            _ => None,
+        }
     }
 
     /// Resolve what the keyrefs refer to.

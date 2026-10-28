@@ -601,3 +601,20 @@ impl SchemaLoader for Files {
             .ok_or_else(|| "no".to_owned())
     }
 }
+
+#[test]
+fn the_expressions_of_a_constraint_are_parsed_and_the_wrong_ones_reported() {
+    let a = build(
+        "<xs:element name=\"r\">\
+           <xs:key name=\"good\"><xs:selector xpath=\".//t:a | b\"/><xs:field xpath=\"@id\"/><xs:field xpath=\"c/@d\"/></xs:key>\
+           <xs:unique name=\"badselector\"><xs:selector xpath=\"a[1]\"/><xs:field xpath=\"@x\"/></xs:unique>\
+           <xs:unique name=\"badfield\"><xs:selector xpath=\"a\"/><xs:field xpath=\"@x\"/><xs:field xpath=\"b//c\"/></xs:unique>\
+         </xs:element>",
+    );
+    assert_eq!(keys(&a), ["xsd.component", "xsd.component"], "{:?}", messages(&a));
+    let paths = |local: &str| a.schema.constraints.iter().find(|c| c.name.local == local).expect("a constraint").paths.clone();
+    let good = paths("good").expect("parsed");
+    assert_eq!((good.selector.alternatives.len(), good.fields.len()), (2, 2));
+    assert!(paths("badselector").is_none() && paths("badfield").is_none());
+    assert!(messages(&a)[0].contains("selector") && messages(&a)[1].contains("'b//c'"), "{:?}", messages(&a));
+}

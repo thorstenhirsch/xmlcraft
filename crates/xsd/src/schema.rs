@@ -194,6 +194,8 @@ pub struct IdentityConstraint {
     pub fields: Vec<String>,
     /// The namespace declarations at the constraint, for the prefixes in its XPath expressions.
     pub namespaces: Vec<(Option<String>, String)>,
+    /// The expressions, parsed; none when one of them is not valid (that was reported).
+    pub paths: Option<crate::xpath::ConstraintPaths>,
     pub origin: Origin,
 }
 

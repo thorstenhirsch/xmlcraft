@@ -16,6 +16,7 @@ pub mod model;
 mod reader;
 pub mod schema;
 mod values;
+pub mod xpath;
 
 pub use build::{Assembly, assemble};
 pub use compile::{AllState, ContentModel, ModelState, Next, Symbol};
