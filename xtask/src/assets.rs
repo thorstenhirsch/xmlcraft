@@ -69,7 +69,7 @@ const ASSET_EXTENSIONS: &[&str] = &[
 
 /// Extensions of schema files that are assets when they sit under [`SCHEMA_DIR`]. (Test fixtures elsewhere are contributor-written
 /// project files, not assets.)
-const SCHEMA_EXTENSIONS: &[&str] = &["xsd", "dtd", "ent", "mod", "rng", "rnc", "sch", "wsdl", "xsl", "xslt", "json"];
+pub const SCHEMA_EXTENSIONS: &[&str] = &["xsd", "dtd", "ent", "mod", "rng", "rnc", "sch", "wsdl", "xsl", "xslt", "json"];
 
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]

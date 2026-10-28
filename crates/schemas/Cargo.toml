@@ -1,0 +1,18 @@
+[package]
+name = "xmlcraft-schemas"
+description = "The standard schemas, DTDs and catalogs that ship with XmlCraft, packed into the binary and inflated on demand"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+build = "build.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+miniz_oxide = { workspace = true }
+
+[build-dependencies]
+miniz_oxide = { workspace = true }
