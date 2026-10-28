@@ -4,7 +4,7 @@
 
 Every asset XmlCraft includes, bundles or uses to build its published material, with its author, source and licence. The policy is in [AGENTS.md](AGENTS.md) §1. The machine-readable list, with the SHA-256 of every asset but the translation catalogs, is [ATTRIBUTION.toml](ATTRIBUTION.toml). Licence texts are kept beside the assets and summarised in [NOTICE](NOTICE).
 
-## In this repository (63)
+## In this repository (73)
 
 | Asset | Title | Author | Licence | Source | Used for |
 |---|---|---|---|---|---|
@@ -71,6 +71,16 @@ Every asset XmlCraft includes, bundles or uses to build its published material, 
 | `assets/icons/monitor.svg` | Lucide icon "monitor" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/monitor.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 | `assets/icons/list-tree.svg` | Lucide icon "list-tree" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/list-tree.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 | `assets/icons/panel-bottom.svg` | Lucide icon "panel-bottom" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/panel-bottom.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
+| `schemas/w3c/xhtml1/xhtml-lat1.ent` | XHTML 1.0 Latin 1 character entities | World Wide Web Consortium (MIT, ERCIM, Keio, Beihang) | W3C-20150513 | https://www.w3.org/TR/xhtml1/DTD/xhtml-lat1.ent (retrieved 2026-10-28) | Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline |
+| `schemas/w3c/xhtml1/xhtml-special.ent` | XHTML 1.0 special character entities | World Wide Web Consortium (MIT, ERCIM, Keio, Beihang) | W3C-20150513 | https://www.w3.org/TR/xhtml1/DTD/xhtml-special.ent (retrieved 2026-10-28) | Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline |
+| `schemas/w3c/xhtml1/xhtml-symbol.ent` | XHTML 1.0 symbol character entities | World Wide Web Consortium (MIT, ERCIM, Keio, Beihang) | W3C-20150513 | https://www.w3.org/TR/xhtml1/DTD/xhtml-symbol.ent (retrieved 2026-10-28) | Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline |
+| `schemas/w3c/xhtml1/xhtml1-frameset.dtd` | XHTML 1.0 Frameset DTD | World Wide Web Consortium (MIT, ERCIM, Keio, Beihang) | W3C-20150513 | https://www.w3.org/TR/xhtml1/DTD/xhtml1-frameset.dtd (retrieved 2026-10-28) | Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline |
+| `schemas/w3c/xhtml1/xhtml1-strict.dtd` | XHTML 1.0 Strict DTD | World Wide Web Consortium (MIT, ERCIM, Keio, Beihang) | W3C-20150513 | https://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd (retrieved 2026-10-28) | Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline |
+| `schemas/w3c/xhtml1/xhtml1-transitional.dtd` | XHTML 1.0 Transitional DTD | World Wide Web Consortium (MIT, ERCIM, Keio, Beihang) | W3C-20150513 | https://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd (retrieved 2026-10-28) | Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline |
+| `schemas/w3c/xml/xml.xsd` | The XML namespace: xml:lang, xml:space, xml:base, xml:id | World Wide Web Consortium (MIT, ERCIM, Keio, Beihang) | W3C-20150513 | https://www.w3.org/2001/xml.xsd (retrieved 2026-10-28) | Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline |
+| `schemas/w3c/xmlschema/XMLSchema.dtd` | XML Schema: the DTD for schemas | World Wide Web Consortium (MIT, ERCIM, Keio, Beihang) | W3C-20150513 | https://www.w3.org/2001/XMLSchema.dtd (retrieved 2026-10-28) | Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline |
+| `schemas/w3c/xmlschema/XMLSchema.xsd` | XML Schema: the schema for schemas (structures) | World Wide Web Consortium (MIT, ERCIM, Keio, Beihang) | W3C-20150513 | https://www.w3.org/2001/XMLSchema.xsd (retrieved 2026-10-28) | Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline |
+| `schemas/w3c/xmlschema/datatypes.dtd` | XML Schema: the datatypes DTD | World Wide Web Consortium (MIT, ERCIM, Keio, Beihang) | W3C-20150513 | https://www.w3.org/2001/datatypes.dtd (retrieved 2026-10-28) | Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline |
 
 ## Compiled in through dependencies (4)
 

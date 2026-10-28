@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The W3C schemas and DTDs that ship with XmlCraft. Written for XmlCraft (OASIS XML Catalogs 1.1); the files are W3C's, unmodified. -->
+<catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog" prefer="public">
+
+  <!-- XML Schema: the schema for schemas, its DTD, and the datatypes DTD it uses -->
+  <public publicId="-//W3C//DTD XMLSCHEMA 200102//EN" uri="xmlschema/XMLSchema.dtd"/>
+  <public publicId="datatypes" uri="xmlschema/datatypes.dtd"/>
+  <system systemId="http://www.w3.org/2001/XMLSchema.dtd" uri="xmlschema/XMLSchema.dtd"/>
+  <system systemId="https://www.w3.org/2001/XMLSchema.dtd" uri="xmlschema/XMLSchema.dtd"/>
+  <system systemId="http://www.w3.org/2001/datatypes.dtd" uri="xmlschema/datatypes.dtd"/>
+  <system systemId="https://www.w3.org/2001/datatypes.dtd" uri="xmlschema/datatypes.dtd"/>
+  <uri name="http://www.w3.org/2001/XMLSchema" uri="xmlschema/XMLSchema.xsd"/>
+  <uri name="http://www.w3.org/2001/XMLSchema.xsd" uri="xmlschema/XMLSchema.xsd"/>
+  <uri name="https://www.w3.org/2001/XMLSchema.xsd" uri="xmlschema/XMLSchema.xsd"/>
+
+  <!-- The xml: attributes (xml:lang, xml:space, xml:base, xml:id) -->
+  <uri name="http://www.w3.org/XML/1998/namespace" uri="xml/xml.xsd"/>
+  <uri name="http://www.w3.org/2001/xml.xsd" uri="xml/xml.xsd"/>
+  <uri name="https://www.w3.org/2001/xml.xsd" uri="xml/xml.xsd"/>
+
+  <!-- XHTML 1.0 -->
+  <public publicId="-//W3C//DTD XHTML 1.0 Strict//EN" uri="xhtml1/xhtml1-strict.dtd"/>
+  <public publicId="-//W3C//DTD XHTML 1.0 Transitional//EN" uri="xhtml1/xhtml1-transitional.dtd"/>
+  <public publicId="-//W3C//DTD XHTML 1.0 Frameset//EN" uri="xhtml1/xhtml1-frameset.dtd"/>
+  <public publicId="-//W3C//ENTITIES Latin 1 for XHTML//EN" uri="xhtml1/xhtml-lat1.ent"/>
+  <public publicId="-//W3C//ENTITIES Symbols for XHTML//EN" uri="xhtml1/xhtml-symbol.ent"/>
+  <public publicId="-//W3C//ENTITIES Special for XHTML//EN" uri="xhtml1/xhtml-special.ent"/>
+  <rewriteSystem systemIdStartString="http://www.w3.org/TR/xhtml1/DTD/" rewritePrefix="xhtml1/"/>
+  <rewriteSystem systemIdStartString="https://www.w3.org/TR/xhtml1/DTD/" rewritePrefix="xhtml1/"/>
+
+</catalog>

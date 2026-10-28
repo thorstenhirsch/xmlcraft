@@ -9,7 +9,7 @@ The ranked gaps. Prefer fixing these over adding new features. Every gap states 
 | # | Gap | Priority | Closes with |
 |---|---|---|---|
 | 1 | The editor lacks autosave recovery, file watching while the window is not focused and name completion (open, edit, colour, save, undo, find/replace, folding, matching tags, typing aids, tag-rename sync, comment toggle, selection expansion and formatting exist) | P0 | M1 |
-| 2 | No DTD support, no resolver that asks the catalogs (the catalog rules exist: M2.1), no offline standard schemas | P0 | M2 |
+| 2 | No resolver that asks the catalogs (the catalog rules exist: M2.1, and ten W3C files with catalogs are bundled: M2.2), so a document's external DTD is found only as a file next to it; most of the core standard schemas are not bundled; nothing is downloaded or cached | P0 | M2 |
 | 3 | No XSD engine, so no schema validation | P0 | M3 |
 | 4 | No schema inference or sample generation | P0 | M4 |
 | 5 | No JSON or YAML support | P1 | M5 |
@@ -58,4 +58,5 @@ Details are added here as each gap is worked, including known approximations (fo
 - 2026-10-28: gap 16 narrowed from 53 to 2 tests by the entity-reference rules (M2.8); the two left need attribute normalisation (M2.9).
 - 2026-10-28: gap 19 added: the content-model automata (M2.5) have the three limits it names.
 - 2026-10-28: gap 16 closed: the last two xmlconf not-well-formed tests (namespace declarations read as the DTD makes them) pass with M2.9; the numbers are 100% for not-wf, valid and invalid.
+- 2026-10-28: gap 2 reworded: DTD support exists (M2.6–M2.9) and ten W3C files are bundled with catalogs (M2.2); what is left is the resolver, the rest of the bundle and the download.
 - 2026-10-28: gap 20 added: Entry Helpers from the DTD (M2.11) and what they do not do yet.
