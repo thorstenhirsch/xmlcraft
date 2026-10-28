@@ -77,6 +77,46 @@ pub fn pretty_print(text: &str, options: &FormatOptions) -> Result<Vec<Edit>, Fo
     run(text, Mode::Pretty(*options))
 }
 
+/// [`pretty_print`] for a document whose line ending is whichever it has most of: `options.eol` is the ending to write when the text
+/// has no line break, and the one that most of the line breaks of the *result* use otherwise. That is not always the one most of the
+/// breaks of `text` use: formatting drops blank lines, and with them the votes for their ending. Choosing it from the result is what
+/// makes formatting the result again change nothing, however the text mixes endings.
+pub fn pretty_print_settled(text: &str, options: &FormatOptions) -> Result<Vec<Edit>, FormatError> {
+    use xmlcraft_text::eol::LineEndings;
+    let own = LineEndings::count(text);
+    let mut options = *options;
+    if own.total() > 0 {
+        options.eol = own.dominant();
+    }
+    let edits = pretty_print(text, &options)?;
+    // A text that uses one ending (or none) is written in it, so the result has the same: nothing to settle.
+    if !own.is_mixed() {
+        return Ok(edits);
+    }
+    let result = endings_after(text, &edits, own);
+    // The ending most of the result's breaks use, when that is another one: write that one.
+    if result.total() > 0 && result.dominant() != options.eol {
+        options.eol = result.dominant();
+        return pretty_print(text, &options);
+    }
+    Ok(edits)
+}
+
+/// The line endings of `text` with `edits` applied (`own` are its own), counted from the endings the edits remove and write, without
+/// building the result. The edits replace white space between nodes, whole runs of it, so none splits a `\r\n`.
+fn endings_after(text: &str, edits: &[Edit], own: xmlcraft_text::eol::LineEndings) -> xmlcraft_text::eol::LineEndings {
+    use xmlcraft_text::eol::LineEndings;
+    let mut result = own;
+    for edit in edits {
+        let removed = text.get(edit.range.clone()).map(LineEndings::count).unwrap_or_default();
+        let written = LineEndings::count(&edit.text);
+        result.lf = result.lf.saturating_sub(removed.lf).saturating_add(written.lf);
+        result.crlf = result.crlf.saturating_sub(removed.crlf).saturating_add(written.crlf);
+        result.cr = result.cr.saturating_sub(removed.cr).saturating_add(written.cr);
+    }
+    result
+}
+
 /// The edits that remove the white space between nodes where it is insignificant (see the crate docs).
 pub fn minify(text: &str) -> Result<Vec<Edit>, FormatError> {
     run(text, Mode::Minify)
@@ -314,6 +354,23 @@ fn default_islands(root: &SyntaxNode, depth: usize, text: &str, work: &mut Vec<(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_endings_of_the_result_are_counted_without_building_it() {
+        use xmlcraft_text::eol::LineEndings;
+        for text in [
+            "<a>\r\n  <b/>\r\n\r\n</a>",
+            "<?l?><!--\r\n\r\n-->\n<foo>\n\n<a/>\n\n</foo>",
+            "<a>\r<b/>\r\n<c/>\n</a>",
+            "<a/>",
+            "<a>\n\n\n<b>x</b>\n\n\n</a>\n\n",
+        ] {
+            for options in [FormatOptions::default(), FormatOptions { eol: Eol::CrLf, blank_lines: BlankLines::Remove, ..FormatOptions::default() }] {
+                let edits = pretty_print(text, &options).expect("well-formed");
+                assert_eq!(endings_after(text, &edits, LineEndings::count(text)), LineEndings::count(&apply(text, &edits)), "{text:?}");
+            }
+        }
+    }
 
     fn pretty(text: &str) -> String {
         apply(text, &pretty_print(text, &FormatOptions::default()).expect("well-formed"))

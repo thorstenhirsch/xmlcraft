@@ -20,5 +20,8 @@ xmlcraft-format = { workspace = true }
 xmlcraft-syntax = { workspace = true }
 xmlcraft-text = { workspace = true }
 
+[dev-dependencies]
+tempfile = "3"
+
 [lints]
 workspace = true
