@@ -96,7 +96,7 @@ fn simple_types() {
     assert_eq!(a.name.as_deref(), Some("a"));
     assert_eq!(a.final_, Some(DerivationSet { restriction: true, ..DerivationSet::default() }));
     let SimpleTypeKind::Restriction { base, inline_base, facets } = &a.kind else { panic!("a restriction") };
-    assert_eq!(base.as_ref(), Some(&QName::new(Some(XS), "string")));
+    assert_eq!(base.as_ref().map(|r| &r.name), Some(&QName::new(Some(XS), "string")));
     assert!(inline_base.is_none());
     assert_eq!(
         facets.iter().map(|f| (f.kind, f.value.as_str(), f.fixed)).collect::<Vec<_>>(),
@@ -105,7 +105,7 @@ fn simple_types() {
     let Item::SimpleType(b) = &items[1] else { panic!("a simple type") };
     assert!(matches!(&b.kind, SimpleTypeKind::Restriction { base: None, inline_base: Some(_), facets } if facets.len() == 1));
     let Item::SimpleType(c) = &items[2] else { panic!("a simple type") };
-    assert!(matches!(&c.kind, SimpleTypeKind::List { item_type: Some(q), inline_item: None } if *q == QName::new(Some("urn:t"), "a")));
+    assert!(matches!(&c.kind, SimpleTypeKind::List { item_type: Some(q), inline_item: None } if q.name == QName::new(Some("urn:t"), "a")));
     let Item::SimpleType(d) = &items[3] else { panic!("a simple type") };
     assert!(matches!(&d.kind, SimpleTypeKind::List { item_type: None, inline_item: Some(_) }));
     let Item::SimpleType(e) = &items[4] else { panic!("a simple type") };
@@ -165,7 +165,7 @@ fn qualified_names_use_the_namespaces_in_scope_where_they_are_written() {
     assert!(r.diagnostics.is_empty(), "{:?}", messages(&r));
     let Some(SchemaDocument { items, .. }) = r.document else { panic!("a schema") };
     let base = |i: usize| match &items[i] {
-        Item::SimpleType(SimpleTypeDef { kind: SimpleTypeKind::Restriction { base, .. }, .. }) => base.clone(),
+        Item::SimpleType(SimpleTypeDef { kind: SimpleTypeKind::Restriction { base, .. }, .. }) => base.clone().map(|r| r.name),
         _ => None,
     };
     assert_eq!(base(0), Some(QName::new(Some("urn:p"), "b")));
@@ -183,7 +183,7 @@ fn qualified_names_use_the_namespaces_in_scope_where_they_are_written() {
     let r = read(&format!("<xs:schema xmlns:xs=\"{XS}\"><xs:simpleType name=\"t\"><xs:restriction base=\"b\"/></xs:simpleType></xs:schema>"), "");
     let Some(SchemaDocument { items, .. }) = r.document else { panic!("a schema") };
     assert!(
-        matches!(&items[0], Item::SimpleType(SimpleTypeDef { kind: SimpleTypeKind::Restriction { base: Some(q), .. }, .. }) if *q == QName::new(None, "b"))
+        matches!(&items[0], Item::SimpleType(SimpleTypeDef { kind: SimpleTypeKind::Restriction { base: Some(q), .. }, .. }) if q.name == QName::new(None, "b"))
     );
 }
 
@@ -208,7 +208,7 @@ fn complex_types() {
     assert!(matches!(&parts[0].term, Term::Element(e) if e.name.as_deref() == Some("x")));
     assert_eq!((parts[1].min_occurs, parts[1].max_occurs), (0, MaxOccurs::Unbounded));
     let Term::Choice(options) = &parts[1].term else { panic!("a choice") };
-    assert!(matches!(&options[0].term, Term::Element(e) if e.reference == Some(QName::new(Some("urn:t"), "y"))));
+    assert!(matches!(&options[0].term, Term::Element(e) if e.reference.as_ref().map(|r| &r.name) == Some(&QName::new(Some("urn:t"), "y"))));
     assert!(matches!(&options[1].term, Term::Any(w) if w.namespace == NamespaceConstraint::Other && w.process_contents == ProcessContents::Lax));
     assert_eq!((attributes.attributes.len(), attributes.groups.len()), (1, 1));
     assert_eq!(attributes.attributes[0].use_, Some(AttributeUse::Required));
@@ -276,7 +276,7 @@ fn particles() {
     let ComplexContentDef::Implicit { particle: Some(p), .. } = &t.content else { panic!("content") };
     assert_eq!((p.min_occurs, p.max_occurs), (2, MaxOccurs::Bounded(5)));
     let Term::Sequence(parts) = &p.term else { panic!("a sequence") };
-    assert!(matches!(&parts[0].term, Term::GroupRef(q) if q.local == "g") && parts[0].max_occurs == MaxOccurs::Unbounded);
+    assert!(matches!(&parts[0].term, Term::GroupRef(q) if q.name.local == "g") && parts[0].max_occurs == MaxOccurs::Unbounded);
     assert!(matches!(&parts[1].term, Term::Any(w) if w.namespace == NamespaceConstraint::Any && w.process_contents == ProcessContents::Strict));
     // Mistakes.
     let seq =
@@ -317,8 +317,8 @@ fn elements() {
     let Item::Element(a) = &items[0] else { panic!("an element") };
     assert_eq!((a.name.as_deref(), a.nillable, a.abstract_), (Some("a"), Some(true), Some(true)));
     assert_eq!(a.default.as_ref().map(|d| d.value.as_str()), Some("d"));
-    assert_eq!(a.type_name, Some(QName::new(Some(XS), "string")));
-    assert_eq!(a.substitution_group, Some(QName::new(Some("urn:t"), "h")));
+    assert_eq!(a.type_name.as_ref().map(|r| &r.name), Some(&QName::new(Some(XS), "string")));
+    assert_eq!(a.substitution_group.as_ref().map(|r| &r.name), Some(&QName::new(Some("urn:t"), "h")));
     assert_eq!(a.final_, Some(DerivationSet { extension: true, ..DerivationSet::default() }));
     let Item::Element(b) = &items[1] else { panic!("an element") };
     assert!(matches!(b.inline_type.as_deref(), Some(InlineType::Complex(_))));
@@ -326,7 +326,7 @@ fn elements() {
     let kinds: Vec<_> = b.identity_constraints.iter().map(|c| (c.kind, c.name.as_deref(), c.fields.len())).collect();
     assert_eq!(kinds, [(IdentityKind::Unique, Some("u"), 2), (IdentityKind::Key, Some("k"), 1), (IdentityKind::Keyref, Some("r"), 1)]);
     assert_eq!(b.identity_constraints[0].selector.as_ref().map(|s| s.0.as_str()), Some(".//p"));
-    assert_eq!(b.identity_constraints[2].refer, Some(QName::new(Some("urn:t"), "k")));
+    assert_eq!(b.identity_constraints[2].refer.as_ref().map(|r| &r.name), Some(&QName::new(Some("urn:t"), "k")));
     let Item::ComplexType(t) = &items[2] else { panic!("a complex type") };
     let ComplexContentDef::Implicit { particle: Some(Particle { term: Term::Sequence(parts), .. }), .. } = &t.content else { panic!("content") };
     assert!(matches!(&parts[0].term, Term::Element(e) if e.form == Some(Form::Qualified) && e.nillable == Some(true)));
@@ -393,7 +393,7 @@ fn attributes_and_attribute_groups() {
     let Item::AttributeGroup(g) = &items[2] else { panic!("an attribute group") };
     assert_eq!((g.uses.attributes.len(), g.uses.groups.len(), g.uses.wildcard.is_some()), (2, 1, true));
     assert_eq!((g.uses.attributes[0].use_, g.uses.attributes[0].form), (Some(AttributeUse::Required), Some(Form::Qualified)));
-    assert_eq!(g.uses.attributes[1].reference, Some(QName::new(Some("urn:t"), "a")));
+    assert_eq!(g.uses.attributes[1].reference.as_ref().map(|r| &r.name), Some(&QName::new(Some("urn:t"), "a")));
     assert_eq!(problems("<xs:attribute/>"), ["xsd.missing-attribute"]);
     assert_eq!(problems("<xs:attribute name=\"a\" use=\"optional\"/>"), ["xsd.unknown-attribute"]);
     assert_eq!(problems("<xs:attribute name=\"a\" ref=\"tns:a\"/>"), ["xsd.unknown-attribute"]);
@@ -496,7 +496,11 @@ fn the_schema_language_may_be_the_default_namespace() {
     assert!(r.diagnostics.is_empty(), "{:?}", messages(&r));
     let doc = r.document.expect("a schema");
     let Item::Element(a) = &doc.items[0] else { panic!("an element") };
-    assert_eq!(a.type_name, Some(QName::new(Some(XS), "string")), "an unprefixed type is in the default namespace, which is the schema's");
+    assert_eq!(
+        a.type_name.as_ref().map(|r| &r.name),
+        Some(&QName::new(Some(XS), "string")),
+        "an unprefixed type is in the default namespace, which is the schema's"
+    );
     assert!(matches!(&doc.items[1], Item::ComplexType(_)));
 }
 
@@ -510,7 +514,7 @@ fn an_inner_declaration_of_a_prefix_wins() {
     );
     let items = r.document.expect("a schema").items;
     let base = |i: usize| match &items[i] {
-        Item::SimpleType(SimpleTypeDef { kind: SimpleTypeKind::Restriction { base, .. }, .. }) => base.clone(),
+        Item::SimpleType(SimpleTypeDef { kind: SimpleTypeKind::Restriction { base, .. }, .. }) => base.clone().map(|r| r.name),
         _ => None,
     };
     assert_eq!((base(0), base(1)), (Some(QName::new(Some("urn:b"), "x")), Some(QName::new(Some("urn:a"), "x"))));

@@ -30,6 +30,13 @@ impl std::fmt::Display for QName {
     }
 }
 
+/// A reference to a component by name, with where the name was written.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QRef {
+    pub name: QName,
+    pub span: Span,
+}
+
 /// The namespace declarations in scope where a value was written, for the values that hold qualified names (the enumeration of a
 /// `QName` type, a default).
 pub type Namespaces = Vec<(Option<String>, String)>;
@@ -138,16 +145,16 @@ pub struct SimpleTypeDef {
 #[derive(Clone, Debug)]
 pub enum SimpleTypeKind {
     Restriction {
-        base: Option<QName>,
+        base: Option<QRef>,
         inline_base: Option<Box<SimpleTypeDef>>,
         facets: Vec<FacetDef>,
     },
     List {
-        item_type: Option<QName>,
+        item_type: Option<QRef>,
         inline_item: Option<Box<SimpleTypeDef>>,
     },
     Union {
-        member_types: Vec<QName>,
+        member_types: Vec<QRef>,
         inline_members: Vec<SimpleTypeDef>,
     },
     /// The definition has none of the three (it was reported).
@@ -244,14 +251,14 @@ pub enum ComplexContentDef {
     /// `xs:simpleContent`: a simple type with attributes.
     Simple {
         method: DerivationMethod,
-        base: Option<QName>,
+        base: Option<QRef>,
         /// The simple type that a restriction applies the facets to.
         inline_base: Option<Box<SimpleTypeDef>>,
         facets: Vec<FacetDef>,
         attributes: AttributeUses,
     },
     /// `xs:complexContent`: a complex type derived from another.
-    Complex { method: DerivationMethod, base: Option<QName>, mixed: Option<bool>, particle: Option<Particle>, attributes: AttributeUses },
+    Complex { method: DerivationMethod, base: Option<QRef>, mixed: Option<bool>, particle: Option<Particle>, attributes: AttributeUses },
 }
 
 /// The attribute declarations, references to attribute groups and the attribute wildcard of a type or an attribute group.
@@ -264,7 +271,7 @@ pub struct AttributeUses {
 
 #[derive(Clone, Debug)]
 pub struct AttributeGroupRef {
-    pub reference: QName,
+    pub reference: QRef,
     pub span: Span,
 }
 
@@ -285,8 +292,8 @@ pub struct ValueConstraint {
 #[derive(Clone, Debug)]
 pub struct AttributeDecl {
     pub name: Option<String>,
-    pub reference: Option<QName>,
-    pub type_name: Option<QName>,
+    pub reference: Option<QRef>,
+    pub type_name: Option<QRef>,
     pub inline_type: Option<Box<SimpleTypeDef>>,
     pub use_: Option<AttributeUse>,
     pub default: Option<ValueConstraint>,
@@ -324,7 +331,7 @@ pub struct Particle {
 #[derive(Clone, Debug)]
 pub enum Term {
     Element(Box<ElementDecl>),
-    GroupRef(QName),
+    GroupRef(QRef),
     Sequence(Vec<Particle>),
     Choice(Vec<Particle>),
     All(Vec<Particle>),
@@ -340,10 +347,10 @@ pub enum InlineType {
 #[derive(Clone, Debug)]
 pub struct ElementDecl {
     pub name: Option<String>,
-    pub reference: Option<QName>,
-    pub type_name: Option<QName>,
+    pub reference: Option<QRef>,
+    pub type_name: Option<QRef>,
     pub inline_type: Option<Box<InlineType>>,
-    pub substitution_group: Option<QName>,
+    pub substitution_group: Option<QRef>,
     pub default: Option<ValueConstraint>,
     pub fixed: Option<ValueConstraint>,
     pub nillable: Option<bool>,
@@ -368,7 +375,7 @@ pub enum IdentityKind {
 pub struct IdentityConstraintDef {
     pub kind: IdentityKind,
     pub name: Option<String>,
-    pub refer: Option<QName>,
+    pub refer: Option<QRef>,
     pub selector: Option<(String, Span)>,
     pub fields: Vec<(String, Span)>,
     /// The namespace declarations at the constraint (the XPath expressions are read with them).
