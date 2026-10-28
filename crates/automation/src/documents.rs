@@ -202,7 +202,9 @@ pub(crate) fn tools() -> Vec<ToolDef> {
         ToolDef {
             name: "doc_select",
             title: "Select text",
-            description: "Put the caret of an open document at `line` and `column` (from 1), or select from there to `end_line` and `end_column`. Returns where the selection is.",
+            description: "Put the caret of an open document at `line` and `column` (from 1), or select from there to `end_line` and `end_column`. With `columns` true the selection \
+                          is a rectangle (as a drag with Alt makes): on every line between the two, the text from the display column of one end to the display column of the other \
+                          (a tab is as wide as it is drawn; a shorter line gets a caret at its end), so that typing edits every line at once. Returns where the selection is.",
             input_schema: object(
                 json!({
                     "id": id.clone(),
@@ -210,6 +212,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
                     "column": { "type": "integer", "minimum": 1 },
                     "end_line": { "type": "integer", "minimum": 1 },
                     "end_column": { "type": "integer", "minimum": 1 },
+                    "columns": { "type": "boolean" },
                 }),
                 &["id", "line", "column"],
             ),
@@ -664,7 +667,17 @@ fn place_selection(doc: &mut Document, args: &Value) -> Result<()> {
 fn doc_select(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let index = index_of(a, id_arg(args)?)?;
     let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
-    place_selection(doc, args)?;
+    if flag(args, "columns") {
+        if args.get("end_line").is_none() || args.get("end_column").is_none() {
+            return Err(ToolError::InvalidArgs("columns needs end_line and end_column: the other corner of the rectangle".into()));
+        }
+        let buffer = doc.editor().buffer();
+        let from = offset_from(buffer, args.get("line").and_then(Value::as_u64), args.get("column").and_then(Value::as_u64), "start")?;
+        let to = offset_from(buffer, args.get("end_line").and_then(Value::as_u64), args.get("end_column").and_then(Value::as_u64), "end")?;
+        doc.editor_mut().select_columns(from, to);
+    } else {
+        place_selection(doc, args)?;
+    }
     json_result(json!({ "carets": carets_json(doc) }))
 }
 

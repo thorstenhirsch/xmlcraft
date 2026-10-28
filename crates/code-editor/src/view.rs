@@ -97,6 +97,8 @@ pub struct ViewState {
     /// The line whose fold mark was clicked this frame, when it is a mark of something that can be folded (the host folds it: it knows
     /// how far it goes).
     fold_clicked: Option<usize>,
+    /// Where a drag with Alt began: while the button is down the drag selects a rectangle of columns from here.
+    column_anchor: Option<usize>,
 }
 
 impl ViewState {
@@ -112,6 +114,7 @@ impl ViewState {
         self.max_columns = 0;
         self.max_columns_known_for = None;
         self.preedit = None;
+        self.column_anchor = None;
     }
 
     /// Scroll so that `line` (0-based) is at the top, the next time the editor is drawn.
@@ -605,11 +608,15 @@ fn handle_pointer(
     }
     let Some(pos) = pos else { return };
     let now = ui.input(|i| i.time);
+    if !ui.input(|i| i.pointer.primary_down()) {
+        view.column_anchor = None;
+    }
     if pressed && response.hovered() {
         response.request_focus();
         view.last_input = now;
         editor.break_undo_group();
         let offset = offset_at(view, editor, frame, origin, gutter_w, row_h, pos);
+        view.column_anchor = None;
         if in_gutter && pos.x >= view_rect.min.x + gutter_w - FOLD_STRIP {
             // The strip at the right of the gutter is for the marks of folds: a click there is not a click on the line.
             let line = editor.buffer().line_of(offset);
@@ -620,6 +627,10 @@ fn handle_pointer(
             }
         } else if in_gutter {
             editor.select_line_at(offset, modifiers.command);
+        } else if modifiers.alt {
+            // Alt and a drag: a rectangle of text, a selection on each line.
+            view.column_anchor = Some(offset);
+            editor.select_columns(offset, offset);
         } else if modifiers.shift {
             editor.extend_selection_to(offset);
         } else {
@@ -628,7 +639,10 @@ fn handle_pointer(
     } else if response.dragged() {
         view.last_input = now;
         let offset = offset_at(view, editor, frame, origin, gutter_w, row_h, pos);
-        editor.extend_selection_to(offset);
+        match view.column_anchor {
+            Some(anchor) => editor.select_columns(anchor, offset),
+            None => editor.extend_selection_to(offset),
+        }
         if !view_rect.contains(pos) {
             // Dragging past the edge scrolls.
             ui.scroll_to_rect(Rect::from_center_size(pos, vec2(1.0, 1.0)), None);
