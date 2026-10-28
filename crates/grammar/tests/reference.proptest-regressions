@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 41329d44cc52d5c836c2a9bdf53b0dad4db01a00bb6c3147f39a9b4459b960aa # shrinks to p = Particle { kind: Choice([]), occurs: Occurs { min: 1, max: Some(1) } }, word = []
+cc 9178eb45a6909de16c6944c76958d05bb6325fb4c705ef33a1a1367510723e12 # shrinks to p = Particle { kind: Choice([Particle { kind: Term { term: Element(Name { namespace: None, local: "a" }), token: 0 }, occurs: Occurs { min: 1, max: Some(1) } }, Particle { kind: Term { term: Element(Name { namespace: None, local: "a" }), token: 0 }, occurs: Occurs { min: 2, max: Some(2) } }]), occurs: Occurs { min: 1, max: Some(1) } }, word = []

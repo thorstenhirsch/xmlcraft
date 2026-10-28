@@ -1,6 +1,6 @@
 # Where XmlCraft falls short of XMLSpy
 
-> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** gap 2 reworded (catalog rules exist), gap 16 narrowed to 2 tests (entity references, M2.8), gap 18 narrowed (large-file colouring, M1.15) · **Target:** Altova XMLSpy 2026 (public documentation)
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** gap 2 reworded (catalog rules exist), gap 16 narrowed to 2 tests (entity references, M2.8), gap 18 narrowed (large-file colouring, M1.15), gap 19 added (content-model automata, M2.5) · **Target:** Altova XMLSpy 2026 (public documentation)
 
 The ranked gaps. Prefer fixing these over adding new features. Every gap states what is missing, why it matters and how it will be measured. At 0.0.1 the application does not exist yet, so the first entries are simply "the MVP".
 
@@ -26,6 +26,7 @@ The ranked gaps. Prefer fixing these over adding new features. Every gap states 
 | 16 | 2 of 1017 not-well-formed xmlconf tests are accepted (namespace declarations whose value changes by entity expansion or attribute normalisation) | P0 | M2.9 |
 | 17 | The analysis is whole-document and per edit: results can be a little behind the text, underlines are clamped (not shifted) through later edits, and a document over 32 MB is not analysed | P1 | M1.15 |
 | 18 | Colour at a far place in a text over 1 MiB is an estimate: a construct (comment, CDATA section, tag, …) that opens more than 256 KiB before it is coloured as content until it ends | P2 | M1.15 |
+| 19 | Content-model automata unroll counted occurrences (at most 100,000 positions), have no XML Schema `all` group, and say what is mandatory only where there are at most 32 things to choose from | P1 | M3.7 |
 
 ## The gaps
 
@@ -38,6 +39,8 @@ The ranked gaps. Prefer fixing these over adding new features. Every gap states 
 **17. Incremental analysis.** Every edit asks for a full parse of the text on a worker thread (only the newest request per document is kept). Until the answer arrives the window shows the previous result, and its underlines are clamped to the text rather than moved through the edits made since, so a squiggle can sit beside the wrong word for a moment. A document over 32 MB is not analysed at all. Large-file mode and an incremental reparse (M1.15, driven by `cargo xtask bench`) close it; measured by the keystroke-to-paint and reparse targets in `docs/target-app-parity.md`.
 
 **18. Colouring far into a very large document.** The colour of a line depends on where the lexer is at its start (inside a comment, a tag, a value), which is known only by reading everything before it; the first jump to the end of a 100 MB document used to read it all (1.2 s against the target of 16 ms). Above 1 MiB the highlighter now starts a far place from a guess: it runs the lexer over the 256 KiB before the line (counted in bytes, from the first line that starts inside that, so a very long line cannot widen it), from the state of content. That finds everything the lexer knows that begins in the window: a comment, a CDATA section, a processing instruction, a tag, an attribute value or a declaration that goes over lines, and what a comment inside a DOCTYPE returns to. For a text that fits the window it is exact (property test `estimating_in_a_text_that_fits_the_window_is_exact_whatever_goes_over_lines`). What is left: a construct that began before the window and has not ended (a comment or CDATA section of more than 256 KiB, say) is not seen, and the lines in it are coloured as content until it ends, and then they are right again. The first jump is 0.9 ms for 100 MB (`scroll_100mb_far`, budget 16 ms). The other half of large-file mode is not done: the outline and the validation of a document over 32 MB are not streamed (gap 17), and the view finds the width of a document for its horizontal scroll in one pass up to 256 MB (45 ms for 100 MB, `widest_line_100mb`) and by the lines the carets visit beyond that.
+
+**19. Content-model automata.** `xmlcraft-grammar` (M2.5) compiles a content model to a Glushkov automaton that steps, says what may come next, finishes the shortest way and checks determinism, and agrees with a reference matcher on random models. Three things are missing for XML Schema: a counted occurrence (`maxOccurs="1000"`) is unrolled into copies, so a model over 100,000 positions (or one whose follow lists would be huge, such as 50,000 optional copies of an optional element) is refused, where XSDs in the wild sometimes use `maxOccurs="100000"` or more; the `all` group (each child at most once, in any order) is not a particle yet; and `mandatory` in `expected` is worked out only where there are at most 32 different things to choose from. Counters instead of unrolling, the `all` automaton and an exact `mandatory` come with the XSD compiler (M3.7). Measured by the reference test in `crates/grammar/tests/reference.rs` and by xsdtests from M3.
 
 Details are added here as each gap is worked, including known approximations (for example in XSD particle restriction) and the test that measures them. Nothing may be marked closed here without a cited test.
 
@@ -54,3 +57,4 @@ Details are added here as each gap is worked, including known approximations (fo
 - 2026-10-28: gap 2: the OASIS catalog resolution rules exist (`xmlcraft-catalog`, M2.1), but nothing asks them yet.
 - 2026-10-28: gap 16 narrowed from 359 to 53 tests by the DTD reader (M2.6); the rest need entity references checked against the declarations (M2.8).
 - 2026-10-28: gap 16 narrowed from 53 to 2 tests by the entity-reference rules (M2.8); the two left need attribute normalisation (M2.9).
+- 2026-10-28: gap 19 added: the content-model automata (M2.5) have the three limits it names.
