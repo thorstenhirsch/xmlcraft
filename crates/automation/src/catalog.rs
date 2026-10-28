@@ -64,7 +64,7 @@ fn file_uri(path: &Path) -> String {
 
 /// The path a `file:` URI names, or `None` for any other URI, for one with an authority that is not this machine, and for a path that
 /// is not valid text. The query and the fragment are not part of the path; the percent-escapes of the rest are decoded.
-fn path_of(uri: &str) -> Option<String> {
+pub(crate) fn path_of(uri: &str) -> Option<String> {
     let rest = uri.get(..5).filter(|scheme| scheme.eq_ignore_ascii_case("file:")).map(|_| &uri[5..])?;
     let path = match rest.strip_prefix("//") {
         Some(after) => {

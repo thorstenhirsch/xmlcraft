@@ -26,7 +26,7 @@ const MAX_PROBLEMS: usize = 500;
 /// The most outline items one call lists.
 const MAX_OUTLINE: usize = 5_000;
 
-fn fail<T>(message: impl Into<String>) -> Result<T> {
+pub(crate) fn fail<T>(message: impl Into<String>) -> Result<T> {
     Err(ToolError::Failed(message.into()))
 }
 
@@ -35,7 +35,7 @@ fn object(properties: Value, required: &[&str]) -> Value {
 }
 
 /// The properties that say where the XML is: an open document, a file, or text.
-fn source_properties() -> Value {
+pub(crate) fn source_properties() -> Value {
     json!({
         "id": { "type": "integer", "minimum": 0, "description": "An open document (from doc_open, doc_new or doc_list)" },
         "path": { "type": "string", "description": "A file to read (it is not opened as a document)" },
@@ -474,7 +474,7 @@ fn describe(doc: &Document) -> Value {
     })
 }
 
-fn json_result(value: Value) -> Result<Vec<Content>> {
+pub(crate) fn json_result(value: Value) -> Result<Vec<Content>> {
     Ok(vec![Content::Json(value)])
 }
 
@@ -491,12 +491,12 @@ fn offset_from(buffer: &Buffer, line: Option<u64>, column: Option<u64>, what: &s
     Ok(buffer.offset_of(Position { line, col }))
 }
 
-fn position_json(buffer: &Buffer, offset: usize) -> (usize, usize) {
+pub(crate) fn position_json(buffer: &Buffer, offset: usize) -> (usize, usize) {
     let p = buffer.position(offset);
     (p.line + 1, p.col + 1)
 }
 
-fn severity_name(s: Severity) -> &'static str {
+pub(crate) fn severity_name(s: Severity) -> &'static str {
     match s {
         Severity::Error => "error",
         Severity::Warning => "warning",
@@ -517,29 +517,31 @@ fn problem_json(buffer: &Buffer, d: &Diagnostic) -> Value {
 }
 
 /// The XML a tool works on: the text, and the open document it came from.
-struct Source {
-    text: String,
-    id: Option<u64>,
+pub(crate) struct Source {
+    pub(crate) text: String,
+    pub(crate) id: Option<u64>,
     /// A file whose bytes were not valid in its encoding was read (they are shown as U+FFFD).
-    lossy: bool,
+    pub(crate) lossy: bool,
+    /// Where it is, when it is a file (the document is saved, or it was named by `path`).
+    pub(crate) path: Option<std::path::PathBuf>,
 }
 
-fn source(a: &Automation, args: &Value) -> Result<Source> {
+pub(crate) fn source(a: &Automation, args: &Value) -> Result<Source> {
     let id = args.get("id").and_then(Value::as_u64);
     let path = text_arg(args, "path");
     let text = text_arg(args, "text");
     match (id, path, text) {
         (Some(id), None, None) => {
             let doc = a.session.document(index_of(a, id)?).ok_or_else(|| ToolError::Failed(format!("no document has the id {id}")))?;
-            Ok(Source { text: doc.editor().text(), id: Some(id), lossy: doc.is_lossy() })
+            Ok(Source { text: doc.editor().text(), id: Some(id), lossy: doc.is_lossy(), path: doc.path().map(std::path::Path::to_path_buf) })
         }
         (None, Some(path), None) => {
             let path = a.confinement.resolve_read(path)?;
             let loaded = xmlcraft_platform::files::read_file(&path).map_err(|e| ToolError::Failed(format!("{}: {e}", path.display())))?;
             let decoded = decode(&loaded.bytes, &sniff(&loaded.bytes));
-            Ok(Source { text: decoded.text, id: None, lossy: decoded.lossy })
+            Ok(Source { text: decoded.text, id: None, lossy: decoded.lossy, path: Some(path) })
         }
-        (None, None, Some(text)) => Ok(Source { text: text.to_owned(), id: None, lossy: false }),
+        (None, None, Some(text)) => Ok(Source { text: text.to_owned(), id: None, lossy: false, path: None }),
         _ => Err(ToolError::InvalidArgs("give exactly one of id, path and text".into())),
     }
 }
