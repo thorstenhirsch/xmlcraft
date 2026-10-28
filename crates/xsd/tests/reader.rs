@@ -304,6 +304,12 @@ fn particles() {
         problems("<xs:complexType name=\"t\"><xs:sequence><xs:any namespace=\"##foo\"/></xs:sequence></xs:complexType>"),
         ["xsd.bad-attribute-value"]
     );
+    // The message says what is wrong with the word, not just that the attribute is.
+    let in_list =
+        messages(&schema("", "<xs:complexType name=\"t\"><xs:sequence><xs:any namespace=\"urn:a ##other\"/></xs:sequence></xs:complexType>"));
+    assert!(in_list.iter().any(|m| m.contains("'##other' cannot be in a list")), "{in_list:?}");
+    let unknown = messages(&schema("", "<xs:complexType name=\"t\"><xs:sequence><xs:any namespace=\"##foo\"/></xs:sequence></xs:complexType>"));
+    assert!(unknown.iter().any(|m| m.contains("'##foo' is not a namespace token")), "{unknown:?}");
 }
 
 #[test]
