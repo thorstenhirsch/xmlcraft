@@ -13,6 +13,8 @@ use crate::{Automation, Content, Result, ToolError};
 
 /// The largest catalog read.
 const MAX_CATALOG_BYTES: usize = 4 * 1024 * 1024;
+/// The most problems with the named catalogs one call lists.
+const MAX_NOTES: usize = 100;
 /// The most catalogs one call names.
 const MAX_CATALOGS: usize = 64;
 
@@ -132,8 +134,11 @@ impl Loader for FileLoader<'_> {
     }
 
     fn note(&mut self, location: &str, problem: &str) {
-        if self.notes.len() < 100 {
+        // The list is bounded, and its last place says so, as the list of a catalog's own warnings does.
+        if self.notes.len() + 1 < MAX_NOTES {
             self.notes.push(format!("{location}: {problem}"));
+        } else if self.notes.len() + 1 == MAX_NOTES {
+            self.notes.push(format!("more than {} problems with the named catalogs: the rest are not listed", MAX_NOTES - 1));
         }
     }
 }

@@ -152,7 +152,9 @@ impl Catalogs {
                     // Right after this catalog, in the order they are named (pushed to the front last to first). One that is waiting in
                     // the list already is moved up to its place after this catalog; one that has been consulted is not followed.
                     for location in locations.into_iter().rev() {
-                        if consulted.contains(&location) {
+                        // A `nextCatalog` with no location (an empty reference and no base to resolve it against) names nothing that can
+                        // be found; one that was consulted already is not followed.
+                        if location.is_empty() || consulted.contains(&location) {
                             continue;
                         }
                         if let Some(at) = queue.iter().position(|waiting| waiting.location() == location) {

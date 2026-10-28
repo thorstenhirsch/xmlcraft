@@ -12,6 +12,22 @@ fn call(a: &mut Automation, args: Value) -> Result<Value, ToolError> {
     })
 }
 
+/// A `file:` URI for a path, written the way the tool writes one: every byte that is not a letter, a digit, one of `-._~` or a separator
+/// is a percent-escape (so a temporary folder with a `#`, a `?`, a `%` or a `&` in its name is still named right).
+fn file_uri(path: &Path) -> String {
+    let text = path.to_str().expect("utf-8").replace('\\', "/");
+    let text = if text.starts_with('/') { text } else { format!("/{text}") };
+    let mut uri = String::from("file://");
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'/') || (cfg!(windows) && byte == b':') {
+            uri.push(char::from(byte));
+        } else {
+            uri.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    uri
+}
+
 fn write(dir: &Path, name: &str, body: &str) -> String {
     let path = dir.join(name);
     std::fs::create_dir_all(path.parent().expect("a folder")).expect("folder");
@@ -75,10 +91,7 @@ fn the_root_keeps_the_catalogs_and_the_ones_they_name_inside() {
     let secret = write(outside.path(), "secret.xml", r#"<system systemId="s" uri="leaked.dtd"/>"#);
     let root = tempfile::tempdir().expect("root");
     // The catalog is named by a `file:` URI, which looks the same on every platform (`file:///C:/…` on Windows).
-    let uri = {
-        let slashed = secret.replace('\\', "/");
-        if slashed.starts_with('/') { format!("file://{slashed}") } else { format!("file:///{slashed}") }
-    };
+    let uri = file_uri(Path::new(&secret));
     let inner = write(root.path(), "inner.xml", &format!(r#"<nextCatalog catalog="{uri}"/>"#));
     let mut a = Automation::with_root(root.path()).expect("a root");
     // The catalog inside is read; the one it names outside the root is not (it is skipped, as one that cannot be read is).
@@ -103,18 +116,14 @@ fn what_is_wrong_with_the_catalogs_that_were_named_is_reported_too() {
     .expect("writes");
     let torn = dir.path().join("torn.xml");
     std::fs::write(&torn, "<catalog").expect("writes");
-    let uri = |p: &Path| {
-        let slashed = p.to_str().expect("utf-8").replace('\\', "/");
-        if slashed.starts_with('/') { format!("file://{slashed}") } else { format!("file:///{slashed}") }
-    };
     let first = write(
         dir.path(),
         "first.xml",
         &format!(
             r#"<nextCatalog catalog="{}"/><nextCatalog catalog="{}"/><nextCatalog catalog="{}"/>"#,
-            uri(&torn),
-            uri(&dir.path().join("gone.xml")),
-            uri(&named)
+            file_uri(&torn),
+            file_uri(&dir.path().join("gone.xml")),
+            file_uri(&named)
         ),
     );
     let mut a = Automation::new();
@@ -125,6 +134,31 @@ fn what_is_wrong_with_the_catalogs_that_were_named_is_reported_too() {
     assert!(warnings.iter().any(|w| w.contains("torn.xml") && w.contains("not well-formed")), "{warnings:?}");
     assert!(warnings.iter().any(|w| w.contains("gone.xml") && w.contains("cannot be read")), "{warnings:?}");
     assert!(warnings.iter().any(|w| w.contains("named.xml") && w.contains("frobnicate")), "{warnings:?}");
+}
+
+#[test]
+fn the_list_of_problems_with_the_named_catalogs_is_cut_off_and_says_so() {
+    let dir = tempfile::tempdir().expect("dir");
+    // Two catalogs with 60 unknown elements each: more problems than the list holds.
+    let noisy = "<frobnicate/>".repeat(60);
+    for name in ["one.xml", "two.xml"] {
+        write(dir.path(), name, &noisy);
+    }
+    let first = write(
+        dir.path(),
+        "first.xml",
+        &format!(
+            r#"<nextCatalog catalog="{}"/><nextCatalog catalog="{}"/>"#,
+            file_uri(&dir.path().join("one.xml")),
+            file_uri(&dir.path().join("two.xml"))
+        ),
+    );
+    let mut a = Automation::new();
+    let answer = call(&mut a, json!({ "catalogs": [first], "system": "nowhere" })).expect("resolves");
+    let warnings: Vec<&str> = answer["warnings"].as_array().expect("a list").iter().filter_map(Value::as_str).collect();
+    assert_eq!(warnings.len(), 100, "the list is bounded");
+    assert!(warnings.last().is_some_and(|w| w.contains("not listed")), "its last place says so: {:?}", warnings.last());
+    assert!(warnings.iter().filter(|w| w.contains("not listed")).count() == 1, "and only once");
 }
 
 #[cfg(unix)]

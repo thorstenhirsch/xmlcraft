@@ -13,8 +13,8 @@ OASIS XML Catalogs 1.1 for XmlCraft (layer L2, no UI, no I/O, compiles for the w
   nextCatalog), the longest match, delegation (the delegated catalogs answer alone, and only about the identifier that matched), and
   `nextCatalog` catalogs consulted right after the one that names them (one that is waiting in the list is moved up; one that was
   consulted is not followed again). `urn:publicid:` identifiers are unwrapped. Identifiers are compared as they are normalised (§6.3:
-  what may not stand in a URI is percent-escaped, an escape already there stays as written), and a rewritten URI is built from the
-  normalised identifier, which is a valid URI.
+  what may not stand in a URI is percent-escaped, an escape already there stays as written, valid or not), and a rewritten URI is
+  built from the normalised identifier (so a space or a non-ASCII character in the request comes back escaped).
 - The catalogs that are named but not given come from a `Loader` that the caller provides (a file reader, the open buffers, the
   cache): this crate never reads a file or the network. A resolution loads at most 64 catalogs, each once, follows at most 64
   delegations, and a chain or a cycle ends. The loader is told (`Loader::note`) of a named catalog that could not be read, is not a

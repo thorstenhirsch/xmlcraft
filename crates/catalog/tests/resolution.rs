@@ -299,6 +299,16 @@ fn a_chain_of_catalogs_is_cut_off_and_a_catalog_that_names_itself_is_read_once()
 }
 
 #[test]
+fn a_next_catalog_with_no_location_names_nothing_and_cannot_loop() {
+    // A catalog with no location of its own cannot make `catalog=""` absolute, and a loader that answers for the empty location would
+    // otherwise hand back a catalog that names itself, again and again.
+    let mut files = Files::default().with("", "", r#"<nextCatalog catalog=""/>"#);
+    let all = catalogs(&[catalog("", r#"<nextCatalog catalog=""/>"#, "")]);
+    assert_eq!(all.resolve(None, Some("x"), &mut files), None);
+    assert!(files.asked.is_empty(), "the empty location is not asked for: {:?}", files.asked);
+}
+
+#[test]
 fn publicid_urns_are_unwrapped_in_requests_and_entries() {
     let all = catalogs(&[catalog(
         "",
