@@ -4,7 +4,6 @@
 use std::path::Path;
 
 use serde_json::{Value, json};
-use xmlcraft_catalog::uri::normalize_uri;
 use xmlcraft_catalog::{Catalog, Catalogs, Loader};
 use xmlcraft_text::encoding::{decode, sniff};
 
@@ -42,18 +41,42 @@ pub(crate) fn tools() -> Vec<ToolDef> {
     }]
 }
 
-/// A `file:` URI for a path.
+/// A `file:` URI for a path: every byte that is not a letter, a digit, one of `-._~` or a separator is written as a percent-escape, so
+/// that a name with a `%`, a space or a backslash in it comes back as it was.
 fn file_uri(path: &Path) -> String {
-    let text = path.to_string_lossy().replace('\\', "/");
-    let text = if text.starts_with('/') { text } else { format!("/{text}") };
-    format!("file://{}", normalize_uri(&text))
+    let text = path.to_string_lossy();
+    // Windows separators are slashes in a URI, and a drive letter is a path segment (`file:///C:/dir`).
+    #[cfg(windows)]
+    let text = text.replace('\\', "/");
+    let text = if text.starts_with('/') { text.to_string() } else { format!("/{text}") };
+    let mut uri = String::from("file://");
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'/') || (cfg!(windows) && byte == b':') {
+            uri.push(char::from(byte));
+        } else {
+            uri.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    uri
 }
 
-/// The path a `file:` URI names (percent-escapes decoded), or `None` for any other URI.
+/// The path a `file:` URI names, or `None` for any other URI, for one with an authority that is not this machine, and for a path that
+/// is not valid text. The query and the fragment are not part of the path; the percent-escapes of the rest are decoded.
 fn path_of(uri: &str) -> Option<String> {
     let rest = uri.get(..5).filter(|scheme| scheme.eq_ignore_ascii_case("file:")).map(|_| &uri[5..])?;
-    let rest = rest.strip_prefix("//").map_or(rest, |after| after.strip_prefix("localhost").unwrap_or(after));
-    let bytes = rest.as_bytes();
+    let path = match rest.strip_prefix("//") {
+        Some(after) => {
+            let end = after.find(['/', '?', '#']).unwrap_or(after.len());
+            let (authority, path) = after.split_at(end);
+            if !authority.is_empty() && !authority.eq_ignore_ascii_case("localhost") {
+                return None;
+            }
+            path
+        }
+        None => rest,
+    };
+    let path = &path[..path.find(['?', '#']).unwrap_or(path.len())];
+    let bytes = path.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while let Some(&byte) = bytes.get(i) {
@@ -77,16 +100,22 @@ fn path_of(uri: &str) -> Option<String> {
     Some(if windows { path[1..].to_owned() } else { path })
 }
 
-/// Reads the catalogs that are named, through the confinement and only when they are files.
+/// Reads the catalogs that are named, through the confinement and only when they are files; keeps what it was told about the ones
+/// that could not be used.
 struct FileLoader<'a> {
     confinement: &'a Confinement,
     /// How many were read, in all.
     reads: usize,
+    notes: Vec<String>,
 }
 
 impl FileLoader<'_> {
     fn read(&mut self, path: &str) -> Option<String> {
         let path = self.confinement.resolve_read(path).ok()?;
+        // The size first: a file over the limit is not read into memory only to be refused.
+        if std::fs::metadata(&path).ok()?.len() > MAX_CATALOG_BYTES as u64 {
+            return None;
+        }
         let loaded = xmlcraft_platform::files::read_file(&path).ok()?;
         if loaded.bytes.len() > MAX_CATALOG_BYTES {
             return None;
@@ -98,7 +127,14 @@ impl FileLoader<'_> {
 
 impl Loader for FileLoader<'_> {
     fn load(&mut self, location: &str) -> Option<String> {
+        // Only a `file:` catalog is read: nothing is downloaded, and a path outside the root is not read.
         self.read(&path_of(location)?)
+    }
+
+    fn note(&mut self, location: &str, problem: &str) {
+        if self.notes.len() < 100 {
+            self.notes.push(format!("{location}: {problem}"));
+        }
     }
 }
 
@@ -114,7 +150,7 @@ fn catalog_lookup(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     if names.is_empty() || names.len() > MAX_CATALOGS {
         return Err(ToolError::InvalidArgs(format!("catalogs lists one to {MAX_CATALOGS} files")));
     }
-    let mut loader = FileLoader { confinement: &a.confinement, reads: 0 };
+    let mut loader = FileLoader { confinement: &a.confinement, reads: 0, notes: Vec::new() };
     let mut all = Catalogs::new();
     let mut warnings: Vec<String> = Vec::new();
     for name in names {
@@ -135,6 +171,8 @@ fn catalog_lookup(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     };
     // A `file:` answer says whether the file is there.
     let exists = resolved.as_deref().and_then(path_of).map(|path| a.confinement.resolve_read(&path).is_ok_and(|real| real.is_file()));
+    // What the catalogs that were named (not the ones given) had wrong with them comes after the others.
+    warnings.extend(loader.notes.iter().cloned());
     Ok(vec![Content::Json(json!({ "resolved": resolved, "exists": exists, "catalogs_read": loader.reads, "warnings": warnings }))])
 }
 
@@ -146,11 +184,22 @@ mod tests {
     fn file_uris_and_paths_go_both_ways() {
         assert_eq!(file_uri(Path::new("/etc/xml/cat alog.xml")), "file:///etc/xml/cat%20alog.xml");
         assert_eq!(path_of("file:///etc/xml/cat%20alog.xml").as_deref(), Some("/etc/xml/cat alog.xml"));
+        // A name with a `%` or a backslash comes back as it was (on Unix; on Windows a backslash is a separator).
+        #[cfg(not(windows))]
+        for name in ["/d/100%.xml", "/d/%7e.xml", "/d/a\\b.xml", "/d/é.xml", "/d/a#b?c.xml"] {
+            assert_eq!(path_of(&file_uri(Path::new(name))).as_deref(), Some(name), "{name}");
+        }
         assert_eq!(path_of("FILE://localhost/a/b").as_deref(), Some("/a/b"));
         assert_eq!(path_of("file:///C:/dir/x.xml").as_deref(), Some("C:/dir/x.xml"));
+        // Only this machine; the query and the fragment are not the path.
+        assert_eq!(path_of("file://other-host/a/b"), None);
+        assert_eq!(path_of("file:///a/b.xml#frag").as_deref(), Some("/a/b.xml"));
+        assert_eq!(path_of("file:///a/b.xml?x=1").as_deref(), Some("/a/b.xml"));
+        assert_eq!(path_of("file://localhost").as_deref(), Some(""));
         assert_eq!(path_of("http://x/y"), None);
         assert_eq!(path_of("fi"), None);
         assert_eq!(path_of("é"), None, "no panic on a character that straddles the scheme length");
         assert_eq!(path_of("file:///%zz%4").as_deref(), Some("/%zz%4"), "an escape that is not one stays as it is");
+        assert_eq!(path_of("file:///%FF"), None, "bytes that are not text are not a path");
     }
 }

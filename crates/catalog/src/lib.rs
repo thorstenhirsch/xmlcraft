@@ -8,5 +8,5 @@ mod reader;
 mod resolve;
 pub mod uri;
 
-pub use reader::{CATALOG_NS, Catalog, CatalogError, Entry, MAX_ENTRIES};
+pub use reader::{CATALOG_NS, Catalog, CatalogError, Entry, MAX_ENTRIES, MAX_WARNINGS};
 pub use resolve::{Catalogs, Loader, MAX_LOADS, NoLoader};

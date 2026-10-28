@@ -23,11 +23,19 @@ fn catalogs(list: &[Catalog]) -> Catalogs {
 struct Files {
     files: HashMap<String, String>,
     asked: Vec<String>,
+    /// What the loader was told about the catalogs that could not be used.
+    notes: Vec<(String, String)>,
 }
 
 impl Files {
     fn with(mut self, location: &str, attrs: &str, body: &str) -> Self {
         self.files.insert(location.to_owned(), format!("<catalog xmlns=\"{CATALOG_NS}\"{attrs}>{body}</catalog>"));
+        self
+    }
+
+    /// A file that is whatever it is.
+    fn raw(mut self, location: &str, text: &str) -> Self {
+        self.files.insert(location.to_owned(), text.to_owned());
         self
     }
 }
@@ -36,6 +44,10 @@ impl Loader for Files {
     fn load(&mut self, location: &str) -> Option<String> {
         self.asked.push(location.to_owned());
         self.files.get(location).cloned()
+    }
+
+    fn note(&mut self, location: &str, problem: &str) {
+        self.notes.push((location.to_owned(), problem.to_owned()));
     }
 }
 
@@ -48,8 +60,10 @@ fn a_system_entry_maps_its_identifier_and_the_uri_is_made_absolute() {
     assert_eq!(all.resolve(None, Some("http://x.org/a.dtd"), &mut NoLoader).as_deref(), Some("file:///etc/xml/dtds/a.dtd"));
     assert_eq!(all.resolve(None, Some("http://x.org/b.dtd"), &mut NoLoader).as_deref(), Some("file:///abs/b.dtd"));
     assert_eq!(all.resolve(None, Some("http://x.org/c.dtd"), &mut NoLoader), None);
-    // Identifiers are compared normalised: an escape of an unreserved character is the character.
-    assert_eq!(all.resolve(None, Some("http://x.org/%61.dtd"), &mut NoLoader).as_deref(), Some("file:///etc/xml/dtds/a.dtd"));
+    // Identifiers are compared as they are normalised: what may not stand in a URI is escaped, and an escape already there stays.
+    assert_eq!(all.resolve(None, Some("http://x.org/%61.dtd"), &mut NoLoader), None, "`%61` and `a` are two names");
+    let spaced = catalog("", r#"<system systemId="http://x.org/a b.dtd" uri="spaced.dtd"/>"#, HERE);
+    assert_eq!(catalogs(&[spaced]).resolve(None, Some("http://x.org/a%20b.dtd"), &mut NoLoader).as_deref(), Some("file:///etc/xml/spaced.dtd"));
     // The first of two entries for one identifier wins.
     let twice = catalog("", r#"<system systemId="s" uri="first"/><system systemId="s" uri="second"/>"#, HERE);
     assert_eq!(catalogs(&[twice]).resolve(None, Some("s"), &mut NoLoader).as_deref(), Some("file:///etc/xml/first"));
@@ -150,14 +164,38 @@ fn a_delegated_catalog_answers_alone_and_a_failed_delegation_does_not_go_back_to
         catalog("", r#"<system systemId="http://y.org/a.dtd" uri="later"/>"#, "file:///later.xml"),
     ]);
     assert_eq!(all.resolve(None, Some("http://y.org/a.dtd"), &mut files()).as_deref(), Some("file:///later"));
-    // A delegate that cannot be loaded, or is not a catalog, is skipped.
-    let broken = Files::default().with("file:///d/short.xml", "", r#"<system systemId="s" uri="ok"/>"#);
+    // A delegate that cannot be loaded, or is not a catalog, or is not well-formed, is skipped (and the loader is told).
+    let broken = Files::default()
+        .with("file:///d/short.xml", "", r#"<system systemId="s" uri="ok"/>"#)
+        .raw("file:///d/schema.xml", "<schema xmlns=\"http://www.w3.org/2001/XMLSchema\"/>")
+        .raw("file:///d/torn.xml", "<catalog");
     let all = catalogs(&[catalog(
         "",
-        r#"<delegateSystem systemIdStartString="s" catalog="file:///d/missing.xml"/><delegateSystem systemIdStartString="s" catalog="file:///d/short.xml"/>"#,
+        r#"<delegateSystem systemIdStartString="s" catalog="file:///d/missing.xml"/><delegateSystem systemIdStartString="s" catalog="file:///d/schema.xml"/><delegateSystem systemIdStartString="s" catalog="file:///d/torn.xml"/><delegateSystem systemIdStartString="s" catalog="file:///d/short.xml"/>"#,
         HERE,
     )]);
-    assert_eq!(all.resolve(None, Some("s"), &mut { broken }).as_deref(), Some("file:///d/ok"));
+    let mut broken = broken;
+    assert_eq!(all.resolve(None, Some("s"), &mut broken).as_deref(), Some("file:///d/ok"));
+    let told: Vec<&str> = broken.notes.iter().map(|(location, _)| location.rsplit('/').next().unwrap_or_default()).collect();
+    assert_eq!(told, ["missing.xml", "schema.xml", "torn.xml"], "{:?}", broken.notes);
+    assert!(broken.notes[1].1.contains("catalog"), "{:?}", broken.notes[1]);
+    // A delegation that goes through many catalogs is followed (the limit is the number of loads).
+    let mut chain = Files::default();
+    for i in 0..40 {
+        chain =
+            chain.with(&format!("file:///h/{i}.xml"), "", &format!(r#"<delegateSystem systemIdStartString="s" catalog="file:///h/{}.xml"/>"#, i + 1));
+    }
+    chain = chain.with("file:///h/40.xml", "", r#"<system systemId="s" uri="end"/>"#);
+    let start = catalogs(&[catalog("", r#"<delegateSystem systemIdStartString="s" catalog="file:///h/0.xml"/>"#, HERE)]);
+    assert_eq!(start.resolve(None, Some("s"), &mut chain).as_deref(), Some("file:///h/end"));
+    // Two catalogs that delegate to each other end, with no answer.
+    let circle = Files::default().with("file:///h/a.xml", "", r#"<delegateSystem systemIdStartString="s" catalog="file:///h/b.xml"/>"#).with(
+        "file:///h/b.xml",
+        "",
+        r#"<delegateSystem systemIdStartString="s" catalog="file:///h/a.xml"/>"#,
+    );
+    let start = catalogs(&[catalog("", r#"<delegateSystem systemIdStartString="s" catalog="file:///h/a.xml"/>"#, HERE)]);
+    assert_eq!(start.resolve(None, Some("s"), &mut { circle }), None);
 }
 
 #[test]
@@ -218,6 +256,30 @@ fn next_catalogs_are_consulted_right_after_the_catalog_that_names_them_and_cycle
     asked.sort();
     asked.dedup();
     assert_eq!(f.asked.len(), asked.len(), "{:?}", f.asked);
+}
+
+#[test]
+fn a_catalog_that_is_waiting_in_the_list_is_moved_up_to_follow_the_catalog_that_names_it() {
+    // [first, middle, named]: `first` names `named`, which is the third of the list; it is consulted right after `first`.
+    let first = catalog("", r#"<nextCatalog catalog="file:///n/named.xml"/>"#, "file:///n/first.xml");
+    let middle = catalog("", r#"<system systemId="s" uri="from-middle"/>"#, "file:///n/middle.xml");
+    let named = catalog("", r#"<system systemId="s" uri="from-named"/>"#, "file:///n/named.xml");
+    let all = catalogs(&[first, middle, named]);
+    assert_eq!(all.resolve(None, Some("s"), &mut NoLoader).as_deref(), Some("file:///n/from-named"));
+    // One that has been consulted already is not followed again, and a delegated catalog does not read an original one anew.
+    let a = catalog("", r#"<nextCatalog catalog="file:///n/b.xml"/>"#, "file:///n/a.xml");
+    let b = catalog("", r#"<nextCatalog catalog="file:///n/a.xml"/>"#, "file:///n/b.xml");
+    let mut files = Files::default();
+    assert_eq!(catalogs(&[a, b]).resolve(None, Some("s"), &mut files), None);
+    assert!(files.asked.is_empty(), "both are in the list already: {:?}", files.asked);
+    let root = catalog("", r#"<delegateSystem systemIdStartString="s" catalog="file:///n/inner.xml"/>"#, "file:///n/root.xml");
+    let mut files = Files::default().with("file:///n/inner.xml", "", r#"<nextCatalog catalog="file:///n/root.xml"/>"#).with(
+        "file:///n/root.xml",
+        "",
+        r#"<system systemId="s" uri="from-root"/>"#,
+    );
+    assert_eq!(catalogs(&[root]).resolve(None, Some("s"), &mut files), None, "the root was consulted: it is not read again from the loader");
+    assert_eq!(files.asked, ["file:///n/inner.xml"]);
 }
 
 #[test]
@@ -305,6 +367,30 @@ fn what_is_not_a_catalog_is_refused_and_what_is_odd_inside_one_is_noted() {
     let prefixed =
         Catalog::parse(&format!(r#"<c:catalog xmlns:c="{CATALOG_NS}"><c:system systemId="a" uri="b"/></c:catalog>"#), HERE).expect("a catalog");
     assert_eq!(prefixed.entries(), [Entry::System { id: "a".into(), uri: "file:///etc/xml/b".into() }]);
+}
+
+#[test]
+fn an_entity_of_the_catalogs_own_is_not_expanded_so_what_uses_it_is_left_out() {
+    let text = format!(
+        "<!DOCTYPE catalog [<!ENTITY dir \"dtds/\">]><catalog xmlns=\"{CATALOG_NS}\"><system systemId=\"a\" uri=\"&dir;a.dtd\"/><system systemId=\"b\" uri=\"b.dtd\"/><group xml:base=\"&dir;\"><system systemId=\"c\" uri=\"c.dtd\"/></group></catalog>"
+    );
+    let c = Catalog::parse(&text, HERE).expect("a catalog");
+    assert_eq!(c.entries(), [Entry::System { id: "b".into(), uri: "file:///etc/xml/b.dtd".into() }]);
+    assert_eq!(c.warnings().len(), 2, "{:?}", c.warnings());
+    assert!(c.warnings().iter().all(|w| w.contains("&dir;")), "{:?}", c.warnings());
+}
+
+#[test]
+fn groups_up_to_the_depth_limit_are_read_and_the_warnings_say_when_they_were_cut() {
+    let nested = |depth: usize| format!("{}<system systemId=\"deep\" uri=\"x\"/>{}", "<group>".repeat(depth), "</group>".repeat(depth));
+    assert_eq!(catalog("", &nested(63), HERE).entries().len(), 1);
+    assert_eq!(catalog("", &nested(64), HERE).entries().len(), 1, "64 groups deep is within the limit");
+    let over = catalog("", &nested(65), HERE);
+    assert!(over.entries().is_empty() && over.warnings().len() == 1, "{:?}", over.warnings());
+    // A catalog that gives many reasons for warnings lists the first ones and says that it stopped.
+    let many = catalog("", &"<frobnicate/>".repeat(xmlcraft_catalog::MAX_WARNINGS * 3), HERE);
+    assert_eq!(many.warnings().len(), xmlcraft_catalog::MAX_WARNINGS);
+    assert!(many.warnings().last().is_some_and(|last| last.contains("not listed")), "{:?}", many.warnings().last());
 }
 
 #[test]

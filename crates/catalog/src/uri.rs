@@ -62,33 +62,44 @@ fn join(parts: &Parts<'_>, path: &str) -> String {
     out
 }
 
-/// RFC 3986 §5.2.4.
-fn remove_dot_segments(path: &str) -> String {
-    let mut output: Vec<&str> = Vec::new();
-    let absolute = path.starts_with('/');
-    let mut segments = path.split('/').peekable();
-    if absolute {
-        segments.next(); // the empty one before the first slash
+/// Drop the last segment of `output` and the slash before it (RFC 3986 §5.2.4 step 2C).
+fn pop_segment(output: &mut String) {
+    match output.rfind('/') {
+        Some(at) => output.truncate(at),
+        None => output.clear(),
     }
-    while let Some(segment) = segments.next() {
-        let last = segments.peek().is_none();
-        match segment {
-            "." => {
-                if last {
-                    output.push("");
-                }
-            }
-            ".." => {
-                output.pop();
-                if last {
-                    output.push("");
-                }
-            }
-            other => output.push(other),
+}
+
+/// RFC 3986 §5.2.4, as the input and output buffers it describes.
+fn remove_dot_segments(path: &str) -> String {
+    let mut input = path.to_owned();
+    let mut output = String::with_capacity(path.len());
+    while !input.is_empty() {
+        if input.starts_with("../") {
+            input.drain(..3);
+        } else if input.starts_with("./") {
+            input.drain(..2);
+        } else if input.starts_with("/./") {
+            input.replace_range(..3, "/");
+        } else if input == "/." {
+            input = "/".to_owned();
+        } else if input.starts_with("/../") {
+            input.replace_range(..4, "/");
+            pop_segment(&mut output);
+        } else if input == "/.." {
+            input = "/".to_owned();
+            pop_segment(&mut output);
+        } else if input == "." || input == ".." {
+            input.clear();
+        } else {
+            // The first path segment, with its slash if it has one, moves to the output.
+            let start = usize::from(input.starts_with('/'));
+            let end = input.get(start..).and_then(|rest| rest.find('/')).map_or(input.len(), |at| at + start);
+            output.push_str(input.get(..end).unwrap_or_default());
+            input.drain(..end);
         }
     }
-    let joined = output.join("/");
-    if absolute { format!("/{joined}") } else { joined }
+    output
 }
 
 /// `reference` resolved against `base` (RFC 3986 §5.2.2). A reference with a scheme stands as it is; with no base (or a base that is
@@ -123,46 +134,53 @@ pub fn resolve_reference(base: &str, reference: &str) -> String {
     join(&Parts { scheme: b.scheme, authority, path: "", query, fragment: r.fragment }, &path)
 }
 
-fn is_unreserved(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')')
-}
-
-/// What may stand unescaped in a normalised URI: the unreserved characters, the reserved ones and `#`.
+/// What may stand unescaped in a normalised URI: ASCII letters and digits, the unreserved and reserved punctuation, `#`, `[`, `]` and `%`.
 fn is_plain(byte: u8) -> bool {
-    is_unreserved(byte) || matches!(byte, b';' | b'/' | b'?' | b':' | b'@' | b'&' | b'=' | b'+' | b'$' | b',' | b'[' | b']' | b'#')
+    byte.is_ascii_alphanumeric()
+        || matches!(
+            byte,
+            b'-' | b'_'
+                | b'.'
+                | b'!'
+                | b'~'
+                | b'*'
+                | b'\''
+                | b'('
+                | b')'
+                | b';'
+                | b'/'
+                | b'?'
+                | b':'
+                | b'@'
+                | b'&'
+                | b'='
+                | b'+'
+                | b'$'
+                | b','
+                | b'['
+                | b']'
+                | b'#'
+                | b'%'
+        )
 }
 
 fn hex_value(byte: u8) -> Option<u8> {
     (byte as char).to_digit(16).and_then(|d| u8::try_from(d).ok())
 }
 
-/// A system identifier or URI as it is compared (XML Catalogs 1.1 §6.3): every character that may not stand in a URI is written as the
-/// percent-escapes of its UTF-8 bytes; an escape of an unreserved character is replaced by the character; the hexadecimal digits of the
-/// escapes that are left are upper case.
+/// A system identifier or URI as it is compared (XML Catalogs 1.1 §6.3): every character that may not stand in a URI (all of those
+/// outside ASCII, and the ASCII ones RFC 2396 excludes: space, `"`, `<`, `>`, `\`, `^`, `` ` ``, `{`, `|`, `}`, and the controls) is written
+/// as the percent-escapes of its UTF-8 bytes, with upper-case hexadecimal digits. Everything else, `%` included, is left as it is: what
+/// is already escaped stays as written, so `%7e` and `~` are two names.
 pub fn normalize_uri(text: &str) -> String {
-    let bytes = text.as_bytes();
     let mut out = String::with_capacity(text.len());
-    let mut i = 0;
-    while let Some(&byte) = bytes.get(i) {
-        let escape =
-            (byte == b'%').then(|| bytes.get(i + 1).copied().and_then(hex_value).zip(bytes.get(i + 2).copied().and_then(hex_value))).flatten();
-        match escape {
-            Some((high, low)) => {
-                let value = high * 16 + low;
-                if is_unreserved(value) {
-                    out.push(char::from(value));
-                } else {
-                    out.push_str(&format!("%{value:02X}"));
-                }
-                i += 3;
-            }
-            None if is_plain(byte) => {
-                out.push(char::from(byte));
-                i += 1;
-            }
-            None => {
+    for c in text.chars() {
+        if c.is_ascii() && is_plain(c as u8) {
+            out.push(c);
+        } else {
+            let mut buffer = [0u8; 4];
+            for byte in c.encode_utf8(&mut buffer).bytes() {
                 out.push_str(&format!("%{byte:02X}"));
-                i += 1;
             }
         }
     }
@@ -239,6 +257,13 @@ mod tests {
             ("../..", "http://a/"),
             ("../../g", "http://a/g"),
             ("../../../g", "http://a/g"),
+            ("g;x=1/./y", "http://a/b/c/g;x=1/y"),
+            ("g;x=1/../y", "http://a/b/c/y"),
+            ("../../../../g", "http://a/g"),
+            ("/../g", "http://a/g"),
+            ("g/..", "http://a/b/c/"),
+            ("g/../..", "http://a/b/"),
+            ("g/../../..", "http://a/"),
             ("/./g", "http://a/g"),
             ("g.", "http://a/b/c/g."),
             ("g/./h", "http://a/b/c/g/h"),
@@ -248,6 +273,7 @@ mod tests {
         }
         assert_eq!(resolve_reference("file:///etc/xml/catalog.xml", "dtds/a.dtd"), "file:///etc/xml/dtds/a.dtd");
         assert_eq!(resolve_reference("http://host", "x.dtd"), "http://host/x.dtd");
+        assert_eq!(resolve_reference("urn:base", "a/../b"), "urn:/b", "RFC 3986 §5.2.4: the slash of the first segment is kept");
         assert_eq!(resolve_reference("", "x.dtd"), "x.dtd", "no base: as it is");
         assert_eq!(resolve_reference("relative/base", "x.dtd"), "x.dtd", "a base that is not absolute: as it is");
     }
@@ -255,8 +281,10 @@ mod tests {
     #[test]
     fn identifiers_are_normalised_for_comparison() {
         assert_eq!(normalize_uri("http://x/a b/é"), "http://x/a%20b/%C3%A9");
-        assert_eq!(normalize_uri("http://x/%7euser/%2f%3a"), "http://x/~user/%2F%3A".replace("%3a", "%3A"));
-        assert_eq!(normalize_uri("a%zz%4"), "a%25zz%254", "a % that does not start an escape is escaped itself");
+        assert_eq!(normalize_uri("http://x/%7euser/%2f%3a"), "http://x/%7euser/%2f%3a", "what is already escaped stays as written");
+        assert_ne!(normalize_uri("http://x/%7e"), normalize_uri("http://x/~"), "two names");
+        assert_eq!(normalize_uri("a%zz%4"), "a%zz%4", "a % is allowed: it is not touched");
+        assert_eq!(normalize_uri("a\\b^c`d{e|f}g\u{7}"), "a%5Cb%5Ec%60d%7Be%7Cf%7Dg%07");
         assert_eq!(normalize_uri("x\"<>"), "x%22%3C%3E");
         assert_eq!(normalize_public("  -//A//B\n\t C  "), "-//A//B C");
         assert_eq!(normalize_public(""), "");

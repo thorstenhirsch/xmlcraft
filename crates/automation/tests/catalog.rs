@@ -74,7 +74,12 @@ fn the_root_keeps_the_catalogs_and_the_ones_they_name_inside() {
     let outside = tempfile::tempdir().expect("outside");
     let secret = write(outside.path(), "secret.xml", r#"<system systemId="s" uri="leaked.dtd"/>"#);
     let root = tempfile::tempdir().expect("root");
-    let inner = write(root.path(), "inner.xml", &format!(r#"<nextCatalog catalog="{}"/>"#, secret.replace('\\', "/")));
+    // The catalog is named by a `file:` URI, which looks the same on every platform (`file:///C:/…` on Windows).
+    let uri = {
+        let slashed = secret.replace('\\', "/");
+        if slashed.starts_with('/') { format!("file://{slashed}") } else { format!("file:///{slashed}") }
+    };
+    let inner = write(root.path(), "inner.xml", &format!(r#"<nextCatalog catalog="{uri}"/>"#));
     let mut a = Automation::with_root(root.path()).expect("a root");
     // The catalog inside is read; the one it names outside the root is not (it is skipped, as one that cannot be read is).
     let answer = call(&mut a, json!({ "catalogs": [inner], "system": "s" })).expect("resolves");
@@ -85,4 +90,51 @@ fn the_root_keeps_the_catalogs_and_the_ones_they_name_inside() {
     let mut free = Automation::new();
     let free_answer = call(&mut free, json!({ "catalogs": [inner], "system": "s" })).expect("resolves");
     assert!(free_answer["resolved"].as_str().is_some_and(|r| r.ends_with("leaked.dtd")), "{free_answer}");
+}
+
+#[test]
+fn what_is_wrong_with_the_catalogs_that_were_named_is_reported_too() {
+    let dir = tempfile::tempdir().expect("dir");
+    let named = dir.path().join("named.xml");
+    std::fs::write(
+        &named,
+        r#"<catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog"><frobnicate/><system systemId="s" uri="found.dtd"/></catalog>"#,
+    )
+    .expect("writes");
+    let torn = dir.path().join("torn.xml");
+    std::fs::write(&torn, "<catalog").expect("writes");
+    let uri = |p: &Path| {
+        let slashed = p.to_str().expect("utf-8").replace('\\', "/");
+        if slashed.starts_with('/') { format!("file://{slashed}") } else { format!("file:///{slashed}") }
+    };
+    let first = write(
+        dir.path(),
+        "first.xml",
+        &format!(
+            r#"<nextCatalog catalog="{}"/><nextCatalog catalog="{}"/><nextCatalog catalog="{}"/>"#,
+            uri(&torn),
+            uri(&dir.path().join("gone.xml")),
+            uri(&named)
+        ),
+    );
+    let mut a = Automation::new();
+    let answer = call(&mut a, json!({ "catalogs": [first], "system": "s" })).expect("resolves");
+    assert!(answer["resolved"].as_str().is_some_and(|r| r.ends_with("/found.dtd")), "{answer}");
+    let warnings: Vec<&str> = answer["warnings"].as_array().expect("a list").iter().filter_map(Value::as_str).collect();
+    assert_eq!(warnings.len(), 3, "{warnings:?}");
+    assert!(warnings.iter().any(|w| w.contains("torn.xml") && w.contains("not well-formed")), "{warnings:?}");
+    assert!(warnings.iter().any(|w| w.contains("gone.xml") && w.contains("cannot be read")), "{warnings:?}");
+    assert!(warnings.iter().any(|w| w.contains("named.xml") && w.contains("frobnicate")), "{warnings:?}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_catalog_over_the_size_limit_is_refused_without_being_read() {
+    let dir = tempfile::tempdir().expect("dir");
+    let big = dir.path().join("big.xml");
+    let file = std::fs::File::create(&big).expect("creates");
+    file.set_len(5 * 1024 * 1024).expect("sets the length (a sparse file)");
+    let mut a = Automation::new();
+    let error = call(&mut a, json!({ "catalogs": [big.to_str().expect("utf-8")], "uri": "u" })).expect_err("too big").to_string();
+    assert!(error.contains("big.xml") && error.contains("over"), "{error}");
 }

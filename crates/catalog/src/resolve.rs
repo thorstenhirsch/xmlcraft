@@ -9,13 +9,18 @@ use crate::uri::{normalize_public, normalize_uri, unwrap_publicid_urn};
 
 /// What a resolution may load, in all: a catalog that names itself, or a long chain of them, ends here.
 pub const MAX_LOADS: usize = 64;
-/// How often a delegation may hand over to other catalogs in one resolution.
-const MAX_DELEGATIONS: usize = 16;
+/// How often a delegation may hand over to other catalogs in one resolution (a delegation that goes round in a circle does not load
+/// anything new, so the load limit would not end it).
+const MAX_DELEGATIONS: usize = MAX_LOADS;
 
 /// Where the catalogs that are named but not given come from. `location` is the absolute URI the entry names; the answer is the text
 /// of the catalog, or `None` when it cannot be had (then it is skipped).
 pub trait Loader {
     fn load(&mut self, location: &str) -> Option<String>;
+
+    /// A catalog that was asked for could not be used, or had entries left out: `problem` says why. For a caller that wants to show it;
+    /// the default does nothing.
+    fn note(&mut self, _location: &str, _problem: &str) {}
 }
 
 /// A loader that has nothing: catalogs that are named are not read.
@@ -112,9 +117,14 @@ impl Catalogs {
     fn run(&self, mut ids: Ids, loader: &mut dyn Loader) -> Option<String> {
         let mut queue: VecDeque<Arc<Catalog>> = self.list.iter().cloned().collect();
         let mut state = State { loader, loaded: HashMap::new(), loads: 0 };
-        let mut seen: HashSet<String> = queue.iter().map(|c| c.location().to_owned()).filter(|l| !l.is_empty()).collect();
+        // The locations of the catalogs that have been consulted (in the original list or in a delegated one): a `nextCatalog` that names
+        // one of them is not followed, which is what ends a cycle.
+        let mut consulted: HashSet<String> = HashSet::new();
         let mut delegations = 0;
         while let Some(catalog) = queue.pop_front() {
+            if !catalog.location().is_empty() {
+                consulted.insert(catalog.location().to_owned());
+            }
             let entries = catalog.entries();
             let lookup = if ids.external {
                 lookup_external(entries, &ids, self.prefer_public)
@@ -132,20 +142,24 @@ impl Catalogs {
                     }
                     ids = delegated;
                     queue.clear();
-                    seen.clear();
                     for location in locations {
                         if let Some(next) = state.load(&location) {
-                            seen.insert(location);
                             queue.push_back(next);
                         }
                     }
                 }
                 Lookup::Next(locations) => {
-                    // Right after this catalog, in the order they are named.
+                    // Right after this catalog, in the order they are named (pushed to the front last to first). One that is waiting in
+                    // the list already is moved up to its place after this catalog; one that has been consulted is not followed.
                     for location in locations.into_iter().rev() {
-                        if seen.insert(location.clone())
-                            && let Some(next) = state.load(&location)
-                        {
+                        if consulted.contains(&location) {
+                            continue;
+                        }
+                        if let Some(at) = queue.iter().position(|waiting| waiting.location() == location) {
+                            if let Some(waiting) = queue.remove(at) {
+                                queue.push_front(waiting);
+                            }
+                        } else if let Some(next) = state.load(&location) {
                             queue.push_front(next);
                         }
                     }
@@ -172,7 +186,24 @@ impl State<'_> {
             return None;
         }
         self.loads += 1;
-        let catalog = self.loader.load(location).and_then(|text| Catalog::parse(&text, location).ok()).map(Arc::new);
+        let catalog = match self.loader.load(location) {
+            None => {
+                self.loader.note(location, "the catalog cannot be read");
+                None
+            }
+            Some(text) => match Catalog::parse(&text, location) {
+                Ok(catalog) => {
+                    for warning in catalog.warnings() {
+                        self.loader.note(location, warning);
+                    }
+                    Some(Arc::new(catalog))
+                }
+                Err(error) => {
+                    self.loader.note(location, &error.to_string());
+                    None
+                }
+            },
+        };
         self.loaded.insert(location.to_owned(), catalog.clone());
         catalog
     }

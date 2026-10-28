@@ -9,6 +9,8 @@ pub const CATALOG_NS: &str = "urn:oasis:names:tc:entity:xmlns:xml:catalog";
 
 /// Entries a catalog may hold: more are ignored (and said so), so that a hostile file cannot make the lists huge.
 pub const MAX_ENTRIES: usize = 100_000;
+/// The most problems `warnings` lists (the last place says when there were more).
+pub const MAX_WARNINGS: usize = 100;
 /// How deep `group` elements may nest.
 const MAX_DEPTH: usize = 64;
 
@@ -140,9 +142,13 @@ struct Context<'a> {
     prefer: Option<bool>,
 }
 
-/// The attributes of an element: the (prefixed) name, and the value with its references decoded and its white space normalised.
-fn attributes(tag: &SyntaxNode) -> Vec<(String, String)> {
-    tag.children()
+/// The attributes of an element: the (prefixed) name, and the value with its references decoded and its white space normalised; and the
+/// entity references that are not the five predefined ones (a catalog may declare entities of its own, which this reader does not
+/// expand: an element that uses one is left out, not read with the reference as text).
+fn attributes(tag: &SyntaxNode) -> (Vec<(String, String)>, Vec<String>) {
+    let mut unsupported = Vec::new();
+    let attrs = tag
+        .children()
         .filter(|n| n.kind() == SyntaxKind::Attribute)
         .filter_map(|attribute| {
             let name = attribute.children_with_tokens().find(|c| c.kind() == SyntaxKind::Name)?.as_token()?.text().to_owned();
@@ -157,8 +163,7 @@ fn attributes(tag: &SyntaxNode) -> Vec<(String, String)> {
                         "&gt;" => text.push('>'),
                         "&quot;" => text.push('"'),
                         "&apos;" => text.push('\''),
-                        // An entity of the file's own is not read: it stays as it is written.
-                        other => text.push_str(other),
+                        other => unsupported.push(other.to_owned()),
                     },
                     SyntaxKind::CharRef => {
                         let reference = token.text();
@@ -177,7 +182,8 @@ fn attributes(tag: &SyntaxNode) -> Vec<(String, String)> {
             }
             Some((name, text))
         })
-        .collect()
+        .collect();
+    (attrs, unsupported)
 }
 
 /// The value of the attribute without a prefix called `name`.
@@ -194,7 +200,7 @@ impl Reader {
         else {
             return false;
         };
-        let attrs = attributes(&tag);
+        let (attrs, unsupported) = attributes(&tag);
         self.ns.push_scope();
         for (attribute, value) in &attrs {
             match split_qname(attribute) {
@@ -205,6 +211,14 @@ impl Reader {
         }
         let local = split_qname(&name).and_then(|(prefix, local)| (self.ns.lookup(prefix) == Some(CATALOG_NS)).then(|| local.to_owned()));
         let read = local.is_some();
+        if let Some(local) = local.as_ref().filter(|_| !unsupported.is_empty()) {
+            self.warn(format!(
+                "a `{local}` element uses {} (an entity of the catalog's own, which is not expanded): it and what is in it are left out",
+                unsupported.join(", ")
+            ));
+            self.ns.pop_scope();
+            return true;
+        }
         if let Some(local) = local {
             // `xml:base` changes what references are resolved against, for this element and what is in it.
             let base = attrs
@@ -232,7 +246,7 @@ impl Reader {
     }
 
     fn children(&mut self, element: &SyntaxNode, context: Context<'_>, depth: usize) {
-        if depth >= MAX_DEPTH {
+        if depth > MAX_DEPTH {
             self.warn(format!("groups are nested more than {MAX_DEPTH} deep: what is inside is left out"));
             return;
         }
@@ -242,9 +256,11 @@ impl Reader {
     }
 
     fn warn(&mut self, message: String) {
-        // The list of what was left out is itself bounded.
-        if self.warnings.len() < 100 {
+        // The list is bounded; its last place says that it was cut, so that no one reads it as complete.
+        if self.warnings.len() + 1 < MAX_WARNINGS {
             self.warnings.push(message);
+        } else if self.warnings.len() + 1 == MAX_WARNINGS {
+            self.warnings.push(format!("more than {} problems: the rest are not listed", MAX_WARNINGS - 1));
         }
     }
 
