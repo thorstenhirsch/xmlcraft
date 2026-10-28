@@ -4780,6 +4780,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-datatypes"
+version = "0.0.1"
+dependencies = [
+ "chrono",
+ "proptest",
+ "xmlcraft-pattern",
+]
+
+[[package]]
 name = "xmlcraft-dtd"
 version = "0.0.1"
 dependencies = [
