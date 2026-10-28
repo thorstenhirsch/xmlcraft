@@ -191,3 +191,20 @@ fn a_string_and_a_number_with_the_same_digits_are_two_values() {
     assert_eq!(keys(schema, "<r><x n=\"1\"/><y s=\"1\"/></r>"), Vec::<&str>::new());
     assert_eq!(keys(schema, "<r><x n=\"1\"/><x n=\"1\"/></r>"), ["cvc.duplicate-key-value"]);
 }
+
+#[test]
+fn a_row_whose_field_found_two_nodes_is_not_also_a_duplicate() {
+    let xml = "<library><book isbn=\"1\"><title>A</title><title>B</title></book><book isbn=\"2\"><title>A</title></book></library>";
+    assert_eq!(keys(LIBRARY, xml), ["cvc.field-selects-many"]);
+}
+
+#[test]
+fn the_value_of_an_element_field_is_its_text_or_its_default() {
+    let schema = "<xs:element name=\"r\"><xs:complexType><xs:sequence><xs:element name=\"e\" maxOccurs=\"unbounded\"><xs:complexType><xs:sequence>\
+        <xs:element name=\"v\" type=\"xs:string\" default=\"d\" minOccurs=\"0\"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType>\
+        <xs:key name=\"k\"><xs:selector xpath=\"e\"/><xs:field xpath=\"v\"/></xs:key></xs:element>";
+    assert_eq!(keys(schema, "<r><e><v>a</v></e><e><v>b</v></e></r>"), Vec::<&str>::new());
+    assert_eq!(keys(schema, "<r><e><v/></e><e><v>d</v></e></r>"), ["cvc.duplicate-key-value"], "an empty element has its default");
+    // A reference to an entity that is not known here: the text is not, so the field has no value.
+    assert_eq!(keys(schema, "<!DOCTYPE r [<!ENTITY x \"y\">]><r><e><v>&x;</v></e></r>"), ["cvc.key-field-missing"]);
+}
