@@ -18,3 +18,4 @@ rowan = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
+xmlcraft-schemas = { workspace = true }

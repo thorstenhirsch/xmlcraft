@@ -38,6 +38,8 @@ pub struct El {
     pub name_range: Range<usize>,
     /// The text directly in the element, references replaced.
     pub text: String,
+    /// The text of the element and everything in it, in document order: a range of [`Dom::all_text`].
+    pub deep: Range<usize>,
     /// The namespace declarations this element makes: the prefix (`None` for the default namespace) and the namespace name.
     pub declarations: Vec<(Option<String>, String)>,
 }
@@ -45,6 +47,8 @@ pub struct El {
 #[derive(Debug, Default)]
 pub struct Dom {
     pub elements: Vec<El>,
+    /// All the text of the document, in order (an element's `deep` text is a range of it).
+    pub all_text: String,
     /// Prefixes that were used and not bound: the prefix and where.
     pub unbound: Vec<(String, Range<usize>)>,
     /// The tree was cut off because of a limit, and which.
@@ -135,7 +139,11 @@ pub fn build(root: &SyntaxNode) -> Dom {
                     let decoded: String =
                         decode_references(&literal).chars().map(|c| if matches!(c, '\t' | '\n' | '\r') { ' ' } else { c }).collect();
                     let nr = name.text_range();
-                    raw.push((name.text().to_owned(), decoded, usize::from(nr.start())..usize::from(nr.end()), range_of(&value)));
+                    let mut value_range = range_of(&value);
+                    if literal.len() + 2 == value_range.len() {
+                        value_range = value_range.start + 1..value_range.end - 1;
+                    }
+                    raw.push((name.text().to_owned(), decoded, usize::from(nr.start())..usize::from(nr.end()), value_range));
                 }
                 // The namespace declarations come first, then the names can be resolved.
                 let mut declarations = Vec::new();
@@ -193,6 +201,7 @@ pub fn build(root: &SyntaxNode) -> Dom {
                     range: range_of(&node),
                     name_range: name_range.unwrap_or_else(|| range_of(&node)),
                     text: String::new(),
+                    deep: dom.all_text.len()..dom.all_text.len(),
                     declarations,
                 });
                 if let Some(p) = parent
@@ -203,8 +212,12 @@ pub fn build(root: &SyntaxNode) -> Dom {
                 open.push(index);
             }
             WalkEvent::Leave(rowan::NodeOrToken::Node(node)) if node.kind() == SyntaxKind::Element => {
-                if open.pop().is_some() {
+                if let Some(index) = open.pop() {
                     scope.pop_scope();
+                    let end = dom.all_text.len();
+                    if let Some(el) = dom.elements.get_mut(index) {
+                        el.deep.end = end;
+                    }
                 }
             }
             WalkEvent::Enter(rowan::NodeOrToken::Token(token)) => {
@@ -214,10 +227,12 @@ pub fn build(root: &SyntaxNode) -> Dom {
                     && token.parent().is_some_and(|p| p.kind() == SyntaxKind::Element || p.kind() == SyntaxKind::CData)
                     && let Some(el) = dom.elements.get_mut(current)
                 {
-                    match token.kind() {
-                        SyntaxKind::CdataText => el.text.push_str(token.text()),
-                        _ => el.text.push_str(&decode_references(token.text())),
-                    }
+                    let piece = match token.kind() {
+                        SyntaxKind::CdataText => token.text().to_owned(),
+                        _ => decode_references(token.text()),
+                    };
+                    el.text.push_str(&piece);
+                    dom.all_text.push_str(&piece);
                 }
             }
             _ => {}

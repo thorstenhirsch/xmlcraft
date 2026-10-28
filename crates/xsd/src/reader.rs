@@ -196,8 +196,14 @@ impl<'a> Reader<'a> {
                     s += 1;
                     continue;
                 }
-                self.report(Code::XsdUnexpectedElement, child.name_range.clone(), &[&child.local, &pel.local]);
-                break;
+                // The slot is not filled (and will be reported); a child that belongs to a later one is taken there.
+                match (s + 1..slots.len()).find(|&j| slots.get(j).is_some_and(|later| later.names.contains(&child.local.as_str()))) {
+                    Some(j) => s = j,
+                    None => {
+                        self.report(Code::XsdUnexpectedElement, child.name_range.clone(), &[&child.local, &pel.local]);
+                        break;
+                    }
+                }
             }
         }
         for (slot, taken) in slots.iter().zip(&out) {
@@ -244,14 +250,7 @@ impl<'a> Reader<'a> {
 
     /// The text of an element and its descendants.
     fn deep_text(&self, i: usize) -> String {
-        let mut out = String::new();
-        let mut stack = vec![i];
-        while let Some(at) = stack.pop() {
-            let Some(el) = self.el(at) else { continue };
-            out.push_str(&el.text);
-            stack.extend(el.children.iter().rev());
-        }
-        out
+        self.el(i).and_then(|e| self.dom.all_text.get(e.deep.clone())).unwrap_or_default().to_owned()
     }
 
     // ---- the document ----
@@ -291,6 +290,9 @@ impl<'a> Reader<'a> {
             annotations: Vec::new(),
             items: Vec::new(),
         };
+        if !el.text.trim().is_empty() {
+            self.report(Code::XsdUnexpectedText, el.name_range.clone(), &["schema"]);
+        }
         // Includes, imports, redefinitions and annotations come first; then the declarations, each with annotations after it.
         let mut declarations_started = false;
         for c in self.xs_children(root) {
@@ -757,7 +759,7 @@ impl Reader<'_> {
         );
         let annotation = self.annotation_of(&found[0]);
         let reference = if top { None } else { self.qname_attr(i, "ref") };
-        let has_ref = self.attr(i, "ref").is_some();
+        let has_ref = !top && self.attr(i, "ref").is_some();
         let (name, name_span) = if has_ref { (None, self.el(i).map_or(0..0, |e| e.name_range.clone())) } else { self.name_attr(i, true) };
         if has_ref && let Some(a) = self.attr(i, "name") {
             self.report(Code::XsdConflict, a.name_range.clone(), &["name", "ref"]);
@@ -817,7 +819,7 @@ impl Reader<'_> {
         self.attrs(i, if top { &["name", "type", "default", "fixed"] } else { &["name", "ref", "type", "use", "default", "fixed", "form"] });
         let found = self.sequence(i, &[ANNOTATION, SIMPLE_TYPE_SLOT]);
         let annotation = self.annotation_of(&found[0]);
-        let has_ref = self.attr(i, "ref").is_some();
+        let has_ref = !top && self.attr(i, "ref").is_some();
         let reference = if top { None } else { self.qname_attr(i, "ref") };
         let (name, name_span) = if has_ref { (None, self.el(i).map_or(0..0, |e| e.name_range.clone())) } else { self.name_attr(i, true) };
         if has_ref && let Some(a) = self.attr(i, "name") {
