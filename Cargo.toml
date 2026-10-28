@@ -27,11 +27,13 @@ xmlcraft-syntax = { path = "crates/syntax", version = "0.0.1" }
 xmlcraft-format = { path = "crates/format", version = "0.0.1" }
 xmlcraft-catalog = { path = "crates/catalog", version = "0.0.1" }
 xmlcraft-schemas = { path = "crates/schemas", version = "0.0.1" }
+xmlcraft-resolve = { path = "crates/resolve", version = "0.0.1" }
 xmlcraft-pattern = { path = "crates/pattern", version = "0.0.1" }
 xmlcraft-datatypes = { path = "crates/datatypes", version = "0.0.1" }
 xmlcraft-xsd = { path = "crates/xsd", version = "0.0.1" }
 xmlcraft-dtd = { path = "crates/dtd", version = "0.0.1" }
 xmlcraft-grammar = { path = "crates/grammar", version = "0.0.1" }
+xmlcraft-complete = { path = "crates/complete", version = "0.0.1" }
 xmlcraft-validate = { path = "crates/validate", version = "0.0.1" }
 xmlcraft-editor = { path = "crates/editor", version = "0.0.1" }
 xmlcraft-code-editor = { path = "crates/code-editor", version = "0.0.1" }
