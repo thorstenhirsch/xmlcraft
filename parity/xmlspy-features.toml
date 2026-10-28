@@ -696,8 +696,8 @@ milestone = "M2"
 status = "partial"
 commands = []
 tools = ["xml_wellformed"]
-evidence = ["crates/dtd/tests/declarations.rs::element_declarations_give_their_content_specifications", "crates/dtd/tests/declarations.rs::mistakes_in_element_declarations"]
-notes = "EMPTY, ANY, mixed content and children content models (groups, choice and sequence, ?*+, nesting up to 256) are read into a model and every syntax mistake is reported. Missing: the models are not compiled to automata or checked (determinism, duplicates in mixed content), which is M2.5 and M2.9."
+evidence = ["crates/dtd/tests/declarations.rs::element_declarations_give_their_content_specifications", "crates/dtd/tests/declarations.rs::mistakes_in_element_declarations", "crates/dtd/tests/compile.rs::the_declarations_become_a_grammar", "crates/dtd/tests/compile.rs::mixed_content_names_each_element_once"]
+notes = "EMPTY, ANY, mixed content and children content models (groups, choice and sequence, ?*+, nesting up to 256) are read into a model, every syntax mistake is reported, and the model is compiled into a grammar: children models become Glushkov automata (`xmlcraft-grammar`), the first declaration of an element counts and a second is a validity error, a name twice in mixed content is one. Missing: nothing validates a document against them yet (M2.9) and the editor does not show these errors (M2.10)."
 
 [[feature]]
 id = "dtd.attlist"
@@ -708,8 +708,8 @@ milestone = "M2"
 status = "partial"
 commands = []
 tools = ["xml_wellformed"]
-evidence = ["crates/dtd/tests/declarations.rs::attribute_list_declarations_give_types_and_defaults", "crates/dtd/tests/declarations.rs::mistakes_in_attribute_list_declarations"]
-notes = "All attribute types (CDATA, ID, IDREF(S), ENTITY/ENTITIES, NMTOKEN(S), NOTATION and enumerations) and defaults (#REQUIRED, #IMPLIED, #FIXED, a value) are read, the first declaration of an attribute counts, and every syntax mistake is reported. Missing: nothing uses the declarations to validate or complete attributes yet."
+evidence = ["crates/dtd/tests/declarations.rs::attribute_list_declarations_give_types_and_defaults", "crates/dtd/tests/declarations.rs::mistakes_in_attribute_list_declarations", "crates/dtd/tests/compile.rs::id_attributes_have_no_default_and_there_is_one_per_element", "crates/dtd/tests/compile.rs::default_values_must_suit_their_types", "crates/dtd/tests/compile.rs::values_are_read_with_their_references_replaced_and_their_white_space_normalised"]
+notes = "All attribute types (CDATA, ID, IDREF(S), ENTITY/ENTITIES, NMTOKEN(S), NOTATION and enumerations) and defaults (#REQUIRED, #IMPLIED, #FIXED, a value) are read, the first declaration of an attribute counts, and every syntax mistake is reported. The validity constraints on the declarations are checked when the DTD is compiled (one ID per element and no default for it, one NOTATION and not on an EMPTY element, distinct tokens, declared notations, default values legal for their type), and attribute values are read as XML 1.0 3.3.3 says (references replaced with limits, white space, collapsing for the types other than CDATA). Missing: nothing validates a document's attributes yet (M2.9), and nothing completes them."
 
 [[feature]]
 id = "dtd.general-entities"
@@ -732,8 +732,8 @@ milestone = "M2"
 status = "partial"
 commands = []
 tools = ["xml_wellformed"]
-evidence = ["crates/dtd/tests/declarations.rs::notation_declarations", "crates/dtd/tests/declarations.rs::entity_declarations_give_values_with_references_resolved"]
-notes = "NOTATION declarations (SYSTEM, PUBLIC with and without a system identifier) and unparsed entities (NDATA) are read and their syntax checked; names have no colon. Missing: the checks that tie them together (a declared notation for NDATA and for NOTATION attributes: validity)."
+evidence = ["crates/dtd/tests/declarations.rs::notation_declarations", "crates/dtd/tests/declarations.rs::entity_declarations_give_values_with_references_resolved", "crates/dtd/tests/compile.rs::notation_attributes"]
+notes = "NOTATION declarations (SYSTEM, PUBLIC with and without a system identifier) and unparsed entities (NDATA) are read and their syntax checked; names have no colon. When the DTD is compiled, a notation declared twice, an unparsed entity or a NOTATION attribute that names a notation that is not declared (unless part of the DTD was not read) are validity errors. Missing: ENTITY attribute values that must name unparsed entities of a document (M2.9) and the editor does not show these errors yet."
 
 [[feature]]
 id = "dtd.determinism-warning"
@@ -741,11 +741,11 @@ title = "Warn about non-deterministic content models"
 area = "C"
 tier = "P2"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/dtd/tests/compile.rs::a_content_model_that_is_not_deterministic_is_a_warning", "crates/grammar/tests/automaton.rs::a_model_that_is_not_deterministic_is_found_and_both_particles_are_named"]
+notes = "Compiling a DTD warns (`dtd.non-deterministic-content-model`) for a content model in which an element could be matched by two particles, such as (a?, a) or ((a, b) | (a, c)), naming the element. Missing: the warning is not shown anywhere yet (the validation UX is M2.10) and there is no headless tool for it."
 
 [[feature]]
 id = "dtd.editing-support"
