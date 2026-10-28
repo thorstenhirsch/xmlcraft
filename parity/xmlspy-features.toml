@@ -798,7 +798,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "M3.2: `xmlcraft-datatypes` has the 45 built-in types (defined by facets, as the specification defines them), the twelve facets with the constraints a restriction must meet, list and union types, and `SimpleType::validate` (white space, patterns on the lexical form, lexical mapping, the facets of every derivation step, violations named by the validity constraint they break); tested per type, per facet and by property. Nothing a user can reach uses it until the XSD engine validates (M3.9), so the status stays planned."
 
 [[feature]]
 id = "xsd.complex-types"
@@ -918,7 +918,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = "Through chrono; 400-year cycle shift."
+notes = "Through chrono; 400-year cycle shift. M3.2 has the eight types in `xmlcraft-datatypes::Temporal` (the seven-property model with defaults that order the periods; `24:00:00`; no year 0; years of up to 18 digits with the Gregorian leap rule for any of them; the partial order of values with and without a time zone, checked against chrono) and `duration` (the partial order over the four reference dates); nothing a user can reach uses them yet, so the status stays planned."
 
 [[feature]]
 id = "xsd.authoring-completion"
