@@ -2,7 +2,7 @@
 //! mixed content and `xml:space="preserve"` alone, and it keeps the document well-formed.
 
 use proptest::prelude::*;
-use xmlcraft_format::{BlankLines, FormatOptions, Indent, apply, minify, pretty_print};
+use xmlcraft_format::{BlankLines, FormatOptions, Indent, apply, minify, pretty_print, pretty_print_settled};
 use xmlcraft_syntax::{SyntaxKind, parse};
 use xmlcraft_text::eol::Eol;
 
@@ -170,6 +170,16 @@ proptest! {
         }
     }
 
+    /// With the line ending taken from the text, a document that mixes endings is formatted once and for all: the first pass drops blank
+    /// lines and their votes, which must not make the second pass write another ending.
+    #[test]
+    fn settled_pretty_printing_is_idempotent_whatever_endings_the_text_mixes(src in document(), options in options()) {
+        prop_assume!(!parse(&src).has_errors());
+        let once = apply(&src, &pretty_print_settled(&src, &options).expect("a well-formed document"));
+        prop_assert_eq!(pretty_print_settled(&once, &options).expect("well-formed"), vec![], "second pass on {:?}", once);
+        prop_assert_eq!(without_space(&once), without_space(&src));
+    }
+
     #[test]
     fn minifying_changes_only_white_space_and_is_idempotent(src in document()) {
         prop_assume!(!parse(&src).has_errors());
@@ -195,4 +205,21 @@ proptest! {
         let _ = pretty_print(&src, &options);
         let _ = minify(&src);
     }
+}
+
+/// Found by `cargo xtask fuzz`: five breaks of each ending, the CRLF ones inside a comment and so out of the formatter's reach; the blank
+/// lines it drops are LF, so a second pass saw CRLF as the most common ending and rewrote every break.
+#[test]
+fn a_text_that_mixes_endings_is_formatted_once_and_for_all() {
+    let src = "<?l?><!--\r\n\r\n\r\n\r\n\r\n-->\n<foo xmlns:a=\"r\">\n\n<a a=\"\"/>\n\n</foo>";
+    let options = FormatOptions::default();
+    let once = apply(src, &pretty_print_settled(src, &options).expect("well-formed"));
+    assert_eq!(pretty_print_settled(&once, &options), Ok(vec![]), "{once:?}");
+    // The mechanism: written with the text's own ending (a tie, so LF), the result has more CRLF than LF, and a pass that follows its text
+    // would write CRLF.
+    let with_lf = apply(src, &pretty_print(src, &FormatOptions { eol: Eol::Lf, ..options }).expect("well-formed"));
+    assert_eq!(xmlcraft_text::eol::LineEndings::count(&with_lf).dominant(), Eol::CrLf);
+    assert_ne!(pretty_print(&with_lf, &FormatOptions { eol: Eol::CrLf, ..options }), Ok(vec![]));
+    // So the settled pass writes the ending the result will have most of, in one go.
+    assert_eq!(xmlcraft_text::eol::LineEndings::count(&once).dominant(), Eol::CrLf);
 }

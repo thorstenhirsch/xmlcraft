@@ -7,6 +7,7 @@ use std::process::ExitCode;
 mod assets;
 mod bench;
 mod conformance;
+mod fuzz;
 mod gates;
 mod layers;
 mod parity;
@@ -16,7 +17,7 @@ mod version;
 type Command = fn(&[String]) -> anyhow::Result<()>;
 
 /// Every subcommand: name, one-line summary, entry point. Commands for later milestones (schemas,
-/// oracle, fuzz, screenshots, i18n-report) are added with the milestone that needs them.
+/// oracle, screenshots, i18n-report) are added with the milestone that needs them.
 const COMMANDS: &[(&str, &str, Command)] = &[
     ("version", "Print the workspace version, or `version set X.Y.Z[-pre]` to change it and refresh Cargo.lock", version_cmd),
     ("layers", "Enforce the crate dependency layering (docs/architecture.md)", gates::layers),
@@ -34,6 +35,11 @@ const COMMANDS: &[(&str, &str, Command)] = &[
         "bench",
         "Measure the editor's performance targets on synthetic documents and hold the budgets: `bench [--only NAME] [--list] [--json] [--no-release]`",
         bench::run,
+    ),
+    (
+        "fuzz",
+        "Mutation-fuzz open/save/analyse/format/edit in child processes and keep the findings in fuzz-out/: `fuzz [--time 300] [--iterations N] [--seed 1] [--jobs N] [--timeout 10]`",
+        fuzz::run,
     ),
     ("parity", "Validate parity/xmlspy-features.toml against the registry, tools and tests; report progress (--json, --partial)", parity::run),
 ];

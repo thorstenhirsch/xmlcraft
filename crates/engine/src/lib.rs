@@ -8,6 +8,7 @@ pub mod commands;
 mod document;
 pub mod folding;
 pub mod recent;
+pub mod selfcheck;
 
 pub use document::{Document, FileStamp, MAX_OPEN_BYTES, OpenError, SaveError};
 pub use recent::Recent;
