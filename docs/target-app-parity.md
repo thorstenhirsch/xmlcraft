@@ -1,6 +1,6 @@
 # XmlCraft parity with Altova XMLSpy
 
-> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M2.2 (first part): bundled schemas (`catalog.bundled-schemas` planned → partial), M2.9: validation against a DTD (partial); xmlconf now validating: not-wf, valid and invalid all 100%; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M3.1: XSD regular expressions (a note only), M2.2 (first part): bundled schemas (`catalog.bundled-schemas` planned → partial), M2.9: validation against a DTD (partial); xmlconf now validating: not-wf, valid and invalid all 100%; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
 
 The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -59,4 +59,5 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 - 2026-10-28: M2.7: the DTD compiled to a grammar (`dtd.determinism-warning` planned → partial; the notes of `dtd.content-models`, `dtd.attlist` and `dtd.notations` say what the compile checks); 10 shipped and 39 partial, 19.4% weighted.
 - 2026-10-28: M2.9: validation against a DTD (`validate.dtd` and `validate.entity-limits` planned → partial); xmlconf now validating, not-well-formed 99.8% → 100%, valid and invalid 100%; 10 shipped and 41 partial, 20.1% weighted.
 - 2026-10-28: M2.10 and M2.13 (first parts): Validate (F8) in the app, the tool `xml_validate` and `xmlcraft-cli validate` (`validate.dtd` gets its commands and tools, `validate.error-positions` planned → partial); 10 shipped and 42 partial, 20.4% weighted.
+- 2026-10-28: M3.1: `xmlcraft-pattern` (XSD regular expressions); the note of `xsd.regex-patterns` says what exists; the status stays planned (nothing a user can reach uses it yet).
 - 2026-10-28: M2.2 (first part): the bundled schemas, ten W3C files with their catalogs (`catalog.bundled-schemas` planned → partial); 10 shipped and 43 partial of 152 counted, 20.7% weighted, P0 33.6%.
