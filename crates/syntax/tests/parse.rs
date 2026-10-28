@@ -180,6 +180,8 @@ fn whitespace_and_declaration_rules() {
     assert_eq!(problems("<!DOCTYPE a [<!NOTATION n PUBLIC \"a{b\">]><a/>"), [p(Code::BadPubidLiteral, "{")]);
     assert_eq!(problems("<!DOCTYPE a [<!DUNNO x>]><a/>"), [p(Code::UnknownDeclaration, "<!DUNNO")]);
     assert_eq!(problems("<!DOCTYPE a [] x><a/>"), [p(Code::BadDoctype, "x")]);
+    assert_eq!(problems("<!DOCTYPE a [] \"x\"><a/>"), [p(Code::BadDoctype, "x")], "a quoted string after the internal subset");
+    assert_eq!(problems("<!DOCTYPE a PUBLIC \"p\" \"s\" [ ] 'q' \"r\"><a/>"), [p(Code::BadDoctype, "q"), p(Code::BadDoctype, "r")]);
 }
 
 #[test]

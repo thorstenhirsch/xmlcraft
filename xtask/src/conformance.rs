@@ -249,11 +249,24 @@ fn upstream_path(suite: &Path, path: &str) -> String {
 /// nothing outside the suite (and no URL) is read.
 struct SuiteFiles<'a> {
     suite: &'a Path,
+    /// Why a file that was found cannot be text of the document (it is not valid in its encoding): the document is not well-formed for
+    /// it, which is not the same as a part that is missing.
+    rejected: Option<String>,
+}
+
+/// The most one external text of the suite may be.
+const MAX_SUITE_FILE: u64 = 64 * 1024 * 1024;
+
+/// Whether a system identifier starts with a URI scheme (`http:`, `file:`, …): it names no file of the suite.
+fn has_scheme(system: &str) -> bool {
+    let Some((scheme, _)) = system.split_once(':') else { return false };
+    let mut chars = scheme.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphabetic()) && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
 impl xmlcraft_dtd::SubsetLoader for SuiteFiles<'_> {
     fn load(&mut self, request: &xmlcraft_dtd::LoadRequest<'_>) -> Result<xmlcraft_dtd::Loaded, String> {
-        if request.system.contains("://") || request.system.starts_with('/') {
+        if request.system.starts_with('/') || has_scheme(request.system) {
             return Err("not a path inside the suite".to_owned());
         }
         let base = Path::new(request.base);
@@ -270,14 +283,30 @@ impl xmlcraft_dtd::SubsetLoader for SuiteFiles<'_> {
             }
         }
         let resolved: PathBuf = parts.iter().collect();
-        if !resolved.starts_with(self.suite) {
+        // Where the file really is (a link is followed) must be inside the suite too.
+        let real = fs::canonicalize(&resolved).map_err(|e| e.to_string())?;
+        let suite = fs::canonicalize(self.suite).map_err(|e| e.to_string())?;
+        if !real.starts_with(&suite) {
             return Err("outside the suite".to_owned());
         }
-        let bytes = fs::read(&resolved).map_err(|e| e.to_string())?;
+        // The size first: a file over the limit is not read into memory only to be refused.
+        if fs::metadata(&real).map_err(|e| e.to_string())?.len() > MAX_SUITE_FILE {
+            return Err(format!("over {MAX_SUITE_FILE} bytes"));
+        }
+        let bytes = fs::read(&real).map_err(|e| e.to_string())?;
         let detected = sniff(&bytes);
         let decoded = decode(&bytes, &detected);
-        if decoded.lossy {
-            return Err(format!("not valid {:?}", detected.encoding));
+        let wrong = if decoded.lossy {
+            Some(format!("not valid {:?}", detected.encoding))
+        } else if !detected.declaration_matches() {
+            Some(format!("declares {:?} but is {:?}", detected.declared.clone().unwrap_or_default(), detected.encoding))
+        } else {
+            None
+        };
+        if let Some(reason) = wrong {
+            let reason = format!("{}: {reason}", resolved.display());
+            self.rejected.get_or_insert_with(|| reason.clone());
+            return Err(reason);
         }
         Ok(xmlcraft_dtd::Loaded { text: decoded.text, location: resolved.to_string_lossy().into_owned() })
     }
@@ -298,11 +327,13 @@ fn reject_reason(bytes: &[u8], path: &Path, suite: &Path) -> Option<String> {
     // The problems of the document and of its DTD: the internal subset is read by the DTD reader, the external parts come from the suite.
     let parts = xmlcraft_dtd::doctype_parts(&parsed.syntax());
     let location = path.to_string_lossy();
-    let problems = xmlcraft_dtd::problems_of_document(&decoded.text, parsed.diagnostics(), parts.as_ref(), &location, &mut SuiteFiles { suite });
+    let mut files = SuiteFiles { suite, rejected: None };
+    let problems = xmlcraft_dtd::problems_of_document(&decoded.text, parsed.diagnostics(), parts.as_ref(), &location, &mut files);
     problems
         .iter()
         .find(|d| d.diagnostic.severity() == xmlcraft_syntax::Severity::Error)
         .map(|d| if d.source == 0 { d.diagnostic.message() } else { format!("in external text {}: {}", d.source, d.diagnostic.message()) })
+        .or(files.rejected)
 }
 
 #[derive(Default)]
@@ -443,6 +474,50 @@ fn write_baseline(path: &Path, failed: &BTreeSet<String>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ask(files: &mut SuiteFiles<'_>, base: &Path, system: &str) -> Result<xmlcraft_dtd::Loaded, String> {
+        xmlcraft_dtd::SubsetLoader::load(
+            files,
+            &xmlcraft_dtd::LoadRequest { kind: "external subset", public: None, system, base: &base.to_string_lossy() },
+        )
+    }
+
+    #[test]
+    fn only_files_of_the_suite_are_read_for_a_dtd() {
+        for scheme in ["http://x/a.dtd", "file:/tmp/a.dtd", "FILE:a.dtd", "ftp:a", "x+y-z.1:a"] {
+            assert!(has_scheme(scheme), "{scheme}");
+        }
+        for path in ["a.dtd", "dir/a.dtd", "../a.dtd", "a/b:c.dtd", ":a", "1x:a", ""] {
+            assert!(!has_scheme(path), "{path}");
+        }
+        let dir = tempfile::tempdir().expect("dir");
+        let suite = dir.path().join("suite");
+        std::fs::create_dir_all(&suite).expect("suite");
+        std::fs::write(suite.join("in.dtd"), "<!ELEMENT a EMPTY>").expect("writes");
+        std::fs::write(dir.path().join("out.dtd"), "<!ELEMENT secret EMPTY>").expect("writes");
+        let base = suite.join("doc.xml");
+        let mut files = SuiteFiles { suite: &suite, rejected: None };
+        assert_eq!(ask(&mut files, &base, "in.dtd").map(|l| l.text), Ok("<!ELEMENT a EMPTY>".to_owned()));
+        for system in ["../out.dtd", "file:/etc/hosts", "/etc/hosts", "http://x/y.dtd", "missing.dtd"] {
+            assert!(ask(&mut files, &base, system).is_err(), "{system}");
+        }
+        // A name that looks like a scheme is not a file of the suite, even when there is one by that name.
+        #[cfg(unix)]
+        {
+            std::fs::write(suite.join("file:in.dtd"), "<!ELEMENT a EMPTY>").expect("writes");
+            assert!(ask(&mut files, &base, "file:in.dtd").is_err());
+        }
+        // A link inside the suite to a file outside it is not followed out.
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(dir.path().join("out.dtd"), suite.join("link.dtd")).expect("link");
+            assert_eq!(ask(&mut files, &base, "link.dtd").map(|l| l.text), Err("outside the suite".to_owned()));
+        }
+        // A file that is not valid in its encoding is not text of the document: the document is rejected for it.
+        std::fs::write(suite.join("latin.dtd"), b"<?xml encoding='UTF-8'?><!ELEMENT a EMPTY> \xE9").expect("writes");
+        assert!(ask(&mut files, &base, "latin.dtd").is_err());
+        assert!(files.rejected.as_deref().is_some_and(|why| why.contains("latin.dtd")), "{:?}", files.rejected);
+    }
 
     #[test]
     fn entities_are_read_from_the_doctype() {

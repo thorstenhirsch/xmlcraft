@@ -100,7 +100,6 @@ codes! {
     BadDoctype => ("xml.bad-doctype", Error, "The DOCTYPE is malformed: {0}."),
     UnterminatedDoctype => ("xml.unterminated-doctype", Error, "The DOCTYPE is not closed: expected '>'."),
     // The DTD: declarations, entities and conditional sections (read by `xmlcraft-dtd`)
-    DtdExpected => ("dtd.expected", Error, "Expected {0}."),
     DtdBadContentModel => ("dtd.bad-content-model", Error, "The content model is malformed: {0}."),
     DtdBadAttlist => ("dtd.bad-attribute-declaration", Error, "The attribute-list declaration is malformed: {0}."),
     DtdBadEntityDecl => ("dtd.bad-entity-declaration", Error, "The entity declaration is malformed: {0}."),

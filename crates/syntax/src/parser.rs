@@ -108,7 +108,6 @@ impl Tree {
     }
 }
 
-/// An element whose end tag has not come yet.
 /// A word or a quoted string in the head of a DOCTYPE.
 struct DoctypeItem {
     word: bool,
@@ -116,6 +115,7 @@ struct DoctypeItem {
     space_before: bool,
 }
 
+/// An element whose end tag has not come yet.
 struct Open {
     /// The name in its start tag (or, if it has none, the `<`).
     name: Range<usize>,
@@ -984,6 +984,9 @@ impl<'a> Parser<'a> {
                         {
                             self.check_pubid(range);
                         }
+                    } else if let Some(range) = range {
+                        let text = self.slice(&range).to_owned();
+                        self.diag(Code::BadDoctype, range, vec![format!("unexpected '{text}' after the internal subset")]);
                     }
                     space = false;
                 }

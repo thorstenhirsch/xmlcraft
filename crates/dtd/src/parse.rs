@@ -13,8 +13,8 @@ use crate::model::{
 
 /// How deep parameter entities may be nested in each other.
 pub const MAX_PE_DEPTH: usize = 40;
-/// The most characters the expansion of parameter entities may produce, in all.
-pub const MAX_EXPANDED_CHARS: usize = 10_000_000;
+/// The most bytes the expansion of parameter entities may produce, in all.
+pub const MAX_EXPANDED_BYTES: usize = 10_000_000;
 /// The most external texts one DTD may load.
 pub const MAX_LOADS: usize = 256;
 /// The most bytes of external text one DTD may load.
@@ -136,14 +136,26 @@ struct Frame {
     real: bool,
     /// The source `pos` belongs to (real) or `origin` does (not real).
     source: usize,
-    /// For a real text, where it begins in its source.
+    /// For a real text, where `pos` 0 (after the padding) is in its source: the length of what was taken off the front of it (a text
+    /// declaration), or where the subset begins in the document.
     base: usize,
+    /// White space put at each end of the text (a reference to a parameter entity stands for its text with a space at each end), which
+    /// is not in the source.
+    pad: usize,
     /// For a replacement text, where the reference is.
     origin: usize,
     /// The reading is in the internal subset (a reference to a parameter entity cannot be inside a declaration here).
     internal: bool,
     /// The parameter entity this is the text of, to see that it does not contain itself.
     name: Option<String>,
+}
+
+impl Frame {
+    /// Where the next character is in its source (a text that was read), without the padding.
+    fn offset(&self) -> usize {
+        let inner = self.text.len().saturating_sub(2 * self.pad);
+        self.base.saturating_add(self.pos.saturating_sub(self.pad).min(inner))
+    }
 }
 
 struct Parser<'a> {
@@ -160,8 +172,9 @@ struct Parser<'a> {
     declarations: usize,
     /// Inside a declaration (so that a parameter-entity reference is not allowed in the internal subset).
     in_decl: bool,
-    /// The text of the external parameter entities that were loaded, by name: (text, source).
-    external_pes: HashMap<String, Option<(String, usize)>>,
+    /// The text of the external parameter entities that were loaded, by name: (text without its text declaration, source, where in the
+    /// source the text begins).
+    external_pes: HashMap<String, Option<(String, usize, usize)>>,
     /// Reading has been given up (a limit was passed).
     stopped: bool,
     capped: bool,
@@ -201,25 +214,30 @@ impl<'a> Parser<'a> {
     /// Where reading is now: the source and the offset in it.
     fn here(&self) -> (usize, usize) {
         match self.frames.last() {
-            Some(f) if f.real => (f.source, f.base + f.pos),
+            Some(f) if f.real => (f.source, f.offset()),
             Some(f) => (f.source, f.origin),
             None => (0, 0),
         }
     }
 
     fn report(&mut self, code: Code, args: Vec<String>, from: (usize, usize)) {
-        if self.diags.len() >= MAX_DIAGNOSTICS {
-            if !self.capped {
-                self.capped = true;
-                let (source, offset) = self.here();
-                self.diags.push(DtdDiagnostic { source, diagnostic: Diagnostic::new(Code::TooManyDiagnostics, offset..offset, Vec::new()) });
-            }
-            return;
-        }
         let (source, end) = self.here();
         // A problem is where the construct began, up to where it was noticed (at least a character wide when that is the same place).
         let range: Range<usize> = if from.0 == source && from.1 < end { from.1..end } else { end..end };
-        self.diags.push(DtdDiagnostic { source, diagnostic: Diagnostic::new(code, range, args) });
+        self.push(source, Diagnostic::new(code, range, args));
+    }
+
+    /// List a problem in `source`, unless there are too many already: then one note says so, once.
+    fn push(&mut self, source: usize, diagnostic: Diagnostic) {
+        if self.diags.len() >= MAX_DIAGNOSTICS {
+            if !self.capped {
+                self.capped = true;
+                let at = diagnostic.span.start;
+                self.diags.push(DtdDiagnostic { source, diagnostic: Diagnostic::new(Code::TooManyDiagnostics, at..at, Vec::new()) });
+            }
+            return;
+        }
+        self.diags.push(DtdDiagnostic { source, diagnostic });
     }
 
     /// A problem at the current place.
@@ -294,8 +312,11 @@ impl<'a> Parser<'a> {
     /// A character that is not allowed in a document, at the current place.
     fn check_char(&mut self, c: char) {
         if !is_xml_char(c) {
-            let here = self.here();
-            self.report(Code::InvalidChar, vec![format!("{:04X}", u32::from(c))], here);
+            // The character has been taken: the problem is the character itself (in a text that was read; a replacement text has no places).
+            let (source, end) = self.here();
+            let real = self.frames.last().is_some_and(|f| f.real);
+            let from = if real { end.saturating_sub(c.len_utf8()) } else { end };
+            self.report(Code::InvalidChar, vec![format!("{:04X}", u32::from(c))], (source, from));
         }
     }
 
@@ -382,13 +403,16 @@ impl<'a> Parser<'a> {
         self.advance(1);
         let name = self.name()?;
         if !self.eat(";") {
+            // Not a reference: there is nothing to expand, and one mistake is one problem.
             self.report(Code::DtdBadPeReference, vec![format!("'%{name}' must end with ';'")], start);
+            return None;
         }
         Some(name)
     }
 
-    /// The replacement text of the parameter entity `name`: its text, and the source it is in when that is an external text.
-    fn pe_text(&mut self, name: &str, start: (usize, usize)) -> Option<(String, Option<usize>)> {
+    /// The replacement text of the parameter entity `name`: its text, and when that is an external text the source it is in and where in
+    /// the source the text begins.
+    fn pe_text(&mut self, name: &str, start: (usize, usize)) -> Option<(String, Option<(usize, usize)>)> {
         let Some(decl) = self.dtd.parameter_entity(name).cloned() else {
             if self.dtd.has_external_parts {
                 self.dtd.incomplete = true;
@@ -402,13 +426,16 @@ impl<'a> Parser<'a> {
             EntityValue::Internal(text) => Some((text.clone(), None)),
             EntityValue::External(id) => {
                 if let Some(known) = self.external_pes.get(name) {
-                    return known.clone().map(|(text, source)| (text, Some(source)));
+                    return known.clone().map(|(text, source, offset)| (text, Some((source, offset))));
                 }
                 let base = decl.location.clone().unwrap_or_else(|| self.base.clone());
                 let loaded = self.load("parameter entity", id.public.as_deref(), id.system.as_deref().unwrap_or_default(), &base, start);
-                let entry = loaded.map(|(text, source)| (strip_text_decl(self, &text, source), source));
+                let entry = loaded.map(|(text, source)| {
+                    let (rest, offset) = strip_text_decl(self, &text, source);
+                    (rest, source, offset)
+                });
                 self.external_pes.insert(name.to_owned(), entry.clone());
-                entry.map(|(text, source)| (text, Some(source)))
+                entry.map(|(text, source, offset)| (text, Some((source, offset))))
             }
         }
     }
@@ -459,8 +486,8 @@ impl<'a> Parser<'a> {
         }
         let Some((text, source)) = self.pe_text(&name, start) else { return true };
         self.expanded = self.expanded.saturating_add(text.len());
-        if self.expanded > MAX_EXPANDED_CHARS {
-            self.report(Code::DtdLimit, vec![format!("parameter entities expand to more than {MAX_EXPANDED_CHARS} characters")], start);
+        if self.expanded > MAX_EXPANDED_BYTES {
+            self.report(Code::DtdLimit, vec![format!("parameter entities expand to more than {MAX_EXPANDED_BYTES} bytes")], start);
             self.stopped = true;
             return false;
         }
@@ -468,15 +495,24 @@ impl<'a> Parser<'a> {
         let (here_source, here_offset) = self.here();
         let frame = match source {
             // A text that was read: its own source and offsets.
-            Some(source) => {
-                Frame { text: format!(" {text} "), pos: 0, real: true, source, base: 0, origin: here_offset, internal: false, name: Some(name) }
-            }
+            Some((source, offset)) => Frame {
+                text: format!(" {text} "),
+                pos: 0,
+                real: true,
+                source,
+                base: offset,
+                pad: 1,
+                origin: here_offset,
+                internal: false,
+                name: Some(name),
+            },
             None => Frame {
                 text: format!(" {text} "),
                 pos: 0,
                 real: false,
                 source: here_source,
                 base: 0,
+                pad: 1,
                 origin: here_offset,
                 internal,
                 name: Some(name),
@@ -489,7 +525,7 @@ impl<'a> Parser<'a> {
     // --- the subsets ---
 
     fn run_internal(&mut self, text: &str, offset: usize) {
-        self.frames.push(Frame { text: text.to_owned(), pos: 0, real: true, source: 0, base: offset, origin: 0, internal: true, name: None });
+        self.frames.push(Frame { text: text.to_owned(), pos: 0, real: true, source: 0, base: offset, pad: 0, origin: 0, internal: true, name: None });
         self.declarations_loop(false);
         self.frames.clear();
     }
@@ -503,9 +539,9 @@ impl<'a> Parser<'a> {
 
     /// Read `text` as the content of an external subset.
     fn run_text(&mut self, text: &str, source: usize) {
-        let text = strip_text_decl(self, text, source);
+        let (text, offset) = strip_text_decl(self, text, source);
         self.frames.clear();
-        self.frames.push(Frame { text, pos: 0, real: true, source, base: 0, origin: 0, internal: false, name: None });
+        self.frames.push(Frame { text, pos: 0, real: true, source, base: offset, pad: 0, origin: 0, internal: false, name: None });
         self.declarations_loop(false);
         self.frames.clear();
     }
@@ -602,12 +638,19 @@ impl<'a> Parser<'a> {
         let start = self.here();
         self.advance(4);
         loop {
-            if self.starts_with("--") {
-                self.advance(2);
-                if self.eat(">") {
+            // A run of hyphens: two end the comment when a `>` follows; any more, or two with something else after, are a mistake (and a
+            // comment that ends `--->` is still ended there).
+            let hyphens = self.rest().bytes().take_while(|&b| b == b'-').count();
+            if hyphens >= 2 {
+                self.advance(hyphens);
+                let ends = self.eat(">");
+                if ends && hyphens == 2 {
                     return;
                 }
                 self.report(Code::DoubleHyphenInComment, Vec::new(), start);
+                if ends {
+                    return;
+                }
                 continue;
             }
             match self.bump() {
@@ -1129,8 +1172,8 @@ impl<'a> Parser<'a> {
                     }
                     if let Some((text, _)) = self.pe_text(&name, at) {
                         self.expanded = self.expanded.saturating_add(text.len());
-                        if self.expanded > MAX_EXPANDED_CHARS || value.len().saturating_add(text.len()) > MAX_EXPANDED_CHARS {
-                            self.report(Code::DtdLimit, vec![format!("entity values longer than {MAX_EXPANDED_CHARS} characters")], at);
+                        if self.expanded > MAX_EXPANDED_BYTES || value.len().saturating_add(text.len()) > MAX_EXPANDED_BYTES {
+                            self.report(Code::DtdLimit, vec![format!("entity values longer than {MAX_EXPANDED_BYTES} bytes")], at);
                             self.stopped = true;
                             return None;
                         }
@@ -1329,33 +1372,52 @@ impl<'a> Parser<'a> {
             } else if self.starts_with("]]>") {
                 self.advance(3);
                 depth -= 1;
-            } else if self.bump().is_none() {
-                self.report(Code::DtdBadConditional, vec!["the section is not closed: expected ']]>'".to_owned()], start);
-                return;
+            } else {
+                // What is ignored is still text: it can have no character that XML does not allow.
+                match self.bump() {
+                    Some(c) => self.check_char(c),
+                    None => {
+                        self.report(Code::DtdBadConditional, vec!["the section is not closed: expected ']]>'".to_owned()], start);
+                        return;
+                    }
+                }
             }
         }
     }
 }
 
-/// The text of an external entity without its text declaration (`<?xml version? encoding?>`), which is read for what is wrong with it.
-/// Anything else that starts with `<?xml` later in the text is reported where it is.
-fn strip_text_decl(parser: &mut Parser<'_>, text: &str, source: usize) -> String {
-    let Some(rest) = text.strip_prefix("<?xml") else { return text.to_owned() };
+/// The text of an external entity without its text declaration (`<?xml version? encoding?>`), which is read for what is wrong with it,
+/// and where in the entity that text begins. Anything else that starts with `<?xml` later in the text is reported where it is.
+fn strip_text_decl(parser: &mut Parser<'_>, text: &str, source: usize) -> (String, usize) {
+    let split = split_text_decl(text);
+    if let Some(problem) = split.problem {
+        parser.push(source, Diagnostic::new(Code::DtdBadTextDecl, 0..split.span, vec![problem.to_owned()]));
+    }
+    (text.get(split.content..).unwrap_or_default().to_owned(), split.content)
+}
+
+/// The text declaration an external entity may begin with, taken apart.
+pub(crate) struct TextDecl {
+    /// Where the content begins (0 when there is no declaration, or when it is not closed).
+    pub content: usize,
+    /// How much of the text is the declaration, for reporting.
+    pub span: usize,
+    /// What is wrong with it.
+    pub problem: Option<&'static str>,
+}
+
+/// Take the text declaration (`<?xml version? encoding?>`) off the front of an external entity, and read it for what is wrong with it.
+pub(crate) fn split_text_decl(text: &str) -> TextDecl {
+    let none = TextDecl { content: 0, span: 0, problem: None };
+    let Some(rest) = text.strip_prefix("<?xml") else { return none };
     if rest.chars().next().is_some_and(|c| !is_xml_space(c) && c != '?') {
-        return text.to_owned();
+        return none;
     }
     let Some(end) = rest.find("?>") else {
-        parser.diags.push(DtdDiagnostic {
-            source,
-            diagnostic: Diagnostic::new(Code::DtdBadTextDecl, 0..5, vec!["it is not closed: expected '?>'".to_owned()]),
-        });
-        return text.to_owned();
+        return TextDecl { span: 5, problem: Some("it is not closed: expected '?>'"), ..none };
     };
     let body = rest.get(..end).unwrap_or_default();
-    if let Some(problem) = text_decl_problem(body) {
-        parser.diags.push(DtdDiagnostic { source, diagnostic: Diagnostic::new(Code::DtdBadTextDecl, 0..5 + end + 2, vec![problem.to_owned()]) });
-    }
-    rest.get(end + 2..).unwrap_or_default().to_owned()
+    TextDecl { content: 5 + end + 2, span: 5 + end + 2, problem: text_decl_problem(body) }
 }
 
 /// What is wrong with the pseudo-attributes of a text declaration: `version="1.x"`? then `encoding="..."` (required), nothing else.
@@ -1375,17 +1437,18 @@ fn text_decl_problem(body: &str) -> Option<&'static str> {
         let name_end = rest.find(|c: char| !is_name_char(c)).unwrap_or(rest.len());
         let name = rest.get(..name_end).unwrap_or_default();
         rest = rest.get(name_end..).unwrap_or_default().trim_start_matches(is_xml_space);
-        rest = rest.strip_prefix('=')?.trim_start_matches(is_xml_space);
+        let Some(after_equals) = rest.strip_prefix('=') else { return Some("expected '=' after the name") };
+        rest = after_equals.trim_start_matches(is_xml_space);
         let Some(quote) = rest.chars().next().filter(|c| matches!(c, '"' | '\'')) else { return Some("a value must be in quotes") };
-        let value_end = rest.get(1..).and_then(|after| after.find(quote))?;
+        let Some(value_end) = rest.get(1..).and_then(|after| after.find(quote)) else { return Some("a value is not closed") };
         let value = rest.get(1..1 + value_end).unwrap_or_default();
         rest = rest.get(value_end + 2..).unwrap_or_default();
         match name {
             "version" if !seen_version && !seen_encoding => {
-                seen_version = true;
                 if !(value.starts_with("1.") && value.len() > 2 && value.get(2..).is_some_and(|d| d.chars().all(|c| c.is_ascii_digit()))) {
                     return Some("the version is not a number like 1.0");
                 }
+                seen_version = true;
             }
             "encoding" if !seen_encoding => {
                 seen_encoding = true;
@@ -1413,7 +1476,7 @@ fn is_pubid_char(c: char) -> bool {
 }
 
 /// The character a reference's number (`123` or `x7B`) stands for, if it is one XML allows.
-fn char_reference(number: &str) -> Option<char> {
+pub(crate) fn char_reference(number: &str) -> Option<char> {
     let code = match number.strip_prefix('x') {
         Some(hex) if !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit()) => u32::from_str_radix(hex, 16).ok()?,
         Some(_) => return None,

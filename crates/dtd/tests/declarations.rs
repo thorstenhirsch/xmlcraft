@@ -23,8 +23,14 @@ fn clean(text: &str) -> Parsed {
     parsed
 }
 
-/// A mistake of this kind (and, where it is told, no other).
+/// A mistake of this kind, and no other.
 fn mistake(text: &str, code: Code) {
+    let parsed = internal(text);
+    assert_eq!(codes(&parsed), [code], "{text:?}: wanted {code:?}, got {:?}", parsed.diagnostics);
+}
+
+/// A mistake of this kind, which may bring others after it (the reading goes on from where it was).
+fn mistake_and_more(text: &str, code: Code) {
     let parsed = internal(text);
     assert!(codes(&parsed).contains(&code), "{text:?}: wanted {code:?}, got {:?}", parsed.diagnostics);
 }
@@ -257,6 +263,11 @@ fn comments_and_processing_instructions_in_the_subset() {
     clean("<!-- a comment --><?target data?><?t?><!-- another -->");
     mistake("<!-- double -- hyphen -->", Code::DoubleHyphenInComment);
     mistake("<!-- ends with --->", Code::DoubleHyphenInComment);
+    mistake("<!-- a --- b -->", Code::DoubleHyphenInComment);
+    // A comment that has a mistake in it still ends where it ends: what follows is read.
+    for text in ["<!-- a --- b --><!ELEMENT x ANY>", "<!-- a ---><!ELEMENT x ANY>", "<!-- a -- b --><!ELEMENT x ANY>"] {
+        assert!(internal(text).dtd.element("x").is_some(), "{text}");
+    }
     mistake("<!-- unclosed", Code::UnterminatedComment);
     mistake("<?target unclosed", Code::UnterminatedPi);
     mistake("<? no target?>", Code::MissingPiTarget);
@@ -310,12 +321,13 @@ fn parameter_entities_between_declarations_bring_their_declarations() {
     assert!(parsed.dtd.element("a").is_some() && parsed.dtd.element("b").is_some());
     assert!(parsed.dtd.general_entity("e").is_some());
     // The reference may not be inside a declaration of the internal subset, and the entity must be declared (nothing external here).
-    mistake("<!ENTITY % e 'EMPTY'><!ELEMENT a %e;>", Code::PeInDeclaration);
+    mistake_and_more("<!ENTITY % e 'EMPTY'><!ELEMENT a %e;>", Code::PeInDeclaration);
     mistake("<!ENTITY % e 'x'><!ENTITY a '%e;'>", Code::PeInDeclaration);
     mistake("%nothere;", Code::DtdUndeclaredPe);
     mistake("%unterminated <!ELEMENT a ANY>", Code::DtdBadPeReference);
     mistake("%e", Code::DtdBadPeReference);
-    mistake("<!ENTITY % e '%e;'> %e;", Code::PeInDeclaration);
+    // (The declaration is lost, so the entity it would have declared is not declared either.)
+    mistake_and_more("<!ENTITY % e '%e;'> %e;", Code::PeInDeclaration);
 }
 
 #[test]
@@ -480,6 +492,10 @@ fn external_parameter_entities_are_loaded_once_with_their_text_declaration_remov
         ("<?xml version='1.0'?><!ELEMENT a EMPTY>", Some(Code::DtdBadTextDecl)),
         ("<?xml encoding='UTF-8' version='1.0'?><!ELEMENT a EMPTY>", Some(Code::DtdBadTextDecl)),
         ("<?xml version='x' encoding='UTF-8'?>", Some(Code::DtdBadTextDecl)),
+        ("<?xml encoding?>", Some(Code::DtdBadTextDecl)),
+        ("<?xml encoding 'UTF-8'?>", Some(Code::DtdBadTextDecl)),
+        ("<?xml encoding='UTF-8?>", Some(Code::DtdBadTextDecl)),
+        ("<?xml encoding='UTF-8'", Some(Code::DtdBadTextDecl)),
         ("<?xml encoding='UTF-8' standalone='yes'?>", Some(Code::DtdBadTextDecl)),
         ("<!ELEMENT a EMPTY><?xml encoding='UTF-8'?>", Some(Code::ReservedPiTarget)),
         (" <?xml encoding='UTF-8'?>", Some(Code::ReservedPiTarget)),
@@ -554,6 +570,63 @@ fn limits_stop_a_hostile_dtd() {
     assert_eq!(parsed.diagnostics.last().map(|d| d.diagnostic.code), Some(Code::TooManyDiagnostics));
 }
 
+#[test]
+fn a_character_that_is_not_allowed_is_reported_where_it_is_also_in_what_is_ignored() {
+    let text = "<![IGNORE[ <!ELEMENT a \u{1} ]]>";
+    let parsed = parse_external_subset(text);
+    let at = parsed.diagnostics.iter().find(|d| d.diagnostic.code == Code::InvalidChar).map(|d| d.diagnostic.span.clone());
+    assert_eq!(at.and_then(|range| text.get(range)), Some("\u{1}"), "{:?}", parsed.diagnostics);
+    // Not allowed in a comment either, and the problem covers the character (it is not after it).
+    let text = "<!-- a \u{b} b -->";
+    let parsed = internal(text);
+    let at = parsed.diagnostics.iter().find(|d| d.diagnostic.code == Code::InvalidChar).map(|d| d.diagnostic.span.clone());
+    assert_eq!(at.and_then(|range| text.get(range)), Some("\u{b}"), "{:?}", parsed.diagnostics);
+    // An ignored section that is clean is clean.
+    assert!(parse_external_subset("<![IGNORE[ <!ELEMENT a (b é ]]>").diagnostics.is_empty());
+}
+
+#[test]
+fn positions_in_an_external_text_are_the_texts_own() {
+    // The text declaration is not in the text that is read, nor is the space a reference stands for at each end of it.
+    let declaration = "<?xml version='1.0' encoding='UTF-8'?>";
+    let entity = format!("{declaration}<!ELEMENT a>");
+    let mut files = Files::default().with("main.dtd", "<!ENTITY % p SYSTEM 'p.ent'> %p;").with("p.ent", &entity);
+    let parsed = doctype(Some("main.dtd"), None, &mut files);
+    let d = parsed.diagnostics.iter().find(|d| d.diagnostic.code == Code::DtdBadContentModel).expect("a problem in p.ent");
+    assert_eq!(parsed.sources.get(d.source).map(String::as_str), Some("file:///dtd/p.ent"));
+    // (The mistake is noticed at the `>`.)
+    assert_eq!(d.diagnostic.span, entity.len() - 1..entity.len() - 1, "{:?}", d.diagnostic.span);
+    // The same for the external subset itself.
+    let subset = format!("{declaration}\n<!ELEMENT b>");
+    let mut files = Files::default().with("main.dtd", &subset);
+    let parsed = doctype(Some("main.dtd"), None, &mut files);
+    let d = parsed.diagnostics.iter().find(|d| d.diagnostic.code == Code::DtdBadContentModel).expect("a problem in main.dtd");
+    assert_eq!(d.diagnostic.span, subset.len() - 1..subset.len() - 1, "{:?}", d.diagnostic.span);
+    // A reference inside a declaration of the external text: the same, and never beyond the end of the text.
+    let entity = "<!ENTITY % m 'EMPTY'>\n<!ELEMENT a %m; junk>";
+    let mut files = Files::default().with("main.dtd", "<!ENTITY % p SYSTEM 'p.ent'> %p;").with("p.ent", entity);
+    let parsed = doctype(Some("main.dtd"), None, &mut files);
+    assert!(!parsed.diagnostics.is_empty());
+    for d in &parsed.diagnostics {
+        assert!(d.diagnostic.span.end <= entity.len(), "{:?} in {} bytes", d.diagnostic.span, entity.len());
+    }
+}
+
+#[test]
+fn the_problems_in_text_declarations_are_capped_with_the_others() {
+    // More than the cap of problems, and then external texts whose text declarations are wrong.
+    let mut main = "x ".repeat(xmlcraft_dtd::MAX_DIAGNOSTICS + 100);
+    let mut files = Files::default();
+    for i in 0..50 {
+        main.push_str(&format!("<!ENTITY % p{i} SYSTEM 'p{i}.ent'> %p{i}; "));
+        files = files.with(&format!("p{i}.ent"), "<?xml version='1.0'?>");
+    }
+    let mut files = files.with("main.dtd", &main);
+    let parsed = doctype(Some("main.dtd"), None, &mut files);
+    assert_eq!(parsed.diagnostics.len(), xmlcraft_dtd::MAX_DIAGNOSTICS + 1);
+    assert_eq!(parsed.diagnostics.last().map(|d| d.diagnostic.code), Some(Code::TooManyDiagnostics));
+}
+
 proptest::proptest! {
     /// Whatever the text, reading ends without a panic, and every problem is inside the text.
     #[test]
@@ -567,8 +640,10 @@ proptest::proptest! {
     ) {
         let text = pieces.concat();
         let parsed = if as_external { parse_external_subset(&text) } else { internal(&text) };
+        // The text is source 0 (the document) or source 1 (the external text that was read): the problems are in it.
+        let source = usize::from(as_external);
         for d in &parsed.diagnostics {
-            if d.source == 0 && !as_external {
+            if d.source == source {
                 proptest::prop_assert!(d.diagnostic.span.start <= d.diagnostic.span.end && d.diagnostic.span.end <= text.len(), "{:?} in {} bytes: {text:?}", d.diagnostic.span, text.len());
             }
         }

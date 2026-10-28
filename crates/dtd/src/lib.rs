@@ -23,6 +23,6 @@ pub use model::{
     ParticleKind, Place,
 };
 pub use parse::{
-    DoctypeInput, DtdDiagnostic, ExternalRef, LoadRequest, Loaded, MAX_DIAGNOSTICS, MAX_EXPANDED_CHARS, MAX_LOADS, MAX_PE_DEPTH, NoLoader, Parsed,
-    SubsetLoader, parse_doctype, parse_external_subset, parse_internal_subset,
+    DoctypeInput, DtdDiagnostic, ExternalRef, LoadRequest, Loaded, MAX_DECLARATIONS, MAX_DIAGNOSTICS, MAX_EXPANDED_BYTES, MAX_GROUP_DEPTH,
+    MAX_LOADED_BYTES, MAX_LOADS, MAX_PE_DEPTH, NoLoader, Parsed, SubsetLoader, parse_doctype, parse_external_subset, parse_internal_subset,
 };

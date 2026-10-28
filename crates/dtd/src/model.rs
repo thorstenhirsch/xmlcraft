@@ -144,7 +144,8 @@ pub struct Dtd {
     /// The DTD refers to something outside the document that was not read (an external subset, or an external parameter entity): what is
     /// declared there is not known, so a name that is not declared is not necessarily an error.
     pub incomplete: bool,
-    /// There is an external subset, or the internal subset has a parameter-entity reference (XML 1.0 §4.1, "Entity Declared").
+    /// The DOCTYPE names an external subset, or an external parameter entity was loaded: a name that is not declared may be declared in
+    /// what is outside the document (XML 1.0 §4.1, "Entity Declared").
     pub has_external_parts: bool,
 }
 
