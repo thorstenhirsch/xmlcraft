@@ -27,7 +27,7 @@ mod references;
 
 pub use attribute::{MAX_VALUE_BYTES, MAX_VALUE_DEPTH, ValueProblem, ValueReader, check_value};
 pub use compile::{Compiled, compile};
-pub use doctype::{Checked, DoctypeParts, check_document, doctype_parts, problems_in_text, problems_of_document};
+pub use doctype::{Checked, DoctypeParts, check_document, doctype_parts, problems_in_text, problems_of_document, read_doctype};
 pub use model::{
     AttDef, AttType, AttlistDecl, ContentSpec, Default, Dtd, ElementDecl, EntityDecl, EntityValue, ExternalId, NotationDecl, Occurs, Particle,
     ParticleKind, Place,

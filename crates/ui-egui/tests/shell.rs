@@ -21,9 +21,7 @@ fn the_shell_shows_its_chrome_and_panes() {
     for pane in ["Outline", "Messages", "Entry Helpers"] {
         assert!(h.query_all_by_label(pane).count() >= 1, "missing the {pane} pane");
     }
-    for section in ["ELEMENTS", "ATTRIBUTES", "ENTITIES"] {
-        assert!(h.query_by_label(section).is_some(), "missing the {section} section");
-    }
+    assert!(h.query_by_label("What the DTD allows at the cursor appears here.").is_some(), "Entry Helpers says what it is for");
     assert!(h.query_by_label("XmlCraft").is_some(), "the home card names the app");
 }
 
@@ -62,12 +60,12 @@ fn the_rail_reopens_entry_helpers() {
     let mut h = shell();
     h.state_mut().right = None;
     h.run_steps(3);
-    assert!(h.query_by_label("ELEMENTS").is_none());
+    assert!(h.query_by_label("What the DTD allows at the cursor appears here.").is_none());
     // The rail is always there; its one button is named after the pane.
     h.get_by_label("Entry Helpers").click();
     h.run_steps(3);
     assert!(h.state().right.is_some());
-    assert!(h.query_by_label("ELEMENTS").is_some());
+    assert!(h.query_by_label("What the DTD allows at the cursor appears here.").is_some());
 }
 
 #[test]
