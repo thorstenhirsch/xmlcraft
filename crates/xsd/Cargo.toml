@@ -1,0 +1,21 @@
+[package]
+name = "xmlcraft-xsd"
+description = "XML Schema 1.0: reads schema documents, assembles the components of a schema set, checks the schema constraints and compiles them for validation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-syntax = { workspace = true }
+xmlcraft-datatypes = { workspace = true }
+xmlcraft-grammar = { workspace = true }
+rowan = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+xmlcraft-schemas = { workspace = true }

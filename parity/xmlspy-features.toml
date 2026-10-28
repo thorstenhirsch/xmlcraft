@@ -786,7 +786,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "M3.3: `xmlcraft-xsd::read` reads one schema document into a model (types, groups, elements, attributes, identity constraints, notations, annotations, includes/imports/redefines) with the byte range of everything and the representation constraints reported (where elements and attributes may be, their values, which may not go together); the schemas that ship with the app read without a diagnostic. Missing: following includes and imports (M3.4), resolving names and checking the schema component constraints (M3.5, M3.6), compiling (M3.7) and a tool; the status stays planned until a user can reach it."
 
 [[feature]]
 id = "xsd.simple-types"
