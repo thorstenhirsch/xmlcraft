@@ -381,3 +381,69 @@ fn what_a_wildcard_lets_in_is_said_in_words() {
     let list = problems(any, "<r><x/><y xmlns=\"urn:z\"/></r>");
     assert!(list.iter().any(|p| p.1.contains("'any element from urn:a or no namespace'")), "{list:?}");
 }
+
+#[test]
+fn nil_is_written_true_false_1_or_0_and_empties_any_kind_of_element() {
+    let schema = "<xs:element name=\"r\" nillable=\"true\"><xs:complexType><xs:sequence><xs:element name=\"must\"/></xs:sequence></xs:complexType></xs:element>";
+    let xsi = "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"";
+    assert_eq!(keys(schema, &format!("<r {xsi} xsi:nil=\"true\"/>")), [], "a nilled element needs none of its content");
+    assert_eq!(keys(schema, &format!("<r {xsi} xsi:nil=\"1\"/>")), []);
+    assert_eq!(keys(schema, &format!("<r {xsi} xsi:nil=\"0\"><must/></r>")), [], "0 is false");
+    assert_eq!(keys(schema, &format!("<r {xsi} xsi:nil=\"false\"/>")), ["cvc.content-incomplete"]);
+    assert_eq!(keys(schema, &format!("<r {xsi} xsi:nil=\"true\"><must/></r>")), ["cvc.nilled-element-has-content"]);
+}
+
+#[test]
+fn what_is_skipped_by_a_wildcard_is_skipped_all_the_way_down() {
+    let schema = "<xs:element name=\"known\" type=\"xs:int\"/>\
+        <xs:element name=\"skip\"><xs:complexType><xs:sequence><xs:any processContents=\"skip\"/></xs:sequence></xs:complexType></xs:element>\
+        <xs:element name=\"lax\"><xs:complexType><xs:sequence><xs:any processContents=\"lax\"/></xs:sequence></xs:complexType></xs:element>";
+    assert_eq!(keys(schema, "<skip><wrap><known>x</known></wrap></skip>"), []);
+    assert_eq!(keys(schema, "<lax><wrap><known>x</known></wrap></lax>"), ["cvc.invalid-value"]);
+}
+
+#[test]
+fn only_the_first_mistake_in_an_element_is_said() {
+    let empty = "<xs:element name=\"e\"><xs:complexType/></xs:element>";
+    assert_eq!(keys(empty, "<e><x/><y/><z/></e>"), ["cvc.child-not-allowed"]);
+    assert_eq!(keys(empty, "<e>a<x/></e>"), ["cvc.text-not-allowed"], "the text comes first, and then the rest is not said");
+    let simple = "<xs:element name=\"s\"><xs:simpleType><xs:restriction base=\"xs:string\"><xs:enumeration value=\"a\"/></xs:restriction></xs:simpleType></xs:element>";
+    assert_eq!(keys(simple, "<s>zzz<x/><y/></s>"), ["cvc.child-not-allowed"], "the text is not checked when the element has children as well");
+}
+
+#[test]
+fn an_attribute_wildcard_lets_in_the_namespaces_it_names() {
+    let schema =
+        "<xs:element name=\"r\"><xs:complexType><xs:anyAttribute namespace=\"urn:a\" processContents=\"skip\"/></xs:complexType></xs:element>";
+    assert_eq!(keys(schema, "<r xmlns:a=\"urn:a\" a:x=\"1\"/>"), []);
+    assert_eq!(keys(schema, "<r xmlns:b=\"urn:b\" b:x=\"1\"/>"), ["cvc.attribute-not-allowed"]);
+    assert_eq!(keys(schema, "<r x=\"1\"/>"), ["cvc.attribute-not-allowed"], "no namespace is not urn:a");
+}
+
+#[test]
+fn what_is_mandatory_is_what_is_said_when_content_is_missing() {
+    let schema = "<xs:element name=\"r\"><xs:complexType><xs:sequence><xs:element name=\"a\" minOccurs=\"0\"/><xs:element name=\"b\"/></xs:sequence></xs:complexType></xs:element>";
+    let found = problems(schema, "<r/>");
+    assert!(found[0].1.contains("expected 'b'") && !found[0].1.contains("'a'"), "{found:?}");
+    // Where the child is wrong, everything that could come is said.
+    let found = problems(schema, "<r><c/></r>");
+    assert!(found[0].1.contains("expected 'b'") || found[0].1.contains("one of"), "{found:?}");
+}
+
+#[test]
+fn an_element_with_no_namespace_in_a_namespace_that_says_so() {
+    let text = format!(
+        "<xs:schema xmlns:xs=\"{XSD_NAMESPACE}\" targetNamespace=\"urn:t\"><xs:element name=\"r\"><xs:complexType><xs:sequence><xs:element name=\"c\" type=\"xs:int\"/></xs:sequence></xs:complexType></xs:element></xs:schema>"
+    );
+    let assembly = assembled_text(&text);
+    let ok = |xml: &str| Keys(problems_in(&assembly, xml).into_iter().map(|(k, _)| k).collect());
+    assert_eq!(ok("<r xmlns=\"urn:t\"><c xmlns=\"\">1</c></r>"), [], "local elements are not qualified, so a child in no namespace is right");
+    assert_eq!(ok("<r xmlns=\"urn:t\"><c>1</c></r>"), ["cvc.child-not-allowed"], "and one in the default namespace is not");
+}
+
+#[test]
+fn a_reference_to_an_entity_in_a_value_is_kept_as_written() {
+    let schema =
+        "<xs:element name=\"r\"><xs:complexType><xs:attribute name=\"s\" type=\"xs:string\" fixed=\"a&amp;e;b\"/></xs:complexType></xs:element>";
+    assert_eq!(keys(schema, "<!DOCTYPE r [<!ENTITY e \"1\">]><r s=\"a&e;b\"/>"), []);
+}
