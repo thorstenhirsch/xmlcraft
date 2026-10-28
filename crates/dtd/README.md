@@ -19,7 +19,14 @@ The DTD of a document, read (layer L3, no UI, no I/O, compiles for the web).
   inside the internal subset (so that nothing is reported twice).
 - Bounds: parameter entities nest at most 40 deep, expand to at most 10 million bytes, 256 external texts and 64 MiB are loaded,
   groups nest at most 256 deep, 1,000,000 declarations are read and 1,000 problems plus a note that there are more are listed.
-- Not here: compiling content models to automata and validating (M2.5 and M2.9), checking entity references against the declarations
-  (M2.8), and finding the files (the resolver, M2.3).
+- `check_references(root, dtd, location, loader)` applies the well-formedness rules that tie references to general entities to the
+  declarations, in the document and in the default values of attributes: the entity is declared (where the document has all of its
+  declarations, and always when it is standalone; in a default value, before), parsed, not external inside an attribute value, with no
+  `<` in an attribute value, not recursive, and its replacement text is well-formed content where it is used. An external entity in
+  text is read through the loader: its text declaration and its content are checked, and what cannot be read is a warning. Nothing is
+  expanded: each entity is analysed once per place it can be used and the verdict is remembered, so a billion-laughs DTD costs what
+  its declarations cost; entities refer to entities at most 256 deep. Not done: attribute-value normalisation, and a namespace
+  declaration whose value is written with entities.
+- Not here: compiling content models to automata and validating (M2.5 and M2.9), and finding the files (the resolver, M2.3).
 
-Tests: `tests/declarations.rs`; the xmlconf run (`cargo xtask conformance xmlconf`) reads every DTD of the W3C suite through it.
+Tests: `tests/declarations.rs`, `tests/references.rs`; the xmlconf run (`cargo xtask conformance xmlconf`) reads every DTD of the W3C suite through it.

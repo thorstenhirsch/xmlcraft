@@ -147,6 +147,9 @@ pub struct Dtd {
     /// The DOCTYPE names an external subset, or an external parameter entity was loaded: a name that is not declared may be declared in
     /// what is outside the document (XML 1.0 §4.1, "Entity Declared").
     pub has_external_parts: bool,
+    /// A parameter-entity reference was read (in any text). With one, a name that is not declared is not necessarily an error either
+    /// (XML 1.0 §4.1, "Entity Declared").
+    pub has_parameter_entity_references: bool,
 }
 
 impl Dtd {

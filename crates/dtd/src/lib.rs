@@ -8,14 +8,19 @@
 //!   notation declarations, comments and processing instructions, conditional sections, and the parameter entities that carry any of
 //!   these, expanded as XML 1.0 §4.4 says. Every syntax error is reported with a [`Code`](xmlcraft_syntax::Code) and where it is, and
 //!   reading goes on after it, so that one mistake is not the only one shown.
-//! - What is read is a [`Dtd`]: the declarations as written. Building automata from the content models, validating, and the rules about
-//!   entity references in content are other crates' work.
+//! - What is read is a [`Dtd`]: the declarations as written. Building automata from the content models and validating are other crates'
+//!   work.
+//! - [`check_references`] applies the well-formedness rules that need the declarations to the references to general entities in a
+//!   document and in the default values of its attributes: declared, parsed, not external inside an attribute value, no `<` in an
+//!   attribute value, not recursive, and a replacement text that is well-formed where it is used. Nothing is expanded: each entity is
+//!   analysed once, so an entity bomb costs no more than the declarations it is made of.
 //! - Everything is bounded: the depth of parameter-entity nesting, the characters an expansion may produce, the number of external
 //!   texts loaded and the number of declarations.
 
 mod doctype;
 mod model;
 mod parse;
+mod references;
 
 pub use doctype::{DoctypeParts, doctype_parts, problems_in_text, problems_of_document};
 pub use model::{
@@ -26,3 +31,4 @@ pub use parse::{
     DoctypeInput, DtdDiagnostic, ExternalRef, LoadRequest, Loaded, MAX_DECLARATIONS, MAX_DIAGNOSTICS, MAX_EXPANDED_BYTES, MAX_GROUP_DEPTH,
     MAX_LOADED_BYTES, MAX_LOADS, MAX_PE_DEPTH, NoLoader, Parsed, SubsetLoader, parse_doctype, parse_external_subset, parse_internal_subset,
 };
+pub use references::check_references;

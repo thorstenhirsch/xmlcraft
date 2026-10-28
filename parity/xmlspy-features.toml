@@ -717,11 +717,11 @@ title = "General entities with expansion limits"
 area = "C"
 tier = "P0"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "Caps against entity-expansion attacks."
+tools = ["xml_wellformed"]
+evidence = ["crates/dtd/tests/references.rs::an_entity_must_be_declared_where_the_document_has_all_of_its_declarations", "crates/dtd/tests/references.rs::an_entity_that_refers_to_itself_is_an_error_where_it_is_used", "crates/dtd/tests/references.rs::entities_that_multiply_cost_no_more_than_their_declarations", "crates/engine/src/analysis.rs::references_to_entities_are_checked_against_the_declarations_of_the_document"]
+notes = "References to general entities are checked against the declarations, in the document and in attribute default values: declared (where the document has all of its declarations, and always when it is standalone), parsed, not external in an attribute value, no `<` in an attribute value, not recursive, and a replacement text that is well-formed content where it is used; external entities are read through the loader when there is one (text declaration, balanced content). Nothing is expanded, each entity is analysed once, so an entity bomb costs no more than its declarations and nesting is bounded (256). Missing: expansion itself (attribute-value normalisation, namespace declarations written with entities, validation of the expanded content), and the editor does not read external entities yet (resolver, M2.3). xmlconf not-well-formed is 99.8%."
 
 [[feature]]
 id = "dtd.notations"
