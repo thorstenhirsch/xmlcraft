@@ -19,7 +19,7 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use xmlcraft_catalog::{Catalog, Entry};
 
-use crate::assets::{SCHEMA_DIR, SCHEMA_LICENCES, sha256_hex};
+use crate::assets::{SCHEMA_DIR, SCHEMA_EXTENSIONS, SCHEMA_LICENCES, sha256_hex};
 use crate::gates::root;
 
 /// The most files the bundle may hold (docs/architecture.md).
@@ -29,8 +29,6 @@ const BUNDLE_URI: &str = "bundled:/";
 const MANIFEST: &str = "schemas/manifest.toml";
 const BEGIN: &str = "# BEGIN bundled schemas: generated from schemas/manifest.toml by `cargo xtask schemas --update`; do not edit by hand";
 const END: &str = "# END bundled schemas";
-/// File extensions of the files we redistribute, as in the assets gate.
-const SCHEMA_EXTENSIONS: &[&str] = &["xsd", "dtd", "ent", "mod", "rng", "rnc", "sch", "wsdl", "xsl", "xslt", "json"];
 /// The largest file `--fetch` and `--update` accept.
 const MAX_DOWNLOAD: u64 = 16 * 1024 * 1024;
 

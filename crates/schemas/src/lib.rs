@@ -7,7 +7,7 @@
 //! - The files are byte for byte the ones their publishers issue (AGENTS.md section 1.6); `cargo xtask schemas` checks them against
 //!   `schemas/manifest.toml`. What is in the bundle besides schemas: the licence texts, and the catalogs that say which public
 //!   identifier, system identifier or namespace is which file.
-//! - A bundled file has a path (`w3c/XMLSchema.xsd`) and a URI (`bundled:/w3c/XMLSchema.xsd`, see [`uri_of`]); the catalogs are read
+//! - A bundled file has a path (`w3c/xmlschema/XMLSchema.xsd`) and a URI (`bundled:/w3c/xmlschema/XMLSchema.xsd`, see [`uri_of`]); the catalogs are read
 //!   from the URI of their file, so their relative entries are URIs of the bundle too.
 
 use std::sync::OnceLock;
