@@ -810,7 +810,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "M3.5: `xmlcraft-xsd::assemble` builds complex types (direct content, simple content, complex content by extension and restriction, mixed, abstract, block and final) in any order of definition, with the attribute uses of a type derived from its base's; derivation cycles and `final` are reported. Not yet: a restriction is not checked against its base's content model (particle restriction), `xs:redefine` is not applied. Nothing a user can reach uses it yet (the validator is not wired into the app or a tool), so the status stays planned."
 
 [[feature]]
 id = "xsd.groups"
@@ -822,7 +822,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "M3.5: model groups (`sequence`, `choice`, `all`, group references, wildcards) are expanded where they are used, once per group, with cycles of groups reported and the size of all content models bounded (500,000 particles). M3.7: compiled to content-model automata (`xmlcraft-grammar`) and, for `xs:all`, a set of slots. Not reachable by a user yet."
 
 [[feature]]
 id = "xsd.wildcards"
@@ -834,7 +834,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "M3.5: element and attribute wildcards (`##any`, `##other`, namespace lists, `processContents`) as sets of namespaces; the intersection (attribute groups, a type's own `anyAttribute`) and the union (extensions) are exact over the namespaces and tested exhaustively; one that cannot be written is reported. M3.9: strict, lax and skip are applied by the validator. Not reachable by a user yet."
 
 [[feature]]
 id = "xsd.substitution-groups"
@@ -846,7 +846,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "M3.5/M3.7/M3.9: a member takes the type of its head when it has none, must have a type derived from it, groups that come back to themselves are reported; the compiled content models let a member stand in for its head (abstract elements, `block` of the head and of the types on the way respected); the validator accepts a member as the root. Not reachable by a user yet."
 
 [[feature]]
 id = "xsd.identity-constraints"
@@ -858,7 +858,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = "The XPath subset the specification defines."
+notes = "The XPath subset the specification defines. M3.8: `unique`, `key` and `keyref` (selector and fields in the subset, with `.//`, alternatives, `child::`/`attribute::`, prefixes from the constraint) are parsed with the schema and checked while validating: rows per selected node, values compared in the value space of their primitive types, a field that selects more than one node, `key` fields that are missing, a keyref against the keys of its element and of those below it. Missing: nodes under a wildcard that is skipped or lax have no value (no type). Not reachable by a user yet."
 
 [[feature]]
 id = "xsd.include-import-redefine"
@@ -870,7 +870,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "M3.4: includes, imports and redefinitions are followed through a `SchemaLoader` (every document once, chameleon includes per namespace, the namespaces of includes and imports checked, 256 documents and 64 MiB at most). M3.5: `xs:redefine` is loaded but the redefining definitions are not applied (reported as `xsd.unsupported`). The loader that reads files and the network is the resolver's (M2.4)."
 
 [[feature]]
 id = "xsd.upa-check"
@@ -882,7 +882,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "M3.7: Unique Particle Attribution and Element Declarations Consistent are checked when the content models are compiled (substitution groups expanded, wildcards competing with elements), reported at the type. The whole schema for schemas (`XMLSchema.xsd`) passes. Not reachable by a user yet."
 
 [[feature]]
 id = "xsd.component-constraints"
@@ -894,7 +894,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = "Approximations are listed in docs/gaps.md."
+notes = "Approximations are listed in docs/gaps.md. M3.5/M3.7: circular definitions, unresolved and wrongly-kinded references, `final`, values of defaults and fixed values against their types, one ID attribute per type, duplicate attribute uses, mixed-content rules of extensions, substitution group types, keyref targets. Not yet: Derivation Valid (Restriction), the `final` of a substitution head applied to its members' type derivations."
 
 [[feature]]
 id = "xsd.regex-patterns"
@@ -1043,7 +1043,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = "Spec codes (cvc-*), byte-precise spans."
+notes = "Spec codes (cvc-*), byte-precise spans. M3.9 (first part): `xmlcraft_validate::validate_against_schema` validates a parsed document against an assembled schema: the declaration of the root and of every child through the compiled content models, `xsi:type`, `xsi:nil`, attributes (required, declared, wildcards, fixed), simple values through the datatypes, element defaults and fixed values, IDs and ID references, identity constraints; the schema for schemas validates the bundled schemas. Missing: nothing calls it yet from the app or a tool, `xsi:schemaLocation` is not read, the messages do not carry the `cvc-*` names except for datatype violations, default values are not applied."
 
 [[feature]]
 id = "validate.xsd-self-check"
