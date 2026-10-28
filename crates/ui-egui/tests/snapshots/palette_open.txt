@@ -40,6 +40,7 @@ Image
 TextInput value=""
 Button "New"
 Button "Open…"
+Button "Clear Recent Files"
 Button "Quit"
 Button "Find tools and commands…"
 Button "Outline"
@@ -49,4 +50,3 @@ Button "Use system theme"
 Button "Light theme"
 Button "Dark theme"
 Button "Save" [disabled]
-Button "Save As…" [disabled]

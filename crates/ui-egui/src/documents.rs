@@ -61,6 +61,11 @@ impl DocView {
 
 impl XmlCraftApp {
     /// The tabs: one per open document.
+    /// The files opened or saved lately, newest first (what the home view lists).
+    pub fn recent_files(&self) -> &[PathBuf] {
+        self.session.recent().paths()
+    }
+
     pub fn tabs(&self) -> Vec<TabInfo> {
         self.session.documents().iter().map(|d| TabInfo { name: d.name().to_owned(), dirty: d.is_dirty() }).collect()
     }
