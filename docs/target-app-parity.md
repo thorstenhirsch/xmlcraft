@@ -1,6 +1,6 @@
 # XmlCraft parity with Altova XMLSpy
 
-> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M2.2 (first part): bundled schemas (`catalog.bundled-schemas` planned → partial), M2.1: OASIS catalogs, M2.6: the DTD reader, M2.7: the DTD as a grammar and M2.8: entity-reference rules (partial); xmlconf not-wf 99.8%; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M2.3 (first part): the resolver library (notes only), M2.2 (first part): bundled schemas (`catalog.bundled-schemas` planned → partial), M2.1: OASIS catalogs, M2.6: the DTD reader, M2.7: the DTD as a grammar and M2.8: entity-reference rules (partial); xmlconf not-wf 99.8%; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
 
 The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -58,3 +58,4 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 - 2026-10-28: M2.8: entity references checked against the declarations (`dtd.general-entities` planned → partial); xmlconf not-well-formed 94.8% → 99.8%; 10 shipped and 38 partial, 19.1% weighted.
 - 2026-10-28: M2.7: the DTD compiled to a grammar (`dtd.determinism-warning` planned → partial; the notes of `dtd.content-models`, `dtd.attlist` and `dtd.notations` say what the compile checks); 10 shipped and 39 partial, 19.4% weighted.
 - 2026-10-28: M2.2 (first part): the bundled schemas, ten W3C files with their catalogs (`catalog.bundled-schemas` planned → partial); 10 shipped and 40 partial of 152 counted, 19.7% weighted, P0 31.2%.
+- 2026-10-28: M2.3 (first part): `xmlcraft-resolve` (the chain, the cache rules, the policy); notes of `catalog.auto-download`, `catalog.disk-cache`, `catalog.offline-mode`, `catalog.user-catalogs` and `catalog.resolution-trail` say what exists; no status changes (nothing is reachable by a user yet).

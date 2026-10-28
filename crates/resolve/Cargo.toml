@@ -1,0 +1,18 @@
+[package]
+name = "xmlcraft-resolve"
+description = "Finds the text that a public or system identifier, or a namespace, names: open documents, catalogs, the bundled schemas, files, the cache and the network, in that order"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-catalog = { workspace = true }
+xmlcraft-schemas = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

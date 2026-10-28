@@ -1,6 +1,6 @@
 # Where XmlCraft falls short of XMLSpy
 
-> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** gap 2 reworded (catalog rules exist), gap 16 narrowed to 2 tests (entity references, M2.8), gap 18 narrowed (large-file colouring, M1.15), gap 19 added (content-model automata, M2.5) · **Target:** Altova XMLSpy 2026 (public documentation)
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** gap 2: the resolver exists as a library, gap 2 reworded (catalog rules exist), gap 16 narrowed to 2 tests (entity references, M2.8), gap 18 narrowed (large-file colouring, M1.15), gap 19 added (content-model automata, M2.5) · **Target:** Altova XMLSpy 2026 (public documentation)
 
 The ranked gaps. Prefer fixing these over adding new features. Every gap states what is missing, why it matters and how it will be measured. At 0.0.1 the application does not exist yet, so the first entries are simply "the MVP".
 
@@ -59,3 +59,4 @@ Details are added here as each gap is worked, including known approximations (fo
 - 2026-10-28: gap 16 narrowed from 53 to 2 tests by the entity-reference rules (M2.8); the two left need attribute normalisation (M2.9).
 - 2026-10-28: gap 19 added: the content-model automata (M2.5) have the three limits it names.
 - 2026-10-28: gap 2 reworded: DTD support exists (M2.6–M2.9) and ten W3C files are bundled with catalogs (M2.2); what is left is the resolver, the rest of the bundle and the download.
+- 2026-10-28: gap 2: `xmlcraft-resolve` (M2.3) is the resolver, with the cache rules and the download policy, but no HTTP client, no disk cache and no wiring into the DTD loader yet (M2.4).
