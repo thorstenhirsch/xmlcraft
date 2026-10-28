@@ -176,3 +176,63 @@ fn unescape(value: &str) -> String {
     out.push_str(rest);
     out
 }
+
+/// A schema a document names for itself with `xsi:schemaLocation` or `xsi:noNamespaceSchemaLocation` on its root element.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SchemaHint {
+    /// The namespace the schema is for; none for `noNamespaceSchemaLocation`.
+    pub namespace: Option<String>,
+    /// The location, as written (relative to the document).
+    pub location: String,
+}
+
+/// The schemas the root element of a parsed document names: the pairs of `xsi:schemaLocation` (an odd word at the end is ignored) and
+/// the `xsi:noNamespaceSchemaLocation`, in that order.
+pub fn schema_hints(root: &SyntaxNode) -> Vec<SchemaHint> {
+    let Some(element) = root.children().find(|c| c.kind() == SyntaxKind::Element) else { return Vec::new() };
+    let Some(start) = element.children().find(|c| c.kind() == SyntaxKind::StartTag) else { return Vec::new() };
+    let mut scope = Scope(Vec::new());
+    let mut written: Vec<(String, String)> = Vec::new();
+    for attribute in start.children().filter(|c| c.kind() == SyntaxKind::Attribute) {
+        let Some(name) = attribute.children_with_tokens().filter_map(|c| c.into_token()).find(|t| t.kind() == SyntaxKind::Name) else { continue };
+        let Some(value) = attribute.children().find(|c| c.kind() == SyntaxKind::AttrValue) else { continue };
+        let text = value.text().to_string();
+        let inner = match (text.chars().next(), text.chars().last()) {
+            (Some(open @ ('"' | '\'')), Some(close)) if open == close && text.len() >= 2 => text.get(1..text.len() - 1).unwrap_or_default(),
+            _ => text.as_str(),
+        };
+        let inner = unescape(inner);
+        match name.text() {
+            "xmlns" => scope.0.push((None, inner)),
+            other => match other.strip_prefix("xmlns:") {
+                Some(prefix) => scope.0.push((Some(prefix.to_owned()), inner)),
+                None => written.push((other.to_owned(), inner)),
+            },
+        }
+    }
+    let mut pairs = Vec::new();
+    let mut none = Vec::new();
+    for (name, value) in &written {
+        let expanded = scope.expand(name, false);
+        if expanded.namespace.as_deref() != Some(crate::xsd_validator::XSI_NAMESPACE) {
+            continue;
+        }
+        let words: Vec<&str> = value.split(|c: char| xmlcraft_syntax::is_xml_space(c)).filter(|w| !w.is_empty()).collect();
+        match expanded.local.as_str() {
+            "schemaLocation" => {
+                pairs.extend(words.chunks_exact(2).map(|pair| SchemaHint {
+                    namespace: pair.first().map(|w| (*w).to_owned()),
+                    location: pair.get(1).map(|w| (*w).to_owned()).unwrap_or_default(),
+                }));
+            }
+            "noNamespaceSchemaLocation" => {
+                if let Some(word) = words.first() {
+                    none.push(SchemaHint { namespace: None, location: (*word).to_owned() });
+                }
+            }
+            _ => {}
+        }
+    }
+    pairs.extend(none);
+    pairs
+}
