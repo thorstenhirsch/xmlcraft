@@ -1,6 +1,6 @@
 # XmlCraft roadmap: milestones and what's next
 
-> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M1.1–M1.8, M1.9a–c, M1.10a–c, M1.11–M1.14 done, M1.15 begun (bench, colouring far into large files), M1.16 fuzz tooling added (the hour without a panic is still to be measured), M2.1 catalog rules, M2.5 content-model automata, M2.7 DTD to grammar, M2.9 validation against a DTD, M2.6 (the DTD reader), M2.8 (entity references) · **Target:** Altova XMLSpy (feature set described in its public documentation)
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M3.1 (XSD regular expressions: `xmlcraft-pattern`), M1.1–M1.8, M1.9a–c, M1.10a–c, M1.11–M1.14 done, M1.15 begun (bench, colouring far into large files), M1.16 fuzz tooling added (the hour without a panic is still to be measured), M2.1 catalog rules, M2.5 content-model automata, M2.7 DTD to grammar, M2.9 validation against a DTD, M2.6 (the DTD reader), M2.8 (entity references) · **Target:** Altova XMLSpy (feature set described in its public documentation)
 
 Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is done when its **exit criteria** are met and measured, not when its tasks are merged. [ROADMAP.md](../ROADMAP.md) is the one-page summary.
 
@@ -61,3 +61,4 @@ Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is 
 - 2026-10-28: M2.7: the DTD compiled into the grammar model (`xmlcraft_dtd::compile`): first declarations, content automata, the validity constraints on declarations, default values, and attribute-value reading.
 - 2026-10-28: M2.9: `xmlcraft-validate`: a document is validated against the grammar of its DTD (the validity constraints of XML 1.0); the namespace declarations are read as the DTD makes them; xmlconf now validating: not-wf, valid and invalid all 100%.
 - 2026-10-28: M2.10 and M2.13 (first parts): F8 validates the document in the app (status bar, Messages, underlines); the tool `xml_validate` and `xmlcraft-cli validate`.
+- 2026-10-28: M3.1: `xmlcraft-pattern`, XML Schema regular expressions (parse, categories and blocks, class subtraction, limits).

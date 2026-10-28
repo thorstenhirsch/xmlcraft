@@ -906,7 +906,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = "Translated to the regex crate."
+notes = "M3.1: `xmlcraft-pattern` reads XML Schema regular expressions (appendix F: whole-value match, no anchors, `.` without line ends, class subtraction, the 36 categories, `\\p{IsBlock}` by the schema language's block names, `\\i \\c \\I \\C` and the other multi-character escapes) into a regex-syntax tree and matches with regex-automata; errors carry the position and a kind; limits on length, nesting, counts and automaton size; tested against an independent reading of random expressions. Nothing uses it until the XSD engine validates (M3.9), so the status stays planned."
 
 [[feature]]
 id = "xsd.date-time-types"

@@ -4798,6 +4798,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-pattern"
+version = "0.0.1"
+dependencies = [
+ "proptest",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "xmlcraft-platform"
 version = "0.0.1"
 dependencies = [
