@@ -251,6 +251,11 @@ impl<'a> Builder<'a> {
                     Item::SimpleType(SimpleTypeDef { name: Some(name), name_span, span, .. })
                     | Item::ComplexType(ComplexTypeDef { name: Some(name), name_span, span, .. }) => {
                         let qname = self.named(doc, name);
+                        // The schema for schemas defines the built-in types in its own words; the built-in ones stand.
+                        let built_in = self.schema.global_types.get(&qname).is_some_and(|id| id.0 < self.schema.builtin_count);
+                        if built_in {
+                            continue;
+                        }
                         if self.type_places.contains_key(&qname) || self.schema.global_types.contains_key(&qname) {
                             self.report(doc, Code::XsdDuplicateComponent, name_span.clone(), &["type", &qname.to_string()]);
                         } else {

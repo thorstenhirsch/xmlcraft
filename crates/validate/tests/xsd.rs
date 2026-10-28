@@ -447,3 +447,53 @@ fn a_reference_to_an_entity_in_a_value_is_kept_as_written() {
         "<xs:element name=\"r\"><xs:complexType><xs:attribute name=\"s\" type=\"xs:string\" fixed=\"a&amp;e;b\"/></xs:complexType></xs:element>";
     assert_eq!(keys(schema, "<!DOCTYPE r [<!ENTITY e \"1\">]><r s=\"a&e;b\"/>"), []);
 }
+
+struct Bundle;
+
+impl xmlcraft_xsd::SchemaLoader for Bundle {
+    fn load(&mut self, request: &xmlcraft_xsd::LoadRequest<'_>) -> Result<xmlcraft_xsd::Loaded, String> {
+        let wanted = request.location.unwrap_or_default();
+        let file = wanted.rsplit('/').next().unwrap_or(wanted);
+        let path = xmlcraft_schemas::paths().find(|p| p.ends_with(&format!("/{file}"))).ok_or_else(|| format!("{wanted} is not in the bundle"))?;
+        Ok(xmlcraft_xsd::Loaded { text: xmlcraft_schemas::get_text(path).ok_or("no text")?, location: xmlcraft_schemas::uri_of(path) })
+    }
+}
+
+/// The schema for schemas, assembled from the bundle: the biggest schema a user is likely to meet is the one about schemas.
+fn schema_for_schemas() -> Assembly {
+    let path = "w3c/xmlschema/XMLSchema.xsd";
+    let text = xmlcraft_schemas::get_text(path).expect("the schema for schemas");
+    let documents = load(&text, &xmlcraft_schemas::uri_of(path), &mut Bundle);
+    assemble(&documents)
+}
+
+#[test]
+fn the_schemas_of_the_bundle_are_valid_against_the_schema_for_schemas() {
+    let assembly = schema_for_schemas();
+    assert!(assembly.diagnostics.is_empty());
+    let mut checked = 0;
+    for path in xmlcraft_schemas::paths().filter(|p| p.ends_with(".xsd")) {
+        let text = xmlcraft_schemas::get_text(path).expect("text");
+        let parsed = parse(&text);
+        assert!(parsed.diagnostics().is_empty(), "{path}: {:?}", parsed.diagnostics());
+        let found: Vec<String> = validate_against_schema(&parsed.syntax(), &assembly.schema)
+            .into_iter()
+            .map(|d| format!("{}..{} {}: {}", d.span.start, d.span.end, d.code.key(), d.message()))
+            .collect();
+        assert!(found.is_empty(), "{path}: {found:#?}");
+        checked += 1;
+    }
+    assert!(checked >= 2, "{checked}");
+}
+
+#[test]
+fn a_schema_with_mistakes_is_not_valid_against_the_schema_for_schemas() {
+    let assembly = schema_for_schemas();
+    let bad = format!(
+        "<xs:schema xmlns:xs=\"{XSD_NAMESPACE}\"><xs:element name=\"a\" type=\"xs:string\" minOccurs=\"1\"/><xs:complexType name=\"t\"><xs:sequence><xs:elemen name=\"x\"/></xs:sequence></xs:complexType></xs:schema>"
+    );
+    let found = problems_in(&assembly, &bad);
+    let found_keys: Vec<&str> = found.iter().map(|f| f.0).collect();
+    assert!(found_keys.contains(&"cvc.attribute-not-allowed"), "{found:?}");
+    assert!(found_keys.contains(&"cvc.child-not-allowed"), "{found:?}");
+}

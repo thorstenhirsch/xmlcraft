@@ -17,3 +17,7 @@ xmlcraft-grammar = { workspace = true }
 xmlcraft-syntax = { workspace = true }
 xmlcraft-xsd = { workspace = true }
 rowan = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+xmlcraft-schemas = { workspace = true }
