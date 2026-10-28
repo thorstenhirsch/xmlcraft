@@ -232,7 +232,14 @@ pub fn status_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                             Some(a) if a.error_count() > 0 => {
                                 (crate::i18n::fmt(tl!("{count} errors"), &[("count", &a.error_count().to_string())]), syntax.error)
                             }
-                            Some(_) => (tl!("Well-formed").to_owned(), t.text_muted),
+                            // Well-formed; and, once F8 has been pressed for this text, valid or not.
+                            Some(_) => match app.active_validation() {
+                                Some(v) if v.error_count() > 0 => {
+                                    (crate::i18n::fmt(tl!("{count} validity errors"), &[("count", &v.error_count().to_string())]), syntax.error)
+                                }
+                                Some(v) if v.is_valid() => (tl!("Valid").to_owned(), t.text_muted),
+                                _ => (tl!("Well-formed").to_owned(), t.text_muted),
+                            },
                         };
                         let badge = ui.add(egui::Label::new(egui::RichText::new(text).font(theme::medium(11.5)).color(color)).sense(Sense::click()));
                         if badge.clicked() {
