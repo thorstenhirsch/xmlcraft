@@ -181,19 +181,6 @@ impl<'a> Builder<'a> {
         Some(id)
     }
 
-    /// Does the type `t` come from `base` by any chain of derivations?
-    pub(super) fn derives_from(&self, t: TypeId, base: TypeId) -> bool {
-        let mut at = Some(t);
-        for _ in 0..=self.schema.types.len() {
-            match at {
-                Some(id) if id == base => return true,
-                Some(id) => at = self.schema.types.get(id.0).and_then(|e| e.base),
-                None => return false,
-            }
-        }
-        false
-    }
-
     // ---- value constraints ----
 
     /// A default or fixed value of something called `shown`, checked against its type.
@@ -258,7 +245,7 @@ impl<'a> Builder<'a> {
     pub(super) fn finish_substitutions(&mut self) {
         for (doc, member, head, span) in std::mem::take(&mut self.pending_substitutions) {
             let (Some(m), Some(h)) = (self.schema.elements.get(member.0), self.schema.elements.get(head.0)) else { continue };
-            if !self.derives_from(m.type_id, h.type_id) {
+            if !self.schema.derives_from(m.type_id, h.type_id) {
                 let shown = m.name.to_string();
                 let head_name = h.name.to_string();
                 self.report(

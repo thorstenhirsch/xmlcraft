@@ -9,7 +9,6 @@ use xmlcraft_grammar::{Automaton, Name, NamespaceConstraint, Occurs, Particle as
 use xmlcraft_syntax::{Code, Diagnostic};
 
 use crate::loader::SourcedDiagnostic;
-use crate::model::DerivationMethod;
 use crate::schema::{ContentType, ElementId, NamespaceSet, Particle, Schema, Term, TypeId, TypeKind, Wildcard};
 
 /// What a particle of a compiled content model stands for: the token an automaton step gives back is an index into
@@ -350,43 +349,12 @@ impl Compiler<'_> {
                 }
                 queue.push(member);
                 let Some(decl) = self.schema.elements.get(member.0) else { continue };
-                if !decl.abstract_ && self.derivation_allowed(decl.type_id, head.type_id, head.block) {
+                if !decl.abstract_ && self.schema.derivation_allowed(decl.type_id, head.type_id, head.block) {
                     out.push(member);
                 }
             }
         }
         out.sort_by_key(|e| e.0);
         out
-    }
-
-    /// Is the type `from` derived from `to` in ways that `blocked` and the types on the way do not stop?
-    fn derivation_allowed(&self, from: TypeId, to: TypeId, blocked: crate::model::DerivationSet) -> bool {
-        let mut at = from;
-        for _ in 0..=self.schema.types.len() {
-            if at == to {
-                return true;
-            }
-            let Some(entry) = self.schema.types.get(at.0) else { return false };
-            let (Some(base), method) = (entry.base, entry.derivation) else { return false };
-            let (stopped_here, stopped_by_base) = match method {
-                Some(DerivationMethod::Extension) => (blocked.extension, self.type_blocks(base, DerivationMethod::Extension)),
-                _ => (blocked.restriction, self.type_blocks(base, DerivationMethod::Restriction)),
-            };
-            if stopped_here || stopped_by_base {
-                return false;
-            }
-            at = base;
-        }
-        false
-    }
-
-    fn type_blocks(&self, id: TypeId, method: DerivationMethod) -> bool {
-        match self.schema.types.get(id.0).map(|t| &t.kind) {
-            Some(TypeKind::Complex(c)) => match method {
-                DerivationMethod::Extension => c.block.extension,
-                DerivationMethod::Restriction => c.block.restriction,
-            },
-            _ => false,
-        }
     }
 }

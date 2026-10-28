@@ -235,6 +235,52 @@ impl Schema {
         self.models.get(id.0).and_then(Option::as_ref)
     }
 
+    /// Does the type `t` come from `base` by any chain of derivations (or is it `base`)?
+    pub fn derives_from(&self, t: TypeId, base: TypeId) -> bool {
+        let mut at = Some(t);
+        for _ in 0..=self.types.len() {
+            match at {
+                Some(id) if id == base => return true,
+                Some(id) => at = self.types.get(id.0).and_then(|e| e.base),
+                None => return false,
+            }
+        }
+        false
+    }
+
+    /// Is the type `from` derived from `to` in ways that `blocked` and the types on the way do not stop? (What may take the place of
+    /// an element in a substitution group, and what `xsi:type` may name.)
+    pub fn derivation_allowed(&self, from: TypeId, to: TypeId, blocked: DerivationSet) -> bool {
+        let mut at = from;
+        for _ in 0..=self.types.len() {
+            if at == to {
+                return true;
+            }
+            let Some(entry) = self.types.get(at.0) else { return false };
+            let (Some(base), method) = (entry.base, entry.derivation) else { return false };
+            let (stopped_here, stopped_by_base) = match method {
+                Some(DerivationMethod::Extension) => (blocked.extension, self.type_blocks(base, DerivationMethod::Extension)),
+                _ => (blocked.restriction, self.type_blocks(base, DerivationMethod::Restriction)),
+            };
+            if stopped_here || stopped_by_base {
+                return false;
+            }
+            at = base;
+        }
+        false
+    }
+
+    /// Does the type `id` (a complex type) forbid being derived from in this way?
+    fn type_blocks(&self, id: TypeId, method: DerivationMethod) -> bool {
+        match self.types.get(id.0).map(|t| &t.kind) {
+            Some(TypeKind::Complex(c)) => match method {
+                DerivationMethod::Extension => c.block.extension,
+                DerivationMethod::Restriction => c.block.restriction,
+            },
+            _ => false,
+        }
+    }
+
     pub fn type_entry(&self, id: TypeId) -> Option<&TypeEntry> {
         self.types.get(id.0)
     }
