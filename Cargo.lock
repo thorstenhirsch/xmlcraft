@@ -4716,6 +4716,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "xmlcraft-automation",
+ "xmlcraft-engine",
 ]
 
 [[package]]
@@ -4835,6 +4836,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
  "toml",
  "xmlcraft-editor",
  "xmlcraft-engine",

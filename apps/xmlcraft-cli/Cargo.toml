@@ -17,6 +17,8 @@ mcp = ["xmlcraft-automation/mcp"]
 
 [dependencies]
 xmlcraft-automation = { workspace = true }
+# `check-one`: the self-check the fuzzer runs.
+xmlcraft-engine = { workspace = true }
 serde_json = { workspace = true }
 # Screenshots from the running app arrive as base64 PNGs.
 base64 = "0.22"
