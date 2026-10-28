@@ -209,6 +209,9 @@ fn derivations_that_cannot_be_are_reported() {
          <xs:complexType name=\"b\"><xs:complexContent><xs:extension base=\"t:a\"/></xs:complexContent></xs:complexType>",
     );
     assert_eq!(keys(&a), ["xsd.circular-definition"], "{:?}", messages(&a));
+    // A union that lists itself twice is one mistake, not two.
+    let a = build("<xs:simpleType name=\"u\"><xs:union memberTypes=\"t:u t:u\"/></xs:simpleType>");
+    assert_eq!(keys(&a), ["xsd.circular-definition"], "{:?}", messages(&a));
     // `final` stops extension, and the default for the document stops restriction.
     let a = build_with(
         "finalDefault=\"restriction\"",
@@ -246,6 +249,28 @@ fn derivations_that_cannot_be_are_reported() {
     assert_eq!(keys(&a), ["xsd.component"; 4], "{:?}", messages(&a));
     // Nothing to add, nothing to disagree about: `m2` has the content of `m`.
     assert!(!messages(&a).iter().any(|m| m.contains("m2")), "{:?}", messages(&a));
+}
+
+#[test]
+fn the_block_of_a_type_comes_from_the_document_unless_it_says_otherwise() {
+    let a = build_with(
+        "blockDefault=\"extension substitution\"",
+        "<xs:complexType name=\"plain\"/><xs:complexType name=\"own\" block=\"restriction\"/><xs:complexType name=\"none\" block=\"\"/>",
+    );
+    assert!(a.diagnostics.is_empty(), "{:?}", messages(&a));
+    let block = |local: &str| complex(&a.schema, local).block;
+    assert!(block("plain").extension && !block("plain").restriction, "from blockDefault");
+    assert!(!block("plain").substitution, "a type can only block derivation");
+    assert!(block("own").restriction && !block("own").extension);
+    assert!(block("none").is_empty());
+}
+
+#[test]
+fn an_all_group_holds_elements_that_occur_once_at_most() {
+    let a = build(
+        "<xs:complexType name=\"t\"><xs:all><xs:element name=\"p\"/><xs:element name=\"q\" minOccurs=\"0\" maxOccurs=\"1\"/><xs:element name=\"r\" maxOccurs=\"2\"/></xs:all></xs:complexType>",
+    );
+    assert_eq!(keys(&a), ["xsd.component"], "{:?}", messages(&a));
 }
 
 #[test]

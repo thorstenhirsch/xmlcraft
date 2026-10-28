@@ -90,18 +90,21 @@ impl<'a> Builder<'a> {
             }
             SimpleTypeKind::Union { member_types, inline_members } => {
                 let mut members = Vec::new();
+                let mut missing = false;
                 for reference in member_types {
-                    if let Some((id, arc)) = self.resolve_simple(doc, reference) {
-                        if self.type_final(id).union {
-                            self.report(
-                                doc,
-                                Code::XsdDerivationNotAllowed,
-                                reference.span.clone(),
-                                &[&shown, &format!("'{}' is final for union", reference.name)],
-                            );
-                        }
-                        members.push(arc);
+                    let Some((id, arc)) = self.resolve_simple(doc, reference) else {
+                        missing = true;
+                        continue;
+                    };
+                    if self.type_final(id).union {
+                        self.report(
+                            doc,
+                            Code::XsdDerivationNotAllowed,
+                            reference.span.clone(),
+                            &[&shown, &format!("'{}' is final for union", reference.name)],
+                        );
                     }
+                    members.push(arc);
                 }
                 for inline in inline_members {
                     if let Some(id) = self.simple_type(doc, inline, None, None)
@@ -109,6 +112,10 @@ impl<'a> Builder<'a> {
                     {
                         members.push(arc.clone());
                     }
+                }
+                // A member that could not be found was reported; a union of nothing else is not another mistake.
+                if members.is_empty() && missing {
+                    return None;
                 }
                 match union_of(&members, ename) {
                     Ok(arc) => {
