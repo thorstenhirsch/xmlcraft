@@ -9,6 +9,7 @@
 //!   could be read.
 
 mod build;
+mod compile;
 mod dom;
 mod loader;
 pub mod model;
@@ -17,6 +18,7 @@ pub mod schema;
 mod values;
 
 pub use build::{Assembly, assemble};
+pub use compile::{AllState, ContentModel, ModelState, Next, Symbol};
 pub use loader::{
     Documents, LoadKind, LoadRequest, Loaded, LoadedDocument, MAX_DOCUMENTS, MAX_TOTAL_BYTES, NoLoader, SchemaLoader, SourcedDiagnostic, load,
 };

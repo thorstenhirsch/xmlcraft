@@ -217,14 +217,6 @@ impl<'a> Builder<'a> {
                 &[shown, "an extension must be mixed if its base is, and not mixed if its base is not"],
             );
         }
-        if matches!(base_content.particle.term, STerm::All(_)) {
-            self.report(
-                doc,
-                Code::XsdComponent,
-                span.clone(),
-                &[shown, "a type whose content is an xs:all group cannot be extended with more elements in XML Schema 1.0"],
-            );
-        }
         let joined =
             Content { particle: SParticle { min: 1, max: Some(1), term: STerm::Sequence(vec![base_content.particle.clone(), own_particle]) } };
         if base_mixed { ContentType::Mixed(joined) } else { ContentType::ElementOnly(joined) }

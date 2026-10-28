@@ -213,6 +213,8 @@ pub struct Schema {
     pub(crate) global_notations: HashMap<QName, usize>,
     /// How many types are built in (the first entries of [`Schema::types`]).
     pub(crate) builtin_count: usize,
+    /// The compiled content model of each complex type with elements in it, by type number.
+    pub(crate) models: Vec<Option<crate::compile::ContentModel>>,
 }
 
 impl Schema {
@@ -226,6 +228,11 @@ impl Schema {
 
     pub fn attribute_by_name(&self, name: &QName) -> Option<AttributeId> {
         self.global_attributes.get(name).copied()
+    }
+
+    /// The compiled content model of a complex type with element-only or mixed content; none for other types.
+    pub fn content_model(&self, id: TypeId) -> Option<&crate::compile::ContentModel> {
+        self.models.get(id.0).and_then(Option::as_ref)
     }
 
     pub fn type_entry(&self, id: TypeId) -> Option<&TypeEntry> {
@@ -256,6 +263,7 @@ pub(crate) fn with_builtins(documents: Vec<String>) -> Schema {
         global_attributes: HashMap::new(),
         global_notations: HashMap::new(),
         builtin_count: 0,
+        models: Vec::new(),
     };
     let xs = |local: &str| QName::new(Some(crate::XSD_NAMESPACE), local);
     schema.types.push(TypeEntry {

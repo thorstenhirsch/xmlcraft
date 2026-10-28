@@ -190,6 +190,7 @@ codes! {
     XsdWrongKind => ("xsd.wrong-kind-of-type", Error, "'{0}' is {1}."),
     XsdFacetProblem => ("xsd.facet", Error, "In the type '{0}': {1}."),
     XsdDerivationNotAllowed => ("xsd.derivation-not-allowed", Error, "The type '{0}' cannot be derived this way: {1}."),
+    XsdAmbiguous => ("xsd.unique-particle-attribution", Error, "The content model of '{0}' is ambiguous: {1}."),
     XsdComponent => ("xsd.component", Error, "{0}: {1}."),
     XsdValueConstraint => ("xsd.value-constraint", Error, "The default or fixed value of '{0}' is not allowed: {1}."),
     XsdUnsupported => ("xsd.unsupported", Warning, "{0} is not supported yet: {1}."),

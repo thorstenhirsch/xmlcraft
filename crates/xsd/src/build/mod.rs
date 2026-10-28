@@ -454,9 +454,13 @@ impl<'a> Builder<'a> {
     }
 
     fn finish(self) -> Assembly {
+        let mut schema = self.schema;
+        let (models, problems) = crate::compile::compile(&schema);
+        schema.models = models;
         let mut diagnostics = self.diags;
+        diagnostics.extend(problems);
         diagnostics.sort_by_key(|d| (d.source, d.diagnostic.span.start, d.diagnostic.span.end));
-        Assembly { schema: self.schema, diagnostics }
+        Assembly { schema, diagnostics }
     }
 }
 
