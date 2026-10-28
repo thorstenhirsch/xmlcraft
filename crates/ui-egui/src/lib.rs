@@ -9,6 +9,7 @@ mod control;
 mod dialog;
 mod documents;
 pub mod editor_view;
+mod entry_helpers;
 mod find_bar;
 mod home;
 mod i18n;
@@ -28,6 +29,7 @@ use serde::{Deserialize, Serialize};
 
 use xmlcraft_engine::Session;
 use xmlcraft_engine::analysis::Analyzer;
+use xmlcraft_engine::schema::Schemas;
 use xmlcraft_engine::validation::Validator;
 
 use crate::dialog::Dialog;
@@ -67,6 +69,8 @@ struct Prefs {
     side_panels: SidePanels,
     /// The files opened or saved lately, newest first (paths that are not valid text are not kept).
     recent: Vec<String>,
+    /// Entry Helpers write the content an element requires with it.
+    entry_mandatory: bool,
 }
 
 impl Default for Prefs {
@@ -78,6 +82,7 @@ impl Default for Prefs {
             bottom_open: true,
             side_panels: SidePanels::default(),
             recent: Vec::new(),
+            entry_mandatory: true,
         }
     }
 }
@@ -107,6 +112,10 @@ pub struct XmlCraftApp {
     analyzer: Analyzer,
     /// Checks each document against its DTD in the background, when asked (F8).
     validator: Validator,
+    /// Reads each document's DOCTYPE into a grammar in the background (what Entry Helpers offer comes from it).
+    schemas: Schemas,
+    /// Entry Helpers write the content an element requires with it.
+    entry_mandatory: bool,
     /// The text typed into the Outline's filter box.
     outline_filter: String,
     /// The Outline's rows for the filter and analysis they were worked out for, so a frame does not filter 50,000 names again.
@@ -166,7 +175,11 @@ impl XmlCraftApp {
             let repaint = repaint.clone();
             move || repaint.request_repaint()
         });
-        app.validator.on_done(move || repaint.request_repaint());
+        app.validator.on_done({
+            let repaint = repaint.clone();
+            move || repaint.request_repaint()
+        });
+        app.schemas.on_done(move || repaint.request_repaint());
         app
     }
 
@@ -194,6 +207,8 @@ impl XmlCraftApp {
             goto_focus: false,
             check_pending: None,
             validate_pending: None,
+            schemas: Schemas::new(std::sync::Arc::new(|| Box::new(xmlcraft_platform::subset::FileSubsetLoader::unconfined()))),
+            entry_mandatory: prefs.entry_mandatory,
             waiting: None,
             views: HashMap::new(),
             dialog: None,
@@ -222,6 +237,7 @@ impl XmlCraftApp {
             bottom_open: self.bottom_open,
             side_panels: self.side_panels,
             recent: self.session.recent().paths().iter().filter_map(|path| path.to_str().map(str::to_owned)).collect(),
+            entry_mandatory: self.entry_mandatory,
         }
     }
 
