@@ -4727,12 +4727,14 @@ dependencies = [
  "serde_json",
  "tempfile",
  "xmlcraft-catalog",
+ "xmlcraft-dtd",
  "xmlcraft-editor",
  "xmlcraft-engine",
  "xmlcraft-format",
  "xmlcraft-platform",
  "xmlcraft-syntax",
  "xmlcraft-text",
+ "xmlcraft-validate",
 ]
 
 [[package]]
@@ -4771,6 +4773,7 @@ name = "xmlcraft-dtd"
 version = "0.0.1"
 dependencies = [
  "proptest",
+ "rowan",
  "xmlcraft-grammar",
  "xmlcraft-syntax",
 ]
@@ -4800,6 +4803,7 @@ dependencies = [
  "xmlcraft-format",
  "xmlcraft-syntax",
  "xmlcraft-text",
+ "xmlcraft-validate",
 ]
 
 [[package]]
@@ -4820,12 +4824,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-pattern"
+version = "0.0.1"
+dependencies = [
+ "proptest",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "xmlcraft-platform"
 version = "0.0.1"
 dependencies = [
  "craft-atomic",
  "tempfile",
+ "xmlcraft-dtd",
  "xmlcraft-engine",
+ "xmlcraft-text",
 ]
 
 [[package]]
@@ -4891,6 +4906,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-validate"
+version = "0.0.1"
+dependencies = [
+ "rowan",
+ "xmlcraft-dtd",
+ "xmlcraft-grammar",
+ "xmlcraft-syntax",
+]
+
+[[package]]
 name = "xmlwriter"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4914,6 +4939,7 @@ dependencies = [
  "xmlcraft-format",
  "xmlcraft-syntax",
  "xmlcraft-text",
+ "xmlcraft-validate",
 ]
 
 [[package]]

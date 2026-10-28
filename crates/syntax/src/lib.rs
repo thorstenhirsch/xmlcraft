@@ -34,4 +34,4 @@ pub use highlight::{FarJump, HighlightClass, Highlighter, Span, highlight_line};
 pub use kinds::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken, XmlLanguage};
 pub use lexer::{Checkpoint, Lexer, Mode, Quote, Return, Token, TokenKind};
 pub use ns::{NsScope, XML_NAMESPACE, XMLNS_NAMESPACE, is_ncname, split_qname};
-pub use parser::{Limits, Parse, parse, parse_with};
+pub use parser::{Limits, Parse, char_ref_value, decode_references, parse, parse_with};

@@ -721,7 +721,7 @@ status = "partial"
 commands = []
 tools = ["xml_wellformed"]
 evidence = ["crates/dtd/tests/references.rs::an_entity_must_be_declared_where_the_document_has_all_of_its_declarations", "crates/dtd/tests/references.rs::an_entity_that_refers_to_itself_is_an_error_where_it_is_used", "crates/dtd/tests/references.rs::entities_that_multiply_cost_no_more_than_their_declarations", "crates/engine/src/analysis.rs::references_to_entities_are_checked_against_the_declarations_of_the_document"]
-notes = "References to general entities are checked against the declarations, in the document and in attribute default values: declared (where the document has all of its declarations, and always when it is standalone), parsed, not external in an attribute value, no `<` in an attribute value, not recursive, and a replacement text that is well-formed content where it is used; external entities are read through the loader when there is one (text declaration, balanced content). Nothing is expanded, each entity is analysed once, so an entity bomb costs no more than its declarations and nesting is bounded (256). Missing: expansion itself (attribute-value normalisation, namespace declarations written with entities, validation of the expanded content), and the editor does not read external entities yet (resolver, M2.3). xmlconf not-well-formed is 99.8%."
+notes = "References to general entities are checked against the declarations, in the document and in attribute default values: declared (where the document has all of its declarations, and always when it is standalone), parsed, not external in an attribute value, no `<` in an attribute value, not recursive, and a replacement text that is well-formed content where it is used; external entities are read through the loader when there is one (text declaration, balanced content). Checking the references expands nothing, each entity is analysed once, so an entity bomb costs no more than its declarations and nesting is bounded (256). Validation (M2.9) does expand: the replacement text of an internal entity is validated in the place it is referred to, within limits (40 levels, 5 million events), attribute values are read as XML 1.0 3.3.3 says, and namespace declarations written with entities are read as the DTD makes them. Missing: external general entities are not read in content when validating, and the editor does not read external entities yet (resolver, M2.3). xmlconf not-well-formed is 100% (1017 of 1017)."
 
 [[feature]]
 id = "dtd.notations"
@@ -906,7 +906,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = "Translated to the regex crate."
+notes = "M3.1: `xmlcraft-pattern` reads XML Schema regular expressions (appendix F: whole-value match, no anchors, `.` without line ends, class subtraction, the 36 categories, `\\p{IsBlock}` by the schema language's block names, `\\i \\c \\I \\C` and the other multi-character escapes) into a regex-syntax tree and matches with regex-automata; errors carry the position and a kind; limits on length, nesting, counts and automaton size; tested against an independent reading of random expressions. Nothing uses it until the XSD engine validates (M3.9), so the status stays planned."
 
 [[feature]]
 id = "xsd.date-time-types"
@@ -1007,7 +1007,7 @@ status = "partial"
 commands = ["xml.check"]
 tools = ["xml_wellformed"]
 evidence = ["crates/engine/src/analysis.rs::problems_are_sorted_by_position_and_counted", "crates/ui-egui/tests/analysis.rs::f7_checks_now_and_opens_messages", "crates/ui-egui/tests/analysis.rs::the_analysis_follows_the_typing", "crates/automation/tests/documents.rs::well_formedness_is_reported_for_a_document_a_file_or_text"]
-notes = "XML 1.0 5th edition and Namespaces, on a worker thread after every edit (squiggles, status badge, Messages), at once with F7, and headlessly with the `xml_wellformed` tool and `xmlcraft-cli check`. Of the W3C xmlconf not-well-formed tests 94.8% are rejected (the DTD is read since M2.6; what is left are the rules that tie entity references to the declarations, M2.8: docs/gaps.md, gap 16)."
+notes = "XML 1.0 5th edition and Namespaces, on a worker thread after every edit (squiggles, status badge, Messages), at once with F7, and headlessly with the `xml_wellformed` tool and `xmlcraft-cli check`. The DTD is read and the rules that tie entity references to its declarations are applied (M2.6, M2.8, M2.9): every applicable not-well-formed test of the W3C xmlconf suite is rejected (1017 of 1017) and no well-formed one is."
 
 [[feature]]
 id = "validate.namespaces"
@@ -1027,11 +1027,11 @@ title = "Validate against a DTD (F8)"
 area = "E"
 tier = "P0"
 milestone = "M2"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.validate"]
+tools = ["xml_validate"]
+evidence = ["crates/ui-egui/tests/validation.rs::f8_says_a_valid_document_is_valid", "crates/automation/tests/validate.rs::the_external_subset_is_a_file_next_to_the_document_and_problems_in_it_name_the_file", "crates/validate/tests/validation.rs::element_content_follows_the_model_and_has_no_text", "crates/validate/tests/validation.rs::attributes_are_declared_required_fixed_and_of_their_type", "crates/validate/tests/validation.rs::ids_are_unique_and_idrefs_name_them", "crates/validate/tests/validation.rs::a_standalone_document_does_not_lean_on_declarations_outside_it", "crates/validate/tests/validation.rs::entities_in_content_are_read_in_the_place_they_are_referred_to"]
+notes = "A document with a DOCTYPE is checked against the grammar of its DTD (`xmlcraft_validate::check`): root element type, element valid (declared; EMPTY, ANY, mixed and element content through the automata; text and character references in element content), attributes (declared, required, fixed, types and enumerations, ID unique and IDREF resolved, ENTITY names an unparsed entity, no colon in those names), the standalone document declaration, the declarations' own constraints (duplicates, ID and NOTATION rules, the nesting of parameter entities in declarations, groups and conditional sections), with the replacement text of internal entities read in the place they are referred to. The W3C xmlconf suite is the measure: 721 of 721 valid documents have no error and 227 of 227 invalid ones have at least one (which one is not compared). In the app: Validate (F8, XML menu) checks the document being shown in the background and reports in the status bar, Messages and the underlines; an edit makes the result out of date. Headless: the tool `xml_validate` and `xmlcraft-cli validate` (external parts of the DTD are files, a relative system identifier from the document's folder, through the `--root` confinement for the tool; nothing is downloaded). Missing: validate while typing, external general entities are not read in content, the resolver that finds a DTD by catalog or by the network is M2.3, and the DTD is read again on every validation (no cache)."
 
 [[feature]]
 id = "validate.xsd"
@@ -1087,11 +1087,11 @@ title = "Squiggles, next and previous error, jump from Messages"
 area = "E"
 tier = "P0"
 milestone = "M2"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.check", "xml.validate"]
+tools = ["xml_wellformed", "xml_validate"]
+evidence = ["crates/ui-egui/tests/analysis.rs::problems_are_listed_and_a_click_goes_to_them", "crates/ui-egui/tests/validation.rs::validity_problems_are_listed_after_the_others_and_a_click_goes_to_them", "crates/ui-egui/tests/validation.rs::what_is_wrong_with_the_document_is_underlined_while_the_validation_is_current"]
+notes = "Problems of the well-formedness check and of the validation are underlined in the editor (validity ones while the validation is about the text as it is), listed in Messages with their line and column (a problem in an external text of the DTD names the file), and a click in Messages selects the place in the document. Missing: next and previous error commands, hover text on the underline, and opening the external text a problem is in."
 
 [[feature]]
 id = "validate.def-links"
@@ -1123,11 +1123,11 @@ title = "Entity expansion and resource limits"
 area = "E"
 tier = "P0"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "Never-crash rule; regression tests for billion-laughs and quadratic blowup."
+tools = ["xml_wellformed"]
+evidence = ["crates/dtd/tests/references.rs::entities_that_multiply_cost_no_more_than_their_declarations", "crates/dtd/tests/compile.rs::entities_that_multiply_are_cut_off", "crates/validate/tests/validation.rs::entities_that_multiply_and_documents_that_nest_are_bounded"]
+notes = "Entity references are checked without expanding them (each entity is analysed once, nesting is cut off at 256), attribute values are expanded with a limit of 1 MiB and 40 levels, and the validator reads the replacement text of entities with a budget of 5 million nodes and 40 levels (what is over is taken as unknown content, with a note). Billion-laughs and quadratic-blowup documents are regression tests. Missing: external entities are not read (no network entities by default, by design), and the budgets are not settings."
 
 [[feature]]
 id = "validate.streaming-large"

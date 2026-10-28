@@ -28,6 +28,7 @@ use serde::{Deserialize, Serialize};
 
 use xmlcraft_engine::Session;
 use xmlcraft_engine::analysis::Analyzer;
+use xmlcraft_engine::validation::Validator;
 
 use crate::dialog::Dialog;
 use crate::documents::DocView;
@@ -104,6 +105,8 @@ pub struct XmlCraftApp {
     pub session: Session,
     /// Works out each document's problems and outline in the background.
     analyzer: Analyzer,
+    /// Checks each document against its DTD in the background, when asked (F8).
+    validator: Validator,
     /// The text typed into the Outline's filter box.
     outline_filter: String,
     /// The Outline's rows for the filter and analysis they were worked out for, so a frame does not filter 50,000 names again.
@@ -115,6 +118,8 @@ pub struct XmlCraftApp {
     goto_focus: bool,
     /// A check (F7) is waiting for the analysis of this version of this document, to report its result.
     check_pending: Option<(u64, u64)>,
+    /// A validation (F8) is waiting for the result for this version of this document, to report it.
+    validate_pending: Option<(u64, u64)>,
     /// A command (the jump to the matching tag, folding) that is waiting for the analysis of the text it was asked in.
     waiting: Option<after_analysis::Waiting>,
     /// What the editor keeps for each open document (layout caches, colouring), by document id.
@@ -157,7 +162,11 @@ impl XmlCraftApp {
         let mut app = Self::with_prefs(prefs);
         app.ctx = Some(cc.egui_ctx.clone());
         let repaint = cc.egui_ctx.clone();
-        app.analyzer.on_done(move || repaint.request_repaint());
+        app.analyzer.on_done({
+            let repaint = repaint.clone();
+            move || repaint.request_repaint()
+        });
+        app.validator.on_done(move || repaint.request_repaint());
         app
     }
 
@@ -176,12 +185,15 @@ impl XmlCraftApp {
             palette_selected: 0,
             session,
             analyzer: Analyzer::new(),
+            // The external parts of a DTD are files the person can read; nothing is downloaded.
+            validator: Validator::new(std::sync::Arc::new(|| Box::new(xmlcraft_platform::subset::FileSubsetLoader::unconfined()))),
             outline_filter: String::new(),
             outline_rows: None,
             find: find_bar::FindBar::default(),
             goto_input: String::new(),
             goto_focus: false,
             check_pending: None,
+            validate_pending: None,
             waiting: None,
             views: HashMap::new(),
             dialog: None,

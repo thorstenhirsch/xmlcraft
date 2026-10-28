@@ -30,6 +30,12 @@ macro_rules! codes {
                 match self { $(Code::$variant => $key),* }
             }
 
+            /// Whether the problem is the breaking of a validity constraint (the key starts with `vc.`): the document is well-formed, but it
+            /// does not meet its DTD.
+            pub fn is_validity(self) -> bool {
+                self.key().starts_with("vc.")
+            }
+
             pub fn severity(self) -> Severity {
                 match self { $(Code::$variant => Severity::$severity),* }
             }
@@ -130,7 +136,25 @@ codes! {
     VcDuplicateToken => ("vc.duplicate-enumeration-token", Error, "'{1}' is listed more than once in the type of the attribute '{0}'."),
     VcNotationNotDeclared => ("vc.notation-not-declared", Error, "The notation '{0}' is not declared."),
     VcAttributeDefault => ("vc.attribute-default-value", Error, "The default value of the attribute '{0}' is not valid for its type: {1}."),
+    VcPeNesting => ("vc.proper-parameter-entity-nesting", Error, "The replacement text of a parameter entity is not properly nested with {0}."),
     VcDuplicateNotation => ("vc.duplicate-notation-declaration", Error, "The notation '{0}' is declared more than once."),
+    // A document against its DTD: validity constraints (XML 1.0 §2.8 to §4.1)
+    VcNoDtd => ("vc.no-dtd", Error, "The document has no DOCTYPE, so there is nothing to validate it against."),
+    VcEntityNotDeclared => ("vc.entity-declared", Error, "The entity '{0}' is not declared."),
+    VcRootElement => ("vc.root-element-type", Error, "The root element is '{0}', but the DOCTYPE names '{1}'."),
+    VcElementNotDeclared => ("vc.element-not-declared", Error, "The element '{0}' is not declared."),
+    VcEmptyHasContent => ("vc.empty-element-has-content", Error, "The element '{0}' is declared EMPTY, but it has content."),
+    VcChildNotAllowed => ("vc.child-not-allowed", Error, "The element '{0}' is not allowed here: {1}."),
+    VcContentIncomplete => ("vc.content-incomplete", Error, "The element '{0}' is not complete: {1}."),
+    VcTextNotAllowed => ("vc.text-not-allowed", Error, "The element '{0}' has element content, so it cannot have text."),
+    VcAttributeNotDeclared => ("vc.attribute-not-declared", Error, "The attribute '{1}' is not declared for the element '{0}'."),
+    VcRequiredAttribute => ("vc.required-attribute-missing", Error, "The element '{0}' needs the attribute '{1}'."),
+    VcFixedAttribute => ("vc.fixed-attribute-value", Error, "The attribute '{0}' must have the value '{1}'."),
+    VcAttributeValue => ("vc.attribute-value", Error, "The value of the attribute '{0}' is not valid: {1}."),
+    VcDuplicateId => ("vc.duplicate-id", Error, "The ID '{0}' is used more than once."),
+    VcIdrefNotFound => ("vc.idref-has-no-id", Error, "No element has the ID '{0}'."),
+    VcEntityAttribute => ("vc.entity-attribute-not-unparsed", Error, "'{0}' is not the name of an unparsed entity."),
+    VcStandalone => ("vc.standalone-document", Error, "The document is standalone, but {0}."),
     // Namespaces
     InvalidQName => ("ns.invalid-qname", Error, "'{0}' is not a valid qualified name."),
     UnboundPrefix => ("ns.unbound-prefix", Error, "The namespace prefix '{0}' is not declared."),

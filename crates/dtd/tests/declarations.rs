@@ -330,6 +330,36 @@ fn parameter_entities_between_declarations_bring_their_declarations() {
     mistake_and_more("<!ENTITY % e '%e;'> %e;", Code::PeInDeclaration);
 }
 
+/// The codes of a mistake in an external subset (nothing is loaded).
+fn external_codes(text: &str) -> Vec<Code> {
+    codes(&parse_external_subset(text))
+}
+
+#[test]
+fn parameter_entities_nest_properly_with_declarations_groups_and_sections() {
+    // VC "Proper Declaration/PE Nesting": a declaration that ends in the text of an entity it did not begin in.
+    assert_eq!(external_codes("<!ENTITY % e '>'><!ELEMENT a (#PCDATA) %e;"), [Code::VcPeNesting]);
+    assert_eq!(external_codes("<!ENTITY % e 'ANY>'><!ELEMENT a %e;"), [Code::VcPeNesting]);
+    assert_eq!(external_codes("<!ENTITY % e 'bar CDATA #IMPLIED>'><!ATTLIST foo %e;"), [Code::VcPeNesting]);
+    // The other way round is the well-formedness constraint of the declarations between declarations.
+    assert_eq!(external_codes("<!ENTITY % e '<!ELEMENT a '> %e; ANY>"), [Code::DtdPeBetweenDeclarations]);
+    // Inside a declaration, an entity that holds whole parts is fine.
+    assert!(external_codes("<!ENTITY % e 'ANY'><!ELEMENT a %e;><!ELEMENT b %e; >").is_empty());
+    // VC "Proper Group/PE Nesting": a group that opens in one text and closes in another.
+    assert_eq!(external_codes("<!ENTITY % e '(a'><!ELEMENT x %e;)>"), [Code::VcPeNesting]);
+    assert_eq!(external_codes("<!ENTITY % c1 '(a|b'><!ENTITY % c2 '|c)'><!ELEMENT x %c1;%c2; >"), [Code::VcPeNesting]);
+    assert_eq!(external_codes("<!ENTITY % e '(a,b,c'><!ELEMENT x (%e;)|c) >"), [Code::VcPeNesting]);
+    assert_eq!(external_codes("<!ENTITY % m '(#PCDATA|'><!ENTITY % n 'c|b)*'><!ELEMENT e %m;%n; >"), [Code::VcPeNesting]);
+    // A whole group inside an entity, or an entity inside a group, is fine.
+    assert!(external_codes("<!ENTITY % g '(a|b)'><!ELEMENT x (%g;, c)><!ELEMENT y (%g;)*><!ENTITY % i 'a | b'><!ELEMENT z (%i;)>").is_empty());
+    // VC "Proper Conditional Section/PE Nesting": `<![`, `[` and `]]>` in one text.
+    assert_eq!(external_codes("<!ENTITY % e 'INCLUDE['><![ %e; <!ELEMENT a ANY> ]]>"), [Code::VcPeNesting]);
+    assert_eq!(external_codes("<!ENTITY % e ']]>'><![ INCLUDE[ <!ELEMENT a ANY> %e;"), [Code::VcPeNesting]);
+    // (Nothing is expanded in a section that is ignored, so it is not closed here.)
+    assert_eq!(external_codes("<!ENTITY % e ']]>'><![ IGNORE[ stuff %e;"), [Code::DtdBadConditional]);
+    assert!(external_codes("<!ENTITY % k 'INCLUDE'><![ %k; [ <!ELEMENT a ANY> ]]>").is_empty());
+}
+
 #[test]
 fn a_reference_between_declarations_stands_for_whole_declarations() {
     // WFC "PE Between Declarations": what begins in the text of the entity ends in it.
@@ -344,9 +374,10 @@ fn a_reference_between_declarations_stands_for_whole_declarations() {
     assert!(nested.diagnostics.is_empty() && nested.dtd.element("b").is_some(), "{:?}", nested.diagnostics);
     let split = parse_external_subset("<!ENTITY % inner '<!ELEMENT a '><!ENTITY % outer '%inner;'> %outer; ANY>");
     assert!(codes(&split).contains(&Code::DtdPeBetweenDeclarations), "{:?}", split.diagnostics);
-    // A reference inside a declaration of the external subset is another matter (a validity constraint only).
+    // A reference inside a declaration of the external subset is another matter: a validity constraint only.
     let parsed = parse_external_subset("<!ENTITY % e 'ANY>'><!ELEMENT a %e;");
-    assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+    assert_eq!(codes(&parsed), [Code::VcPeNesting]);
+    assert!(parsed.diagnostics.iter().all(|d| d.diagnostic.code.is_validity()));
     // The first problem is where the construct begins.
     let parsed = internal("<!ELEMENT z ANY><!ENTITY % e '<!--'> %e; -->");
     let at = parsed.diagnostics.iter().find(|d| d.diagnostic.code == Code::DtdPeBetweenDeclarations).map(|d| d.diagnostic.span.start);

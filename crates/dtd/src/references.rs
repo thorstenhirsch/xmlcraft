@@ -88,6 +88,11 @@ fn facts_of(root: &SyntaxNode) -> Facts {
     Facts { standalone, version_1_0: version.as_deref().is_none_or(|v| v == "1.0") }
 }
 
+/// Whether the XML declaration of the document says `standalone="yes"`.
+pub fn is_standalone(root: &SyntaxNode) -> bool {
+    facts_of(root).standalone
+}
+
 /// Whether the text is a name.
 fn is_name(text: &str) -> bool {
     let mut chars = text.chars();
