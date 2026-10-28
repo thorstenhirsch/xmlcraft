@@ -1,0 +1,17 @@
+[package]
+name = "xmlcraft-dtd"
+description = "XmlCraft's DTD reader: element, attribute-list, entity and notation declarations, parameter entities and conditional sections, with every syntax error reported"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-syntax = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

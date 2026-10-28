@@ -1,6 +1,6 @@
 # XmlCraft parity with Altova XMLSpy
 
-> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M2.1: OASIS catalogs (partial); feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** M2.1: OASIS catalogs, M2.6: the DTD reader and M2.8: entity-reference rules (partial); xmlconf not-wf 99.8%; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
 
 The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -10,9 +10,9 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **6.6%** shipped, 16.8% with partial counted half (10 shipped + 31 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-28) |
-| Must-have (P0) features | 7.8% shipped, 26.6% weighted (5 shipped + 24 partial of 64) | measured |
-| W3C xmlconf, not-well-formed | **64.7%** (658 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-27) |
+| **Feature breadth**, unweighted | **6.6%** shipped, 19.1% with partial counted half (10 shipped + 38 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-28) |
+| Must-have (P0) features | 7.8% shipped, 30.5% weighted (5 shipped + 29 partial of 64) | measured |
+| W3C xmlconf, not-well-formed | **99.8%** (1015 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): no well-formedness error is reported on a well-formed document | measured (same run) |
 | W3C xsdtests (XSD 1.0) | not measured | arrives with M3 |
 | Verdict agreement with `xmllint` | not measured | arrives with M2 (`cargo xtask oracle`) |
@@ -30,11 +30,11 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | Kind | Passed | Of | Rate |
 |---|---:|---:|---:|
-| not-wf | 658 | 1017 | 64.7% |
+| not-wf | 1015 | 1017 | 99.8% |
 | valid | 721 | 721 | 100% |
 | invalid | 227 | 227 | 100% |
 
-**What the 359 known failures are.** Every one is a not-well-formed test that needs the DTD, which XmlCraft reads from M2: the syntax of `<!ELEMENT>`, `<!ATTLIST>` and `<!ENTITY>` declarations and conditional sections (about 310 tests), and rules that need the declarations or the files behind them: an entity must be declared, parsed, not external inside an attribute value, not recursive, with a well-formed replacement text, and the external subset must itself be well-formed (about 50). The internal subset is lexed and what does not need its declarations is checked (its extent, comments, processing instructions, public identifiers, `&` and `%` in entity values, parameter-entity references inside declarations, unknown declarations), but the declarations are not parsed. They close with the DTD parser (M2.6), the resolver (M2.3) and entity expansion (M2.8); `docs/gaps.md` tracks them as gap 16.
+**What the 2 known failures are.** Both are in the namespaces group and need a namespace declaration to be seen as the DTD makes it: `eduni/namespaces/1.0/011` writes one namespace name with an entity (`http://example.org/&tilde;wilbur` is `~wilbur`), and `012` declares `xmlns:b` as `NMTOKEN` so that ` urn:xyzzy ` is normalised to the name of `xmlns:a`; in both, two attributes of an element end up with the same expanded name. They close with attribute-value normalisation in the validator (M2.9); `docs/gaps.md` tracks them as gap 16. The 359 tests this started with closed in two steps: the DTD reader (M2.6, 306) and the rules that tie references to declarations (M2.8, 51): an entity must be declared (where the document has all of its declarations, and always when it is standalone), parsed, not external in an attribute value, without `<` in one, not recursive, with a replacement text that is well-formed where it is used; external entities are read through the loader with their text declaration; a parameter entity between declarations holds whole declarations.
 
 ## Revision history
 
@@ -54,3 +54,5 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 - 2026-10-27: M1.8: column selection (`editor.column-selection` planned → partial); 10 shipped and 29 partial, 16.1% weighted.
 - 2026-10-28: M1.12: recent files (`editor.recent-files` planned → partial); 10 shipped and 30 partial, 16.4% weighted.
 - 2026-10-28: M2.1: OASIS XML Catalogs 1.1 resolution (`catalog.oasis-catalogs` planned → partial); 10 shipped and 31 partial, 16.8% weighted.
+- 2026-10-28: M2.6: the DTD reader (six `dtd.*` features planned → partial); xmlconf not-well-formed 64.7% → 94.8%; 10 shipped and 37 partial, 18.8% weighted.
+- 2026-10-28: M2.8: entity references checked against the declarations (`dtd.general-entities` planned → partial); xmlconf not-well-formed 94.8% → 99.8%; 10 shipped and 38 partial, 19.1% weighted.

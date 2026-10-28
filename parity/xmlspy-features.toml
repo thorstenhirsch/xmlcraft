@@ -657,11 +657,11 @@ title = "Parse internal and external DTD subsets"
 area = "C"
 tier = "P0"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["xml_wellformed"]
+evidence = ["crates/dtd/tests/declarations.rs::the_external_subset_is_read_after_the_internal_one_and_the_internal_declarations_win", "crates/dtd/tests/declarations.rs::what_is_not_a_declaration_is_reported_and_reading_goes_on", "crates/dtd/tests/declarations.rs::spans_say_where_in_the_document_the_problem_is", "crates/engine/src/analysis.rs::the_declarations_of_the_internal_subset_are_read_and_their_mistakes_are_problems", "crates/dtd/src/doctype.rs::the_name_the_identifiers_and_the_subset_are_found"]
+notes = "The DOCTYPE and the declarations of its internal subset are read, and every syntax error is a problem with a code and a place (the editor's Messages and `xml_wellformed` show them); the external subset is read through a loader the caller gives (the xmlconf run gives it the suite's files: not-well-formed 64.7% -> 94.8% with valid and invalid still 100%). Missing: the app does not load external subsets yet (no resolver: M2.3), the declarations are not used for anything else (no validation, completion or Info), and entity references in content and attributes are not checked against them (M2.8)."
 
 [[feature]]
 id = "dtd.parameter-entities"
@@ -669,11 +669,11 @@ title = "Parameter entities, internal and external"
 area = "C"
 tier = "P0"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["xml_wellformed"]
+evidence = ["crates/dtd/tests/declarations.rs::parameter_entities_between_declarations_bring_their_declarations", "crates/dtd/tests/declarations.rs::parameter_entities_stand_for_their_text_inside_declarations_of_the_external_subset", "crates/dtd/tests/declarations.rs::external_parameter_entities_are_loaded_once_with_their_text_declaration_removed", "crates/dtd/tests/declarations.rs::a_parameter_entity_that_contains_itself_and_one_that_is_not_declared_are_reported", "crates/dtd/tests/declarations.rs::limits_stop_a_hostile_dtd"]
+notes = "Parameter entities are expanded as XML 1.0 4.4 says: between declarations everywhere, inside declarations and entity values of the external subset (with the spaces the spec adds), external ones through the loader (read once, text declaration checked and removed), the internal-subset rule (no reference inside a declaration), recursion, undeclared references (an error without an external part, a note with one) a construct that begins in a parameter entity between declarations and ends outside it, and limits (nesting 40, 10 million bytes, 256 loads). Problems are listed up to 1000, then one note says there are more. Missing: validity constraints about nesting of declarations and groups with parameter entities, and the app does not load external ones yet."
 
 [[feature]]
 id = "dtd.conditional-sections"
@@ -681,11 +681,11 @@ title = "INCLUDE and IGNORE conditional sections"
 area = "C"
 tier = "P1"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["xml_wellformed"]
+evidence = ["crates/dtd/tests/declarations.rs::a_conditional_section_is_only_for_the_external_subset"]
+notes = "INCLUDE and IGNORE sections (nested ones, the keyword from a parameter entity, a section that is not closed, one in the internal subset) are read in the external subset and in external parameter entities. Not yet read by the app (external parts are not loaded there)."
 
 [[feature]]
 id = "dtd.content-models"
@@ -693,11 +693,11 @@ title = "EMPTY, ANY, mixed and children content models"
 area = "C"
 tier = "P0"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "Compiled to the shared grammar automaton."
+tools = ["xml_wellformed"]
+evidence = ["crates/dtd/tests/declarations.rs::element_declarations_give_their_content_specifications", "crates/dtd/tests/declarations.rs::mistakes_in_element_declarations"]
+notes = "EMPTY, ANY, mixed content and children content models (groups, choice and sequence, ?*+, nesting up to 256) are read into a model and every syntax mistake is reported. Missing: the models are not compiled to automata or checked (determinism, duplicates in mixed content), which is M2.5 and M2.9."
 
 [[feature]]
 id = "dtd.attlist"
@@ -705,11 +705,11 @@ title = "ATTLIST declarations: all attribute types and defaults"
 area = "C"
 tier = "P0"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["xml_wellformed"]
+evidence = ["crates/dtd/tests/declarations.rs::attribute_list_declarations_give_types_and_defaults", "crates/dtd/tests/declarations.rs::mistakes_in_attribute_list_declarations"]
+notes = "All attribute types (CDATA, ID, IDREF(S), ENTITY/ENTITIES, NMTOKEN(S), NOTATION and enumerations) and defaults (#REQUIRED, #IMPLIED, #FIXED, a value) are read, the first declaration of an attribute counts, and every syntax mistake is reported. Missing: nothing uses the declarations to validate or complete attributes yet."
 
 [[feature]]
 id = "dtd.general-entities"
@@ -717,11 +717,11 @@ title = "General entities with expansion limits"
 area = "C"
 tier = "P0"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "Caps against entity-expansion attacks."
+tools = ["xml_wellformed"]
+evidence = ["crates/dtd/tests/references.rs::an_entity_must_be_declared_where_the_document_has_all_of_its_declarations", "crates/dtd/tests/references.rs::an_entity_that_refers_to_itself_is_an_error_where_it_is_used", "crates/dtd/tests/references.rs::entities_that_multiply_cost_no_more_than_their_declarations", "crates/engine/src/analysis.rs::references_to_entities_are_checked_against_the_declarations_of_the_document"]
+notes = "References to general entities are checked against the declarations, in the document and in attribute default values: declared (where the document has all of its declarations, and always when it is standalone), parsed, not external in an attribute value, no `<` in an attribute value, not recursive, and a replacement text that is well-formed content where it is used; external entities are read through the loader when there is one (text declaration, balanced content). Nothing is expanded, each entity is analysed once, so an entity bomb costs no more than its declarations and nesting is bounded (256). Missing: expansion itself (attribute-value normalisation, namespace declarations written with entities, validation of the expanded content), and the editor does not read external entities yet (resolver, M2.3). xmlconf not-well-formed is 99.8%."
 
 [[feature]]
 id = "dtd.notations"
@@ -729,11 +729,11 @@ title = "NOTATION and unparsed entities"
 area = "C"
 tier = "P2"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["xml_wellformed"]
+evidence = ["crates/dtd/tests/declarations.rs::notation_declarations", "crates/dtd/tests/declarations.rs::entity_declarations_give_values_with_references_resolved"]
+notes = "NOTATION declarations (SYSTEM, PUBLIC with and without a system identifier) and unparsed entities (NDATA) are read and their syntax checked; names have no colon. Missing: the checks that tie them together (a declared notation for NDATA and for NOTATION attributes: validity)."
 
 [[feature]]
 id = "dtd.determinism-warning"
@@ -1007,7 +1007,7 @@ status = "partial"
 commands = ["xml.check"]
 tools = ["xml_wellformed"]
 evidence = ["crates/engine/src/analysis.rs::problems_are_sorted_by_position_and_counted", "crates/ui-egui/tests/analysis.rs::f7_checks_now_and_opens_messages", "crates/ui-egui/tests/analysis.rs::the_analysis_follows_the_typing", "crates/automation/tests/documents.rs::well_formedness_is_reported_for_a_document_a_file_or_text"]
-notes = "XML 1.0 5th edition and Namespaces, on a worker thread after every edit (squiggles, status badge, Messages), at once with F7, and headlessly with the `xml_wellformed` tool and `xmlcraft-cli check`. Of the W3C xmlconf not-well-formed tests 64.7% are rejected: the DTD rules arrive in M2 (docs/gaps.md, gap 16)."
+notes = "XML 1.0 5th edition and Namespaces, on a worker thread after every edit (squiggles, status badge, Messages), at once with F7, and headlessly with the `xml_wellformed` tool and `xmlcraft-cli check`. Of the W3C xmlconf not-well-formed tests 94.8% are rejected (the DTD is read since M2.6; what is left are the rules that tie entity references to the declarations, M2.8: docs/gaps.md, gap 16)."
 
 [[feature]]
 id = "validate.namespaces"
