@@ -739,4 +739,15 @@ mod tests {
             assert_eq!(parse_position(bad), None, "{bad:?}");
         }
     }
+
+    #[test]
+    fn a_validation_that_comes_late_does_not_replace_a_newer_one() {
+        let validation = |version| Validation { version, verdict: Verdict::Valid, problems: Vec::new(), truncated: false };
+        let mut view = DocView::new(ThemeKind::Light);
+        view.set_validation(validation(5));
+        view.set_validation(validation(3));
+        assert_eq!(view.validation.as_ref().map(|v| v.version), Some(5));
+        view.set_validation(validation(6));
+        assert_eq!(view.validation.as_ref().map(|v| v.version), Some(6));
+    }
 }
