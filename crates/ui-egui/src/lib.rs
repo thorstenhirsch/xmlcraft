@@ -64,6 +64,8 @@ struct Prefs {
     right: Option<RightPanel>,
     bottom_open: bool,
     side_panels: SidePanels,
+    /// The files opened or saved lately, newest first (paths that are not valid text are not kept).
+    recent: Vec<String>,
 }
 
 impl Default for Prefs {
@@ -74,6 +76,7 @@ impl Default for Prefs {
             right: Some(RightPanel::EntryHelpers),
             bottom_open: true,
             side_panels: SidePanels::default(),
+            recent: Vec::new(),
         }
     }
 }
@@ -159,6 +162,8 @@ impl XmlCraftApp {
     }
 
     fn with_prefs(prefs: Prefs) -> Self {
+        let mut session = Session::new();
+        session.set_recent(xmlcraft_engine::Recent::from_paths(prefs.recent.iter().map(std::path::PathBuf::from)));
         Self {
             theme_preference: prefs.theme,
             mode: Mode::default(),
@@ -169,7 +174,7 @@ impl XmlCraftApp {
             palette_query: String::new(),
             palette_last_query: String::new(),
             palette_selected: 0,
-            session: Session::new(),
+            session,
             analyzer: Analyzer::new(),
             outline_filter: String::new(),
             outline_rows: None,
@@ -204,6 +209,7 @@ impl XmlCraftApp {
             right: self.right,
             bottom_open: self.bottom_open,
             side_panels: self.side_panels,
+            recent: self.session.recent().paths().iter().filter_map(|path| path.to_str().map(str::to_owned)).collect(),
         }
     }
 

@@ -87,6 +87,16 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             handler: doc_list,
         },
         ToolDef {
+            name: "recent_files",
+            title: "Recent files",
+            description: "The files opened or saved lately in this session (and, in the app, in earlier ones), newest first, at most 12. With `clear` true the list is emptied \
+                          after it is read. Only paths are listed; nothing is opened.",
+            input_schema: object(json!({ "clear": { "type": "boolean" } }), &[]),
+            read_only: false,
+            destructive: false,
+            handler: recent_files,
+        },
+        ToolDef {
             name: "doc_text",
             title: "Read a document's text",
             description: "The text of a document, or of the lines from `from_line` to `to_line` (counted from 1, both included). At most 4 MiB are returned.",
@@ -569,6 +579,14 @@ fn doc_new(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
 fn doc_list(a: &mut Automation, _: &Value) -> Result<Vec<Content>> {
     let documents: Vec<Value> = a.session.documents().iter().map(describe).collect();
     json_result(json!({ "documents": documents, "count": documents.len() }))
+}
+
+fn recent_files(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let files: Vec<String> = a.session.recent().paths().iter().map(|path| path.display().to_string()).collect();
+    if flag(args, "clear") {
+        a.session.clear_recent();
+    }
+    json_result(json!({ "files": files, "count": files.len(), "cleared": flag(args, "clear") }))
 }
 
 fn doc_text(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {

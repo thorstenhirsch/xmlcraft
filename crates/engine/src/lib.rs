@@ -7,8 +7,10 @@ pub mod analysis;
 pub mod commands;
 mod document;
 pub mod folding;
+pub mod recent;
 
 pub use document::{Document, FileStamp, MAX_OPEN_BYTES, OpenError, SaveError};
+pub use recent::Recent;
 
 /// The open documents, and which one is shown.
 #[derive(Default)]
@@ -17,6 +19,7 @@ pub struct Session {
     active: Option<usize>,
     next_id: u64,
     untitled: usize,
+    recent: Recent,
 }
 
 impl std::fmt::Debug for Session {
@@ -31,6 +34,30 @@ impl std::fmt::Debug for Session {
 impl Session {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The files opened or saved lately, newest first.
+    pub fn recent(&self) -> &Recent {
+        &self.recent
+    }
+
+    /// Replace the list (the one saved with the preferences, at start-up).
+    pub fn set_recent(&mut self, recent: Recent) {
+        self.recent = recent;
+    }
+
+    /// `path` was written (saved, or saved as): it is the newest of the recent files.
+    pub fn remember_recent(&mut self, path: std::path::PathBuf) {
+        self.recent.push(path);
+    }
+
+    /// Drop `path` from the recent files (it could not be opened).
+    pub fn forget_recent(&mut self, path: &std::path::Path) {
+        self.recent.remove(path);
+    }
+
+    pub fn clear_recent(&mut self) {
+        self.recent.clear();
     }
 
     pub fn documents(&self) -> &[Document] {
@@ -119,10 +146,15 @@ impl Session {
             && let Some(index) = self.position_of_file(path, stamp.as_ref())
         {
             self.active = Some(index);
+            self.recent.push(path.clone());
             return Ok(index);
         }
         let id = self.next_id();
+        let remembered = path.clone();
         self.documents.push(Document::from_bytes(id, path, bytes, stamp)?);
+        if let Some(path) = remembered {
+            self.recent.push(path);
+        }
         let index = self.documents.len() - 1;
         self.active = Some(index);
         Ok(index)
@@ -174,6 +206,29 @@ mod tests {
         let s = Session::new();
         assert!(!s.has_document() && s.active().is_none() && s.documents().is_empty());
         assert!(!s.can_undo() && !s.can_redo() && !s.has_unsaved_changes());
+    }
+
+    #[test]
+    fn files_that_are_opened_or_saved_are_remembered_newest_first() {
+        let mut s = Session::new();
+        s.open(Some("/x/a.xml".into()), b"<a/>", None).expect("opens");
+        s.open(Some("/x/b.xml".into()), b"<b/>", None).expect("opens");
+        s.new_document(); // no file: nothing to remember
+        assert_eq!(s.recent().paths(), [std::path::PathBuf::from("/x/b.xml"), "/x/a.xml".into()]);
+        // Showing a file that is open again makes it the newest too.
+        s.open(Some("/x/a.xml".into()), b"<changed/>", None).expect("shows");
+        assert_eq!(s.recent().paths().first(), Some(&std::path::PathBuf::from("/x/a.xml")));
+        // A file that cannot be opened is not remembered.
+        let big = vec![b'a'; MAX_OPEN_BYTES + 1];
+        assert!(s.open(Some("/x/big.xml".into()), &big, None).is_err());
+        assert_eq!(s.recent().paths().len(), 2);
+        s.remember_recent("/x/saved-as.xml".into());
+        s.forget_recent(std::path::Path::new("/x/b.xml"));
+        assert_eq!(s.recent().paths(), [std::path::PathBuf::from("/x/saved-as.xml"), "/x/a.xml".into()]);
+        s.clear_recent();
+        assert!(s.recent().is_empty());
+        s.set_recent(Recent::from_paths(["/y/z.xml".into()]));
+        assert_eq!(s.recent().paths().len(), 1);
     }
 
     #[test]

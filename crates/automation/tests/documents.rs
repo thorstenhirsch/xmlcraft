@@ -594,3 +594,29 @@ fn a_link_to_the_file_is_the_same_file_for_the_save_checks() {
     assert!(err(&mut a, "doc_save", json!({ "id": id, "path": good_link.to_str() })).contains("changed on disk"));
     assert_eq!(std::fs::read(&good).expect("reads"), b"<theirs, longer/>");
 }
+
+#[test]
+fn the_files_that_were_opened_are_listed_newest_first_and_the_list_can_be_cleared() {
+    let dir = tempfile::tempdir().expect("dir");
+    let (first, second) = (file(dir.path(), "first.xml", b"<a/>"), file(dir.path(), "second.xml", b"<b/>"));
+    let mut a = Automation::new();
+    assert_eq!(ok(&mut a, "recent_files", json!({}))["count"], 0);
+    ok(&mut a, "doc_open", json!({ "path": first }));
+    ok(&mut a, "doc_open", json!({ "path": second }));
+    ok(&mut a, "doc_new", json!({ "text": "<c/>" })); // no file, nothing to remember
+    let listed = ok(&mut a, "recent_files", json!({}));
+    let names: Vec<String> = listed["files"]
+        .as_array()
+        .expect("a list")
+        .iter()
+        .filter_map(|f| f.as_str())
+        .map(|f| f.rsplit(['/', '\\']).next().unwrap_or(f).to_owned())
+        .collect();
+    assert_eq!(names, ["second.xml", "first.xml"]);
+    // Opening the first again moves it to the front; reading with `clear` empties the list afterwards.
+    ok(&mut a, "doc_open", json!({ "path": first }));
+    let cleared = ok(&mut a, "recent_files", json!({ "clear": true }));
+    assert_eq!((cleared["count"].as_u64(), cleared["cleared"].as_bool()), (Some(2), Some(true)));
+    assert!(cleared["files"][0].as_str().is_some_and(|f| f.ends_with("first.xml")));
+    assert_eq!(ok(&mut a, "recent_files", json!({}))["count"], 0);
+}

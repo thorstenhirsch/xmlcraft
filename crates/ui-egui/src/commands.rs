@@ -103,6 +103,10 @@ impl XmlCraftApp {
         match id {
             "file.new" => self.new_document(),
             "file.open" => return self.pick_open(ctx),
+            "file.clear_recent" => {
+                self.session.clear_recent();
+                self.status = tl!("The list of recent files is empty").to_owned();
+            }
             "file.save" => self.save_active(ctx),
             "file.save_as" => self.save_as_active(ctx),
             "file.revert" => self.revert_active(),
