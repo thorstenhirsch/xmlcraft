@@ -1,0 +1,18 @@
+[package]
+name = "xmlcraft-pattern"
+description = "XML Schema regular expressions: parsed as the XSD syntax defines them and translated to the regex crate, for the pattern facet and for generating values"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+regex-automata = { workspace = true }
+regex-syntax = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 49b0f7ccfe29c343ad9edf11d003e531bfd305bd8236f764f95855e5d2af2f15 # shrinks to t = Cat([Rep(Rep(Lit('a'), 1, None), 0, Some(1))]), values = [""]
+cc 7daf447d70f8427cd1e9c14e5a2fd6a3a523b8e2220c88849f616a732567c2a1 # shrinks to t = Alt([Cat([Cat([NotIn(['a']), Cat([Lit('b')]), NotIn(['a'])]), Dot, Lit('c')]), Lit('a')]), values = ["bbbac"]
