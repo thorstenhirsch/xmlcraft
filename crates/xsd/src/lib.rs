@@ -9,8 +9,12 @@
 //!   could be read.
 
 mod dom;
+mod loader;
 pub mod model;
 mod reader;
 mod values;
 
+pub use loader::{
+    Documents, LoadKind, LoadRequest, Loaded, LoadedDocument, MAX_DOCUMENTS, MAX_TOTAL_BYTES, NoLoader, SchemaLoader, SourcedDiagnostic, load,
+};
 pub use reader::{Read, XSD_NAMESPACE, read};
