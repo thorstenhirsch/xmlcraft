@@ -7,6 +7,7 @@ use std::process::ExitCode;
 mod assets;
 mod bench;
 mod conformance;
+mod contributors;
 mod fuzz;
 mod gates;
 mod layers;
@@ -44,6 +45,11 @@ const COMMANDS: &[(&str, &str, Command)] = &[
         fuzz::run,
     ),
     ("schemas", "Check the bundled schemas against schemas/manifest.toml and ATTRIBUTION.toml: `schemas [--fetch] [--update [SET…]]`", schemas::run),
+    (
+        "contributors",
+        "The credits of the About window from the history: `contributors [--write] [--no-github]` (contributors/contributors.json)",
+        contributors::run,
+    ),
     ("parity", "Validate parity/xmlspy-features.toml against the registry, tools and tests; report progress (--json, --partial)", parity::run),
 ];
 

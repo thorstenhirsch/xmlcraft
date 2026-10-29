@@ -1837,11 +1837,11 @@ title = "About window with contributors"
 area = "K"
 tier = "P1"
 milestone = "M4"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["app.about"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/tests/about.rs::the_about_window_says_what_the_app_is_and_who_made_it", "crates/ui-egui/tests/about.rs::real_names_are_shown_only_when_someone_gave_one_and_the_viewer_asks", "crates/ui-egui/tests/about.rs::the_window_closes_with_its_button_and_with_escape", "xtask/src/contributors.rs::an_entry_of_people_toml_is_verified_when_its_writer_is_its_person"]
+notes = "Help ▸ About XmlCraft (and the command palette): the version of the build, the licence, the clean-room statement, the contributors with their pull requests, commits and lines, the AI models named as co-authors, and the NOTICE of the third-party material; all compiled into the binary, nothing is read at run time. The credits are made by `cargo xtask contributors --write` from the history; a person's chosen names are used only for a `people.toml` entry they wrote themselves (checked with `git blame`), real names only when the viewer asks. Missing: the bundled schemas' licences listed per file (they arrive with M4.7), a link to the licences and the repository, and the credits are refreshed by hand before a release (docs/releasing.md)."
 
 [[feature]]
 id = "app.six-targets"

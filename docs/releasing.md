@@ -1,6 +1,6 @@
 # Releasing XmlCraft
 
-> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** initial; the pipeline is planned, nothing is built yet (arrives with M0.10 and M0.11)
+> **Last reviewed:** 2026-10-27 · **Last updated:** 2026-10-27 · **Change:** the credits are refreshed before a release; initial; the pipeline is planned, nothing is built yet (arrives with M0.10 and M0.11)
 
 ## Targets
 
@@ -16,7 +16,7 @@ Artifact names follow `xmlcraft-<version>-<platform>-<arch>.<ext>`; `SHA256SUMS.
 
 ## Process
 
-1. Bump the version with `cargo xtask version set X.Y.Z` in a PR; merge when CI is green.
+1. Bump the version with `cargo xtask version set X.Y.Z` and refresh the credits of the About window with `cargo xtask contributors --write` (needs `gh` to tell a commit's author by their GitHub username; `--no-github` uses only `noreply` addresses) in a PR; merge when CI is green.
 2. **Dry run (publishes nothing):** Actions ▸ Release ▸ Run workflow, optionally with a version such as `0.1.0-rc.1`. Every artifact is built, verified and attached to the run for 14 days.
 3. **Release:** push `main` to the `release` branch. The workflow builds every target and creates or updates a **draft** GitHub Release with `SHA256SUMS.txt`. Publishing the draft creates the tag; `-rc` versions are marked pre-release. A release that is already published is never touched: bump the version first.
 4. The weekly **Windows ARM64** workflow installs the arm64 MSI on a real Windows 11 ARM64 machine and runs the command line, because an arm64 build made on an x64 runner cannot run there.
@@ -44,3 +44,4 @@ Signing runs only when its secrets exist; otherwise the artifact ships unsigned 
 - 2026-10-27: created.
 - 2026-10-27: workflows and scripts written (M0.11).
 - 2026-10-27: first dry run (40425116751): macOS and Linux built; both Windows jobs failed at `wix build` (WIX0367). Second dry run (40454851007), after #4: all six targets built and verified. The Windows ARM64 workflow installed and ran the arm64 MSI; the other artifacts are built and verified but not yet installed on their platforms.
+- 2026-10-29: the credits of the About window (`cargo xtask contributors --write`) are part of the version bump.
