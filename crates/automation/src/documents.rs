@@ -455,11 +455,11 @@ fn flag(args: &Value, key: &str) -> bool {
 }
 
 /// The index of the document with this id.
-fn index_of(a: &Automation, id: u64) -> Result<usize> {
+pub(crate) fn index_of(a: &Automation, id: u64) -> Result<usize> {
     a.session.position_of(id).ok_or_else(|| ToolError::Failed(format!("no document has the id {id} (doc_list shows the open ones)")))
 }
 
-fn describe(doc: &Document) -> Value {
+pub(crate) fn describe(doc: &Document) -> Value {
     let encoding = doc.encoding();
     let endings = doc.line_endings();
     json!({
