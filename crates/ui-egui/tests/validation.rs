@@ -189,9 +189,10 @@ fn f8_says_when_the_schema_a_document_names_is_not_there() {
     open(&mut h, &file(dir.path(), "lonely.xml", &order("7")));
     validate(&mut h);
     assert_eq!(h.state().validity(), Some((1, 0)));
+    // What the system says is its own wording ("No such file or directory", "The system cannot find the file specified"), after the path.
     assert!(
-        h.query_by_label_contains("the schema 'order.xsd' could not be loaded").is_some() && h.query_by_label_contains("No such file").is_some(),
-        "the reason is shown, with the schema's name and what the system said"
+        h.query_by_label_contains("the schema 'order.xsd' could not be loaded").is_some() && h.query_by_label_contains("order.xsd: ").is_some(),
+        "the reason is shown, with the schema's name and the path that was tried"
     );
     assert!(h.query_by_label("Valid").is_none(), "an unchecked document is not called valid");
 }

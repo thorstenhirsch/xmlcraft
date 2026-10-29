@@ -8,7 +8,7 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 use xmlcraft_dtd::DtdDiagnostic;
 use xmlcraft_platform::subset::FileSubsetLoader;
-use xmlcraft_resolve::{Buffers, Environment, FileAccess, FixedClock, Policy, Resolver};
+use xmlcraft_resolve::{Buffers, Environment, FileAccess, FixedClock, Policy, Resolver, normalized};
 use xmlcraft_syntax::{Diagnostic, Severity, SyntaxKind, SyntaxNode, parse};
 use xmlcraft_text::Buffer;
 use xmlcraft_validate::{SchemaOutcome, check, check_against_schema, schema_hints};
@@ -75,7 +75,12 @@ struct OpenDocuments {
 
 impl Buffers for OpenDocuments {
     fn text(&self, location: &str) -> Option<Arc<str>> {
-        let find = |wanted: &str| self.open.iter().find(|(l, _)| l == wanted).map(|(_, t)| t.clone());
+        // One place has several spellings (the verbatim `\\?\C:\…` of a Windows path from the system, `C:/…` once a reference was joined to
+        // it); the confinement gives the real path, which is how an open document is kept.
+        let find = |wanted: &str| {
+            let wanted = normalized(wanted);
+            self.open.iter().find(|(l, _)| normalized(l) == wanted).map(|(_, t)| t.clone())
+        };
         find(location).or_else(|| find(&self.confinement.resolve_read(location).ok()?.to_string_lossy()))
     }
 }

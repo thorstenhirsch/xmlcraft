@@ -1,7 +1,7 @@
 //! Locations: schemes, joining, and the file a location names.
 
 use proptest::prelude::*;
-use xmlcraft_resolve::{file_path, is_path, join, scheme_of};
+use xmlcraft_resolve::{file_path, is_path, join, normalized, scheme_of};
 
 #[test]
 fn a_scheme_is_letters_digits_plus_minus_and_dots_before_a_colon_and_a_drive_is_not_one() {
@@ -40,6 +40,12 @@ fn a_relative_reference_is_resolved_against_a_uri_or_a_path() {
         ("/docs/a.xml", "./a.dtd", "/docs/a.dtd"),
         ("/docs/a.xml", "/abs/a.dtd", "/abs/a.dtd"),
         ("C:\\docs\\a.xml", "a.dtd", "C:/docs/a.dtd"),
+        // What `canonicalize` gives on Windows: the verbatim prefix is not part of the place.
+        ("\\\\?\\C:\\docs\\a.xml", "a.dtd", "C:/docs/a.dtd"),
+        ("\\\\?\\C:\\docs\\sub\\a.xml", "..\\b\\a.dtd", "C:/docs/b/a.dtd"),
+        ("\\\\?\\UNC\\srv\\share\\docs\\a.xml", "a.dtd", "//srv/share/docs/a.dtd"),
+        ("//?/C:/docs/a.xml", "a.dtd", "C:/docs/a.dtd"),
+        ("//?/UNC/srv/share/docs/a.xml", "a.dtd", "//srv/share/docs/a.dtd"),
         ("C:/docs/a.xml", "..\\b\\a.dtd", "C:/b/a.dtd"),
         ("/docs/a.xml", "C:\\x\\a.dtd", "C:\\x\\a.dtd"),
         ("docs/a.xml", "a.dtd", "docs/a.dtd"),
@@ -49,6 +55,20 @@ fn a_relative_reference_is_resolved_against_a_uri_or_a_path() {
     ] {
         assert_eq!(join(base, reference), expected, "{base:?} + {reference:?}");
     }
+}
+
+#[test]
+fn two_spellings_of_one_place_normalize_alike() {
+    // The spellings a document's path and the location asked for can have on Windows, and a `file:` URI of the same file.
+    let spellings = ["\\\\?\\C:\\docs\\a.xsd", "C:\\docs\\a.xsd", "C:/docs/a.xsd", "//?/C:/docs/a.xsd", "file:///C:/docs/a.xsd"];
+    let first = normalized(spellings[0]);
+    assert!(spellings.iter().all(|s| normalized(s) == first), "{:?}", spellings.iter().map(|s| normalized(s)).collect::<Vec<_>>());
+    assert!(first.eq_ignore_ascii_case("C:/docs/a.xsd"), "{first}");
+    assert_eq!(normalized("\\\\?\\UNC\\srv\\share\\a.xsd").to_lowercase(), "//srv/share/a.xsd");
+    // Another place is another place, and a path that is not Windows' stays as it is.
+    assert_ne!(normalized("C:/docs/a.xsd"), normalized("C:/docs/b.xsd"));
+    assert_eq!(normalized("/home/u/a.xsd").to_lowercase(), "/home/u/a.xsd");
+    assert_eq!(normalized("http://x.org/a.xsd"), "http://x.org/a.xsd");
 }
 
 #[test]
