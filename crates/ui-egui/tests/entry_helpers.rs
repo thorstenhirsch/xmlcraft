@@ -401,3 +401,33 @@ fn an_attribute_in_a_namespace_brings_the_declaration_of_its_prefix() {
     assert!(text(&h).contains("<r xmlns=\"urn:q\""), "{}", text(&h));
     assert!(text(&h).contains(" xmlns:ns1=\"urn:q\" ns1:a=\"\" />"), "{}", text(&h));
 }
+
+#[test]
+fn an_xml_schema_file_is_offered_what_xml_schema_allows() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    let marked = "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\">¦</xs:schema>";
+    // The schema for schemas is the one that ships with the app: nothing in the document names it.
+    open_at(&mut h, dir.path(), marked);
+    assert!(h.query_by_label("xs:element").is_some() && h.query_by_label("xs:complexType").is_some());
+    double_click(&mut h, "xs:element");
+    assert!(text(&h).starts_with("<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element"), "{}", text(&h));
+}
+
+#[test]
+fn a_namespace_no_schema_is_known_for_is_no_problem_to_report() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    let path = file(dir.path(), "stranger.xml", "<r xmlns=\"urn:nobody-has-a-schema-for-this\"><c/></r>");
+    assert!(h.state_mut().open_path(&path));
+    // The question was asked and has its answer (there is none); the pane says what it says of a document with no schema.
+    let started = Instant::now();
+    while h.state().schema_requests() == 0 {
+        assert!(started.elapsed() < Duration::from_secs(10), "waiting for the request");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    h.run_steps(30);
+    assert!(h.query_by_label("No DTD or schema").is_some(), "not a complaint that a schema named by nobody could not be read");
+    assert!(h.query_by_label("No schema to show").is_none() && h.query_by_label("Reading the schema…").is_none());
+}

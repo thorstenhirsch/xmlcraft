@@ -66,6 +66,9 @@ pub struct Analysis {
     /// The schemas the root element names with `xsi:schemaLocation` and `xsi:noNamespaceSchemaLocation` (a DOCTYPE, when there is
     /// one, is what the document is checked against, and these are not looked at).
     pub schema_hints: Vec<SchemaHint>,
+    /// The namespace the root element is in (as the element declares it): the schema known for it, in the catalogs or the bundle, is what
+    /// a document that names none can be offered things from.
+    pub root_namespace: Option<String>,
     /// The text was not analysed, and why.
     pub skipped: Option<Skipped>,
 }
@@ -130,6 +133,7 @@ impl Analysis {
             folds_truncated: false,
             doctype: None,
             schema_hints: Vec::new(),
+            root_namespace: None,
             skipped: Some(why),
         }
     }
@@ -187,7 +191,8 @@ pub fn analyze(text: &str, version: u64) -> Analysis {
     let (folds, folds_truncated) = fold_ranges(&parsed.syntax(), text);
     let doctype = xmlcraft_dtd::doctype_parts(&parsed.syntax()).map(|p| p.range);
     let schema_hints = xmlcraft_validate::schema_hints(&parsed.syntax());
-    Analysis { version, diagnostics, outline, outline_truncated, folds, folds_truncated, doctype, schema_hints, skipped: None }
+    let root_namespace = xmlcraft_validate::root_namespace(&parsed.syntax());
+    Analysis { version, diagnostics, outline, outline_truncated, folds, folds_truncated, doctype, schema_hints, root_namespace, skipped: None }
 }
 
 fn outline_of(root: &xmlcraft_syntax::SyntaxNode, text: &str) -> (Vec<OutlineItem>, bool) {

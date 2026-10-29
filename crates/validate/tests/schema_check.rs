@@ -1,7 +1,7 @@
 //! A document checked against the schema it names, or one it is told to use.
 
 use xmlcraft_syntax::parse;
-use xmlcraft_validate::{NoSchema, SchemaHint, SchemaOutcome, check_against_schema, load_hinted, load_schema, schema_hints};
+use xmlcraft_validate::{NoSchema, SchemaHint, SchemaOutcome, check_against_schema, load_hinted, load_schema, root_namespace, schema_hints};
 use xmlcraft_xsd::{LoadRequest, Loaded, SchemaLoader, XSD_NAMESPACE};
 
 /// Schema documents by location (the end of the path they are asked for with).
@@ -220,4 +220,20 @@ fn hints_alone_load_the_same_schema_as_the_document_that_names_them() {
     let from_hints = load_hinted(schema_hints(&parsed.syntax()), "/d/doc.xml", &mut files()).expect("a schema");
     assert_eq!((&from_hints.sources, &from_hints.hints), (&from_document.sources, &from_document.hints));
     assert_eq!(load_hinted(Vec::new(), "/d/doc.xml", &mut files()).expect_err("none").hints, []);
+}
+
+#[test]
+fn the_namespace_of_the_root_element_is_the_one_it_declares_for_its_name() {
+    let ns = |xml: &str| root_namespace(&parse(xml).syntax());
+    assert_eq!(ns("<r xmlns=\"urn:a\"/>").as_deref(), Some("urn:a"), "the default namespace");
+    assert_eq!(ns("<p:r xmlns:p=\"urn:b\" xmlns=\"urn:a\"/>").as_deref(), Some("urn:b"), "the prefix of the name wins");
+    assert_eq!(ns("<r xmlns:p=\"urn:b\"/>"), None, "a prefix that names nothing in the name is no namespace");
+    assert_eq!(ns("<p:r/>"), None, "an undeclared prefix");
+    assert_eq!(ns("<r/>"), None);
+    assert_eq!(ns("<r xmlns=\"\"/>"), None, "an undeclared default");
+    assert_eq!(ns("<r xmlns='urn:a&amp;b'/>").as_deref(), Some("urn:a&b"), "references are replaced, either quote works");
+    assert_eq!(ns(""), None);
+    assert_eq!(ns("<!-- no root -->"), None);
+    // Only what the root declares counts: a declaration further in does not reach it.
+    assert_eq!(ns("<r><c xmlns=\"urn:a\"/></r>"), None);
 }
