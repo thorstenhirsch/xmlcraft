@@ -1,0 +1,21 @@
+[package]
+name = "xmlcraft-infer"
+description = "XmlCraft's schema inference: an XML Schema or a DTD generated from one or more documents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-datatypes = { workspace = true }
+xmlcraft-syntax = { workspace = true }
+xmlcraft-xsd = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+xmlcraft-dtd = { workspace = true }
+xmlcraft-validate = { workspace = true }
