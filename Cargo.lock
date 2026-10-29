@@ -4860,7 +4860,9 @@ dependencies = [
  "xmlcraft-editor",
  "xmlcraft-format",
  "xmlcraft-grammar",
+ "xmlcraft-infer",
  "xmlcraft-resolve",
+ "xmlcraft-sample",
  "xmlcraft-syntax",
  "xmlcraft-text",
  "xmlcraft-validate",
@@ -4992,8 +4994,10 @@ dependencies = [
  "xmlcraft-engine",
  "xmlcraft-format",
  "xmlcraft-grammar",
+ "xmlcraft-infer",
  "xmlcraft-platform",
  "xmlcraft-resolve",
+ "xmlcraft-sample",
  "xmlcraft-syntax",
  "xmlcraft-text",
  "xmlcraft-xsd",
@@ -5049,9 +5053,12 @@ dependencies = [
  "xmlcraft-editor",
  "xmlcraft-engine",
  "xmlcraft-format",
+ "xmlcraft-resolve",
+ "xmlcraft-schemas",
  "xmlcraft-syntax",
  "xmlcraft-text",
  "xmlcraft-validate",
+ "xmlcraft-xsd",
 ]
 
 [[package]]

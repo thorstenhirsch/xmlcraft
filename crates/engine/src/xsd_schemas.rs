@@ -92,7 +92,7 @@ impl XsdSchemas {
 fn run(resolvers: &ResolverFactory, request: Request) -> XsdAnswer {
     let key = request.key;
     let loaded = crate::guard(|| {
-        let resolver = resolvers(Arc::new(OpenDocuments(request.open)));
+        let resolver = resolvers(Arc::new(OpenDocuments::new(request.open)));
         let mut loader = ResolvingLoader::new(&resolver);
         load_hinted(request.hints, &request.location, &mut loader).map(|loaded| Arc::new(loaded.assembly.schema)).map_err(|miss| miss.why)
     });

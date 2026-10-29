@@ -44,6 +44,10 @@ pub(crate) enum Dialog {
     GoToLine,
     /// Which DTD or schema to assign to the document (drawn by `assign.rs`).
     AssignSchema(Box<crate::assign::AssignForm>),
+    /// The options of Generate Schema (drawn by `generate.rs`).
+    GenerateSchema(Box<crate::generate::SchemaForm>),
+    /// The options of Generate Sample XML (drawn by `generate.rs`).
+    GenerateSample(Box<crate::generate::SampleForm>),
     Message {
         title: String,
         text: String,
@@ -57,7 +61,13 @@ impl Dialog {
         match self {
             Dialog::Unsaved { then, .. } => *then == AfterClose::Quit,
             Dialog::OverwriteChanged { then, .. } | Dialog::Unmappable { then, .. } | Dialog::Lossy { then, .. } => *then == Some(AfterClose::Quit),
-            Dialog::Reload { .. } | Dialog::ConfirmRevert { .. } | Dialog::Message { .. } | Dialog::GoToLine | Dialog::AssignSchema(_) => false,
+            Dialog::Reload { .. }
+            | Dialog::ConfirmRevert { .. }
+            | Dialog::Message { .. }
+            | Dialog::GoToLine
+            | Dialog::AssignSchema(_)
+            | Dialog::GenerateSchema(_)
+            | Dialog::GenerateSample(_) => false,
         }
     }
 }
@@ -147,8 +157,10 @@ impl XmlCraftApp {
             Dialog::Message { title, text } => {
                 Describe { title: title.clone(), text: text.clone(), buttons: vec![(tl!("OK"), Choice::Ok)], input: false }
             }
-            // A form, drawn by `assign.rs`; this is only here to be total.
-            Dialog::AssignSchema(_) => Describe { title: String::new(), text: String::new(), buttons: vec![(tl!("Cancel"), Choice::Cancel)], input: false },
+            // These are forms, drawn by `assign.rs` and `generate.rs`; this is only here to be total.
+            Dialog::AssignSchema(_) | Dialog::GenerateSchema(_) | Dialog::GenerateSample(_) => {
+                Describe { title: String::new(), text: String::new(), buttons: vec![(tl!("Cancel"), Choice::Cancel)], input: false }
+            }
         }
     }
 
@@ -156,6 +168,10 @@ impl XmlCraftApp {
     pub(crate) fn show_dialog(&mut self, ctx: &egui::Context) {
         if matches!(self.dialog, Some(Dialog::AssignSchema(_))) {
             self.show_assign(ctx);
+            return;
+        }
+        if matches!(self.dialog, Some(Dialog::GenerateSchema(_) | Dialog::GenerateSample(_))) {
+            self.show_generate(ctx);
             return;
         }
         let Some(dialog) = self.dialog.clone() else { return };

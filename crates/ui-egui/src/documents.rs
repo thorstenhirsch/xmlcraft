@@ -315,12 +315,7 @@ impl XmlCraftApp {
         view.validation = None;
         view.refresh_underlines();
         // The documents that are open are what a schema is read from first: one being edited is validated against as it is.
-        let open = self
-            .session
-            .documents()
-            .iter()
-            .filter_map(|d| d.path().map(|p| (p.to_string_lossy().into_owned(), d.editor().buffer().clone())))
-            .collect();
+        let open = self.open_documents();
         self.validator.submit(id, version, doc.editor().buffer(), doc.path(), open);
         self.validate_pending = Some((id, version));
         self.bottom_open = true;
