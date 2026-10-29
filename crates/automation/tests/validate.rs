@@ -302,3 +302,30 @@ fn only_so_many_problems_are_listed_and_it_says_so() {
     let result = call(&mut a, json!({ "text": few, "schema": schema })).expect("runs");
     assert_eq!((result["problems"].as_array().map(Vec::len), result["truncated"].clone()), (Some(3), json!(false)));
 }
+
+#[test]
+fn a_schema_document_that_is_included_under_two_names_is_one_document() {
+    let dir = tempfile::tempdir().expect("dir");
+    write(dir.path(), "Order.xsd", &schema_of(ORDER));
+    // The same file by another name: a link where there are links, else the other case where the file system folds it.
+    let other = if cfg!(unix) {
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(dir.path().join("Order.xsd"), dir.path().join("alias.xsd")).expect("a link");
+        "alias.xsd"
+    } else {
+        "order.xsd"
+    };
+    let one_file = dir.path().join(other).exists();
+    write(dir.path(), "main.xsd", &schema_of(&format!("<xs:include schemaLocation=\"Order.xsd\"/><xs:include schemaLocation=\"{other}\"/>")));
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    let result =
+        call(&mut a, json!({ "text": "<order><id>1</id></order>", "schema": dir.path().join("main.xsd").to_str().expect("utf-8") })).expect("runs");
+    if one_file {
+        // One file: its elements are not declared twice.
+        assert_eq!((result["valid"].clone(), result["schema_errors"].clone()), (json!(true), json!(0)), "{result}");
+        assert_eq!(result["schemas"].as_array().map(Vec::len), Some(2), "main.xsd and the file once: {result}");
+    } else {
+        // Two files that are the same text: two documents.
+        assert_eq!(result["schemas"].as_array().map(Vec::len), Some(2), "{result}");
+    }
+}
