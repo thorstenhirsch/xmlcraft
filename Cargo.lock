@@ -4765,9 +4765,11 @@ dependencies = [
  "xmlcraft-engine",
  "xmlcraft-format",
  "xmlcraft-platform",
+ "xmlcraft-resolve",
  "xmlcraft-syntax",
  "xmlcraft-text",
  "xmlcraft-validate",
+ "xmlcraft-xsd",
 ]
 
 [[package]]
@@ -4982,8 +4984,10 @@ dependencies = [
  "rowan",
  "xmlcraft-datatypes",
  "xmlcraft-grammar",
+ "xmlcraft-resolve",
  "xmlcraft-schemas",
  "xmlcraft-syntax",
+ "xmlcraft-text",
 ]
 
 [[package]]
