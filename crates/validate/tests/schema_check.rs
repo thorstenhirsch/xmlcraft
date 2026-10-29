@@ -1,7 +1,7 @@
 //! A document checked against the schema it names, or one it is told to use.
 
 use xmlcraft_syntax::parse;
-use xmlcraft_validate::{SchemaOutcome, check_against_schema, schema_hints};
+use xmlcraft_validate::{NoSchema, SchemaHint, SchemaOutcome, check_against_schema, load_hinted, load_schema, schema_hints};
 use xmlcraft_xsd::{LoadRequest, Loaded, SchemaLoader, XSD_NAMESPACE};
 
 /// Schema documents by location (the end of the path they are asked for with).
@@ -174,4 +174,50 @@ fn the_hints_of_the_root_element() {
     let none = parse("<r schemaLocation=\"urn:a a.xsd\"/>");
     assert!(schema_hints(&none.syntax()).is_empty());
     assert!(schema_hints(&parse("").syntax()).is_empty());
+}
+
+#[test]
+fn a_schema_is_loaded_for_a_document_without_checking_it() {
+    let xml = format!("<r {XSI} xsi:noNamespaceSchemaLocation=\"r.xsd\"><n>seven</n></r>");
+    let parsed = parse(&xml);
+    let loaded = load_schema(&parsed.syntax(), "/d/doc.xml", None, &mut Map(vec![("/d/r.xsd", plain_schema())])).expect("a schema");
+    // The document is not checked (it has a bad value): what comes back is the schema, where it was read from, and what was asked for.
+    assert_eq!(loaded.sources, ["/d/r.xsd"]);
+    assert_eq!(loaded.hints, [SchemaHint { namespace: None, location: "r.xsd".to_owned() }]);
+    assert!(loaded.problems.is_empty() && loaded.assembly.schema.element_by_name(&xmlcraft_xsd::model::QName::new(None, "r")).is_some());
+    // An explicit schema takes the place of the ones the document names.
+    let explicit =
+        load_schema(&parsed.syntax(), "/d/doc.xml", Some("other.xsd"), &mut Map(vec![("/d/other.xsd", plain_schema())])).expect("a schema");
+    assert_eq!(explicit.sources, ["/d/other.xsd"]);
+}
+
+#[test]
+fn when_there_is_no_schema_to_load_it_says_why_and_which_were_asked_for() {
+    let parsed = parse("<r/>");
+    let none = load_schema(&parsed.syntax(), "/d/doc.xml", None, &mut Map(Vec::new())).expect_err("nothing named");
+    assert_eq!(none.hints, []);
+    assert!(none.why.contains("names no schema"), "{}", none.why);
+    let xml = format!("<r {XSI} xsi:noNamespaceSchemaLocation=\"gone.xsd\"/>");
+    let parsed = parse(&xml);
+    let NoSchema { why, hints } = load_schema(&parsed.syntax(), "/d/doc.xml", None, &mut Map(Vec::new())).expect_err("not there");
+    assert!(why.contains("gone.xsd") && why.contains("could not be loaded"), "{why}");
+    assert_eq!(hints.len(), 1);
+    // Several schemas are loaded through one that imports them: every file read is a source.
+    let several = format!("<r xmlns=\"urn:t\" {XSI} xsi:schemaLocation=\"urn:t t.xsd urn:u u.xsd\"/>");
+    let parsed = parse(&several);
+    let u = format!("<xs:schema xmlns:xs=\"{XSD_NAMESPACE}\" targetNamespace=\"urn:u\"/>");
+    let loaded = load_schema(&parsed.syntax(), "/d/doc.xml", None, &mut Map(vec![("/d/t.xsd", namespaced_schema()), ("/d/u.xsd", u)])).expect("both");
+    assert!(loaded.sources.iter().any(|s| s == "/d/t.xsd") && loaded.sources.iter().any(|s| s == "/d/u.xsd"), "{:?}", loaded.sources);
+    assert_eq!(loaded.hints.len(), 2);
+}
+
+#[test]
+fn hints_alone_load_the_same_schema_as_the_document_that_names_them() {
+    let xml = format!("<r {XSI} xsi:noNamespaceSchemaLocation=\"r.xsd\"/>");
+    let parsed = parse(&xml);
+    let files = || Map(vec![("/d/r.xsd", plain_schema())]);
+    let from_document = load_schema(&parsed.syntax(), "/d/doc.xml", None, &mut files()).expect("a schema");
+    let from_hints = load_hinted(schema_hints(&parsed.syntax()), "/d/doc.xml", &mut files()).expect("a schema");
+    assert_eq!((&from_hints.sources, &from_hints.hints), (&from_document.sources, &from_document.hints));
+    assert_eq!(load_hinted(Vec::new(), "/d/doc.xml", &mut files()).expect_err("none").hints, []);
 }
