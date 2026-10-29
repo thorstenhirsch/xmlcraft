@@ -1064,10 +1064,10 @@ area = "E"
 tier = "P0"
 milestone = "M2"
 status = "partial"
-commands = []
-tools = ["xml_validate"]
-evidence = ["crates/automation/tests/validate.rs::a_document_that_names_its_schema_is_validated_against_it", "crates/validate/tests/schema_check.rs::schema_location_pairs_name_schemas_by_namespace", "crates/validate/tests/schema_check.rs::the_hints_of_the_root_element"]
-notes = "Reading an association: the `xsi:schemaLocation` pairs and `xsi:noNamespaceSchemaLocation` of the root element are followed (relative to the document, or found by namespace in the catalogs and the bundle), and `xml_validate` takes an explicit `schema`. Missing: the Assign Schema dialog that writes minimal edits (DTD and XSD), the DOCTYPE choice in the app, and a schema chosen in the UI for F8."
+commands = ["xml.assign_schema"]
+tools = ["xml_validate", "xml_assign_schema"]
+evidence = ["crates/automation/tests/validate.rs::a_document_that_names_its_schema_is_validated_against_it", "crates/validate/tests/schema_check.rs::schema_location_pairs_name_schemas_by_namespace", "crates/validate/tests/schema_check.rs::the_hints_of_the_root_element", "crates/engine/src/assign.rs::what_is_assigned_is_what_the_document_is_then_checked_against", "crates/engine/src/assign.rs::the_pairs_of_a_schema_location_keep_their_layout_when_one_is_changed_or_added", "crates/automation/tests/assign.rs::an_open_document_is_edited_in_one_step_that_can_be_undone", "crates/ui-egui/tests/assign.rs::a_dtd_is_assigned_as_a_doctype_and_the_edit_can_be_undone", "crates/ui-egui/tests/assign.rs::a_schema_chosen_with_browse_is_written_from_the_folder_of_the_document_and_then_validates_it"]
+notes = "Reading an association: the `xsi:schemaLocation` pairs and `xsi:noNamespaceSchemaLocation` of the root element are followed (relative to the document, or found by namespace in the catalogs and the bundle), and `xml_validate` takes an explicit `schema`. Writing one: XML ▸ Assign Schema… (and `xml_assign_schema`) writes a DOCTYPE for a DTD (an existing DOCTYPE keeps its name and internal subset) or the `xsi:` attributes for an XML Schema (the prefix the document already has is reused, a pair is added to or changed in `xsi:schemaLocation` word by word, the namespace is read from the schema file), always as minimal edits in one undoable step, in the line endings of the document; assigning what is there already writes nothing. A document that is not well-formed, or that has a DOCTYPE when a schema is assigned, is refused. Missing: choosing from the schemas the app knows (bundled, catalogs) in the dialog, the namespace of a schema that is not a file (a URL: `namespace` can be told to the tool, the dialog writes `xsi:noNamespaceSchemaLocation`), and assigning to several documents at once."
 
 [[feature]]
 id = "validate.on-edit"
