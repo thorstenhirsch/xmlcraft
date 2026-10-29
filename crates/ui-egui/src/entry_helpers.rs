@@ -245,10 +245,11 @@ fn waiting(ui: &mut egui::Ui, app: &XmlCraftApp, id: u64) -> bool {
         }
         return true;
     }
+    // A schema the document does not name but the app knows for its namespace is used, and when there is none it is the same as no schema.
+    if helpers.xsd.is_some() {
+        return false;
+    }
     if has_hints {
-        if helpers.xsd.is_some() {
-            return false;
-        }
         if helpers.xsd_key.is_some() && helpers.xsd_key == helpers.requested_xsd_key {
             widgets::empty_state(ui, 24.0, tl!("No schema to show"), helpers.xsd_error.as_deref().unwrap_or_default());
         } else {

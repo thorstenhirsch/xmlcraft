@@ -13,6 +13,8 @@ struct Files {
     files: HashMap<String, String>,
     by_namespace: HashMap<String, String>,
     asked: Vec<(LoadKind, String)>,
+    /// A file system that folds case: the locations of one file that differ in case are one document.
+    folds_case: bool,
 }
 
 impl Files {
@@ -43,6 +45,10 @@ impl SchemaLoader for Files {
             .get(&location)
             .map(|text| Loaded { text: text.clone(), location: location.clone() })
             .ok_or_else(|| format!("{location}: no such file"))
+    }
+
+    fn identity(&self, location: &str) -> String {
+        if self.folds_case { location.to_lowercase() } else { location.to_owned() }
     }
 }
 
@@ -274,4 +280,34 @@ fn including_a_document_twice_links_it_once() {
     );
     assert_eq!(docs.list.len(), 2);
     assert_eq!(docs.list[0].includes, vec![1]);
+}
+
+#[test]
+fn a_document_that_goes_by_two_names_is_read_once_when_the_loader_knows_them_for_one() {
+    let a = schema(Some("urn:a"), "<xs:element name=\"e\"/>");
+    let root = schema(Some("urn:a"), "<xs:include schemaLocation=\"Types.xsd\"/><xs:include schemaLocation=\"types.xsd\"/>");
+    let both = [("/s/Types.xsd", a.clone()), ("/s/types.xsd", a)];
+    // On a file system that folds case the two are the file: one document, and no element defined twice.
+    let mut folding = Files { folds_case: true, ..Files::new(&both) };
+    let docs = run(&root, &mut folding);
+    assert_eq!(locations(&docs), ["/s/root.xsd", "/s/Types.xsd"], "the first name it was asked for by");
+    assert!(docs.diagnostics.is_empty(), "{:?}", keys(&docs));
+    assert!(
+        !docs.list[0].includes.is_empty() && docs.list[0].includes.iter().all(|&i| i == 1),
+        "both includes are the one document: {:?}",
+        docs.list[0].includes
+    );
+    // Where they are two files they are two documents (the loader is the one that knows).
+    let mut distinct = Files::new(&both);
+    assert_eq!(locations(&run(&root, &mut distinct)), ["/s/root.xsd", "/s/Types.xsd", "/s/types.xsd"]);
+}
+
+#[test]
+fn the_root_document_asked_for_again_under_another_name_is_the_root() {
+    let root = schema(Some("urn:a"), "<xs:include schemaLocation=\"ROOT.xsd\"/><xs:element name=\"e\"/>");
+    let mut folding = Files { folds_case: true, ..Files::new(&[("/s/ROOT.xsd", root.clone())]) };
+    // The root is `Root.xsd` and asks for `ROOT.xsd`: one file.
+    let docs = load(&root, "/s/Root.xsd", &mut folding);
+    assert_eq!(locations(&docs), ["/s/Root.xsd"], "the file that includes itself by another name is read once");
+    assert!(docs.diagnostics.is_empty(), "{:?}", keys(&docs));
 }

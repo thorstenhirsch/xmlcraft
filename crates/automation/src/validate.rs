@@ -64,6 +64,15 @@ impl FileAccess for ConfinedFiles {
         let real = self.confinement.resolve_read(path).map_err(|e| e.to_string())?;
         xmlcraft_platform::files::read_file(&real).map(|loaded| loaded.bytes).map_err(|e| format!("{}: {e}", real.display()))
     }
+
+    /// The real path the confinement lets through (links followed, the case the system has for it), so that a file asked for under two
+    /// names is one document; as it is spelled when the confinement does not let it through.
+    fn identity(&self, path: &str) -> String {
+        match self.confinement.resolve_read(path) {
+            Ok(real) => normalized(&real.to_string_lossy()),
+            Err(_) => normalized(path),
+        }
+    }
 }
 
 /// The documents that are open, by their paths: a schema that is being edited is validated against as it is.

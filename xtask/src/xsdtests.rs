@@ -116,11 +116,12 @@ fn groups_of(text: &str) -> (Vec<Group>, usize) {
     (groups, skipped)
 }
 
-/// Test groups whose verdict depends on whether the file system of the machine folds case, so that a ratchet that has to say the same
-/// on a Mac, on Windows and on CI cannot count them. They are the three groups that test that "file URLs are compared case-insensitively":
-/// the schema asks for a document by a name that differs in case from the file's (`schZ012_A.xsd` for `schZ012_a.xsd`), which is that
-/// file on a Mac or on Windows and no file on Linux. Left out, like the tests that are not accepted.
-const DEPEND_ON_THE_FILE_SYSTEM: &[&str] = &["msMeta/Schema_w3c.xml#schZ012_a", "msMeta/Schema_w3c.xml#schZ012_b", "msMeta/Schema_w3c.xml#schZ012_c"];
+/// Test groups whose verdict depends on whether the file system of the machine folds case, so that a ratchet that has to say the same on
+/// a Mac, on Windows and on CI cannot count them. `schZ012_a` includes `schZ012_A.xsd`, which is the file itself on a Mac or on Windows and
+/// no file on Linux (the suite tests that "file URLs are compared case-insensitively": that comparison is the file system's). Left out,
+/// like the tests that are not accepted. (`_b` and `_c` ask for a file by another case than its own for an import, which is one file or none:
+/// the loader knows a file by its real path, so they pass everywhere.)
+const DEPEND_ON_THE_FILE_SYSTEM: &[&str] = &["msMeta/Schema_w3c.xml#schZ012_a"];
 
 /// Whether the verdict on the group `id` (`set#name`) is not the same on every machine.
 fn depends_on_the_file_system(id: &str) -> bool {
@@ -157,6 +158,12 @@ impl SchemaLoader for Files {
         }
         let text = read_text(Path::new(&joined)).ok_or_else(|| format!("{joined}: cannot be read"))?;
         Ok(Loaded { text, location: joined })
+    }
+
+    /// The real path of a file, so that one asked for under two names (`Types.xsd` and `types.xsd` on a file system that folds case) is one
+    /// document, as in the app.
+    fn identity(&self, location: &str) -> String {
+        std::fs::canonicalize(location).map_or_else(|_| location.to_owned(), |real| real.to_string_lossy().into_owned())
     }
 }
 
@@ -358,11 +365,11 @@ mod tests {
 
     #[test]
     fn groups_that_depend_on_the_file_system_are_left_out_and_nothing_else() {
-        assert!(depends_on_the_file_system("msMeta/Schema_w3c.xml#schZ012_b"));
+        assert!(depends_on_the_file_system("msMeta/Schema_w3c.xml#schZ012_a"));
         // The same name in another set, or a neighbour in the same one, is run.
-        assert!(!depends_on_the_file_system("sunMeta/Schema_w3c.xml#schZ012_b"));
-        assert!(!depends_on_the_file_system("msMeta/Schema_w3c.xml#schZ012_d"));
-        assert!(!depends_on_the_file_system("msMeta/Schema_w3c.xml#schZ012_b/instance"));
+        assert!(!depends_on_the_file_system("sunMeta/Schema_w3c.xml#schZ012_a"));
+        assert!(!depends_on_the_file_system("msMeta/Schema_w3c.xml#schZ012_b"));
+        assert!(!depends_on_the_file_system("msMeta/Schema_w3c.xml#schZ012_a/instance"));
         assert!(DEPEND_ON_THE_FILE_SYSTEM.iter().all(|id| id.split_once('#').is_some_and(|(set, group)| set.ends_with(".xml") && !group.is_empty())));
     }
 
