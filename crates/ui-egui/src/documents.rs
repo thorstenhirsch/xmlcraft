@@ -185,6 +185,11 @@ impl XmlCraftApp {
                 view.helpers.accept(schema);
             }
         }
+        for (id, answer) in self.xsd_schemas.poll() {
+            if let Some(view) = self.views.get_mut(&id) {
+                view.helpers.accept_xsd(answer);
+            }
+        }
         for (id, analysis) in self.analyzer.poll() {
             if self.session.position_of(id).is_none() {
                 continue; // closed meanwhile
@@ -203,9 +208,47 @@ impl XmlCraftApp {
             }
         }
         self.request_schema();
+        self.request_xsd();
         self.report_check();
         self.report_validation();
         self.finish_waiting();
+    }
+
+    /// Ask for the XML Schema the document being shown names (when it has no DOCTYPE) when what it is made of is not what the schema
+    /// was asked for with: the schemas named, the place the document is at, or the other documents that are open (a schema may be one
+    /// of them, as it is being edited). Looked at every frame, since an edit of another document changes the answer.
+    fn request_xsd(&mut self) {
+        let Some(doc) = self.session.active_document() else { return };
+        let id = doc.id();
+        let Some(view) = self.views.get_mut(&id) else { return };
+        let hints = match view.analysis.as_ref() {
+            Some(analysis) if analysis.doctype.is_none() => analysis.schema_hints.clone(),
+            _ => Vec::new(),
+        };
+        if hints.is_empty() {
+            view.helpers.forget_xsd();
+            return;
+        }
+        let versions: Vec<(String, u64)> = self
+            .session
+            .documents()
+            .iter()
+            .filter(|d| d.id() != id)
+            .filter_map(|d| d.path().map(|p| (p.to_string_lossy().into_owned(), d.editor().version())))
+            .collect();
+        let key = xmlcraft_engine::xsd_schemas::xsd_key(&hints, doc.path(), &versions);
+        if view.helpers.requested_xsd_key == Some(key) {
+            return;
+        }
+        view.helpers.requested_xsd_key = Some(key);
+        view.helpers.xsd_requests += 1;
+        let open = self
+            .session
+            .documents()
+            .iter()
+            .filter_map(|d| d.path().map(|p| (p.to_string_lossy().into_owned(), d.editor().buffer().clone())))
+            .collect();
+        self.xsd_schemas.submit(id, key, hints, doc.path(), open);
     }
 
     /// Ask for the grammar of the DOCTYPE of the document being shown when the DOCTYPE (or the place the document is at) is not the one
@@ -360,10 +403,18 @@ impl XmlCraftApp {
         self.active_analysis().filter(|a| a.skipped.is_none()).map(|a| (a.error_count(), a.warning_count()))
     }
 
-    /// Whether the grammar of the DOCTYPE of the document being shown has been read (what Entry Helpers offer comes from it).
+    /// How many times the XML Schema the document being shown names was asked for (it is asked for again when the schemas named, the
+    /// place of the document or another open document change, not when the document itself is edited).
+    pub fn schema_requests(&self) -> usize {
+        let Some(id) = self.session.active_document().map(Document::id) else { return 0 };
+        self.views.get(&id).map_or(0, |v| v.helpers.xsd_requests)
+    }
+
+    /// Whether the grammar of the DOCTYPE of the document being shown has been read, or the XML Schema it names has been loaded (what
+    /// Entry Helpers offer comes from it).
     pub fn has_grammar(&self) -> bool {
         let Some(id) = self.session.active_document().map(Document::id) else { return false };
-        self.views.get(&id).is_some_and(|v| v.helpers.grammar.is_some())
+        self.views.get(&id).is_some_and(|v| v.helpers.grammar.is_some() || v.helpers.xsd.is_some())
     }
 
     /// The places in the text of the document being shown that are underlined as wrong: the ranges and how serious each is.

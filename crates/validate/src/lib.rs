@@ -24,7 +24,7 @@ mod xsd_validator;
 
 pub use check::{Problems, check};
 pub use document::{Limits, MAX_ENTITY_DEPTH, MAX_EVENTS, MAX_OPEN, validate_document, validate_document_with};
-pub use schema_check::{SchemaCheck, SchemaOutcome, check_against_schema};
+pub use schema_check::{LoadedSchema, NoSchema, SchemaCheck, SchemaOutcome, check_against_schema, load_hinted, load_schema};
 pub use validator::{Attribute, Validator};
 pub use xsd_document::{SchemaHint, schema_hints, validate_against_schema};
 pub use xsd_validator::{MAX_OPEN as XSD_MAX_OPEN, XSI_NAMESPACE, XsdAttribute, XsdValidator};

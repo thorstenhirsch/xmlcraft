@@ -1,6 +1,6 @@
 //! What an XML Schema allows at a place in a document, and the text to put for it.
 
-use xmlcraft_complete::{Choices, ElementChoice, xsd_choices_at, xsd_element_snippet};
+use xmlcraft_complete::{Choices, ElementChoice, xsd_attribute_snippet, xsd_choices_at, xsd_element_snippet};
 use xmlcraft_syntax::parse;
 use xmlcraft_xsd::schema::Schema;
 use xmlcraft_xsd::{NoLoader, XSD_NAMESPACE, assemble, load};
@@ -397,4 +397,17 @@ fn what_is_written_for_an_element_with_very_many_required_children_is_capped() {
     assert!(snippet.text.len() < xmlcraft_complete::MAX_SNIPPET_BYTES + 64, "{} bytes", snippet.text.len());
     assert!(snippet.text.ends_with("</r>") && snippet.text.matches("<c").count() > 100, "it is cut, and still closed");
     assert_eq!(snippet.text.matches("<c").count(), snippet.text.matches("</c").count());
+}
+
+#[test]
+fn an_attribute_is_written_with_the_declaration_its_name_needs() {
+    let plain = xsd_attribute_snippet("kind", Some("pen"), None);
+    assert_eq!((plain.text.as_str(), plain.caret), (" kind=\"pen\"", " kind=\"pen\"".len() - 1));
+    let empty = xsd_attribute_snippet("kind", None, None);
+    assert_eq!((empty.text.as_str(), empty.caret), (" kind=\"\"", " kind=\"".len()), "the caret is between the quotes");
+    let declared = xsd_attribute_snippet("ns1:a", None, Some(&(Some("ns1".to_owned()), "urn:o".to_owned())));
+    assert_eq!(declared.text, " xmlns:ns1=\"urn:o\" ns1:a=\"\"");
+    assert_eq!(declared.caret, declared.text.len() - 1);
+    // A value is escaped.
+    assert_eq!(xsd_attribute_snippet("a", Some("x\"<&"), None).text, " a=\"x&quot;&lt;&amp;\"");
 }

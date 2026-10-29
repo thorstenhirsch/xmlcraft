@@ -118,3 +118,13 @@ fn write_required_children(schema: &Schema, model: &ContentModel, scope: &Scope,
 fn escape_text(value: &str) -> String {
     value.replace('&', "&amp;").replace('<', "&lt;")
 }
+
+/// ` name="value"` for an attribute of an XML Schema, with the namespace declaration its name needs where it is put (` xmlns:p="uri"`
+/// before it), and the caret between the quotes.
+pub fn xsd_attribute_snippet(name: &str, first_value: Option<&str>, declare: Option<&Declaration>) -> Snippet {
+    let declaration = declare.map(declaration_text).unwrap_or_default();
+    let value = first_value.map(escape_attribute).unwrap_or_default();
+    let text = format!("{declaration} {name}=\"{value}\"");
+    let caret = text.len().saturating_sub(1);
+    Snippet { text, caret }
+}

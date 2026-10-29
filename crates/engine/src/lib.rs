@@ -13,6 +13,7 @@ pub mod schema;
 pub mod selfcheck;
 pub mod validation;
 mod worker;
+pub mod xsd_schemas;
 
 pub use document::{Document, FileStamp, MAX_OPEN_BYTES, OpenError, SaveError};
 pub use recent::Recent;

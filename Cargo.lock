@@ -4996,6 +4996,7 @@ dependencies = [
  "xmlcraft-resolve",
  "xmlcraft-syntax",
  "xmlcraft-text",
+ "xmlcraft-xsd",
 ]
 
 [[package]]

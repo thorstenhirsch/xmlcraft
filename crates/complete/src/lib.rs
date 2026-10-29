@@ -24,4 +24,4 @@ pub use choices::{AttributeChoice, Choices, ElementChoice, EntityChoice, choices
 pub use scope::{Declaration, Written};
 pub use snippet::{MAX_SNIPPET_BYTES, MAX_SNIPPET_DEPTH, Snippet, attribute_snippet, element_snippet, entity_snippet};
 pub use xsd::{MAX_ELEMENTS, MAX_VALUES, xsd_choices_at};
-pub use xsd_snippet::xsd_element_snippet;
+pub use xsd_snippet::{xsd_attribute_snippet, xsd_element_snippet};

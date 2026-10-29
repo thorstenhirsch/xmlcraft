@@ -115,6 +115,8 @@ pub struct XmlCraftApp {
     validator: Validator,
     /// Reads each document's DOCTYPE into a grammar in the background (what Entry Helpers offer comes from it).
     schemas: Schemas,
+    /// Loads the XML Schema a document names, for Entry Helpers.
+    xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas,
     /// Entry Helpers write the content an element requires with it.
     entry_mandatory: bool,
     /// The text typed into the Outline's filter box.
@@ -180,7 +182,11 @@ impl XmlCraftApp {
             let repaint = repaint.clone();
             move || repaint.request_repaint()
         });
-        app.schemas.on_done(move || repaint.request_repaint());
+        app.schemas.on_done({
+            let repaint = repaint.clone();
+            move || repaint.request_repaint()
+        });
+        app.xsd_schemas.on_done(move || repaint.request_repaint());
         app
     }
 
@@ -213,6 +219,7 @@ impl XmlCraftApp {
             check_pending: None,
             validate_pending: None,
             schemas: Schemas::new(std::sync::Arc::new(|| Box::new(xmlcraft_platform::subset::FileSubsetLoader::unconfined()))),
+            xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas::new(std::sync::Arc::new(xmlcraft_platform::schema_files::local_resolver)),
             entry_mandatory: prefs.entry_mandatory,
             waiting: None,
             views: HashMap::new(),

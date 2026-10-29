@@ -40,6 +40,7 @@ png = "0.18"
 base64 = "0.23"
 
 [dev-dependencies]
+xmlcraft-xsd = { workspace = true }
 tempfile = "3"
 egui_kittest = { workspace = true, features = ["eframe", "wgpu"] }
 image = { version = "0.25", default-features = false, features = ["png"] }

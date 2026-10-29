@@ -2,7 +2,7 @@
 //! through a [`SchemaLoader`], assembled, and the document validated against it.
 
 use xmlcraft_syntax::{Diagnostic, Severity, SyntaxNode};
-use xmlcraft_xsd::{LoadKind, LoadRequest, SchemaLoader, SourcedDiagnostic, XSD_NAMESPACE, assemble, load};
+use xmlcraft_xsd::{Assembly, LoadKind, LoadRequest, SchemaLoader, SourcedDiagnostic, XSD_NAMESPACE, assemble, load};
 
 use crate::xsd_document::{SchemaHint, schema_hints, validate_against_schema};
 
@@ -43,26 +43,42 @@ impl SchemaCheck {
     }
 }
 
-/// Check a parsed document against a schema. `explicit` is the location of the schema to use (relative to `location`, the place the
-/// document is); without it, the schemas the document names itself are used. `loader` finds the schema documents.
-pub fn check_against_schema(
-    root: &SyntaxNode,
-    syntax: &[Diagnostic],
-    location: &str,
-    explicit: Option<&str>,
-    loader: &mut dyn SchemaLoader,
-) -> SchemaCheck {
-    if syntax.iter().any(|d| d.severity() == Severity::Error) {
-        return SchemaCheck::without_schema(syntax, SchemaOutcome::NotWellFormed, Vec::new());
-    }
-    let schemas = match explicit {
+/// The schema a document names (or is told to use), loaded and assembled.
+#[derive(Debug)]
+pub struct LoadedSchema {
+    pub assembly: Assembly,
+    /// The problems of the schema documents (reading, loading and assembling); `source` indexes [`LoadedSchema::sources`].
+    pub problems: Vec<SourcedDiagnostic>,
+    /// The locations of the schema documents that were read.
+    pub sources: Vec<String>,
+    /// The schemas that were asked for.
+    pub hints: Vec<SchemaHint>,
+}
+
+/// Why there is no schema to check or complete against, and which were asked for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NoSchema {
+    pub why: String,
+    pub hints: Vec<SchemaHint>,
+}
+
+/// Find, load and assemble the schema a parsed document names with `xsi:schemaLocation` and `xsi:noNamespaceSchemaLocation`, or `explicit`
+/// (a location relative to `location`, the place the document is) instead of them. `loader` finds the schema documents.
+pub fn load_schema(root: &SyntaxNode, location: &str, explicit: Option<&str>, loader: &mut dyn SchemaLoader) -> Result<LoadedSchema, NoSchema> {
+    let hints = match explicit {
         Some(location) => vec![SchemaHint { namespace: None, location: location.to_owned() }],
         None => schema_hints(root),
     };
-    let documents = match schemas.as_slice() {
+    load_hinted(hints, location, loader)
+}
+
+/// Load and assemble the schemas `hints` ask for (as a document at `location` names them). One is the root of the load; several are
+/// imported by a schema of no namespace that is made here; none is `NoSchema`.
+pub fn load_hinted(hints: Vec<SchemaHint>, location: &str, loader: &mut dyn SchemaLoader) -> Result<LoadedSchema, NoSchema> {
+    let documents = match hints.as_slice() {
         [] => {
             let why = "the document names no schema (xsi:schemaLocation or xsi:noNamespaceSchemaLocation) and none was given".to_owned();
-            return SchemaCheck::without_schema(syntax, SchemaOutcome::NoSchema(why), schemas);
+            return Err(NoSchema { why, hints });
         }
         // One schema is the root of the load.
         [only] => {
@@ -72,7 +88,7 @@ pub fn check_against_schema(
                 Ok(loaded) => load(&loaded.text, &loaded.location, loader),
                 Err(why) => {
                     let why = format!("the schema '{}' could not be loaded: {why}", only.location);
-                    return SchemaCheck::without_schema(syntax, SchemaOutcome::NoSchema(why), schemas);
+                    return Err(NoSchema { why, hints });
                 }
             }
         }
@@ -89,17 +105,37 @@ pub fn check_against_schema(
             load(&wrapper, location, loader)
         }
     };
-    let assembly = assemble(&documents);
-    let mut schema_problems: Vec<SourcedDiagnostic> = documents.diagnostics.clone();
-    schema_problems.extend(assembly.diagnostics);
-    let validity = validate_against_schema(root, &assembly.schema);
+    let mut assembly = assemble(&documents);
+    let mut problems: Vec<SourcedDiagnostic> = documents.diagnostics.clone();
+    problems.append(&mut assembly.diagnostics);
+    let sources = documents.list.iter().map(|d| d.location.clone()).collect();
+    Ok(LoadedSchema { assembly, problems, sources, hints })
+}
+
+/// Check a parsed document against a schema. `explicit` is the location of the schema to use (relative to `location`, the place the
+/// document is); without it, the schemas the document names itself are used. `loader` finds the schema documents.
+pub fn check_against_schema(
+    root: &SyntaxNode,
+    syntax: &[Diagnostic],
+    location: &str,
+    explicit: Option<&str>,
+    loader: &mut dyn SchemaLoader,
+) -> SchemaCheck {
+    if syntax.iter().any(|d| d.severity() == Severity::Error) {
+        return SchemaCheck::without_schema(syntax, SchemaOutcome::NotWellFormed, Vec::new());
+    }
+    let loaded = match load_schema(root, location, explicit, loader) {
+        Ok(loaded) => loaded,
+        Err(NoSchema { why, hints }) => return SchemaCheck::without_schema(syntax, SchemaOutcome::NoSchema(why), hints),
+    };
+    let validity = validate_against_schema(root, &loaded.assembly.schema);
     SchemaCheck {
         outcome: SchemaOutcome::Validated,
         well_formedness: syntax.to_vec(),
         validity,
-        schema_problems,
-        sources: documents.list.iter().map(|d| d.location.clone()).collect(),
-        schemas,
+        schema_problems: loaded.problems,
+        sources: loaded.sources,
+        schemas: loaded.hints,
     }
 }
 
