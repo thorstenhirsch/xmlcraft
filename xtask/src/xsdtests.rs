@@ -116,6 +116,17 @@ fn groups_of(text: &str) -> (Vec<Group>, usize) {
     (groups, skipped)
 }
 
+/// Test groups whose verdict depends on whether the file system of the machine folds case, so that a ratchet that has to say the same
+/// on a Mac, on Windows and on CI cannot count them. They are the three groups that test that "file URLs are compared case-insensitively":
+/// the schema asks for a document by a name that differs in case from the file's (`schZ012_A.xsd` for `schZ012_a.xsd`), which is that
+/// file on a Mac or on Windows and no file on Linux. Left out, like the tests that are not accepted.
+const DEPEND_ON_THE_FILE_SYSTEM: &[&str] = &["msMeta/Schema_w3c.xml#schZ012_a", "msMeta/Schema_w3c.xml#schZ012_b", "msMeta/Schema_w3c.xml#schZ012_c"];
+
+/// Whether the verdict on the group `id` (`set#name`) is not the same on every machine.
+fn depends_on_the_file_system(id: &str) -> bool {
+    DEPEND_ON_THE_FILE_SYSTEM.contains(&id)
+}
+
 /// The test sets the suite lists, as paths relative to the suite folder.
 fn test_sets(suite_xml: &str) -> Vec<String> {
     let parsed = parse(suite_xml);
@@ -224,6 +235,10 @@ pub fn run(fetch: bool, write: bool, verbose: bool) -> Result<()> {
             groups.iter().filter(|g| !g.schema.as_ref().is_some_and(|s| s.expected == Expected::Valid)).map(|g| g.instances.len()).sum::<usize>();
         for group in groups {
             let id = format!("{set}#{}", group.name);
+            if depends_on_the_file_system(&id) {
+                skipped += usize::from(group.schema.is_some()) + group.instances.len();
+                continue;
+            }
             let outcome = catch_unwind(AssertUnwindSafe(|| {
                 let mut results: Vec<(&'static str, String, bool, String)> = Vec::new();
                 let built = group.schema.as_ref().and_then(|s| build(&s.documents, &set_path));
@@ -340,6 +355,16 @@ mod tests {
         <schemaTest name="s3"><schemaDocument xlink:href="../d/y.xsd"/><expected validity="valid"/><current status="disputedTest" date="2005-01-01"/></schemaTest>
       </testGroup>
     </testSet>"#;
+
+    #[test]
+    fn groups_that_depend_on_the_file_system_are_left_out_and_nothing_else() {
+        assert!(depends_on_the_file_system("msMeta/Schema_w3c.xml#schZ012_b"));
+        // The same name in another set, or a neighbour in the same one, is run.
+        assert!(!depends_on_the_file_system("sunMeta/Schema_w3c.xml#schZ012_b"));
+        assert!(!depends_on_the_file_system("msMeta/Schema_w3c.xml#schZ012_d"));
+        assert!(!depends_on_the_file_system("msMeta/Schema_w3c.xml#schZ012_b/instance"));
+        assert!(DEPEND_ON_THE_FILE_SYSTEM.iter().all(|id| id.split_once('#').is_some_and(|(set, group)| set.ends_with(".xml") && !group.is_empty())));
+    }
 
     #[test]
     fn only_accepted_tests_that_say_valid_or_invalid_are_kept() {

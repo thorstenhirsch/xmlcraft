@@ -618,9 +618,6 @@ msMeta/Schema_w3c.xml#schZ005
 msMeta/Schema_w3c.xml#schZ006
 msMeta/Schema_w3c.xml#schZ011_b
 msMeta/Schema_w3c.xml#schZ011_c
-msMeta/Schema_w3c.xml#schZ012_a
-msMeta/Schema_w3c.xml#schZ012_b
-msMeta/Schema_w3c.xml#schZ012_c
 msMeta/Schema_w3c.xml#schZ014_a
 msMeta/SimpleType_w3c.xml#stE075
 msMeta/SimpleType_w3c.xml#stE075/stE075.i
