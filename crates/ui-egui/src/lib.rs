@@ -5,6 +5,7 @@
 mod about;
 mod after_analysis;
 mod assign;
+mod auto_validate;
 mod chrome;
 mod commands;
 mod control;
@@ -74,6 +75,8 @@ struct Prefs {
     recent: Vec<String>,
     /// Entry Helpers write the content an element requires with it.
     entry_mandatory: bool,
+    /// A document that names a grammar is validated in the background when it has been left alone for a moment.
+    validate_typing: bool,
 }
 
 impl Default for Prefs {
@@ -86,6 +89,7 @@ impl Default for Prefs {
             side_panels: SidePanels::default(),
             recent: Vec::new(),
             entry_mandatory: true,
+            validate_typing: true,
         }
     }
 }
@@ -126,6 +130,10 @@ pub struct XmlCraftApp {
     xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas,
     /// Entry Helpers write the content an element requires with it.
     entry_mandatory: bool,
+    /// Validate a document that names a grammar when it has been left alone for a moment (View: XML ▸ Validate While Typing).
+    validate_typing: bool,
+    /// How long a text is left alone before that.
+    validate_delay: std::time::Duration,
     /// The text typed into the Outline's filter box.
     outline_filter: String,
     /// The Outline's rows for the filter and analysis they were worked out for, so a frame does not filter 50,000 names again.
@@ -242,6 +250,8 @@ impl XmlCraftApp {
             schemas: Schemas::new(std::sync::Arc::new(|| Box::new(xmlcraft_platform::subset::FileSubsetLoader::unconfined()))),
             xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas::new(std::sync::Arc::new(xmlcraft_platform::schema_files::local_resolver)),
             entry_mandatory: prefs.entry_mandatory,
+            validate_typing: prefs.validate_typing,
+            validate_delay: auto_validate::DELAY,
             waiting: None,
             views: HashMap::new(),
             dialog: None,
@@ -271,6 +281,7 @@ impl XmlCraftApp {
             side_panels: self.side_panels,
             recent: self.session.recent().paths().iter().filter_map(|path| path.to_str().map(str::to_owned)).collect(),
             entry_mandatory: self.entry_mandatory,
+            validate_typing: self.validate_typing,
         }
     }
 
@@ -419,6 +430,16 @@ mod tests {
         };
         let json = serde_json::to_string(&p).expect("serialises");
         assert_eq!(Prefs::load(Some(&json)), p);
+    }
+
+    #[test]
+    fn validating_while_typing_is_on_unless_it_was_turned_off_and_it_is_remembered() {
+        assert!(Prefs::default().validate_typing);
+        assert!(Prefs::load(Some(r#"{"left_open": false}"#)).validate_typing, "an old file that does not say is on");
+        let off = Prefs { validate_typing: false, ..Prefs::default() };
+        let again = Prefs::load(Some(&serde_json::to_string(&off).expect("serialises")));
+        assert!(!again.validate_typing);
+        assert!(!XmlCraftApp::with_prefs(again).prefs().validate_typing, "it is what the app saves, too");
     }
 
     #[test]
