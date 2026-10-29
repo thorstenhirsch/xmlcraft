@@ -926,11 +926,11 @@ title = "Completion and documentation while editing XSD files"
 area = "D"
 tier = "P1"
 milestone = "M3"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = "Driven by the bundled XMLSchema.xsd."
+status = "partial"
+commands = ["view.entry_helpers"]
+tools = ["xml_entry_helpers"]
+evidence = ["crates/automation/tests/entry_helpers.rs::an_xml_schema_document_is_offered_what_xml_schema_allows_though_it_names_no_schema", "crates/ui-egui/tests/entry_helpers.rs::an_xml_schema_file_is_offered_what_xml_schema_allows", "crates/validate/tests/schema_check.rs::the_namespace_of_the_root_element_is_the_one_it_declares_for_its_name"]
+notes = "A document that names no schema is answered from the one that ships with the app for the namespace of its root element (the catalogs and the bundle, nothing is downloaded): for an XSD file that is the bundled XMLSchema.xsd, so Entry Helpers (`view.entry-helpers`) and `xml_entry_helpers` offer what each element of a schema may contain, its attributes and the values they may take (`form`, `use`, `maxOccurs` with `unbounded`, booleans), and write an element with what it requires. Missing: a completion popup while typing (M1.10d), the types and elements the schema itself declares as the values of `type`, `ref`, `base` and the like, go to definition (`xsd.go-to-definition`), the documentation of the declaration under the caret (Info pane), and schemas of other namespaces until they are bundled (M4.7)."
 
 [[feature]]
 id = "xsd.go-to-definition"
