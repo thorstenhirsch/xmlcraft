@@ -1,0 +1,36 @@
+{
+  "branch": "main",
+  "commits": 135,
+  "contributors": [
+    {
+      "binary_added": 15,
+      "binary_deleted": 15,
+      "commits": 133,
+      "display_name": null,
+      "first_commit": "2026-10-27T00:46:00+01:00",
+      "github_name": null,
+      "last_commit": "2026-10-29T06:48:53+01:00",
+      "lines_added": 168735,
+      "lines_deleted": 4875,
+      "login": "thorstenhirsch",
+      "people_entry": false,
+      "prs": 10,
+      "real_name": null
+    }
+  ],
+  "head": "30a17b70ffa045ba14c84ac834e6bab52e32175a",
+  "head_date": "2026-10-29T06:48:53+01:00",
+  "models": [
+    {
+      "commits": 113,
+      "name": "Claude Sonnet 5.5"
+    },
+    {
+      "commits": 12,
+      "name": "Claude Opus 5.5"
+    }
+  ],
+  "repo": "thorstenhirsch/xmlcraft",
+  "schema": 1,
+  "unattributed_commits": 0
+}

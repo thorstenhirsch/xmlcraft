@@ -44,6 +44,8 @@ pub(crate) enum Dialog {
     GoToLine,
     /// Which DTD or schema to assign to the document (drawn by `assign.rs`).
     AssignSchema(Box<crate::assign::AssignForm>),
+    /// The About window (drawn by `about.rs`).
+    About(Box<crate::about::AboutForm>),
     /// The options of Generate Schema (drawn by `generate.rs`).
     GenerateSchema(Box<crate::generate::SchemaForm>),
     /// The options of Generate Sample XML (drawn by `generate.rs`).
@@ -66,6 +68,7 @@ impl Dialog {
             | Dialog::Message { .. }
             | Dialog::GoToLine
             | Dialog::AssignSchema(_)
+            | Dialog::About(_)
             | Dialog::GenerateSchema(_)
             | Dialog::GenerateSample(_) => false,
         }
@@ -157,8 +160,8 @@ impl XmlCraftApp {
             Dialog::Message { title, text } => {
                 Describe { title: title.clone(), text: text.clone(), buttons: vec![(tl!("OK"), Choice::Ok)], input: false }
             }
-            // These are forms, drawn by `assign.rs` and `generate.rs`; this is only here to be total.
-            Dialog::AssignSchema(_) | Dialog::GenerateSchema(_) | Dialog::GenerateSample(_) => {
+            // These are forms, drawn by `assign.rs`, `about.rs` and `generate.rs`; this is only here to be total.
+            Dialog::AssignSchema(_) | Dialog::About(_) | Dialog::GenerateSchema(_) | Dialog::GenerateSample(_) => {
                 Describe { title: String::new(), text: String::new(), buttons: vec![(tl!("Cancel"), Choice::Cancel)], input: false }
             }
         }
@@ -168,6 +171,10 @@ impl XmlCraftApp {
     pub(crate) fn show_dialog(&mut self, ctx: &egui::Context) {
         if matches!(self.dialog, Some(Dialog::AssignSchema(_))) {
             self.show_assign(ctx);
+            return;
+        }
+        if matches!(self.dialog, Some(Dialog::About(_))) {
+            self.show_about(ctx);
             return;
         }
         if matches!(self.dialog, Some(Dialog::GenerateSchema(_) | Dialog::GenerateSample(_))) {
