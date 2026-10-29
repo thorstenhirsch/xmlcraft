@@ -597,7 +597,7 @@ fn doc_new(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
             Some(template) => Some(template),
             None => {
                 let known: Vec<&str> = xmlcraft_engine::templates::TEMPLATES.iter().map(|t| t.id).collect();
-                return fail(&format!("there is no template {id:?}; the templates are {}", known.join(", ")));
+                return fail(format!("there is no template {id:?}; the templates are {}", known.join(", ")));
             }
         },
         None => None,
