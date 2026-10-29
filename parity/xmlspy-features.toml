@@ -1075,11 +1075,11 @@ title = "Validate while typing"
 area = "E"
 tier = "P1"
 milestone = "M2"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["xml.validate_typing"]
 tools = []
-evidence = []
-notes = "Debounced, off-thread; on demand above 10 MB."
+evidence = ["crates/ui-egui/tests/validation.rs::a_document_that_names_a_grammar_is_validated_when_it_is_left_alone_without_a_word_in_the_status_bar", "crates/ui-egui/tests/validation.rs::what_is_typed_is_validated_after_a_pause_and_not_after_each_key", "crates/ui-egui/tests/validation.rs::a_document_with_no_grammar_or_that_is_not_well_formed_is_left_alone", "crates/ui-egui/tests/validation.rs::validating_while_typing_can_be_turned_off_and_f8_still_works", "crates/ui-egui/tests/validation.rs::a_schema_that_is_open_and_edited_is_what_the_validation_while_typing_uses", "crates/ui-egui/src/auto_validate.rs::what_is_not_to_be_validated_while_typing_is_not"]
+notes = "A document that names a grammar (a DOCTYPE or a schema) and is well-formed is validated in the background, as F8 does (the schemas that are open are used as they are being edited), when its text has been left alone for 0.7 s: the problems are underlined and listed in Messages and the status bar says Valid or the number of validity errors, without a message of its own and without opening Messages. A keystroke restarts the wait, so typing causes one validation after the pause; a text is not validated twice (F8 counts); documents over 1 MiB, those that name no grammar and those that are not well-formed are left to F8. XML ▸ Validate While Typing (on by default, saved with the preferences) turns it off. Missing: the validation of a document that is being edited is not cancelled when the text changes again (it is dropped when its answer arrives late), no choice of the delay or the size limit in Preferences, a document that is not the one shown is not validated, and a DTD file that changed on disk is read again only when the document is."
 
 [[feature]]
 id = "validate.error-positions"
