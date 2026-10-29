@@ -334,9 +334,9 @@ impl XmlCraftApp {
                 std::time::Duration::ZERO
             }
         };
-        // The analysis of this very text says whether it is well-formed and what it names; one of older text says nothing of this one.
-        let ready = view.analysis.as_ref().is_some_and(|a| a.version == version && a.is_well_formed() && (a.doctype.is_some() || !a.schema_hints.is_empty()));
-        let done = view.auto.requested == Some(version) || view.validation.as_ref().is_some_and(|v| v.version == version);
+        let ready = view.analysis.as_ref().is_some_and(|a| crate::auto_validate::ready(a, version));
+        // Both ways of asking for a validation (F8, and this) say which version they asked for.
+        let done = view.auto.requested == Some(version);
         let inputs = crate::auto_validate::Inputs { enabled: self.validate_typing, ready, size, done, quiet_for, delay: self.validate_delay };
         match crate::auto_validate::decide(&inputs) {
             crate::auto_validate::Decision::Not => {}

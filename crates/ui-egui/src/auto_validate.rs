@@ -37,6 +37,12 @@ pub(crate) enum Decision {
     Now,
 }
 
+/// Whether `analysis` lets the text of version `version` be validated while it is typed in: it is the analysis of this very text (one of
+/// older text says nothing of this one), the text is well-formed, and it names a grammar (a DOCTYPE or a schema).
+pub(crate) fn ready(analysis: &xmlcraft_engine::analysis::Analysis, version: u64) -> bool {
+    analysis.version == version && analysis.is_well_formed() && (analysis.doctype.is_some() || !analysis.schema_hints.is_empty())
+}
+
 pub(crate) fn decide(i: &Inputs) -> Decision {
     if !i.enabled || !i.ready || i.done || i.size > MAX_BYTES {
         return Decision::Not;
@@ -53,6 +59,22 @@ mod tests {
 
     fn due() -> Inputs {
         Inputs { enabled: true, ready: true, size: 1000, done: false, quiet_for: DELAY, delay: DELAY }
+    }
+
+    fn analysed(text: &str, version: u64) -> xmlcraft_engine::analysis::Analysis {
+        xmlcraft_engine::analysis::analyze(text, version)
+    }
+
+    #[test]
+    fn a_text_is_ready_when_its_own_analysis_says_it_is_well_formed_and_names_a_grammar() {
+        let dtd = "<!DOCTYPE a [<!ELEMENT a EMPTY>]><a/>";
+        let schema = "<a xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"a.xsd\"/>";
+        assert!(ready(&analysed(dtd, 4), 4));
+        assert!(ready(&analysed(schema, 4), 4), "a schema named is a grammar named");
+        assert!(!ready(&analysed(dtd, 3), 4), "the analysis of older text says nothing of this text");
+        assert!(!ready(&analysed(dtd, 5), 4), "nor does one of newer text");
+        assert!(!ready(&analysed("<a><b/></a>", 4), 4), "it names no grammar");
+        assert!(!ready(&analysed("<!DOCTYPE a [<!ELEMENT a EMPTY>]><a>", 4), 4), "it is not well-formed");
     }
 
     #[test]

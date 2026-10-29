@@ -218,6 +218,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("edit.fold_level_3", "Fold Level 3", EDIT, None, Needs::Document, "chevron-right"),
     c("xml.check", "Check Well-formedness", XML, Some(Shortcut::key("F7")), Needs::Document, "file-check"),
     c("xml.validate", "Validate", XML, Some(Shortcut::key("F8")), Needs::Document, "shield-check"),
+    c("xml.validate_typing", "Validate While Typing", XML, None, Nothing, "shield-check").toggle(),
     c("xml.assign_schema", "Assign Schema…", XML, None, Needs::Document, "book-open"),
     c("xml.pretty_print", "Pretty-print", XML, None, Needs::Document, "wand-sparkles").sep(),
     c("xml.minify", "Strip White Space", XML, None, Needs::Document, "align-left"),
@@ -338,7 +339,16 @@ mod tests {
         );
         assert_eq!(
             in_menu("XML").map(|c| c.id).collect::<Vec<_>>(),
-            ["xml.check", "xml.validate", "xml.assign_schema", "xml.pretty_print", "xml.minify", "xml.generate_schema", "xml.generate_sample"]
+            [
+                "xml.check",
+                "xml.validate",
+                "xml.validate_typing",
+                "xml.assign_schema",
+                "xml.pretty_print",
+                "xml.minify",
+                "xml.generate_schema",
+                "xml.generate_sample"
+            ]
         );
         assert_eq!(in_menu("Nope").count(), 0);
     }

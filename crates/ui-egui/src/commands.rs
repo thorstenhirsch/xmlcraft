@@ -60,6 +60,7 @@ impl XmlCraftApp {
             "view.outline" => Some(self.left_open),
             "view.entry_helpers" => Some(self.right.is_some()),
             "view.messages" => Some(self.bottom_open),
+            "xml.validate_typing" => Some(self.validate_typing),
             "view.theme.system" => Some(self.theme_preference == ThemePreference::System),
             "view.theme.light" => Some(self.theme_preference == ThemePreference::Light),
             "view.theme.dark" => Some(self.theme_preference == ThemePreference::Dark),
@@ -170,6 +171,7 @@ impl XmlCraftApp {
             "xml.pretty_print" => self.reformat(false),
             "xml.minify" => self.reformat(true),
             "xml.assign_schema" => self.open_assign_schema(),
+            "xml.validate_typing" => self.validate_typing = !self.validate_typing,
             "xml.generate_schema" => self.open_generate_schema(),
             "xml.generate_sample" => self.open_generate_sample(),
             "edit.select_all" => {
