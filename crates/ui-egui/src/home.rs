@@ -100,7 +100,7 @@ fn recent_row(ui: &mut egui::Ui, t: &Tokens, path: &Path) -> bool {
     clip.text(egui::pos2(text_left, rect.top() + 22.0), egui::Align2::LEFT_TOP, &folder, theme::regular(11.0), t.text_muted);
     // What a screen reader says: the name and where the file is, so that two files of one name can be told apart.
     let label = format!("{name}, {}", path.display());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &label));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
     response.on_hover_text(path.display().to_string()).on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
 }
 

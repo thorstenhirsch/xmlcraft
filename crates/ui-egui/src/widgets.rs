@@ -19,7 +19,7 @@ pub fn mode_tab(ui: &mut egui::Ui, label: &str, active: bool) -> Response {
     // clipped away at the bottom edge.
     let height = ui.available_height().clamp(24.0, 48.0);
     let (rect, resp) = ui.allocate_exact_size(vec2(w + 22.0, height), Sense::click());
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), active, label));
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, ui.is_enabled(), active, label));
     let press = theme::Press::track(ui, &resp);
     let well = rect.shrink2(vec2(2.0, 9.0));
     if active {
@@ -49,7 +49,7 @@ pub fn ghost_button_sized(ui: &mut egui::Ui, icon: &str, label: &str, height: f3
     let font = theme::medium(13.0);
     let w = text_width(ui, label, &font);
     let (rect, resp) = ui.allocate_exact_size(vec2(w + 38.0, height), Sense::click());
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), label));
     let press = theme::Press::track(ui, &resp);
     press.wash(ui, rect, 6, false);
     let body = rect.translate(press.offset());
@@ -68,7 +68,7 @@ pub fn name_for_assistive_technology(ui: &egui::Ui, response: &Response, name: &
 pub fn search_box(ui: &mut egui::Ui, placeholder: &str, shortcut: &str, width: f32) -> Response {
     let t = Tokens::get(ui.ctx());
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 32.0), Sense::click());
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), placeholder));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), placeholder));
     let press = theme::Press::track(ui, &resp);
     let fill = press.fill(t.field, t.hover, t.pressed);
     let edge = t.border.lerp_to_gamma(t.text_muted, press.hover * 0.35);

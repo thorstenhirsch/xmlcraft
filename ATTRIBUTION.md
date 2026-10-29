@@ -82,11 +82,12 @@ Every asset XmlCraft includes, bundles or uses to build its published material, 
 | `schemas/w3c/xmlschema/XMLSchema.xsd` | XML Schema: the schema for schemas (structures) | World Wide Web Consortium (MIT, ERCIM, Keio, Beihang) | W3C-20150513 | https://www.w3.org/2001/XMLSchema.xsd (retrieved 2026-10-28) | Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline |
 | `schemas/w3c/xmlschema/datatypes.dtd` | XML Schema: the datatypes DTD | World Wide Web Consortium (MIT, ERCIM, Keio, Beihang) | W3C-20150513 | https://www.w3.org/2001/datatypes.dtd (retrieved 2026-10-28) | Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline |
 
-## Compiled in through dependencies (4)
+## Compiled in through dependencies (5)
 
 | Crate | File | Title | Author | Licence | Source | Used for |
 |---|---|---|---|---|---|---|
-| `epaint_default_fonts` 0.36.2 | `fonts/Ubuntu-Light.ttf` | Ubuntu Light | Canonical Ltd. / Dalton Maag | Ubuntu-font-1.0 | https://design.ubuntu.com/font | egui fallback fonts (eframe feature default_fonts) |
-| `epaint_default_fonts` 0.36.2 | `fonts/Hack-Regular.ttf` | Hack Regular | Source Foundry Authors (derived from Bitstream Vera / DejaVu) | MIT AND Bitstream-Vera | https://github.com/source-foundry/Hack | egui fallback fonts (eframe feature default_fonts) |
-| `epaint_default_fonts` 0.36.2 | `fonts/NotoEmoji-Regular.ttf` | Noto Emoji (monochrome) | Google Inc. | OFL-1.1 | https://github.com/googlefonts/noto-emoji | egui fallback fonts (eframe feature default_fonts) |
-| `epaint_default_fonts` 0.36.2 | `fonts/emoji-icon-font.ttf` | emoji-icon-font | John Slegers | MIT | https://github.com/jslegers/emoji-icon-font | egui fallback fonts (eframe feature default_fonts) |
+| `epaint_default_fonts` 0.37.0 | `fonts/Ubuntu-Light.ttf` | Ubuntu Light | Canonical Ltd. / Dalton Maag | Ubuntu-font-1.0 | https://design.ubuntu.com/font | egui fallback fonts (eframe feature default_fonts) |
+| `epaint_default_fonts` 0.37.0 | `fonts/Hack-Regular.ttf` | Hack Regular | Source Foundry Authors (derived from Bitstream Vera / DejaVu) | MIT AND Bitstream-Vera | https://github.com/source-foundry/Hack | egui fallback fonts (eframe feature default_fonts) |
+| `epaint_default_fonts` 0.37.0 | `fonts/NotoEmoji-Regular.ttf` | Noto Emoji (monochrome) | Google Inc. | OFL-1.1 | https://github.com/googlefonts/noto-emoji | egui fallback fonts (eframe feature default_fonts) |
+| `epaint_default_fonts` 0.37.0 | `fonts/emoji-icon-font.ttf` | emoji-icon-font | John Slegers | MIT | https://github.com/jslegers/emoji-icon-font | egui fallback fonts (eframe feature default_fonts) |
+| `epaint_default_fonts` 0.37.0 | `fonts/egui-icons.ttf` | egui-icons (the five glyphs of emoji-icon-font that egui::special_emojis names) | John Slegers (subset made by the egui authors) | MIT | https://github.com/jslegers/emoji-icon-font | egui fallback fonts (eframe feature default_fonts) |

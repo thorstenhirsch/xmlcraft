@@ -220,7 +220,7 @@ impl XmlCraftApp {
                 let toggle = |ui: &mut egui::Ui, on: &mut bool, text: &str, name: &str| {
                     let response =
                         ui.add(egui::Button::new(egui::RichText::new(text).font(theme::mono(12.0))).selected(*on).min_size(vec2(26.0, 24.0)));
-                    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, *on, name));
+                    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, *on, name));
                     let response = response.on_hover_text(name);
                     if response.clicked() {
                         *on = !*on;
@@ -228,7 +228,7 @@ impl XmlCraftApp {
                 };
                 let field = ui.add(
                     egui::TextEdit::singleline(&mut self.find.query)
-                        .id(egui::Id::new("xmlcraft-find-query"))
+                        .id(egui::Id::unique("xmlcraft-find-query"))
                         .hint_text(tl!("Find"))
                         .desired_width(field_width),
                 );
@@ -285,7 +285,7 @@ impl XmlCraftApp {
                 ui.horizontal_wrapped(|ui| {
                     let field = ui.add(
                         egui::TextEdit::singleline(&mut self.find.replacement)
-                            .id(egui::Id::new("xmlcraft-find-replacement"))
+                            .id(egui::Id::unique("xmlcraft-find-replacement"))
                             .hint_text(tl!("Replace with"))
                             .desired_width(field_width),
                     );

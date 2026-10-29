@@ -17,5 +17,7 @@ egui = { workspace = true }
 log = { workspace = true }
 
 [dev-dependencies]
+# egui 0.37 has no default fonts unless asked; the widget tests and the screenshot example lay text out with them.
+egui = { workspace = true, features = ["default_fonts"] }
 egui_kittest = { workspace = true, features = ["wgpu"] }
 image = { version = "0.25", default-features = false, features = ["png"] }

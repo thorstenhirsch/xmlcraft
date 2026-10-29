@@ -154,14 +154,14 @@ impl XmlCraftApp {
         let t = Tokens::get(ctx);
         let described = self.describe(&dialog);
         let mut chosen = None;
-        let response = egui::Modal::new(egui::Id::new("xmlcraft-dialog")).show(ctx, |ui| {
+        let response = egui::Modal::new(egui::Id::unique("xmlcraft-dialog")).show(ctx, |ui| {
             ui.set_width(400.0);
             ui.label(egui::RichText::new(&described.title).font(theme::semibold(15.0)).color(t.text));
             ui.add_space(6.0);
             ui.label(egui::RichText::new(&described.text).font(theme::regular(13.0)).color(t.text_muted));
             if described.input {
                 ui.add_space(8.0);
-                let id = egui::Id::new("xmlcraft-dialog-input");
+                let id = egui::Id::unique("xmlcraft-dialog-input");
                 let edit = ui
                     .add(egui::TextEdit::singleline(&mut self.goto_input).id(id).hint_text(tl!("Line or line:column")).desired_width(f32::INFINITY));
                 crate::widgets::name_for_assistive_technology(ui, &edit, tl!("Line or line:column"));

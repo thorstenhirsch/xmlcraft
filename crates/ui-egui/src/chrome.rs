@@ -41,7 +41,7 @@ pub fn tab_strip(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
         .frame(egui::Frame::NONE.fill(t.titlebar).inner_margin(egui::Margin { left, right: 10, top: 0, bottom: 0 }))
         .show(ui, |ui| {
             // The strip is the window's drag handle where the system title bar is hidden.
-            let drag = ui.interact(ui.max_rect(), ui.id().with("titledrag"), Sense::click_and_drag());
+            let drag = ui.interact(ui.max_rect(), ui.scope_id().with("titledrag"), Sense::click_and_drag());
             if mac && drag.drag_started() {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
@@ -112,7 +112,7 @@ fn tab(ui: &mut egui::Ui, t: &Tokens, name: &str, dirty: bool, active: bool, clo
     // Full strip height so the active tab sits on the mode bar instead of floating in the title bar.
     let height = ui.available_height().max(height);
     let (rect, _) = ui.allocate_exact_size(vec2(text_w + TAB_CHROME, height), Sense::hover());
-    let id = ui.id().with(("document-tab", index));
+    let id = ui.scope_id().with(("document-tab", index));
     let a11y = if dirty { format!("{name} (edited)") } else { name.to_string() };
     let resp =
         craft_ui::tabs::Tab::new(id, &a11y, active).sense(Sense::click()).focus_stroke(Stroke::new(1.0, t.accent)).show_at(ui, rect, |ui, resp| {

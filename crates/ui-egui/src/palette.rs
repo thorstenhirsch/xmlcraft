@@ -73,7 +73,7 @@ pub fn show(app: &mut XmlCraftApp, ctx: &egui::Context) {
     }
     let selected = app.palette_selected;
 
-    let rect_id = egui::Id::new("palette_rect");
+    let rect_id = egui::Id::unique("palette_rect");
     let previous_rect = ctx.data(|d| d.get_temp::<Rect>(rect_id));
     let outside_click = ctx.input(|i| {
         i.pointer.button_pressed(egui::PointerButton::Primary)
@@ -85,7 +85,7 @@ pub fn show(app: &mut XmlCraftApp, ctx: &egui::Context) {
     }
     let screen = ctx.content_rect();
     let mut chosen: Option<&'static str> = None;
-    let area = egui::Area::new(egui::Id::new("palette"))
+    let area = egui::Area::new(egui::Id::unique("palette"))
         .order(egui::Order::Foreground)
         .pivot(Align2::CENTER_TOP)
         .fixed_pos(egui::pos2(screen.center().x, screen.top() + 96.0))
@@ -122,7 +122,7 @@ pub fn show(app: &mut XmlCraftApp, ctx: &egui::Context) {
                     let body = rect.translate(press.offset());
                     icons::paint(ui, Rect::from_min_size(body.min + vec2(8.0, 9.0), vec2(18.0, 18.0)), hit.spec.icon, 17.0, t.icon);
                     let label = XmlCraftApp::command_label(hit.spec);
-                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, hit.ready, label));
+                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, hit.ready, label));
                     let fg = if hit.ready { t.text } else { t.text_faint };
                     let detail_font = theme::regular(12.0);
                     let detail_w = widgets::text_width(ui, &hit.detail, &detail_font);
