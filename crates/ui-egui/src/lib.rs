@@ -198,8 +198,12 @@ impl XmlCraftApp {
             palette_selected: 0,
             session,
             analyzer: Analyzer::new(),
-            // The external parts of a DTD are files the person can read; nothing is downloaded.
-            validator: Validator::new(std::sync::Arc::new(|| Box::new(xmlcraft_platform::subset::FileSubsetLoader::unconfined()))),
+            // The external parts of a DTD, and the documents of a schema, are open documents, the schemas that ship with the app and files the
+            // person can read; nothing is downloaded.
+            validator: Validator::new(
+                std::sync::Arc::new(|| Box::new(xmlcraft_platform::subset::FileSubsetLoader::unconfined())),
+                std::sync::Arc::new(xmlcraft_platform::schema_files::local_resolver),
+            ),
             outline_filter: String::new(),
             outline_rows: None,
             find: find_bar::FindBar::default(),

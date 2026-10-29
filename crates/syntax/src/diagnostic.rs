@@ -202,6 +202,7 @@ codes! {
     XsdOccurs => ("xsd.min-occurs-over-max-occurs", Error, "minOccurs {0} is greater than maxOccurs {1}."),
     XsdLimit => ("xsd.limit", Error, "The schema document is too large or nested too deeply: {0}."),
     XsdLoadFailed => ("xsd.document-not-loaded", Error, "The schema document '{0}' could not be loaded: {1}."),
+    XsdSchemaUnavailable => ("xsd.schema-unavailable", Error, "The document cannot be checked against a schema: {0}."),
     XsdImportNotLoaded => ("xsd.import-not-loaded", Warning, "The schema document for the import '{0}' could not be loaded: {1}."),
     XsdNotASchemaDocument => ("xsd.not-a-schema-document", Error, "'{0}' is not a schema document."),
     XsdIncludeNamespace => ("xsd.include-namespace", Error, "The included document '{0}' has the target namespace '{1}', not that of the including schema."),

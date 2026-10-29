@@ -38,23 +38,13 @@ pub(crate) struct DocView {
     pub validation: Option<Validation>,
     /// The version of the text last handed to the analyzer.
     requested: Option<u64>,
-    /// The version of the text last handed to the validator.
-    validation_requested: Option<u64>,
     /// The grammar of the DOCTYPE, and what Entry Helpers offer from it.
     pub(crate) helpers: crate::entry_helpers::HelperState,
 }
 
 impl DocView {
     pub fn new(kind: ThemeKind) -> Self {
-        Self {
-            view: ViewState::new(),
-            styler: XmlStyler::new(kind),
-            analysis: None,
-            validation: None,
-            requested: None,
-            validation_requested: None,
-            helpers: Default::default(),
-        }
+        Self { view: ViewState::new(), styler: XmlStyler::new(kind), analysis: None, validation: None, requested: None, helpers: Default::default() }
     }
 
     /// Keep `analysis`, underline its problems in the editor and offer what it says can be folded.
@@ -277,10 +267,18 @@ impl XmlCraftApp {
             view.requested = Some(version);
             self.analyzer.submit(id, version, doc.editor().buffer());
         }
-        if view.validation_requested != Some(version) {
-            view.validation_requested = Some(version);
-            self.validator.submit(id, version, doc.editor().buffer(), doc.path());
-        }
+        // F8 always checks again: what a document is checked against (a schema that is open and being edited, a DTD or a schema on
+        // disk) can change with the text of the document the same. The answer to the last request would otherwise stand for it.
+        view.validation = None;
+        view.refresh_underlines();
+        // The documents that are open are what a schema is read from first: one being edited is validated against as it is.
+        let open = self
+            .session
+            .documents()
+            .iter()
+            .filter_map(|d| d.path().map(|p| (p.to_string_lossy().into_owned(), d.editor().buffer().clone())))
+            .collect();
+        self.validator.submit(id, version, doc.editor().buffer(), doc.path(), open);
         self.validate_pending = Some((id, version));
         self.bottom_open = true;
         self.status = fmt(tl!("Validating {name}…"), &[("name", &name)]);

@@ -151,3 +151,67 @@ fn what_is_wrong_with_the_document_is_underlined_while_the_validation_is_current
     wait(&mut h, "the analysis of the new text", |app| app.validity().is_none());
     assert!(h.state().underlined().is_empty());
 }
+
+const XS: &str = "http://www.w3.org/2001/XMLSchema";
+
+fn order_schema(id_type: &str) -> String {
+    format!(
+        "<xs:schema xmlns:xs=\"{XS}\"><xs:element name=\"order\"><xs:complexType><xs:sequence><xs:element name=\"id\" type=\"{id_type}\"/></xs:sequence></xs:complexType></xs:element></xs:schema>"
+    )
+}
+
+fn order(id: &str) -> String {
+    format!(
+        "<order xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"order.xsd\">\n  <id>{id}</id>\n</order>\n"
+    )
+}
+
+#[test]
+fn f8_checks_a_document_against_the_schema_it_names() {
+    let dir = tempfile::tempdir().expect("dir");
+    file(dir.path(), "order.xsd", &order_schema("xs:int"));
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "ok.xml", &order("7")));
+    validate(&mut h);
+    assert_eq!(h.state().validity(), Some((0, 0)));
+    assert!(h.query_by_label("Valid").is_some(), "{:?}", h.state().status);
+    open(&mut h, &file(dir.path(), "bad.xml", &order("seven")));
+    validate(&mut h);
+    assert_eq!(h.state().validity(), Some((1, 0)));
+    assert!(h.query_by_label("1 validity errors").is_some());
+    assert!(h.query_by_label_contains("'seven' is not a valid integer").is_some(), "the problem is listed with the datatype's own words");
+}
+
+#[test]
+fn f8_says_when_the_schema_a_document_names_is_not_there() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "lonely.xml", &order("7")));
+    validate(&mut h);
+    assert_eq!(h.state().validity(), Some((1, 0)));
+    assert!(
+        h.query_by_label_contains("the schema 'order.xsd' could not be loaded").is_some() && h.query_by_label_contains("No such file").is_some(),
+        "the reason is shown, with the schema's name and what the system said"
+    );
+    assert!(h.query_by_label("Valid").is_none(), "an unchecked document is not called valid");
+}
+
+#[test]
+fn f8_uses_a_schema_that_is_open_as_it_is_edited() {
+    let dir = tempfile::tempdir().expect("dir");
+    // Saved: the id is an integer, so "seven" is wrong; the open copy has been changed to a string.
+    let schema = file(dir.path(), "order.xsd", &order_schema("xs:int"));
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "doc.xml", &order("seven")));
+    validate(&mut h);
+    assert_eq!(h.state().validity(), Some((1, 0)), "the saved schema wants an integer");
+    open(&mut h, &schema);
+    let editor = h.state_mut().session.active_document_mut().expect("the schema is shown").editor_mut();
+    let at = editor.text().find("xs:int").expect("the type");
+    assert!(editor.apply_edits(&[xmlcraft_text::Edit { range: at..at + "xs:int".len(), text: "xs:string".to_owned() }]));
+    // Back to the document; the schema is open, changed and not saved.
+    h.state_mut().session.set_active(Some(0));
+    h.run_steps(2);
+    validate(&mut h);
+    assert_eq!(h.state().validity(), Some((0, 0)), "the unsaved text of the schema is what counts: {}", h.state().status);
+}

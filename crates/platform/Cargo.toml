@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 xmlcraft-engine = { workspace = true }
 xmlcraft-dtd = { workspace = true }
+xmlcraft-resolve = { workspace = true }
 xmlcraft-text = { workspace = true }
 
 # The file functions are native only (on the web they are stubs, see files.rs): the web build does not resolve the atomic-write crate.

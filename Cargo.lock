@@ -4856,9 +4856,11 @@ dependencies = [
  "xmlcraft-editor",
  "xmlcraft-format",
  "xmlcraft-grammar",
+ "xmlcraft-resolve",
  "xmlcraft-syntax",
  "xmlcraft-text",
  "xmlcraft-validate",
+ "xmlcraft-xsd",
 ]
 
 [[package]]
@@ -4895,6 +4897,7 @@ dependencies = [
  "tempfile",
  "xmlcraft-dtd",
  "xmlcraft-engine",
+ "xmlcraft-resolve",
  "xmlcraft-text",
 ]
 
