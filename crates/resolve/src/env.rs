@@ -12,6 +12,12 @@ pub trait Buffers: Send + Sync {
 /// may be, is the implementation's business: the answer is the bytes or the reason there are none.
 pub trait FileAccess: Send + Sync {
     fn read(&self, path: &str) -> Result<Vec<u8>, String>;
+
+    /// What the file at `path` is, so that two paths of one file are told to be one: its spelling made plain, unless the implementation
+    /// can tell better (a file system that folds case, a link, is a place only the system knows the real name of).
+    fn identity(&self, path: &str) -> String {
+        crate::location::normalized(path)
+    }
 }
 
 /// What the cache remembers about a copy, to ask the server whether it is still current.

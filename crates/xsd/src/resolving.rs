@@ -42,6 +42,10 @@ impl<'r> ResolvingLoader<'r> {
 }
 
 impl SchemaLoader for ResolvingLoader<'_> {
+    fn identity(&self, location: &str) -> String {
+        self.resolver.identity(location)
+    }
+
     fn load(&mut self, request: &LoadRequest<'_>) -> Result<Loaded, String> {
         // The location the document gives, and then the namespace (the catalogs may know a schema by its namespace).
         let mut why = Vec::new();

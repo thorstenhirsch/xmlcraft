@@ -44,6 +44,13 @@ pub struct Loaded {
 pub trait SchemaLoader {
     /// The document the request names, or why it cannot be had.
     fn load(&mut self, request: &LoadRequest<'_>) -> Result<Loaded, String>;
+
+    /// What the document found at `location` is: two locations with the same identity are one document, read once (a file asked for as
+    /// `Types.xsd` and as `types.xsd` on a file system that folds case; a file and a link to it). The location itself unless the loader
+    /// can tell better.
+    fn identity(&self, location: &str) -> String {
+        location.to_owned()
+    }
 }
 
 /// A loader that finds nothing: a schema made of one document.
@@ -114,7 +121,7 @@ pub fn load(text: &str, location: &str, loader: &mut dyn SchemaLoader) -> Docume
         return out;
     };
     let namespace = root.target_namespace.clone();
-    by_location.entry(location.to_owned()).or_default().push(0);
+    by_location.entry(loader.identity(location)).or_default().push(0);
     out.diagnostics.extend(first.diagnostics.into_iter().map(|diagnostic| SourcedDiagnostic { source: 0, diagnostic }));
     out.list.push(LoadedDocument {
         location: location.to_owned(),
@@ -212,8 +219,9 @@ fn resolve_one(
     };
     // A document that is there already is not read again: a document with a target namespace once, one without that is included into
     // a namespace once per namespace.
+    let identity = loader.identity(&loaded.location);
     let known = by_location
-        .get(&loaded.location)
+        .get(&identity)
         .and_then(|list| list.iter().copied().find(|&i| out.list.get(i).is_some_and(|d| !d.chameleon || d.namespace == from_namespace)));
     if let Some(existing) = known {
         let target = out.list.get(existing).and_then(|d| d.document.target_namespace.clone());
@@ -243,7 +251,7 @@ fn resolve_one(
     let chameleon = request.kind != LoadKind::Import && target.is_none() && from_namespace.is_some();
     let namespace = if chameleon { from_namespace } else { target };
     let index = out.list.len();
-    by_location.entry(loaded.location.clone()).or_default().push(index);
+    by_location.entry(identity).or_default().push(index);
     out.diagnostics.extend(result.diagnostics.into_iter().map(|diagnostic| SourcedDiagnostic { source: index, diagnostic }));
     out.list.push(LoadedDocument {
         location: loaded.location,
