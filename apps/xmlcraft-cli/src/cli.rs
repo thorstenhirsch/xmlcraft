@@ -1,8 +1,9 @@
 //! What `xmlcraft-cli` does: parse the command line, then run it.
 //!
 //! - `check FILE… [--root DIR] [--json]`: check the files for well-formedness; the problems are printed as `file:line:column: severity: message`.
-//! - `validate FILE… [--root DIR] [--json]`: check the files for well-formedness and, when they are well-formed, validity against their DTD; the
-//!   problems are printed as `file:line:column: severity: message` (a problem in an external text of the DTD names that file).
+//! - `validate FILE… [--schema FILE] [--root DIR] [--json]`: check the files for well-formedness and, when they are well-formed, validity against
+//!   their DTD, or against the XML Schema they name (`xsi:schemaLocation`) or `--schema` gives; the problems are printed as
+//!   `file:line:column: severity: message` (a problem in an external text of the DTD, or in a schema document, names that file).
 //! - `format FILE [--minify] [--indent N | --tabs] [--blank-lines keep|remove] [--check | --in-place] [--root DIR]`: pretty-print (or minify) a
 //!   file; the result goes to standard output unless `--in-place`.
 //! - `check-one FILE [--edit]`: hold the engine to its promises on one file (what the fuzzer runs): exit 1 and the broken promise on standard
@@ -25,7 +26,7 @@ use xmlcraft_automation::{Automation, Content};
 
 pub const USAGE: &str = "Usage:
   xmlcraft-cli check FILE... [--root DIR] [--json]
-  xmlcraft-cli validate FILE... [--root DIR] [--json]
+  xmlcraft-cli validate FILE... [--schema FILE] [--root DIR] [--json]
   xmlcraft-cli format FILE [--minify] [--indent N | --tabs] [--blank-lines keep|remove] [--check | --in-place] [--root DIR]
   xmlcraft-cli tools [--json]
   xmlcraft-cli check-one FILE [--edit]
@@ -50,6 +51,8 @@ pub enum Command {
     },
     Validate {
         files: Vec<String>,
+        /// An XML Schema to validate against, instead of the DTD or the schema the documents name.
+        schema: Option<String>,
         root: Option<PathBuf>,
         json: bool,
     },
@@ -166,6 +169,8 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
         }
         command @ ("check" | "validate") => {
             let root = take_option(&mut rest, "--root")?.map(PathBuf::from);
+            // Only `validate` has a schema to give; for `check` the option stays in `rest` and is refused below.
+            let schema = if command == "validate" { take_option(&mut rest, "--schema")? } else { None };
             let json = take_flag(&mut rest, "--json");
             if let Some(flag) = rest.iter().find(|a| a.starts_with("--")) {
                 return Err(format!("unknown option {flag}"));
@@ -173,7 +178,7 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
             if rest.is_empty() {
                 return Err(format!("{command} needs at least one file"));
             }
-            Ok(if command == "check" { Command::Check { files: rest, root, json } } else { Command::Validate { files: rest, root, json } })
+            Ok(if command == "check" { Command::Check { files: rest, root, json } } else { Command::Validate { files: rest, schema, root, json } })
         }
         "format" => {
             let root = take_option(&mut rest, "--root")?.map(PathBuf::from);
@@ -301,8 +306,8 @@ pub fn execute(command: Command, out: &mut impl Write, err: &mut impl Write) -> 
                 },
             }
         }
-        Command::Check { files, root, json } => check("xml_wellformed", &files, root, json, out, err),
-        Command::Validate { files, root, json } => check("xml_validate", &files, root, json, out, err),
+        Command::Check { files, root, json } => check("xml_wellformed", &files, None, root, json, out, err),
+        Command::Validate { files, schema, root, json } => check("xml_validate", &files, schema.as_deref(), root, json, out, err),
         Command::Format { file, options, root, mode } => format_file(&file, options, root, mode, out, err),
         Command::Run { tool, args, root } => {
             let mut automation = match automation(root) {
@@ -392,19 +397,45 @@ fn value_of(content: Vec<Content>) -> Value {
     }
 }
 
-/// `check` and `validate`: every file through `xml_wellformed` or `xml_validate`. Exit 1 if any file has an error or cannot be read.
-fn check(tool: &str, files: &[String], root: Option<PathBuf>, as_json: bool, out: &mut impl Write, err: &mut impl Write) -> u8 {
+/// A schema given on the command line, as the tool wants it: the tool takes a relative schema from the folder of the document, but a
+/// path typed after `--schema` is read like the files are, from the root when there is one and otherwise from the current folder.
+fn schema_path(schema: &str, root: Option<&PathBuf>) -> Result<String, String> {
+    let given = std::path::Path::new(schema);
+    let joined = match root {
+        Some(root) if given.is_relative() => root.join(given),
+        _ => given.to_path_buf(),
+    };
+    let absolute = std::path::absolute(&joined).map_err(|e| format!("--schema {schema}: {e}"))?;
+    absolute.to_str().map(str::to_owned).ok_or_else(|| format!("--schema {schema}: the path is not valid UTF-8"))
+}
+
+/// `check` and `validate`: every file through `xml_wellformed` or `xml_validate`. Exit 1 if any file has an error or cannot be read, or, for
+/// `validate`, has no schema or DTD to be valid against, or a schema with errors.
+fn check(tool: &str, files: &[String], schema: Option<&str>, root: Option<PathBuf>, as_json: bool, out: &mut impl Write, err: &mut impl Write) -> u8 {
+    let schema = match schema.map(|s| schema_path(s, root.as_ref())).transpose() {
+        Ok(schema) => schema,
+        Err(e) => return fail(err, &e),
+    };
     let mut automation = match automation(root) {
         Ok(a) => a,
         Err(e) => return fail(err, &e),
     };
     let (mut code, mut results) = (0u8, Vec::new());
     for file in files {
-        match automation.call(tool, &json!({ "path": file })) {
+        let mut arguments = json!({ "path": file });
+        if let (Some(schema), Some(map)) = (&schema, arguments.as_object_mut()) {
+            map.insert("schema".into(), json!(schema));
+        }
+        match automation.call(tool, &arguments) {
             Ok(content) => {
                 let result = value_of(content);
-                if result["errors"].as_u64().unwrap_or(0) > 0 {
+                // A schema that has errors makes the verdict doubtful, and a document with no schema was not validated at all.
+                let doubtful = result["schema_errors"].as_u64().unwrap_or(0) > 0 || result["note"].is_string();
+                if result["errors"].as_u64().unwrap_or(0) > 0 || doubtful {
                     code = 1;
+                }
+                if let (false, Some(note)) = (as_json, result["note"].as_str()) {
+                    let _ = writeln!(err, "xmlcraft-cli: {file}: {note}");
                 }
                 // Bytes that are not valid in the file's encoding were read as U+FFFD: what was checked is not quite the file.
                 if result["lossy"] == true {
@@ -429,7 +460,7 @@ fn check(tool: &str, files: &[String], root: Option<PathBuf>, as_json: bool, out
                             ),
                         );
                     }
-                    if result["well_formed"] == true && result["warnings"].as_u64() == Some(0) && result["errors"].as_u64() == Some(0) {
+                    if result["well_formed"] == true && result["warnings"].as_u64() == Some(0) && result["errors"].as_u64() == Some(0) && !doubtful {
                         say(out, &format!("{file}: {}", if tool == "xml_validate" { "valid" } else { "well-formed" }));
                     }
                 }
@@ -788,21 +819,88 @@ mod tests {
         let good = path("good.xml", "<!DOCTYPE r [<!ELEMENT r EMPTY>]><r/>");
         let bad = path("bad.xml", "<!DOCTYPE r [<!ELEMENT r EMPTY>]>\n<r>text</r>");
         let external = path("external.xml", "<!DOCTYPE r SYSTEM \"r.dtd\">\n<r><a/></r>");
-        let (code, out, _) = run(Command::Validate { files: vec![good.clone()], root: None, json: false });
+        let (code, out, _) = run(Command::Validate { files: vec![good.clone()], schema: None, root: None, json: false });
         assert_eq!((code, out.trim()), (0, format!("{good}: valid").as_str()));
-        let (code, out, _) = run(Command::Validate { files: vec![bad.clone()], root: None, json: false });
+        let (code, out, _) = run(Command::Validate { files: vec![bad.clone()], schema: None, root: None, json: false });
         assert_eq!(code, 1);
         assert!(out.contains(&format!("{bad}:2:4: error: The element 'r' is declared EMPTY, but it has content.")), "{out}");
         // A well-formedness check does not look at validity.
         assert_eq!(run(Command::Check { files: vec![bad.clone()], root: None, json: false }).0, 0);
         // A problem in the DTD's own file is named by that file and its line.
-        let (code, out, _) = run(Command::Validate { files: vec![external], root: None, json: false });
+        let (code, out, _) = run(Command::Validate { files: vec![external], schema: None, root: None, json: false });
         assert_eq!(code, 1);
         assert!(out.contains("r.dtd:3:") && out.contains("must be #IMPLIED or #REQUIRED"), "{out}");
-        let (code, out, _) = run(Command::Validate { files: vec![bad], root: None, json: true });
+        let (code, out, _) = run(Command::Validate { files: vec![bad], schema: None, root: None, json: true });
         assert_eq!((code, serde_json::from_str::<Value>(&out).expect("JSON")[0]["result"]["valid"].clone()), (1, json!(false)));
-        assert_eq!(parse(&args("validate a.xml --json")), Ok(Command::Validate { files: vec!["a.xml".into()], root: None, json: true }));
+        assert_eq!(
+            parse(&args("validate a.xml --json")),
+            Ok(Command::Validate { files: vec!["a.xml".into()], schema: None, root: None, json: true })
+        );
         assert!(parse(&args("validate")).expect_err("no file").contains("validate needs at least one file"));
+    }
+
+    #[test]
+    fn validate_checks_against_an_xml_schema_given_or_named() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = |name: &str, text: &str| {
+            let p = dir.path().join(name);
+            std::fs::write(&p, text).expect("writes");
+            p.to_str().expect("utf-8").to_owned()
+        };
+        let xsd = path(
+            "r.xsd",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="r"><xs:complexType><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+        );
+        let good = path("good.xml", "<r><a>1</a></r>");
+        let bad = path("bad.xml", "<r>\n  <a>one</a>\n</r>");
+        let named =
+            path("named.xml", r#"<r xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="r.xsd"><a>x</a></r>"#);
+        let validate = |files: Vec<String>, schema: Option<String>, root: Option<PathBuf>, json| run(Command::Validate { files, schema, root, json });
+        let (code, out, _) = validate(vec![good.clone()], Some(xsd.clone()), None, false);
+        assert_eq!((code, out.trim()), (0, format!("{good}: valid").as_str()));
+        let (code, out, _) = validate(vec![bad.clone()], Some(xsd.clone()), None, false);
+        assert_eq!(code, 1);
+        assert!(out.contains(&format!("{bad}:2:4: error: The value of the element 'a' is not valid")) && !out.contains(": valid"), "{out}");
+        // The schema a document names is followed when none is given.
+        let (code, out, _) = validate(vec![named.clone()], None, None, false);
+        assert_eq!(code, 1);
+        assert!(out.contains(&format!("{named}:")), "{out}");
+        // A relative schema is read from the root, as the files are.
+        let (code, out, _) = validate(vec!["good.xml".into()], Some("r.xsd".into()), Some(dir.path().to_path_buf()), false);
+        assert_eq!((code, out.trim()), (0, "good.xml: valid"));
+        // A schema with an error in a part the document does not use still has an error: the problem names the schema's file, and the
+        // exit code says so, though the document itself was found valid.
+        let flawed = path(
+            "flawed.xsd",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="r" type="xs:string"/><xs:element name="unused" type="nope"/></xs:schema>"#,
+        );
+        let plain = path("plain.xml", "<r>x</r>");
+        let (code, out, _) = validate(vec![plain.clone()], Some(flawed.clone()), None, false);
+        assert_eq!(code, 1);
+        assert!(out.contains(&format!("{flawed}:1:127: error: The type 'nope' is not defined.")) && !out.contains(": valid"), "{out}");
+        // A schema that cannot be read leaves the document unchecked: that is not "valid".
+        let (code, out, err) = validate(vec![good.clone()], Some(format!("{xsd}.missing")), None, false);
+        assert_eq!(code, 1);
+        assert!(!out.contains("valid") && err.contains(&good), "{out} / {err}");
+        // A schema that is not inside the root is refused.
+        let outside = tempfile::tempdir().expect("temp dir");
+        let elsewhere = outside.path().join("r.xsd");
+        std::fs::copy(&xsd, &elsewhere).expect("copies");
+        let (code, out, err) =
+            validate(vec!["good.xml".into()], Some(elsewhere.to_str().expect("utf-8").to_owned()), Some(dir.path().to_path_buf()), false);
+        assert_eq!(code, 1);
+        assert!(!out.contains("valid") && !err.is_empty(), "{out} / {err}");
+        // JSON carries the verdict too.
+        let (code, out, _) = validate(vec![good], Some(xsd), None, true);
+        let result = serde_json::from_str::<Value>(&out).expect("JSON");
+        assert_eq!((code, result[0]["result"]["kind"].clone(), result[0]["result"]["valid"].clone()), (0, json!("xsd"), json!(true)));
+        // Only `validate` takes a schema.
+        assert_eq!(
+            parse(&args("validate a.xml --schema s.xsd --root r")),
+            Ok(Command::Validate { files: vec!["a.xml".into()], schema: Some("s.xsd".into()), root: Some("r".into()), json: false })
+        );
+        assert!(parse(&args("check a.xml --schema s.xsd")).expect_err("check has no schema").contains("unknown option --schema"));
+        assert!(parse(&args("validate a.xml --schema")).expect_err("needs a value").contains("--schema needs a value"));
     }
 
     #[test]
