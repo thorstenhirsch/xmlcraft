@@ -170,6 +170,7 @@ impl XmlCraftApp {
             "xml.pretty_print" => self.reformat(false),
             "xml.minify" => self.reformat(true),
             "xml.assign_schema" => self.open_assign_schema(),
+            "app.about" => self.open_about(),
             "xml.generate_schema" => self.open_generate_schema(),
             "xml.generate_sample" => self.open_generate_sample(),
             "edit.select_all" => {

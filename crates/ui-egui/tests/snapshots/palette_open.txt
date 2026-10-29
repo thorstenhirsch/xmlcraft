@@ -43,4 +43,4 @@ Button "Messages"
 Button "Use system theme"
 Button "Light theme"
 Button "Dark theme"
-Button "Save" [disabled]
+Button "About XmlCraft"
