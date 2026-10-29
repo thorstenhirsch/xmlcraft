@@ -160,7 +160,7 @@ impl XmlCraftApp {
     }
 
     /// A new document that is not a file yet, with `text`, shown.
-    fn open_generated(&mut self, name: &str, text: &str) {
+    pub(crate) fn open_generated(&mut self, name: &str, text: &str) {
         let index = self.session.new_document();
         if let Some(doc) = self.session.document_mut(index) {
             doc.name_untitled(name);

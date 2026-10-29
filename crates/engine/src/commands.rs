@@ -189,6 +189,7 @@ pub const MENUS: &[&str] = &["File", "Edit", "XML", "View", "Help"];
 /// Every command, in menu order.
 pub const COMMANDS: &[CommandSpec] = &[
     c("file.new", "New", FILE, Some(Shortcut::cmd("N")), Nothing, "file-plus"),
+    c("file.new_from_template", "New from Template…", FILE, Some(Shortcut::cmd_shift("N")), Nothing, "file-plus"),
     c("file.open", "Open…", FILE, Some(Shortcut::cmd("O")), Nothing, "folder-open"),
     c("file.clear_recent", "Clear Recent Files", FILE, None, Nothing, "trash-2"),
     c("file.save", "Save", FILE, Some(Shortcut::cmd("S")), Needs::Document, "save").sep(),
@@ -311,7 +312,17 @@ mod tests {
         assert!(view.contains(&"view.theme.dark"));
         assert_eq!(
             in_menu("File").map(|c| c.id).collect::<Vec<_>>(),
-            ["file.new", "file.open", "file.clear_recent", "file.save", "file.save_as", "file.revert", "file.close", "file.quit"]
+            [
+                "file.new",
+                "file.new_from_template",
+                "file.open",
+                "file.clear_recent",
+                "file.save",
+                "file.save_as",
+                "file.revert",
+                "file.close",
+                "file.quit"
+            ]
         );
         assert_eq!(
             in_menu("Edit").map(|c| c.id).collect::<Vec<_>>(),

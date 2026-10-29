@@ -10,9 +10,18 @@ use crate::theme::{self, Tokens};
 /// How many of the recent files the card lists.
 const SHOWN_RECENT: usize = 8;
 
-/// The pre-alpha welcome card. It says what exists today; the list of what arrives is the roadmap's. Below it, the files opened lately:
-/// the one clicked is returned.
-pub fn show(ui: &mut egui::Ui, recent: &[PathBuf]) -> Option<PathBuf> {
+/// What was chosen on the home view.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Choice {
+    /// A recent file.
+    Open(PathBuf),
+    /// A registered command (New, New from Template…, Open…).
+    Command(&'static str),
+}
+
+/// The welcome card, with the ways to begin: a new document, one from a template, a file. It says what exists today; the list of what
+/// arrives is the roadmap's. Below it, the files opened lately. The thing chosen is returned.
+pub fn show(ui: &mut egui::Ui, recent: &[PathBuf]) -> Option<Choice> {
     let mut chosen = None;
     let t = Tokens::get(ui.ctx());
     let avail = ui.available_size();
@@ -42,11 +51,23 @@ pub fn show(ui: &mut egui::Ui, recent: &[PathBuf]) -> Option<PathBuf> {
                         ui.add_space(4.0);
                         ui.label(
                             egui::RichText::new(tl!(
-                                "The window and its panes are in place. Editing, schemas and validation arrive milestone by milestone."
+                                "Editing, validation against DTDs and XML Schemas, and schema and sample generation are in place. The rest arrives milestone by milestone."
                             ))
                             .font(theme::regular(12.5))
                             .color(t.text_muted),
                         );
+                        ui.add_space(14.0);
+                        // The buttons wrap when the window is narrow; with room to spare they are centred.
+                        ui.horizontal_wrapped(|ui| {
+                            ui.add_space(((ui.available_width() - 330.0) / 2.0).max(0.0));
+                            for (label, command) in
+                                [(tl!("New"), "file.new"), (tl!("New from Template…"), "file.new_from_template"), (tl!("Open…"), "file.open")]
+                            {
+                                if ui.button(label).clicked() {
+                                    chosen = Some(Choice::Command(command));
+                                }
+                            }
+                        });
                     });
                     if !recent.is_empty() {
                         ui.add_space(18.0);
@@ -56,7 +77,7 @@ pub fn show(ui: &mut egui::Ui, recent: &[PathBuf]) -> Option<PathBuf> {
                             ui.add_space(4.0);
                             for path in recent.iter().take(SHOWN_RECENT) {
                                 if recent_row(ui, &t, path) {
-                                    chosen = Some(path.clone());
+                                    chosen = Some(Choice::Open(path.clone()));
                                 }
                             }
                         });

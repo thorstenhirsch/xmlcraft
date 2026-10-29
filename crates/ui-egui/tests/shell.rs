@@ -72,7 +72,8 @@ fn the_rail_reopens_entry_helpers() {
 fn new_opens_an_untitled_document_and_open_is_enabled() {
     let mut h = shell();
     assert!(!h.get_by_label("Open").accesskit_node().is_disabled());
-    h.get_by_label("New").click();
+    // The tab strip's button is the first; the home view has one of its own.
+    h.query_all_by_label("New").next().expect("the button of the tab strip").click();
     h.run_steps(3);
     assert_eq!(h.state().tabs().iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), ["Untitled-1"]);
     assert!(h.query_by_label("XML editor").is_some(), "the editor shows");
