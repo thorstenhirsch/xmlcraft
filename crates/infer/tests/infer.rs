@@ -317,6 +317,16 @@ fn a_dtd_lists_the_roots_first() {
 }
 
 #[test]
+fn an_element_that_only_has_white_space_is_text_not_empty() {
+    // An EMPTY element may not hold even a space, so an element that was seen with one is not empty.
+    let docs = ["<r><a> </a><b/></r>"];
+    let text = &generate(&docs, xsd(Layout::RussianDoll)).files[0].text;
+    assert!(text.contains("<xs:element name=\"a\" type=\"xs:string\"/>") && text.contains("<xs:element name=\"b\">"), "{text}");
+    assert!(generate(&docs, dtd()).files[0].text.contains("<!ELEMENT a (#PCDATA)>"));
+    assert_all_validate(&docs);
+}
+
+#[test]
 fn what_cannot_be_read_is_said() {
     assert_eq!(infer(&[], &Options::default()), Err(InferError::NoDocuments));
     let err = infer(&["<a/>", "<a><b></a>"], &Options::default()).expect_err("the second is broken");
