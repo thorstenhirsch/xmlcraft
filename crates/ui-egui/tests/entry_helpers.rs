@@ -189,6 +189,8 @@ fn taking_the_doctype_away_takes_the_choices_away() {
     open_at(&mut h, dir.path(), &format!("{DTD}<r>¦</r>"));
     assert!(h.query_by_label("a (required)").is_some());
     edit(&mut h, 0..DTD.len(), "");
+    // The grammar goes when the worker has read the text again; on a busy machine that is not within the first frames.
+    wait(&mut h, "the grammar to go", |app| !app.has_grammar());
     assert!(h.query_by_label("No DTD").is_some() && h.query_by_label("a (required)").is_none());
     assert!(!h.state().has_grammar());
 }
