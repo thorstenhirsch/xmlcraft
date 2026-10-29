@@ -1,0 +1,25 @@
+[package]
+name = "xmlcraft-sample"
+description = "XmlCraft's sample generator: an XML document generated from an XML Schema or a DTD"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+regex-syntax = { workspace = true }
+xmlcraft-datatypes = { workspace = true }
+xmlcraft-dtd = { workspace = true }
+xmlcraft-pattern = { workspace = true }
+xmlcraft-syntax = { workspace = true }
+xmlcraft-xsd = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+xmlcraft-infer = { workspace = true }
+xmlcraft-schemas = { workspace = true }
+xmlcraft-validate = { workspace = true }
