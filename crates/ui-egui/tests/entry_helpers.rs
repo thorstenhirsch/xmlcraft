@@ -50,6 +50,13 @@ fn text(h: &Harness<'static, XmlCraftApp>) -> String {
 /// A double click on the row `label`. Time passes first, so that an earlier click is not counted with these.
 fn double_click(h: &mut Harness<'static, XmlCraftApp>, label: &str) {
     h.run_steps(30);
+    // The name of an element is the label of its row here and of its row in the Outline, which follows an edit a little later (on a
+    // worker): the row to click is the only one when the Outline has caught up.
+    let started = Instant::now();
+    while h.query_all_by_label(label).count() > 1 && started.elapsed() < Duration::from_secs(10) {
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(5));
+    }
     let at = h.get_by_label(label).rect().center();
     h.hover_at(at);
     for pressed in [true, false, true, false] {
