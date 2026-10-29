@@ -42,6 +42,8 @@ pub(crate) enum Dialog {
     },
     /// Asks for a line (and column) to go to; the answer is typed into the app's `goto_input`.
     GoToLine,
+    /// Which DTD or schema to assign to the document (drawn by `assign.rs`).
+    AssignSchema(Box<crate::assign::AssignForm>),
     Message {
         title: String,
         text: String,
@@ -55,7 +57,7 @@ impl Dialog {
         match self {
             Dialog::Unsaved { then, .. } => *then == AfterClose::Quit,
             Dialog::OverwriteChanged { then, .. } | Dialog::Unmappable { then, .. } | Dialog::Lossy { then, .. } => *then == Some(AfterClose::Quit),
-            Dialog::Reload { .. } | Dialog::ConfirmRevert { .. } | Dialog::Message { .. } | Dialog::GoToLine => false,
+            Dialog::Reload { .. } | Dialog::ConfirmRevert { .. } | Dialog::Message { .. } | Dialog::GoToLine | Dialog::AssignSchema(_) => false,
         }
     }
 }
@@ -145,11 +147,17 @@ impl XmlCraftApp {
             Dialog::Message { title, text } => {
                 Describe { title: title.clone(), text: text.clone(), buttons: vec![(tl!("OK"), Choice::Ok)], input: false }
             }
+            // A form, drawn by `assign.rs`; this is only here to be total.
+            Dialog::AssignSchema(_) => Describe { title: String::new(), text: String::new(), buttons: vec![(tl!("Cancel"), Choice::Cancel)], input: false },
         }
     }
 
     /// Draw the question being asked, if any, and act on the answer.
     pub(crate) fn show_dialog(&mut self, ctx: &egui::Context) {
+        if matches!(self.dialog, Some(Dialog::AssignSchema(_))) {
+            self.show_assign(ctx);
+            return;
+        }
         let Some(dialog) = self.dialog.clone() else { return };
         let t = Tokens::get(ctx);
         let described = self.describe(&dialog);

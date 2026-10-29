@@ -4974,6 +4974,7 @@ dependencies = [
  "xmlcraft-format",
  "xmlcraft-grammar",
  "xmlcraft-platform",
+ "xmlcraft-resolve",
  "xmlcraft-syntax",
  "xmlcraft-text",
 ]

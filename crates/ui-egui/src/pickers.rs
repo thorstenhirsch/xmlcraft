@@ -16,6 +16,8 @@ use crate::documents::AfterClose;
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))] // only the native panels ask
 pub(crate) enum PickFor {
     Open,
+    /// A schema or a DTD for the Assign Schema dialog.
+    SchemaFile,
     /// Save the document with this id under the chosen name; afterwards do `then`.
     SaveAs {
         id: u64,
@@ -76,6 +78,14 @@ impl XmlCraftApp {
         // files with many other extensions, and a chooser that enforces a filter would hide them).
         let dialog = rfd::AsyncFileDialog::new().set_title(crate::i18n::tl!("Open"));
         self.ask(ctx, PickFor::Open, Ask::Open(dialog))
+    }
+
+    /// Show the panel that chooses the schema or the DTD to assign to a document.
+    pub(crate) fn pick_schema_file(&mut self, ctx: &egui::Context) -> bool {
+        let dialog = rfd::AsyncFileDialog::new()
+            .set_title(crate::i18n::tl!("Choose a schema or a DTD"))
+            .add_filter(crate::i18n::tl!("Schemas and DTDs"), &["xsd", "dtd", "ent", "mod", "xml"]);
+        self.ask(ctx, PickFor::SchemaFile, Ask::Open(dialog))
     }
 
     /// Show the Save As panel for the document with this id.
@@ -147,6 +157,11 @@ impl XmlCraftApp {
         false
     }
 
+    pub(crate) fn pick_schema_file(&mut self, _ctx: &egui::Context) -> bool {
+        self.status = crate::i18n::tl!("Opening files is not available in the browser yet").to_owned();
+        false
+    }
+
     pub(crate) fn pick_save_as(&mut self, _ctx: &egui::Context, _id: u64, _then: Option<AfterClose>) -> bool {
         self.status = crate::i18n::tl!("Saving files is not available in the browser yet").to_owned();
         false
@@ -161,6 +176,11 @@ impl XmlCraftApp {
             self.pickers.showing.store(false, Ordering::SeqCst);
             match (what, paths.is_empty()) {
                 (PickFor::Open, false) => self.open_paths(paths.iter().map(PathBuf::as_path)),
+                (PickFor::SchemaFile, false) => {
+                    if let Some(path) = paths.first() {
+                        self.picked_schema_file(path);
+                    }
+                }
                 (PickFor::SaveAs { id, then }, false) => {
                     if let Some(path) = paths.into_iter().next() {
                         self.save_document_as(ctx, id, path, then);
@@ -168,7 +188,7 @@ impl XmlCraftApp {
                 }
                 // Cancelled: a quit that was waiting for this answer is off.
                 (PickFor::SaveAs { .. }, true) => self.quitting = false,
-                (PickFor::Open, true) => {}
+                (PickFor::Open | PickFor::SchemaFile, true) => {}
             }
         }
     }

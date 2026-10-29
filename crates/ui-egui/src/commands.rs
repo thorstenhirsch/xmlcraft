@@ -169,6 +169,7 @@ impl XmlCraftApp {
             "xml.validate" => self.validate_now(),
             "xml.pretty_print" => self.reformat(false),
             "xml.minify" => self.reformat(true),
+            "xml.assign_schema" => self.open_assign_schema(),
             "edit.select_all" => {
                 if let Some(doc) = self.session.active_document_mut() {
                     doc.editor_mut().select_all();
