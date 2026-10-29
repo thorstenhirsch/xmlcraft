@@ -1,9 +1,9 @@
 name: Conformance
 
-# The W3C XML conformance suite (xmlconf) against XmlCraft, with the ratchet in xtask/baselines/: a new failure fails the run, and so does
-# a fixed test that is still listed. The suite is fetched (pinned by URL and SHA-256) into the ignored conformance/ directory, which is
-# why this is its own workflow: the gate in ci.yml skips it when it is not there. Weekly, by hand, and when the ratchet, the runner or
-# the code under test (the parser and the text layer) changes. More suites are added here as they land.
+# The W3C XML conformance suite (xmlconf) and the W3C XML Schema Test Suite (xsdtests) against XmlCraft, with the ratchets in
+# xtask/baselines/: a new failure fails the run, and so does a fixed test that is still listed. The suite is fetched (pinned by URL and SHA-256) into the ignored conformance/ directory, which is
+# why this is its own workflow: the gate in ci.yml skips it when it is not there. Weekly, by hand, and when a ratchet, a runner or
+# the code under test (the parser, the text layer, the DTD and schema engines) changes. More suites are added here as they land.
 on:
   workflow_dispatch:
   schedule:
@@ -11,9 +11,18 @@ on:
   pull_request:
     paths:
       - "xtask/src/conformance.rs"
+      - "xtask/src/xsdtests.rs"
       - "xtask/baselines/**"
       - "crates/syntax/**"
       - "crates/text/**"
+      - "crates/dtd/**"
+      - "crates/xsd/**"
+      - "crates/validate/**"
+      - "crates/datatypes/**"
+      - "crates/pattern/**"
+      - "crates/grammar/**"
+      - "crates/resolve/**"
+      - "crates/schemas/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/conformance.yml"
@@ -56,3 +65,28 @@ jobs:
       # Prints the pass rate per kind of test and fails on any difference from xtask/baselines/xmlconf.txt.
       - name: W3C XML conformance suite
         run: cargo xtask conformance xmlconf --fetch --verbose
+
+  xsdtests:
+    name: xsdtests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          prefix-key: v1-rust-conformance
+          key: ${{ hashFiles('Cargo.toml') }}
+          save-if: false
+
+      # Prints the pass rate for schemas and for instances, by contributor, and fails on any difference from xtask/baselines/xsdtests.txt.
+      - name: W3C XML Schema Test Suite
+        run: cargo xtask conformance xsdtests --fetch --verbose
