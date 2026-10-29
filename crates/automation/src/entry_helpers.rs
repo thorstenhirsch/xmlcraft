@@ -1,16 +1,17 @@
 //! `xml_entry_helpers`: what the DTD of a document allows at a place (the elements that may come, the attributes of the element the place
 //! is in, the entities that can be referred to), and the text each would put in. The DTD is read the way validation reads it: its external
 //! parts are files read through the root confinement; nothing is downloaded. A document with no DOCTYPE that names an XML Schema
-//! (`xsi:schemaLocation`, `xsi:noNamespaceSchemaLocation`) is answered from the schema instead: the same lists, from the declarations
+//! (`xsi:schemaLocation`, `xsi:noNamespaceSchemaLocation`, or else the schema that ships with the app for the namespace of its root element) is answered from the schema instead: the same lists, from the declarations
 //! of the type of the element the place is in (and the values its text or an attribute may have).
 
 use serde_json::{Value, json};
 use xmlcraft_complete::{Choices, choices_at, element_snippet, xsd_choices_at, xsd_element_snippet};
 use xmlcraft_dtd::doctype_parts;
+use xmlcraft_engine::xsd_schemas::implicit_hints;
 use xmlcraft_platform::subset::FileSubsetLoader;
 use xmlcraft_syntax::{SyntaxNode, parse};
 use xmlcraft_text::Buffer;
-use xmlcraft_validate::{load_hinted, schema_hints};
+use xmlcraft_validate::{load_hinted, root_namespace, schema_hints};
 use xmlcraft_xsd::ResolvingLoader;
 
 use crate::documents::{fail, json_result, position_arg, position_json, source, source_and_position_properties};
@@ -85,7 +86,11 @@ fn xsd_answer(
     lossy: bool,
 ) -> Result<Vec<Content>> {
     let nothing = |why: &str| json_result(json!({ "grammar": false, "why": why, "lossy": lossy }));
-    let hints = schema_hints(root);
+    // The schemas the document names; when it names none, the one known for the namespace of its root element (in the catalogs or
+    // the bundle), which is what an XML Schema document, or any other of a namespace that ships with the app, is offered things from.
+    let named = schema_hints(root);
+    let implicit = named.is_empty();
+    let hints = if implicit { root_namespace(root).map(|ns| implicit_hints(&ns)).unwrap_or_default() } else { named };
     if hints.is_empty() {
         return nothing("the document has no DOCTYPE and names no schema");
     }
@@ -93,6 +98,8 @@ fn xsd_answer(
     let mut loader = ResolvingLoader::new(&resolver);
     let loaded = match load_hinted(hints, location, &mut loader) {
         Ok(loaded) => loaded,
+        // A schema the document did not name, and there is none for its namespace: the same as naming none.
+        Err(_) if implicit => return nothing("the document has no DOCTYPE and names no schema, and none is known for its namespace"),
         Err(miss) => return nothing(&miss.why),
     };
     let schema = &loaded.assembly.schema;

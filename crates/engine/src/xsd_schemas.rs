@@ -47,6 +47,12 @@ pub fn xsd_key(hints: &[SchemaHint], path: Option<&Path>, open: &[(String, u64)]
     hasher.finish()
 }
 
+/// What to ask for when a document names no schema but its root element is in `namespace`: the schema the catalogs or the bundle know
+/// for it (the namespace is asked for as a location, which they answer by what they map it to).
+pub fn implicit_hints(namespace: &str) -> Vec<SchemaHint> {
+    vec![SchemaHint { namespace: Some(namespace.to_owned()), location: namespace.to_owned() }]
+}
+
 struct Request {
     key: u64,
     hints: Vec<SchemaHint>,
@@ -135,6 +141,11 @@ mod tests {
 
     fn hint(location: &str) -> SchemaHint {
         SchemaHint { namespace: None, location: location.to_owned() }
+    }
+
+    #[test]
+    fn the_schema_for_a_namespace_is_asked_for_by_the_namespace() {
+        assert_eq!(implicit_hints("urn:a"), [SchemaHint { namespace: Some("urn:a".to_owned()), location: "urn:a".to_owned() }]);
     }
 
     #[test]

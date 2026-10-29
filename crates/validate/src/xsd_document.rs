@@ -186,27 +186,59 @@ pub struct SchemaHint {
     pub location: String,
 }
 
+/// The start tag of the root element of a parsed document.
+fn root_start_tag(root: &SyntaxNode) -> Option<SyntaxNode> {
+    root.children().find(|c| c.kind() == SyntaxKind::Element)?.children().find(|c| c.kind() == SyntaxKind::StartTag)
+}
+
+/// The attributes of a start tag as (name, value): the value without its quotes and with its references replaced.
+fn start_tag_attributes(start: &SyntaxNode) -> Vec<(String, String)> {
+    start
+        .children()
+        .filter(|c| c.kind() == SyntaxKind::Attribute)
+        .filter_map(|attribute| {
+            let name = attribute.children_with_tokens().filter_map(|c| c.into_token()).find(|t| t.kind() == SyntaxKind::Name)?;
+            let value = attribute.children().find(|c| c.kind() == SyntaxKind::AttrValue)?.text().to_string();
+            let inner = match (value.chars().next(), value.chars().last()) {
+                (Some(open @ ('"' | '\'')), Some(close)) if open == close && value.len() >= 2 => value.get(1..value.len() - 1).unwrap_or_default(),
+                _ => value.as_str(),
+            };
+            Some((name.text().to_owned(), unescape(inner)))
+        })
+        .collect()
+}
+
+/// The namespace the root element of a parsed document is in: that of the prefix of its name, or the default namespace, as the element
+/// itself declares them. None for a document with no root element, one in no namespace, and one that uses a prefix it does not declare.
+pub fn root_namespace(root: &SyntaxNode) -> Option<String> {
+    let start = root_start_tag(root)?;
+    let name = start.children_with_tokens().filter_map(|c| c.into_token()).find(|t| t.kind() == SyntaxKind::Name)?;
+    let mut scope = Scope(Vec::new());
+    for (attribute, value) in start_tag_attributes(&start) {
+        match attribute.as_str() {
+            "xmlns" => scope.0.push((None, value)),
+            other => {
+                if let Some(prefix) = other.strip_prefix("xmlns:") {
+                    scope.0.push((Some(prefix.to_owned()), value));
+                }
+            }
+        }
+    }
+    scope.expand(name.text(), true).namespace
+}
+
 /// The schemas the root element of a parsed document names: the pairs of `xsi:schemaLocation` (an odd word at the end is ignored) and
 /// the `xsi:noNamespaceSchemaLocation`, in that order.
 pub fn schema_hints(root: &SyntaxNode) -> Vec<SchemaHint> {
-    let Some(element) = root.children().find(|c| c.kind() == SyntaxKind::Element) else { return Vec::new() };
-    let Some(start) = element.children().find(|c| c.kind() == SyntaxKind::StartTag) else { return Vec::new() };
+    let Some(start) = root_start_tag(root) else { return Vec::new() };
     let mut scope = Scope(Vec::new());
     let mut written: Vec<(String, String)> = Vec::new();
-    for attribute in start.children().filter(|c| c.kind() == SyntaxKind::Attribute) {
-        let Some(name) = attribute.children_with_tokens().filter_map(|c| c.into_token()).find(|t| t.kind() == SyntaxKind::Name) else { continue };
-        let Some(value) = attribute.children().find(|c| c.kind() == SyntaxKind::AttrValue) else { continue };
-        let text = value.text().to_string();
-        let inner = match (text.chars().next(), text.chars().last()) {
-            (Some(open @ ('"' | '\'')), Some(close)) if open == close && text.len() >= 2 => text.get(1..text.len() - 1).unwrap_or_default(),
-            _ => text.as_str(),
-        };
-        let inner = unescape(inner);
-        match name.text() {
-            "xmlns" => scope.0.push((None, inner)),
+    for (name, value) in start_tag_attributes(&start) {
+        match name.as_str() {
+            "xmlns" => scope.0.push((None, value)),
             other => match other.strip_prefix("xmlns:") {
-                Some(prefix) => scope.0.push((Some(prefix.to_owned()), inner)),
-                None => written.push((other.to_owned(), inner)),
+                Some(prefix) => scope.0.push((Some(prefix.to_owned()), value)),
+                None => written.push((other.to_owned(), value)),
             },
         }
     }

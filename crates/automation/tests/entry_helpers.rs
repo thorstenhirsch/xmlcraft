@@ -261,3 +261,52 @@ fn a_namespace_declaration_a_name_needs_is_said_with_it() {
     assert_eq!(attribute["attributes"][0]["name"], "ns1:a", "{attribute}");
     assert_eq!(attribute["attributes"][0]["declare"], json!({ "prefix": "ns1", "namespace": "urn:q" }), "{attribute}");
 }
+
+const XS_NS: &str = "http://www.w3.org/2001/XMLSchema";
+
+#[test]
+fn an_xml_schema_document_is_offered_what_xml_schema_allows_though_it_names_no_schema() {
+    let mut a = Automation::new();
+    let text = format!(
+        "<xs:schema xmlns:xs=\"{XS_NS}\"><xs:element name=\"e\"><xs:complexType><xs:sequence><xs:element name=\"l\" ></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"
+    );
+    // In the content of the schema: the declarations it may have.
+    let at = text.find("<xs:element").expect("a place");
+    let schema = call(&mut a, json!({ "text": text, "offset": at })).expect("runs");
+    assert_eq!(
+        (schema["grammar"].clone(), schema["kind"].clone(), schema["parent"].clone()),
+        (json!(true), json!("xsd"), json!("xs:schema")),
+        "{schema}"
+    );
+    let listed = names(&schema["elements"]).into_iter().map(|(n, _)| n).collect::<Vec<_>>();
+    for wanted in ["xs:include", "xs:import", "xs:annotation", "xs:simpleType", "xs:complexType", "xs:element", "xs:attribute"] {
+        assert!(listed.iter().any(|n| n == wanted), "{wanted} is not offered: {listed:?}");
+    }
+    // In the start tag of a local element declaration: its attributes, with the values the schema for schemas lists.
+    let in_tag = text.find(" >").map(|i| i + 1).expect("a place");
+    let element = call(&mut a, json!({ "text": text, "offset": in_tag })).expect("runs");
+    assert_eq!(element["element"], "xs:element", "{element}");
+    let attrs = element["attributes"].as_array().expect("attributes");
+    let find = |name: &str| attrs.iter().find(|t| t["name"] == name).unwrap_or_else(|| panic!("no attribute {name}: {element}"));
+    assert_eq!((find("name")["used"].clone(), find("type")["used"].clone()), (json!(true), json!(false)));
+    assert_eq!(find("form")["values"], json!(["qualified", "unqualified"]), "in the order the schema for schemas lists them");
+    assert!(find("maxOccurs")["values"].as_array().is_some_and(|v| v.iter().any(|x| x == "unbounded")), "the union lists `unbounded`");
+    assert_eq!(find("nillable")["values"], json!(["false", "true"]), "a boolean with a default: the default first");
+}
+
+#[test]
+fn a_document_in_a_namespace_that_no_schema_is_known_for_is_the_same_as_one_that_names_none() {
+    let mut a = Automation::new();
+    let text = "<r xmlns=\"urn:nobody-has-a-schema-for-this\"><c/></r>";
+    let none = call(&mut a, json!({ "text": text, "offset": 3 })).expect("runs");
+    assert_eq!(none["grammar"], false, "{none}");
+    assert!(none["why"].as_str().is_some_and(|w| w.contains("no DOCTYPE") && w.contains("none is known")), "{none}");
+    // A document in no namespace has nothing to look a schema up by.
+    let plain = call(&mut a, json!({ "text": "<r/>", "offset": 3 })).expect("runs");
+    assert!(plain["why"].as_str().is_some_and(|w| !w.contains("none is known")), "{plain}");
+    // What the document names is looked for first, and its failure is its own: not the namespace's.
+    let named = format!("<r xmlns=\"urn:nobody-has-a-schema-for-this\" {XSI} xsi:schemaLocation=\"urn:nobody-has-a-schema-for-this gone.xsd\"></r>");
+    let missing = call(&mut a, json!({ "text": named, "offset": named.find("</r>").expect("a place") })).expect("runs");
+    assert_eq!(missing["grammar"], false, "{missing}");
+    assert!(missing["why"].as_str().is_some_and(|w| w.contains("gone.xsd")), "its failure is its own: {missing}");
+}

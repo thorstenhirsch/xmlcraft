@@ -221,8 +221,13 @@ impl XmlCraftApp {
         let Some(doc) = self.session.active_document() else { return };
         let id = doc.id();
         let Some(view) = self.views.get_mut(&id) else { return };
+        // The schemas the document names; when it names none, the one known for the namespace its root element is in (for what is not
+        // known, the answer is that there is none, which the pane does not show as a problem).
         let hints = match view.analysis.as_ref() {
-            Some(analysis) if analysis.doctype.is_none() => analysis.schema_hints.clone(),
+            Some(analysis) if analysis.doctype.is_none() && !analysis.schema_hints.is_empty() => analysis.schema_hints.clone(),
+            Some(analysis) if analysis.doctype.is_none() => {
+                analysis.root_namespace.as_deref().map(xmlcraft_engine::xsd_schemas::implicit_hints).unwrap_or_default()
+            }
             _ => Vec::new(),
         };
         if hints.is_empty() {
