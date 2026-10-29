@@ -26,7 +26,7 @@ chrono = { workspace = true }
 [target.'cfg(target_os = "macos")'.dependencies]
 # ⌘Q asks about unsaved changes like the close button: an app menu whose Quit asks the window to close instead of winit's, which
 # ends the process without asking.
-craft-quit = { workspace = true, features = ["menu"] }
+craft-menu = { workspace = true }
 
 [build-dependencies]
 # Icon, manifest and VERSIONINFO for xmlcraft.exe; build.rs only uses it when targeting Windows.

@@ -136,7 +136,7 @@ impl Tokens {
 
     /// The tokens [`apply`] last installed; Light before any were.
     pub fn get(ctx: &egui::Context) -> Self {
-        ctx.data(|d| d.get_temp::<Tokens>(egui::Id::new(TOKENS_ID))).unwrap_or_else(|| Self::for_kind(ThemeKind::Light))
+        ctx.data(|d| d.get_temp::<Tokens>(egui::Id::unique(TOKENS_ID))).unwrap_or_else(|| Self::for_kind(ThemeKind::Light))
     }
 
     pub fn dark(&self) -> bool {
@@ -275,7 +275,7 @@ pub fn apply(ctx: &egui::Context, kind: ThemeKind) {
     // delivering ThemeChanged. Our saved choice owns the palette; both egui branches receive it below.
     ctx.set_theme(egui::ThemePreference::System);
     let t = Tokens::for_kind(kind);
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new(TOKENS_ID), t));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique(TOKENS_ID), t));
     let mut v = if t.dark() { Visuals::dark() } else { Visuals::light() };
     v.panel_fill = t.panel;
     v.window_fill = t.card;

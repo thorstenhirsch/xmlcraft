@@ -15,11 +15,12 @@ repository = "https://github.com/thorstenhirsch/xmlcraft"
 # Shared frontend and platform libraries from the public storytold/craft-libs repository. Every
 # craft-* dependency is pinned to the SAME immutable revision (the one PdfCraft builds against), so
 # the shared code is audited once. Move them all together.
-craft-ui = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "ea4c823abb46fa9d21361604ed1c6d21c54e9ca8", features = ["serde"] }
-craft-quit = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "ea4c823abb46fa9d21361604ed1c6d21c54e9ca8" }
-craft-atomic = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "ea4c823abb46fa9d21361604ed1c6d21c54e9ca8" }
-craft-settings = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "ea4c823abb46fa9d21361604ed1c6d21c54e9ca8" }
-craft-window = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "ea4c823abb46fa9d21361604ed1c6d21c54e9ca8" }
+craft-ui = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "edc41f68fa24c46651c3b5117d10f0ead75ec9cb", features = ["serde"] }
+craft-quit = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "edc41f68fa24c46651c3b5117d10f0ead75ec9cb" }
+craft-menu = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "edc41f68fa24c46651c3b5117d10f0ead75ec9cb" }
+craft-atomic = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "edc41f68fa24c46651c3b5117d10f0ead75ec9cb" }
+craft-settings = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "edc41f68fa24c46651c3b5117d10f0ead75ec9cb" }
+craft-window = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "edc41f68fa24c46651c3b5117d10f0ead75ec9cb" }
 
 # internal
 xmlcraft-text = { path = "crates/text", version = "0.0.1" }

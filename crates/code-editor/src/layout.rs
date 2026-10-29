@@ -176,6 +176,13 @@ impl LineLayout {
         &self.galley
     }
 
+    /// The galley to paint now. A galley points into egui's glyph atlas, which egui starts over when the pixel density changes or the
+    /// atlas fills up: one kept from an earlier frame then paints nothing. The job is laid out again through egui's own cache, which
+    /// knows (it hands back the same galley while that one is good), so this costs a hash of the line.
+    pub fn galley_for_painting(&self, painter: &Painter) -> Arc<Galley> {
+        painter.layout_job(LayoutJob::clone(&self.galley.job))
+    }
+
     pub fn first_char(&self) -> usize {
         self.first_char
     }

@@ -57,10 +57,11 @@ fn harness_with_step(text: &str, step_dt: f32) -> Harness<'static, App> {
         styled: true,
         fold_clicks: Vec::new(),
     };
-    let mut h = Harness::builder().with_size(egui::vec2(640.0, 360.0)).with_step_dt(step_dt).build_ui_state(
+    // The input-method test composes Japanese, which the default fonts cannot draw: a box is what is expected there.
+    let mut h = Harness::builder().with_size(egui::vec2(640.0, 360.0)).with_step_dt(step_dt).allow_missing_glyphs().build_ui_state(
         |ui, app: &mut App| {
             let editor =
-                CodeEditor::new(Id::new("editor"), &mut app.editor, &mut app.view, EditorColors::light()).blink(false).read_only(app.read_only);
+                CodeEditor::new(Id::unique("editor"), &mut app.editor, &mut app.view, EditorColors::light()).blink(false).read_only(app.read_only);
             let output = if app.styled { editor.styler(&mut app.recorder).show(ui) } else { editor.show(ui) };
             app.fold_clicks.extend(output.fold_clicked);
         },
@@ -510,4 +511,35 @@ fn dragging_with_alt_selects_a_rectangle_and_typing_edits_every_line_of_it() {
     h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
     h.run_steps(2);
     assert_eq!(carets(&h), vec![(1, 14)], "one selection from the first corner to the second");
+}
+
+/// The galleys of the text shapes of the last frame.
+fn painted_galleys(h: &Harness<'_, App>) -> Vec<std::sync::Arc<egui::Galley>> {
+    fn collect(shape: &egui::Shape, out: &mut Vec<std::sync::Arc<egui::Galley>>) {
+        match shape {
+            egui::Shape::Text(text) => out.push(text.galley.clone()),
+            egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| collect(s, out)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    h.output().shapes.iter().for_each(|clipped| collect(&clipped.shape, &mut out));
+    out
+}
+
+#[test]
+fn a_line_is_painted_with_a_galley_egui_still_stands_behind() {
+    // A galley points into egui's glyph atlas, and egui starts the atlas over when the pixel density or the fonts change or the atlas
+    // fills up: a galley kept from before then paints nothing. In the app a window that came up at one scale and moved to another
+    // showed the line numbers and a blank editor. Installing the fonts again is the way to make egui forget in a test, with every
+    // metric the same, so that only a galley that was kept shows it.
+    let mut h = harness("<a>one</a>\n<b>two</b>\n");
+    h.ctx.set_fonts(egui::FontDefinitions::default());
+    h.run_steps(3);
+    let painted = painted_galleys(&h);
+    assert!(!painted.is_empty());
+    for galley in painted {
+        let current = h.ctx.fonts_mut(|fonts| fonts.layout_job(egui::text::LayoutJob::clone(&galley.job)));
+        assert!(std::sync::Arc::ptr_eq(&galley, &current), "the galley of {:?} is not the one egui has now", galley.text());
+    }
 }

@@ -130,14 +130,11 @@ impl egui::Plugin for ControlPlugin {
 
 enum Pending {
     /// Answer once this many egui passes have run (the injected input has been handled by then).
-    Frames {
-        until_pass: u64,
-        since: f64,
-        reply: Sender<Reply>,
-        value: Value,
-    },
+    Frames { until_pass: u64, since: f64, reply: Sender<Reply>, value: Value },
     Screenshot {
-        tag: u64,
+        /// Filled by the callback egui calls when the integration has read the pixels. Dropped with the request, so a screenshot that
+        /// arrives after the timeout goes nowhere.
+        slot: Arc<Mutex<Option<Arc<egui::ColorImage>>>>,
         region: Option<egui::Rect>,
         reply: Sender<Reply>,
         since: f64,
@@ -149,7 +146,6 @@ pub struct Control {
     rx: Receiver<ControlRequest>,
     shared: Arc<Mutex<Shared>>,
     pending: Vec<Pending>,
-    next_tag: u64,
 }
 
 /// Install the control channel on `ctx`: returns the app half and a client.
@@ -158,7 +154,7 @@ pub fn attach(ctx: &egui::Context) -> (Control, ControlClient) {
     ctx.add_plugin(ControlPlugin { shared: shared.clone() });
     ctx.enable_accesskit();
     let (tx, rx) = channel();
-    (Control { rx, shared, pending: Vec::new(), next_tag: 1 }, ControlClient { tx, ctx: ctx.clone() })
+    (Control { rx, shared, pending: Vec::new() }, ControlClient { tx, ctx: ctx.clone() })
 }
 
 /// What a request needs from the app (implemented by `XmlCraftApp`).
@@ -195,10 +191,15 @@ impl Control {
                     self.pending.push(Pending::Frames { until_pass, since: now_secs(ctx), reply: req.reply, value });
                 }
                 Handled::Screenshot(region) => {
-                    let tag = self.next_tag;
-                    self.next_tag += 1;
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::new(tag)));
-                    self.pending.push(Pending::Screenshot { tag, region, reply: req.reply, since: now_secs(ctx) });
+                    let slot = Arc::new(Mutex::new(None));
+                    let (filled, repaint) = (slot.clone(), ctx.clone());
+                    ctx.request_screenshot(move |image| {
+                        if let Ok(mut slot) = filled.lock() {
+                            *slot = Some(image);
+                        }
+                        repaint.request_repaint();
+                    });
+                    self.pending.push(Pending::Screenshot { slot, region, reply: req.reply, since: now_secs(ctx) });
                 }
             }
         }
@@ -208,18 +209,6 @@ impl Control {
     }
 
     fn finish_pending(&mut self, ctx: &egui::Context) {
-        let shots: Vec<(u64, Arc<egui::ColorImage>)> = ctx.input(|i| {
-            i.raw
-                .events
-                .iter()
-                .filter_map(|e| match e {
-                    egui::Event::Screenshot { user_data, image, .. } => {
-                        user_data.data.as_ref().and_then(|d| d.downcast_ref::<u64>()).map(|tag| (*tag, image.clone()))
-                    }
-                    _ => None,
-                })
-                .collect()
-        });
         let ppp = ctx.pixels_per_point();
         let now = now_secs(ctx);
         let passes = self.passes();
@@ -237,16 +226,16 @@ impl Control {
                     let _ = reply.send(Err(not_drawn("handling the input")));
                 }
                 p @ Pending::Frames { .. } => keep.push(p),
-                Pending::Screenshot { tag, region, reply, since } => match shots.iter().find(|(t, _)| *t == tag) {
-                    Some((_, image)) => {
-                        let _ = reply.send(screenshot_png(image, region, ppp));
+                Pending::Screenshot { slot, region, reply, since } => match slot.lock().ok().and_then(|mut s| s.take()) {
+                    Some(image) => {
+                        let _ = reply.send(screenshot_png(&image, region, ppp));
                     }
                     // The platform skips painting windows that are hidden, minimized or fully covered, so no screenshot ever
                     // arrives: say so instead of hanging.
                     None if now - since > NOT_DRAWN_TIMEOUT => {
                         let _ = reply.send(Err(not_drawn("the screenshot")));
                     }
-                    None => keep.push(Pending::Screenshot { tag, region, reply, since }),
+                    None => keep.push(Pending::Screenshot { slot, region, reply, since }),
                 },
             }
         }

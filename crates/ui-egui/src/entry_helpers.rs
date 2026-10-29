@@ -113,7 +113,7 @@ fn row(ui: &mut egui::Ui, name: &str, detail: Option<&str>, mandatory: bool, use
     let t = Tokens::get(ui.ctx());
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), Sense::click());
     let label = if mandatory { format!("{name} (required)") } else { name.to_owned() };
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, !used, label.clone()));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, !used, label.clone()));
     if response.hovered() && !used {
         ui.painter().rect_filled(rect, 0.0, t.hover);
     }
