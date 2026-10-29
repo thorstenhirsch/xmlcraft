@@ -4,6 +4,7 @@
 
 mod after_analysis;
 mod assign;
+mod auto_validate;
 mod chrome;
 mod commands;
 mod control;
@@ -73,6 +74,8 @@ struct Prefs {
     recent: Vec<String>,
     /// Entry Helpers write the content an element requires with it.
     entry_mandatory: bool,
+    /// A document that names a grammar is validated in the background when it has been left alone for a moment.
+    validate_typing: bool,
 }
 
 impl Default for Prefs {
@@ -85,6 +88,7 @@ impl Default for Prefs {
             side_panels: SidePanels::default(),
             recent: Vec::new(),
             entry_mandatory: true,
+            validate_typing: true,
         }
     }
 }
@@ -270,6 +274,7 @@ impl XmlCraftApp {
             side_panels: self.side_panels,
             recent: self.session.recent().paths().iter().filter_map(|path| path.to_str().map(str::to_owned)).collect(),
             entry_mandatory: self.entry_mandatory,
+            validate_typing: self.validate_typing,
         }
     }
 
