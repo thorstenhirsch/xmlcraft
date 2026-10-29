@@ -181,6 +181,7 @@ const FILE: Option<&str> = Some("File");
 const EDIT: Option<&str> = Some("Edit");
 const XML: Option<&str> = Some("XML");
 const VIEW: Option<&str> = Some("View");
+const HELP: Option<&str> = Some("Help");
 
 /// The top-level menus, in order.
 pub const MENUS: &[&str] = &["File", "Edit", "XML", "View", "Help"];
@@ -231,6 +232,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("view.theme.system", "Use system theme", VIEW, None, Nothing, "monitor").choice().sep(),
     c("view.theme.light", "Light theme", VIEW, None, Nothing, "sun").choice(),
     c("view.theme.dark", "Dark theme", VIEW, None, Nothing, "moon").choice(),
+    c("app.about", "About XmlCraft", HELP, None, Nothing, "circle-help"),
 ];
 
 /// The command with this id.

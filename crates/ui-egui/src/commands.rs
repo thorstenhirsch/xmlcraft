@@ -172,6 +172,7 @@ impl XmlCraftApp {
             "xml.minify" => self.reformat(true),
             "xml.assign_schema" => self.open_assign_schema(),
             "xml.validate_typing" => self.validate_typing = !self.validate_typing,
+            "app.about" => self.open_about(),
             "xml.generate_schema" => self.open_generate_schema(),
             "xml.generate_sample" => self.open_generate_sample(),
             "edit.select_all" => {

@@ -2,6 +2,7 @@
 
 //! The egui shell of XmlCraft: the window chrome, panes and theme, with the look of PdfCraft.
 
+mod about;
 mod after_analysis;
 mod assign;
 mod auto_validate;
