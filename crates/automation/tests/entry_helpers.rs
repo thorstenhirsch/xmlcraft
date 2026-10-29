@@ -220,3 +220,44 @@ fn a_doctype_wins_over_a_schema_the_document_also_names() {
     let result = call(&mut a, json!({ "text": text, "offset": text.find("</order>").expect("a place") })).expect("runs");
     assert_eq!(result["kind"], "dtd", "{result}");
 }
+
+#[test]
+fn what_an_element_requires_is_written_with_it_unless_that_is_asked_not_to_be() {
+    let dir = tempfile::tempdir().expect("dir");
+    std::fs::write(
+        dir.path().join("r.xsd"),
+        "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"r\"><xs:complexType><xs:sequence>\
+           <xs:element name=\"box\"><xs:complexType><xs:sequence><xs:element name=\"label\" type=\"xs:string\"/></xs:sequence></xs:complexType></xs:element>\
+         </xs:sequence></xs:complexType></xs:element></xs:schema>",
+    )
+    .expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("a root");
+    let text = format!("<r {XSI} xsi:noNamespaceSchemaLocation=\"r.xsd\"></r>");
+    let at = text.find("</r>").expect("a place");
+    let full = call(&mut a, json!({ "text": text, "offset": at })).expect("runs");
+    assert_eq!(full["elements"][0]["text"], "<box><label></label></box>", "{full}");
+    let bare = call(&mut a, json!({ "text": text, "offset": at, "required_content": false })).expect("runs");
+    assert_eq!(bare["elements"][0]["text"], "<box></box>", "{bare}");
+}
+
+#[test]
+fn a_namespace_declaration_a_name_needs_is_said_with_it() {
+    let dir = tempfile::tempdir().expect("dir");
+    // Unqualified local elements: under a default namespace they need `xmlns=""`; qualified attributes need a prefix.
+    std::fs::write(
+        dir.path().join("q.xsd"),
+        "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" targetNamespace=\"urn:q\" attributeFormDefault=\"qualified\">\
+           <xs:element name=\"r\"><xs:complexType><xs:sequence><xs:element name=\"local\" type=\"xs:string\"/></xs:sequence>\
+             <xs:attribute name=\"a\" type=\"xs:string\"/></xs:complexType></xs:element></xs:schema>",
+    )
+    .expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("a root");
+    let text = format!("<r xmlns=\"urn:q\" {XSI} xsi:schemaLocation=\"urn:q q.xsd\"></r>");
+    let inside = call(&mut a, json!({ "text": text, "offset": text.find("</r>").expect("a place") })).expect("runs");
+    assert_eq!(inside["elements"][0]["name"], "local", "{inside}");
+    assert_eq!(inside["elements"][0]["declare"], json!({ "prefix": null, "namespace": "" }), "{inside}");
+    assert_eq!(inside["elements"][0]["text"], "<local xmlns=\"\"></local>", "{inside}");
+    let attribute = call(&mut a, json!({ "text": text, "offset": text.find("></r>").expect("the end of the start tag") })).expect("runs");
+    assert_eq!(attribute["attributes"][0]["name"], "ns1:a", "{attribute}");
+    assert_eq!(attribute["attributes"][0]["declare"], json!({ "prefix": "ns1", "namespace": "urn:q" }), "{attribute}");
+}

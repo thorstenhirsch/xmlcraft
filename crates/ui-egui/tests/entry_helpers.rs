@@ -324,9 +324,14 @@ fn a_schema_that_is_open_and_edited_is_what_the_choices_come_from() {
     replace_text(&mut h, &XSD.replace("name=\"customer\"", "name=\"client\""));
     h.state_mut().session.set_active(Some(instance_index));
     h.run_steps(4);
-    wait(&mut h, "the schema as edited", |app| app.has_grammar());
-    h.run_steps(10);
-    assert!(h.query_by_label("client (required)").is_some(), "the edit of the other document makes a new request");
+    // The schema that was held until now is the old one: the new one is asked for, and the answer is waited for by what it says.
+    let started = Instant::now();
+    while h.query_by_label("client (required)").is_none() {
+        assert!(started.elapsed() < Duration::from_secs(10), "the edit of the other document makes a new request");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(h.query_by_label("buyer (required)").is_none());
 }
 
 #[test]
@@ -356,4 +361,36 @@ fn taking_the_schema_away_takes_the_choices_away() {
     edit(&mut h, 0..end, "<order>");
     wait(&mut h, "the schema to go", |app| !app.has_grammar());
     assert!(h.query_by_label("No DTD or schema").is_some() && h.query_by_label("customer (required)").is_none());
+}
+
+#[test]
+fn a_doctype_is_what_the_choices_come_from_when_a_schema_is_named_too() {
+    let dir = tempfile::tempdir().expect("dir");
+    with_schema(dir.path());
+    let mut h = shell();
+    let both = format!(
+        "<!DOCTYPE order [<!ELEMENT order (z)><!ELEMENT z EMPTY>]><order xmlns=\"urn:o\" {XSI} xsi:schemaLocation=\"urn:o order.xsd\">¦</order>"
+    );
+    open_at(&mut h, dir.path(), &both);
+    assert!(
+        h.query_by_label("z (required)").is_some() && h.query_by_label("customer (required)").is_none(),
+        "the DOCTYPE is what a document is checked against"
+    );
+    assert_eq!(h.state().schema_requests(), 0, "the schema is not even loaded");
+}
+
+#[test]
+fn an_attribute_in_a_namespace_brings_the_declaration_of_its_prefix() {
+    let dir = tempfile::tempdir().expect("dir");
+    file(
+        dir.path(),
+        "q.xsd",
+        "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" targetNamespace=\"urn:q\" attributeFormDefault=\"qualified\" elementFormDefault=\"qualified\">\
+           <xs:element name=\"r\"><xs:complexType><xs:attribute name=\"a\" type=\"xs:string\"/></xs:complexType></xs:element></xs:schema>",
+    );
+    let mut h = shell();
+    open_at(&mut h, dir.path(), &format!("<r xmlns=\"urn:q\" {XSI} xsi:schemaLocation=\"urn:q q.xsd\" ¦/>"));
+    double_click(&mut h, "ns1:a");
+    assert!(text(&h).contains("<r xmlns=\"urn:q\""), "{}", text(&h));
+    assert!(text(&h).contains(" xmlns:ns1=\"urn:q\" ns1:a=\"\" />"), "{}", text(&h));
 }
