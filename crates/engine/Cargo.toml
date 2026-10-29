@@ -15,6 +15,8 @@ xmlcraft-text = { workspace = true }
 xmlcraft-editor = { workspace = true }
 xmlcraft-dtd = { workspace = true }
 xmlcraft-xsd = { workspace = true }
+xmlcraft-infer = { workspace = true }
+xmlcraft-sample = { workspace = true }
 xmlcraft-resolve = { workspace = true }
 xmlcraft-grammar = { workspace = true }
 xmlcraft-validate = { workspace = true }

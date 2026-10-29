@@ -173,7 +173,13 @@ pub type LoaderFactory = Arc<dyn Fn() -> Box<dyn SubsetLoader> + Send + Sync>;
 pub type ResolverFactory = Arc<dyn Fn(Arc<dyn Buffers>) -> Resolver + Send + Sync>;
 
 /// The documents that are open, by their paths (as they were when a validation was asked for).
-struct OpenDocuments(Vec<(String, Buffer)>);
+pub(crate) struct OpenDocuments(Vec<(String, Buffer)>);
+
+impl OpenDocuments {
+    pub(crate) fn new(open: Vec<(String, Buffer)>) -> Self {
+        Self(open)
+    }
+}
 
 impl Buffers for OpenDocuments {
     fn text(&self, location: &str) -> Option<Arc<str>> {

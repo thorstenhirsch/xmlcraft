@@ -221,6 +221,8 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("xml.assign_schema", "Assign Schema…", XML, None, Needs::Document, "book-open"),
     c("xml.pretty_print", "Pretty-print", XML, None, Needs::Document, "wand-sparkles").sep(),
     c("xml.minify", "Strip White Space", XML, None, Needs::Document, "align-left"),
+    c("xml.generate_schema", "Generate Schema…", XML, None, Needs::Document, "file-code").sep(),
+    c("xml.generate_sample", "Generate Sample XML…", XML, None, Needs::Document, "sparkles"),
     c("view.palette", "Find tools and commands…", VIEW, Some(Shortcut::cmd("K")), Nothing, "search"),
     c("view.outline", "Outline", VIEW, None, Nothing, "list-tree").toggle().sep(),
     c("view.entry_helpers", "Entry Helpers", VIEW, None, Nothing, "braces").toggle(),
@@ -336,7 +338,7 @@ mod tests {
         );
         assert_eq!(
             in_menu("XML").map(|c| c.id).collect::<Vec<_>>(),
-            ["xml.check", "xml.validate", "xml.assign_schema", "xml.pretty_print", "xml.minify"]
+            ["xml.check", "xml.validate", "xml.assign_schema", "xml.pretty_print", "xml.minify", "xml.generate_schema", "xml.generate_sample"]
         );
         assert_eq!(in_menu("Nope").count(), 0);
     }

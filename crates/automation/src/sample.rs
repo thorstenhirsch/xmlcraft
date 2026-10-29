@@ -5,20 +5,14 @@
 //! is returned.
 
 use serde_json::{Value, json};
-use xmlcraft_dtd::{LoadRequest, Loaded, SubsetLoader, read_doctype};
+use xmlcraft_engine::generate::{GrammarKind, sample_document};
 use xmlcraft_platform::subset::FileSubsetLoader;
-use xmlcraft_sample::{ChoicePolicy, Fill, Options, QName, dtd_roots, sample_from_dtd, sample_from_schema, schema_roots};
-use xmlcraft_syntax::{Severity, parse};
-use xmlcraft_xsd::dom;
-use xmlcraft_xsd::{ResolvingLoader, XSD_NAMESPACE, assemble, load};
+use xmlcraft_sample::{ChoicePolicy, Fill, Options};
 
-use crate::documents::{fail, json_result, source, source_properties};
+use crate::documents::{json_result, source, source_properties};
 use crate::tools::ToolDef;
 use crate::validate::schema_resolver;
 use crate::{Automation, Content, Result, ToolError};
-
-/// The most schema problems named in a refusal.
-const MAX_REPORTED: usize = 5;
 
 pub(crate) fn tools() -> Vec<ToolDef> {
     let mut properties = source_properties();
@@ -83,100 +77,26 @@ fn options_of(args: &Value) -> Result<Options> {
     Ok(options)
 }
 
-/// `{namespace}local` or `local` as a name.
-fn qname_of(text: &str) -> QName {
-    match text.strip_prefix('{').and_then(|rest| rest.split_once('}')) {
-        Some((namespace, local)) => QName::new(Some(namespace), local),
-        None => QName::new(None, text),
-    }
-}
-
-/// Reads the text of a DTD as the external subset of a document the first time it is asked for one, and files after that (the parameter
-/// entities the DTD refers to).
-struct OwnDtd {
-    text: Option<String>,
-    location: String,
-    files: FileSubsetLoader,
-}
-
-impl SubsetLoader for OwnDtd {
-    fn load(&mut self, request: &LoadRequest<'_>) -> std::result::Result<Loaded, String> {
-        match self.text.take() {
-            Some(text) => Ok(Loaded { text, location: self.location.clone() }),
-            None => self.files.load(request),
-        }
-    }
-}
-
-fn is_xml_schema(text: &str) -> bool {
-    let parsed = parse(text);
-    if parsed.diagnostics().iter().any(|d| d.severity() == Severity::Error) {
-        return false;
-    }
-    let tree = dom::build(&parsed.syntax());
-    tree.elements.first().is_some_and(|root| root.local == "schema" && root.namespace.as_deref() == Some(XSD_NAMESPACE))
-}
-
 fn xml_sample(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let options = options_of(args)?;
     let grammar = source(a, args)?;
     let kind = match args.get("kind").and_then(Value::as_str) {
-        Some(k) => k,
-        None if is_xml_schema(&grammar.text) => "xsd",
-        None => "dtd",
+        Some("xsd") => Some(GrammarKind::Xsd),
+        Some("dtd") => Some(GrammarKind::Dtd),
+        Some(_) | None => None,
     };
-    let root_name = args.get("root").and_then(Value::as_str);
     let location = grammar.path.as_deref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-    if kind == "xsd" {
-        let resolver = schema_resolver(a);
-        let mut loader = ResolvingLoader::new(&resolver);
-        let documents = load(&grammar.text, &location, &mut loader);
-        let assembly = assemble(&documents);
-        let errors: Vec<String> = documents
-            .diagnostics
-            .iter()
-            .chain(&assembly.diagnostics)
-            .filter(|d| d.diagnostic.severity() == Severity::Error)
-            .map(|d| d.diagnostic.message())
-            .collect();
-        if !errors.is_empty() {
-            let shown: Vec<&str> = errors.iter().take(MAX_REPORTED).map(String::as_str).collect();
-            return fail(format!("the schema has {} error(s), so no document is made from it: {}", errors.len(), shown.join(" ")));
-        }
-        let wanted = root_name.map(qname_of);
-        let made = sample_from_schema(&assembly.schema, wanted.as_ref(), &options).map_err(|e| ToolError::Failed(e.to_string()))?;
-        let roots: Vec<String> = schema_roots(&assembly.schema).iter().map(|q| q.to_string()).collect();
-        return json_result(json!({
-            "kind": "xsd",
-            "text": made.text,
-            "warnings": made.warnings,
-            "root": wanted.map(|q| q.to_string()).or_else(|| roots.first().cloned()),
-            "roots": roots,
-        }));
-    }
-    // A DTD: read as the external subset of a document that has a DOCTYPE with a system identifier.
+    let resolver = schema_resolver(a);
+    // The files a DTD refers to are read through the confinement too.
     let confinement = a.confinement.clone();
-    let mut loader = OwnDtd {
-        text: Some(grammar.text.clone()),
-        location: if location.is_empty() { "the DTD".to_owned() } else { location.clone() },
-        files: FileSubsetLoader::confined(move |path| confinement.resolve_read(path).map_err(|e| e.to_string())),
-    };
-    let probe = "<!DOCTYPE r SYSTEM \"dtd\"><r/>";
-    let parsed = parse(probe);
-    let Some((read, _)) = read_doctype(&parsed.syntax(), probe, &location, &mut loader) else { return fail("the DTD could not be read") };
-    let errors: Vec<String> =
-        read.diagnostics.iter().filter(|d| d.diagnostic.severity() == Severity::Error).map(|d| d.diagnostic.message()).collect();
-    if !errors.is_empty() {
-        let shown: Vec<&str> = errors.iter().take(MAX_REPORTED).map(String::as_str).collect();
-        return fail(format!("the DTD has {} error(s), so no document is made from it: {}", errors.len(), shown.join(" ")));
-    }
-    let made = sample_from_dtd(&read.dtd, root_name, &options).map_err(|e| ToolError::Failed(e.to_string()))?;
-    let roots = dtd_roots(&read.dtd);
+    let mut subsets = FileSubsetLoader::confined(move |path| confinement.resolve_read(path).map_err(|e| e.to_string()));
+    let made = sample_document(&grammar.text, &location, kind, args.get("root").and_then(Value::as_str), &options, &resolver, &mut subsets)
+        .map_err(ToolError::Failed)?;
     json_result(json!({
-        "kind": "dtd",
+        "kind": made.kind.name(),
         "text": made.text,
         "warnings": made.warnings,
-        "root": root_name.map(str::to_owned).or_else(|| roots.first().cloned()),
-        "roots": roots,
+        "root": made.root,
+        "roots": made.roots,
     }))
 }
