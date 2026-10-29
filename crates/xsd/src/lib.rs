@@ -8,9 +8,19 @@
 //!   attributes, which attributes may not be given together). It is total: whatever the text says it gives diagnostics and whatever
 //!   could be read.
 
+mod build;
+mod compile;
 mod dom;
+mod loader;
 pub mod model;
 mod reader;
+pub mod schema;
 mod values;
+pub mod xpath;
 
+pub use build::{Assembly, assemble};
+pub use compile::{AllState, ContentModel, ModelState, Next, Symbol};
+pub use loader::{
+    Documents, LoadKind, LoadRequest, Loaded, LoadedDocument, MAX_DOCUMENTS, MAX_TOTAL_BYTES, NoLoader, SchemaLoader, SourcedDiagnostic, load,
+};
 pub use reader::{Read, XSD_NAMESPACE, read};

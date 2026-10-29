@@ -139,9 +139,10 @@ impl<'a> Reader<'a> {
         (Some(name), a.value_range.clone())
     }
 
-    fn qname_attr(&mut self, i: usize, name: &str) -> Option<QName> {
+    fn qname_attr(&mut self, i: usize, name: &str) -> Option<QRef> {
         let dom = self.dom;
-        self.value(i, name, |v| values::qname(dom, i, v))
+        let span = self.attr(i, name)?.value_range.clone();
+        self.value(i, name, |v| values::qname(dom, i, v)).map(|name| QRef { name, span })
     }
 
     fn uri_attr(&mut self, i: usize, name: &str) -> Option<String> {
@@ -520,7 +521,13 @@ impl Reader<'_> {
         let found = self.sequence(i, &[ANNOTATION, Slot { names: &["simpleType"], min: 0, max: MANY, needs: "" }]);
         self.annotation_of(&found[0]);
         let dom = self.dom;
-        let member_types = self.value(i, "memberTypes", |v| values::qname_list(dom, i, v)).unwrap_or_default();
+        let span = self.attr(i, "memberTypes").map(|a| a.value_range.clone()).unwrap_or_default();
+        let member_types = self
+            .value(i, "memberTypes", |v| values::qname_list(dom, i, v))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|name| QRef { name, span: span.clone() })
+            .collect();
         let inline_members: Vec<SimpleTypeDef> = found[1].iter().map(|&c| self.simple_type(c, false)).collect();
         if self.attr(i, "memberTypes").is_none()
             && inline_members.is_empty()

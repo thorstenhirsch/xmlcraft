@@ -38,3 +38,35 @@ fn the_schema_for_schemas_has_its_components() {
         "{simple} {complex} {groups} {attribute_groups} {elements}"
     );
 }
+
+struct Bundle;
+
+impl xmlcraft_xsd::SchemaLoader for Bundle {
+    fn load(&mut self, request: &xmlcraft_xsd::LoadRequest<'_>) -> Result<xmlcraft_xsd::Loaded, String> {
+        let wanted = request.location.unwrap_or_default();
+        let file = wanted.rsplit('/').next().unwrap_or(wanted);
+        let path = xmlcraft_schemas::paths().find(|p| p.ends_with(&format!("/{file}"))).ok_or_else(|| format!("{wanted} is not in the bundle"))?;
+        Ok(xmlcraft_xsd::Loaded { text: xmlcraft_schemas::get_text(path).ok_or("no text")?, location: xmlcraft_schemas::uri_of(path) })
+    }
+}
+
+#[test]
+fn the_schema_for_schemas_is_assembled_without_a_diagnostic() {
+    let path = "w3c/xmlschema/XMLSchema.xsd";
+    let text = xmlcraft_schemas::get_text(path).expect("the schema for schemas");
+    let documents = xmlcraft_xsd::load(&text, &xmlcraft_schemas::uri_of(path), &mut Bundle);
+    let loaded: Vec<String> = documents.diagnostics.iter().map(|d| d.diagnostic.message()).collect();
+    assert!(loaded.is_empty(), "{loaded:#?}");
+    let assembly = xmlcraft_xsd::assemble(&documents);
+    let problems: Vec<String> = assembly.diagnostics.iter().map(|d| format!("{}: {}", d.diagnostic.code.key(), d.diagnostic.message())).collect();
+    assert!(problems.is_empty(), "{problems:#?}");
+    let ns = xmlcraft_xsd::XSD_NAMESPACE;
+    let schema = &assembly.schema;
+    // The language's own declarations: the elements and a few of the types that make up documents.
+    for element in ["schema", "element", "complexType", "simpleType", "sequence", "annotation"] {
+        assert!(schema.element_by_name(&xmlcraft_xsd::model::QName::new(Some(ns), element)).is_some(), "element {element}");
+    }
+    for ty in ["openAttrs", "annotated", "localElement", "topLevelElement", "formChoice", "allNNI"] {
+        assert!(schema.type_by_name(&xmlcraft_xsd::model::QName::new(Some(ns), ty)).is_some(), "type {ty}");
+    }
+}

@@ -30,10 +30,10 @@ macro_rules! codes {
                 match self { $(Code::$variant => $key),* }
             }
 
-            /// Whether the problem is the breaking of a validity constraint (the key starts with `vc.`): the document is well-formed, but it
-            /// does not meet its DTD.
+            /// Whether the problem is the breaking of a validity constraint (the key starts with `vc.`, or `cvc.` for a schema): the
+            /// document is well-formed, but it does not meet its DTD or schema.
             pub fn is_validity(self) -> bool {
-                self.key().starts_with("vc.")
+                self.key().starts_with("vc.") || self.key().starts_with("cvc.")
             }
 
             pub fn severity(self) -> Severity {
@@ -155,6 +155,31 @@ codes! {
     VcIdrefNotFound => ("vc.idref-has-no-id", Error, "No element has the ID '{0}'."),
     VcEntityAttribute => ("vc.entity-attribute-not-unparsed", Error, "'{0}' is not the name of an unparsed entity."),
     VcStandalone => ("vc.standalone-document", Error, "The document is standalone, but {0}."),
+    CvcNotDeclared => ("cvc.element-not-declared", Error, "No declaration was found for the element '{0}'."),
+    CvcWildcardNotDeclared => ("cvc.wildcard-element-not-declared", Error, "No declaration was found for the element '{0}', which a wildcard of its parent lets in but asks to be validated."),
+    CvcAbstractElement => ("cvc.abstract-element", Error, "The element '{0}' is abstract, so it cannot appear in a document."),
+    CvcAbstractType => ("cvc.abstract-type", Error, "The type '{1}' of the element '{0}' is abstract; the element needs an xsi:type that names a type derived from it."),
+    CvcXsiType => ("cvc.xsi-type", Error, "The xsi:type of the element '{0}' cannot be used: {1}."),
+    CvcNotNillable => ("cvc.not-nillable", Error, "The element '{0}' is not nillable, so it cannot have xsi:nil=\"true\"."),
+    CvcNilContent => ("cvc.nilled-element-has-content", Error, "The element '{0}' has xsi:nil=\"true\", so it must have no content: {1}."),
+    CvcNilFixed => ("cvc.nilled-element-is-fixed", Error, "The element '{0}' has xsi:nil=\"true\", but its declaration fixes the value '{1}'."),
+    CvcBadNil => ("cvc.bad-xsi-nil", Error, "The value of xsi:nil on '{0}' is not valid: {1}."),
+    CvcChildNotAllowed => ("cvc.child-not-allowed", Error, "The element '{0}' is not allowed here: {1}."),
+    CvcContentIncomplete => ("cvc.content-incomplete", Error, "The element '{0}' is not complete: {1}."),
+    CvcTextNotAllowed => ("cvc.text-not-allowed", Error, "The element '{0}' cannot contain text: {1}."),
+    CvcInvalidValue => ("cvc.invalid-value", Error, "The value of {0} is not valid: {1}."),
+    CvcFixedValue => ("cvc.fixed-value", Error, "The value of {0} must be '{1}'."),
+    CvcAttributeNotAllowed => ("cvc.attribute-not-allowed", Error, "The attribute '{1}' is not allowed on the element '{0}'."),
+    CvcAttributeNotDeclared => ("cvc.attribute-not-declared", Error, "No declaration was found for the attribute '{1}' of the element '{0}', which a wildcard lets in but asks to be validated."),
+    CvcAttributeRequired => ("cvc.attribute-required", Error, "The element '{0}' needs the attribute '{1}'."),
+    CvcDuplicateId => ("cvc.duplicate-id", Error, "The ID '{0}' is used more than once."),
+    CvcIdrefNotFound => ("cvc.idref-has-no-id", Error, "No element has the ID '{0}'."),
+    CvcKeyDuplicate => ("cvc.duplicate-key-value", Error, "The value ({1}) is not unique for the constraint '{0}'."),
+    CvcKeyMissing => ("cvc.key-field-missing", Error, "The key '{0}' needs {1}."),
+    CvcFieldMultiple => ("cvc.field-selects-many", Error, "A field of the constraint '{0}' selects {1}."),
+    CvcFieldNotSimple => ("cvc.field-not-simple", Error, "A field of the constraint '{0}' selects the element '{1}', which does not have a simple type."),
+    CvcKeyrefNoKey => ("cvc.keyref-has-no-key", Error, "The value ({1}) of the keyref '{0}' matches no key."),
+    CvcLimit => ("cvc.limit", Error, "The document is too deep to be validated against the schema: {0}."),
     // Namespaces
     InvalidQName => ("ns.invalid-qname", Error, "'{0}' is not a valid qualified name."),
     UnboundPrefix => ("ns.unbound-prefix", Error, "The namespace prefix '{0}' is not declared."),
@@ -176,6 +201,26 @@ codes! {
     XsdDuplicateId => ("xsd.duplicate-id", Error, "The id '{0}' is used more than once in the schema document."),
     XsdOccurs => ("xsd.min-occurs-over-max-occurs", Error, "minOccurs {0} is greater than maxOccurs {1}."),
     XsdLimit => ("xsd.limit", Error, "The schema document is too large or nested too deeply: {0}."),
+    XsdLoadFailed => ("xsd.document-not-loaded", Error, "The schema document '{0}' could not be loaded: {1}."),
+    XsdImportNotLoaded => ("xsd.import-not-loaded", Warning, "The schema document for the import '{0}' could not be loaded: {1}."),
+    XsdNotASchemaDocument => ("xsd.not-a-schema-document", Error, "'{0}' is not a schema document."),
+    XsdIncludeNamespace => ("xsd.include-namespace", Error, "The included document '{0}' has the target namespace '{1}', not that of the including schema."),
+    XsdImportSameNamespace => ("xsd.import-own-namespace", Error, "A schema cannot import its own target namespace '{0}'."),
+    XsdImportNeedsNamespace => ("xsd.import-without-namespace", Error, "A schema with no target namespace must say which namespace it imports."),
+    XsdImportNamespace => ("xsd.import-namespace-mismatch", Error, "The document '{0}' was imported for the namespace '{1}', but is in another."),
+    XsdUnresolved => ("xsd.unresolved-reference", Error, "The {0} '{1}' is not defined."),
+    XsdNotImported => ("xsd.namespace-not-imported", Error, "The {0} '{1}' is in a namespace this schema document does not import."),
+    XsdDuplicateComponent => ("xsd.duplicate-definition", Error, "The {0} '{1}' is defined more than once."),
+    XsdCircular => ("xsd.circular-definition", Error, "The definition of '{0}' refers back to itself: {1}."),
+    XsdWrongKind => ("xsd.wrong-kind-of-type", Error, "'{0}' is {1}."),
+    XsdFacetProblem => ("xsd.facet", Error, "In the type '{0}': {1}."),
+    XsdDerivationNotAllowed => ("xsd.derivation-not-allowed", Error, "The type '{0}' cannot be derived this way: {1}."),
+    XsdAmbiguous => ("xsd.unique-particle-attribution", Error, "The content model of '{0}' is ambiguous: {1}."),
+    XsdComponent => ("xsd.component", Error, "{0}: {1}."),
+    XsdValueConstraint => ("xsd.value-constraint", Error, "The default or fixed value of '{0}' is not allowed: {1}."),
+    XsdUnsupported => ("xsd.unsupported", Warning, "{0} is not supported yet: {1}."),
+    XsdTooDeep => ("xsd.too-deep", Error, "The definition of '{0}' is nested too deeply."),
+    XsdTooManyDocuments => ("xsd.too-many-documents", Error, "The schema is made of too many documents: {0}."),
     // Limits
     NestingTooDeep => ("limit.nesting-too-deep", Warning, "Elements nested deeper than {0} levels are not shown as a tree."),
     TooManyDiagnostics => ("limit.too-many-diagnostics", Info, "Further problems are not shown."),

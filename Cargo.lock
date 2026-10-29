@@ -4932,10 +4932,14 @@ dependencies = [
 name = "xmlcraft-validate"
 version = "0.0.1"
 dependencies = [
+ "proptest",
  "rowan",
+ "xmlcraft-datatypes",
  "xmlcraft-dtd",
  "xmlcraft-grammar",
+ "xmlcraft-schemas",
  "xmlcraft-syntax",
+ "xmlcraft-xsd",
 ]
 
 [[package]]
