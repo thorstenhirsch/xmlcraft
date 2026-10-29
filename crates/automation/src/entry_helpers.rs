@@ -8,7 +8,6 @@ use serde_json::{Value, json};
 use xmlcraft_complete::{Choices, choices_at, element_snippet, xsd_choices_at, xsd_element_snippet};
 use xmlcraft_dtd::doctype_parts;
 use xmlcraft_engine::xsd_schemas::implicit_hints;
-use xmlcraft_platform::subset::FileSubsetLoader;
 use xmlcraft_syntax::{SyntaxNode, parse};
 use xmlcraft_text::Buffer;
 use xmlcraft_validate::{load_hinted, root_namespace, schema_hints};
@@ -65,8 +64,8 @@ fn xml_entry_helpers(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         return xsd_answer(a, &root, &location, offset, required_content, &buffer, source.lossy);
     };
     let Some(doctype) = source.text.get(range.clone()) else { return nothing("the DOCTYPE is not text") };
-    let confinement = a.confinement.clone();
-    let mut loader = FileSubsetLoader::confined(move |path| confinement.resolve_read(path).map_err(|e| e.to_string()));
+    let resolver = schema_resolver(a);
+    let mut loader = xmlcraft_dtd::ResolvingSubsetLoader::new(&resolver);
     let Some(grammar) = xmlcraft_engine::schema::read(doctype, range.start, &location, &mut loader) else {
         return nothing("the DOCTYPE is too large to be read");
     };

@@ -4,7 +4,9 @@ The DTD of a document, read (layer L3, no UI, no I/O, compiles for the web).
 
 - `doctype_parts(tree)` finds what a DOCTYPE says: the name, the public and system identifiers, and where its internal subset is.
 - `parse_doctype(input, loader)` reads the internal subset and then the external subset the DOCTYPE names. `SubsetLoader` is where the
-  external texts (the subset, external parameter entities) come from; the crate never reads a file or a URL. `NoLoader` has nothing.
+  external texts (the subset, external parameter entities) come from; the crate never reads a file or a URL itself. `NoLoader` has nothing; `ResolvingSubsetLoader` asks the
+  resolver (`xmlcraft-resolve`: the open documents, the catalogs, the DTDs that ship with the app by public identifier, files), with a budget of its own and no text over
+  `MAX_EXTERNAL_BYTES`.
   Declarations of the internal subset come first, so they win for a name declared twice (XML 1.0 §4.2: the first declaration counts).
 - What is read is a `Dtd`: element declarations (EMPTY, ANY, mixed and children content models as a tree of particles), attribute-list
   declarations (types and defaults), general and parameter entities (internal values with character references resolved and
@@ -27,6 +29,6 @@ The DTD of a document, read (layer L3, no UI, no I/O, compiles for the web).
   expanded: each entity is analysed once per place it can be used and the verdict is remembered, so a billion-laughs DTD costs what
   its declarations cost; entities refer to entities at most 256 deep. Not done: attribute-value normalisation, and a namespace
   declaration whose value is written with entities.
-- Not here: compiling content models to automata and validating (M2.5 and M2.9), and finding the files (the resolver, M2.3).
+- Not here: compiling content models to automata and validating (M2.5 and M2.9), and downloading what nothing has (M2.4).
 
 Tests: `tests/declarations.rs`, `tests/references.rs`; the xmlconf run (`cargo xtask conformance xmlconf`) reads every DTD of the W3C suite through it.

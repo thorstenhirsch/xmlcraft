@@ -8,11 +8,11 @@ use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::sync::Arc;
 
-use xmlcraft_dtd::{SubsetLoader, compile, read_doctype};
+use xmlcraft_dtd::{ResolvingSubsetLoader, SubsetLoader, compile, read_doctype};
 use xmlcraft_grammar::Grammar;
 use xmlcraft_syntax::parse;
 
-use crate::validation::LoaderFactory;
+use crate::validation::{OpenDocuments, ResolverFactory};
 use crate::worker::Worker;
 
 /// DOCTYPE declarations larger than this are not read for completion.
@@ -61,14 +61,15 @@ pub struct Schemas {
 }
 
 impl Schemas {
-    /// A reader whose requests read the external parts of DTDs with the loaders `loaders` makes.
-    pub fn new(loaders: LoaderFactory) -> Self {
-        Self { worker: Worker::new("schema", move |request| run(&loaders, request)) }
+    /// A reader whose requests find the external parts of DTDs (the files, the catalogs, the DTDs that ship with the app) with the
+    /// resolvers `resolvers` makes.
+    pub fn new(resolvers: ResolverFactory) -> Self {
+        Self { worker: Worker::new("schema", move |request| run(&resolvers, request)) }
     }
 
     /// A reader with no thread (what the web does, and handy for tests).
-    pub fn inline(loaders: LoaderFactory) -> Self {
-        Self { worker: Worker::inline(move |request| run(&loaders, request)) }
+    pub fn inline(resolvers: ResolverFactory) -> Self {
+        Self { worker: Worker::inline(move |request| run(&resolvers, request)) }
     }
 
     /// Called whenever a result is ready.
@@ -89,9 +90,11 @@ impl Schemas {
     }
 }
 
-fn run(loaders: &LoaderFactory, request: Request) -> Schema {
-    let mut loader = loaders();
-    let grammar = crate::guard(|| read(&request.doctype, request.start, &request.location, loader.as_mut())).unwrap_or_else(|message| {
+fn run(resolvers: &ResolverFactory, request: Request) -> Schema {
+    // The documents that are open are not what a DTD is read from here: the key of a request is its DOCTYPE and its place.
+    let resolver = resolvers(Arc::new(OpenDocuments::new(Vec::new())));
+    let mut loader = ResolvingSubsetLoader::new(&resolver);
+    let grammar = crate::guard(|| read(&request.doctype, request.start, &request.location, &mut loader)).unwrap_or_else(|message| {
         log::error!("reading a DOCTYPE failed: {message}");
         None
     });
@@ -132,9 +135,43 @@ mod tests {
         assert_ne!(a, key_of("<!DOCTYPE r>", Some(Path::new("/x/y.xml"))));
     }
 
+    /// Resolvers that have no files and no network: what they find is the DTDs that ship with the app.
+    fn no_resolvers() -> ResolverFactory {
+        Arc::new(|buffers| {
+            struct NoFiles;
+            impl xmlcraft_resolve::FileAccess for NoFiles {
+                fn read(&self, path: &str) -> Result<Vec<u8>, String> {
+                    Err(format!("{path}: no such file"))
+                }
+            }
+            let env = xmlcraft_resolve::Environment {
+                buffers,
+                files: Arc::new(NoFiles),
+                fetcher: None,
+                cache: None,
+                clock: Arc::new(xmlcraft_resolve::FixedClock(0)),
+            };
+            xmlcraft_resolve::Resolver::new(env, xmlcraft_resolve::Policy { offline: true, ..Default::default() }, &[])
+        })
+    }
+
+    #[test]
+    fn a_dtd_that_ships_with_the_app_is_read_by_its_public_identifier() {
+        let schemas = Schemas::inline(no_resolvers());
+        let doctype = "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">";
+        schemas.submit(1, 9, doctype.to_owned(), 0, None);
+        let results = schemas.poll();
+        let grammar = results.first().and_then(|(_, s)| s.grammar.clone()).expect("a grammar");
+        assert!(grammar.element(&Name::local("html")).is_some() && grammar.element(&Name::local("blockquote")).is_some());
+        // One that nothing knows reads as a DOCTYPE with nothing declared in it (the note is the validator's to make).
+        schemas.submit(1, 10, "<!DOCTYPE r PUBLIC \"-//Nobody//DTD None//EN\" \"none.dtd\">".to_owned(), 0, None);
+        let unknown = schemas.poll().into_iter().next().and_then(|(_, s)| s.grammar).expect("a grammar, of what is declared inline");
+        assert!(unknown.elements().is_empty());
+    }
+
     #[test]
     fn the_reader_answers_the_request_in_the_background() {
-        let schemas = Schemas::inline(Arc::new(|| Box::new(NoLoader)));
+        let schemas = Schemas::inline(no_resolvers());
         schemas.submit(3, 77, "<!DOCTYPE r [<!ELEMENT r ANY>]>".to_owned(), 0, None);
         let results = schemas.poll();
         assert_eq!(results.len(), 1);

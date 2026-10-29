@@ -6,7 +6,6 @@
 
 use serde_json::{Value, json};
 use xmlcraft_engine::generate::{GrammarKind, sample_document};
-use xmlcraft_platform::subset::FileSubsetLoader;
 use xmlcraft_sample::{ChoicePolicy, Fill, Options};
 
 use crate::documents::{json_result, source, source_properties};
@@ -87,9 +86,8 @@ fn xml_sample(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     };
     let location = grammar.path.as_deref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
     let resolver = schema_resolver(a);
-    // The files a DTD refers to are read through the confinement too.
-    let confinement = a.confinement.clone();
-    let mut subsets = FileSubsetLoader::confined(move |path| confinement.resolve_read(path).map_err(|e| e.to_string()));
+    // The external parts of a DTD are found the same way (the confinement lets through the files).
+    let mut subsets = xmlcraft_dtd::ResolvingSubsetLoader::new(&resolver);
     let made = sample_document(&grammar.text, &location, kind, args.get("root").and_then(Value::as_str), &options, &resolver, &mut subsets)
         .map_err(ToolError::Failed)?;
     json_result(json!({

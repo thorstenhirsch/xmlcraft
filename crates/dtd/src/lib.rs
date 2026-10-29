@@ -2,8 +2,8 @@
 
 //! xmlcraft-dtd: reading a DTD.
 //!
-//! - **Layer:** L3, no UI and no I/O (the external parts of a DTD come from a [`SubsetLoader`] the caller gives), so it compiles for the
-//!   web too.
+//! - **Layer:** L3, no UI and no I/O (the external parts of a DTD come from a [`SubsetLoader`] the caller gives, or from the resolver
+//!   through [`ResolvingSubsetLoader`]), so it compiles for the web too.
 //! - [`parse_doctype`] reads the internal subset of a document and the external subset it names: element, attribute-list, entity and
 //!   notation declarations, comments and processing instructions, conditional sections, and the parameter entities that carry any of
 //!   these, expanded as XML 1.0 §4.4 says. Every syntax error is reported with a [`Code`](xmlcraft_syntax::Code) and where it is, and
@@ -24,6 +24,7 @@ mod model;
 mod namespaces;
 mod parse;
 mod references;
+mod resolving;
 
 pub use attribute::{MAX_VALUE_BYTES, MAX_VALUE_DEPTH, ValueProblem, ValueReader, check_value};
 pub use compile::{Compiled, compile};
@@ -37,3 +38,4 @@ pub use parse::{
     MAX_LOADED_BYTES, MAX_LOADS, MAX_PE_DEPTH, NoLoader, Parsed, SubsetLoader, parse_doctype, parse_external_subset, parse_internal_subset,
 };
 pub use references::{check_references, is_standalone};
+pub use resolving::{MAX_EXTERNAL_BYTES, ResolvingSubsetLoader};

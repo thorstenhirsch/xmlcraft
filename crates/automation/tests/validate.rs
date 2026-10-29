@@ -329,3 +329,38 @@ fn a_schema_document_that_is_included_under_two_names_is_one_document() {
         assert_eq!(result["schemas"].as_array().map(Vec::len), Some(2), "{result}");
     }
 }
+
+const XHTML: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">\n\
+    <html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\"><head><title>T</title></head><body><p>Text.</p></body></html>\n";
+
+#[test]
+fn a_document_that_names_a_dtd_by_its_public_identifier_is_validated_against_the_one_that_ships_with_the_app() {
+    let mut a = Automation::new();
+    let ok = call(&mut a, json!({ "text": XHTML })).expect("runs");
+    assert_eq!((ok["well_formed"].clone(), ok["valid"].clone(), ok["errors"].clone()), (json!(true), json!(true), json!(0)), "{ok}");
+    assert_eq!(ok["problems"], json!([]), "not even a note that the DTD was not read: {ok}");
+    // The DTD is the one that was read: the body of XHTML Strict takes block elements, not text.
+    let found = call(&mut a, json!({ "text": XHTML.replace("<p>Text.</p>", "Text.") })).expect("runs");
+    assert_eq!(found["valid"], false, "{found}");
+    assert!(codes(&found).iter().any(|c| c.starts_with("vc.")), "{found}");
+    // A DTD that no one knows is still only a note (nothing is downloaded), as it was.
+    let unknown =
+        call(&mut a, json!({ "text": "<!DOCTYPE r PUBLIC \"-//Nobody//DTD None//EN\" \"http://example.invalid/none.dtd\"><r/>" })).expect("runs");
+    assert!(codes(&unknown).contains(&"dtd.external-not-read".to_owned()) && unknown["valid"] == json!(true), "{unknown}");
+}
+
+#[test]
+fn an_open_dtd_is_what_a_document_is_validated_against_as_it_is_being_edited() {
+    let dir = tempfile::tempdir().expect("dir");
+    write(dir.path(), "r.dtd", "<!ELEMENT r EMPTY>");
+    let doc = write(dir.path(), "doc.xml", "<!DOCTYPE r SYSTEM \"r.dtd\"><r/>");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    assert_eq!(call(&mut a, json!({ "path": doc })).expect("runs")["valid"], true);
+    // The DTD is opened and changed in the editor, not saved: `r` now needs a child it does not have.
+    let opened = a.call("doc_open", &json!({ "path": dir.path().join("r.dtd").to_str().expect("utf-8") })).expect("opens");
+    let Some(Content::Json(opened)) = opened.into_iter().next() else { panic!("no id") };
+    a.call("doc_set_text", &json!({ "id": opened["id"], "text": "<!ELEMENT r (a)><!ELEMENT a EMPTY>" })).expect("edits");
+    let found = call(&mut a, json!({ "path": doc })).expect("runs");
+    assert_eq!(found["valid"], false, "the unsaved DTD is the one used: {found}");
+    assert_eq!(std::fs::read_to_string(dir.path().join("r.dtd")).expect("reads"), "<!ELEMENT r EMPTY>", "and the file is as it was");
+}
