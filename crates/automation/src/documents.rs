@@ -85,8 +85,15 @@ pub(crate) fn tools() -> Vec<ToolDef> {
         ToolDef {
             name: "doc_new",
             title: "New document",
-            description: "Create an untitled document, optionally with text, and return its id.",
-            input_schema: object(json!({ "text": { "type": "string", "description": "The first text" } }), &[]),
+            description: "Create an untitled document, optionally with text or from a template, and return its id. A template gives the document its text \
+                          and the name it is saved under by default; `xml`, `xml-dtd`, `xsd`, `dtd`, `xhtml`, `xslt` and `catalog` are the ones there are.",
+            input_schema: object(
+                json!({
+                    "text": { "type": "string", "description": "The first text" },
+                    "template": { "type": "string", "description": "The id of a template to start from (not together with text)" }
+                }),
+                &[],
+            ),
             read_only: false,
             destructive: false,
             handler: doc_new,
@@ -585,11 +592,29 @@ fn doc_open(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
 }
 
 fn doc_new(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let template = match args.get("template").and_then(Value::as_str) {
+        Some(id) => match xmlcraft_engine::templates::template(id) {
+            Some(template) => Some(template),
+            None => {
+                let known: Vec<&str> = xmlcraft_engine::templates::TEMPLATES.iter().map(|t| t.id).collect();
+                return fail(format!("there is no template {id:?}; the templates are {}", known.join(", ")));
+            }
+        },
+        None => None,
+    };
+    if template.is_some() && text_arg(args, "text").is_some() {
+        return fail("give a template or a text, not both");
+    }
     let index = a.session.new_document();
-    if let Some(text) = text_arg(args, "text")
-        && let Some(doc) = a.session.document_mut(index)
-    {
-        doc.editor_mut().load(text);
+    if let Some(doc) = a.session.document_mut(index) {
+        match (template, text_arg(args, "text")) {
+            (Some(template), _) => {
+                doc.name_untitled(template.name);
+                doc.editor_mut().load(template.text);
+            }
+            (None, Some(text)) => doc.editor_mut().load(text),
+            (None, None) => {}
+        }
     }
     let Some(doc) = a.session.document(index) else { return fail("the document disappeared") };
     json_result(describe(doc))
