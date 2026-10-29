@@ -191,7 +191,9 @@ fn f8_says_when_the_schema_a_document_names_is_not_there() {
     assert_eq!(h.state().validity(), Some((1, 0)));
     // What the system says is its own wording ("No such file or directory", "The system cannot find the file specified"), after the path.
     assert!(
-        h.query_by_label_contains("the schema 'order.xsd' could not be loaded").is_some() && h.query_by_label_contains("order.xsd: ").is_some(),
+        // The reason is in the Messages pane and, as the document names a schema, in Entry Helpers too.
+        h.query_all_by_label_contains("the schema 'order.xsd' could not be loaded").count() >= 1
+            && h.query_all_by_label_contains("order.xsd: ").count() >= 1,
         "the reason is shown, with the schema's name and the path that was tried"
     );
     assert!(h.query_by_label("Valid").is_none(), "an unchecked document is not called valid");

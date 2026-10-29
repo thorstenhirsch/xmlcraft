@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 4ca8dca6c88d2736c10a7c328c14d02e3d30114abccb5feb6f6584c830f10f10 # shrinks to ops = [(4, "a"), (4, "a")]
+cc 2e4da33cbfb1c8745251d73dabd58a1ed5b2228b49bd2eccf012f44bb8eff573 # shrinks to a run of 15 operations that emptied both names, deleted what is between them and typed (see the_run_the_property_test_found_keeps_the_names_apart_or_ends_the_link)

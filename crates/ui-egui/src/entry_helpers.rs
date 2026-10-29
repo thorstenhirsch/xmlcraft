@@ -4,8 +4,12 @@
 use std::sync::Arc;
 
 use egui::{Sense, vec2};
-use xmlcraft_complete::{AttributeChoice, Choices, ElementChoice, EntityChoice, attribute_snippet, choices_at, element_snippet, entity_snippet};
+use xmlcraft_complete::{
+    AttributeChoice, Choices, Declaration, ElementChoice, EntityChoice, attribute_snippet, choices_at, element_snippet, entity_snippet,
+    xsd_attribute_snippet, xsd_choices_at, xsd_element_snippet,
+};
 use xmlcraft_engine::schema::Schema;
+use xmlcraft_engine::xsd_schemas::{XsdAnswer, XsdSchema};
 use xmlcraft_grammar::Grammar;
 use xmlcraft_text::Edit;
 
@@ -17,7 +21,8 @@ use crate::{XmlCraftApp, widgets};
 const MAX_TEXT_BYTES: usize = 4 * 1024 * 1024;
 const ROW: f32 = 24.0;
 
-/// The grammar of a document's DTD, and the choices worked out from it for one place in one version of the text.
+/// The grammar of a document's DTD (or the XML Schema it names), and the choices worked out from it for one place in one version of the
+/// text.
 #[derive(Default)]
 pub(crate) struct HelperState {
     /// The request the grammar answers (see `xmlcraft_engine::schema::key_of`).
@@ -27,7 +32,25 @@ pub(crate) struct HelperState {
     pub(crate) requested_key: Option<u64>,
     /// The version of the text a request was last looked for in.
     pub(crate) checked_version: Option<u64>,
-    cache: Option<(u64, usize, Option<u64>, Option<Choices>)>,
+    /// The XML Schema the document names (a document with a DOCTYPE is checked against that), loaded; and why there is none, when the
+    /// answer to the last request had none.
+    pub(crate) xsd: Option<Arc<XsdSchema>>,
+    pub(crate) xsd_error: Option<String>,
+    /// The request `xsd` or `xsd_error` answers (see `xmlcraft_engine::xsd_schemas::xsd_key`), and the last request made.
+    pub(crate) xsd_key: Option<u64>,
+    pub(crate) requested_xsd_key: Option<u64>,
+    /// How many requests for a schema were made for this document (what tests count).
+    pub(crate) xsd_requests: usize,
+    cache: Option<Cached>,
+}
+
+/// The choices at one place of one version of the text, from the grammar and the schema as they were.
+struct Cached {
+    version: u64,
+    offset: usize,
+    grammar_key: Option<u64>,
+    xsd_key: Option<u64>,
+    choices: Option<Choices>,
 }
 
 impl HelperState {
@@ -42,22 +65,61 @@ impl HelperState {
         true
     }
 
-    /// The choices at `offset` of the text (version `version`), worked out again only when something they depend on changed.
-    fn choices(&mut self, version: u64, offset: usize, text: impl FnOnce() -> String) -> Option<&Choices> {
-        let key = (version, offset, self.grammar_key);
-        if self.cache.as_ref().is_none_or(|(v, o, g, _)| (*v, *o, *g) != key) {
-            let value = self.grammar.as_ref().and_then(|grammar| {
-                let text = text();
-                (text.len() <= MAX_TEXT_BYTES).then(|| choices_at(&xmlcraft_syntax::parse(&text).syntax(), offset, grammar))
-            });
-            self.cache = Some((key.0, key.1, key.2, value));
+    /// Take the answer to a request for a schema, on the same terms.
+    pub(crate) fn accept_xsd(&mut self, answer: XsdAnswer) -> bool {
+        if self.requested_xsd_key != Some(answer.key) {
+            return false;
         }
-        self.cache.as_ref().and_then(|(_, _, _, value)| value.as_ref())
+        self.xsd_key = Some(answer.key);
+        match answer.schema {
+            Ok(schema) => {
+                self.xsd = Some(schema);
+                self.xsd_error = None;
+            }
+            Err(why) => {
+                self.xsd = None;
+                self.xsd_error = Some(why);
+            }
+        }
+        true
+    }
+
+    /// The document names no schema (any more): none is held.
+    pub(crate) fn forget_xsd(&mut self) {
+        self.xsd = None;
+        self.xsd_error = None;
+        self.xsd_key = None;
+        self.requested_xsd_key = None;
+    }
+
+    /// The choices at `offset` of the text (version `version`), worked out again only when something they depend on changed. A DTD is
+    /// what a document with a DOCTYPE is answered from; a schema, when there is none.
+    fn choices(&mut self, version: u64, offset: usize, text: impl FnOnce() -> String) -> Option<&Choices> {
+        let stale =
+            self.cache.as_ref().is_none_or(|c| (c.version, c.offset, c.grammar_key, c.xsd_key) != (version, offset, self.grammar_key, self.xsd_key));
+        if stale {
+            let choices = match (&self.grammar, &self.xsd) {
+                (None, None) => None,
+                (grammar, xsd) => {
+                    let text = text();
+                    (text.len() <= MAX_TEXT_BYTES).then(|| {
+                        let root = xmlcraft_syntax::parse(&text).syntax();
+                        match (grammar, xsd) {
+                            (Some(grammar), _) => choices_at(&root, offset, grammar),
+                            (None, Some(schema)) => xsd_choices_at(&root, offset, schema),
+                            (None, None) => Choices::default(),
+                        }
+                    })
+                }
+            };
+            self.cache = Some(Cached { version, offset, grammar_key: self.grammar_key, xsd_key: self.xsd_key, choices });
+        }
+        self.cache.as_ref().and_then(|c| c.choices.as_ref())
     }
 }
 
 impl XmlCraftApp {
-    /// What the DTD allows at the caret of the document being shown, if it has a DTD that was read.
+    /// What the DTD (or the schema) allows at the caret of the document being shown, if one was read.
     fn helper_choices(&mut self) -> Option<Choices> {
         let doc = self.session.active_document()?;
         let (id, version, caret) = (doc.id(), doc.editor().version(), doc.editor().primary().head());
@@ -65,10 +127,14 @@ impl XmlCraftApp {
         view.helpers.choices(version, caret, || doc.editor().text()).cloned()
     }
 
-    /// Put an element at the caret, with what its declaration requires when the option is on.
-    pub(crate) fn insert_element(&mut self, name: &str) {
-        let Some(grammar) = self.active_grammar() else { return };
-        let snippet = element_snippet(&grammar, name, self.entry_mandatory);
+    /// Put an element at the caret, with what its declaration requires when the option is on. `scope` are the namespace declarations at
+    /// the caret (from the choices), for the names an XML Schema element is written with.
+    pub(crate) fn insert_element(&mut self, choice: &ElementChoice, scope: &[Declaration]) {
+        let snippet = match (self.active_grammar(), self.active_xsd()) {
+            (Some(grammar), _) => element_snippet(&grammar, &choice.name, self.entry_mandatory),
+            (None, Some(schema)) => xsd_element_snippet(&schema, scope, choice, self.entry_mandatory),
+            (None, None) => return,
+        };
         self.insert_at_selection(snippet.text, snippet.caret);
     }
 
@@ -78,9 +144,20 @@ impl XmlCraftApp {
         self.insert_at_selection(snippet.text, snippet.caret);
     }
 
-    /// Add an attribute to the start tag of the element at `at` (the end of the name and the attributes already there).
-    pub(crate) fn insert_attribute(&mut self, name: &str, at: usize, first_value: Option<&str>) {
-        let snippet = attribute_snippet(name, first_value);
+    /// Put text (a value the type of the element lists) at the caret, replacing the selection.
+    pub(crate) fn insert_value(&mut self, value: &str) {
+        let text = value.replace('&', "&amp;").replace('<', "&lt;");
+        let caret = text.len();
+        self.insert_at_selection(text, caret);
+    }
+
+    /// Add an attribute to the start tag of the element at `at` (the end of the name and the attributes already there), with the
+    /// namespace declaration its name needs when it has one.
+    pub(crate) fn insert_attribute(&mut self, name: &str, at: usize, first_value: Option<&str>, declare: Option<&Declaration>) {
+        let snippet = match declare {
+            Some(_) => xsd_attribute_snippet(name, first_value, declare),
+            None => attribute_snippet(name, first_value),
+        };
         let Some(doc) = self.session.active_document_mut() else { return };
         let editor = doc.editor_mut();
         if at <= editor.buffer().len() && editor.apply_edits(&[Edit::insert(at, snippet.text)]) {
@@ -93,6 +170,11 @@ impl XmlCraftApp {
     fn active_grammar(&self) -> Option<Arc<Grammar>> {
         let id = self.session.active_document()?.id();
         self.views.get(&id)?.helpers.grammar.clone()
+    }
+
+    fn active_xsd(&self) -> Option<Arc<XsdSchema>> {
+        let id = self.session.active_document()?.id();
+        self.views.get(&id)?.helpers.xsd.clone()
     }
 
     /// Replace the selection (or insert at the caret) as one undoable step, and put the caret `caret` bytes into the new text.
@@ -139,29 +221,57 @@ fn hint(ui: &mut egui::Ui, text: &str) {
 
 /// What a click on a row asks for.
 enum Insert {
-    Element(String),
-    Attribute { name: String, at: usize, first_value: Option<String> },
+    Element(ElementChoice),
+    Attribute { name: String, at: usize, first_value: Option<String>, declare: Option<Declaration> },
     Entity(String),
+    Value(String),
 }
 
-pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
-    let Some(doc) = app.session.active_document() else {
-        hint(ui, tl!("What the DTD allows at the cursor appears here."));
-        return;
-    };
-    let id = doc.id();
-    let has_doctype = app.views.get(&id).and_then(|v| v.analysis.as_ref()).is_some_and(|a| a.doctype.is_some());
-    if !has_doctype {
-        widgets::empty_state(ui, 24.0, tl!("No DTD"), tl!("Add a DOCTYPE to the document to see what it allows."));
-        return;
-    }
-    if let Some(helpers) = app.views.get(&id).map(|v| &v.helpers).filter(|h| h.grammar.is_none()) {
+/// What the panel has to say when there is nothing to list: the document has no DTD or schema, or it is still being read.
+fn waiting(ui: &mut egui::Ui, app: &XmlCraftApp, id: u64) -> bool {
+    let Some(view) = app.views.get(&id) else { return true };
+    let has_doctype = view.analysis.as_ref().is_some_and(|a| a.doctype.is_some());
+    let has_hints = view.analysis.as_ref().is_some_and(|a| !a.schema_hints.is_empty());
+    let helpers = &view.helpers;
+    if has_doctype {
+        if helpers.grammar.is_some() {
+            return false;
+        }
         // The answer to the last request is in, and there is no grammar in it: the DOCTYPE could not be read.
         if helpers.grammar_key.is_some() && helpers.grammar_key == helpers.requested_key {
             widgets::empty_state(ui, 24.0, tl!("No DTD to show"), tl!("The DOCTYPE is too large to be read."));
         } else {
             widgets::empty_state(ui, 24.0, tl!("Reading the DTD…"), "");
         }
+        return true;
+    }
+    if has_hints {
+        if helpers.xsd.is_some() {
+            return false;
+        }
+        if helpers.xsd_key.is_some() && helpers.xsd_key == helpers.requested_xsd_key {
+            widgets::empty_state(ui, 24.0, tl!("No schema to show"), helpers.xsd_error.as_deref().unwrap_or_default());
+        } else {
+            widgets::empty_state(ui, 24.0, tl!("Reading the schema…"), "");
+        }
+        return true;
+    }
+    widgets::empty_state(
+        ui,
+        24.0,
+        tl!("No DTD or schema"),
+        tl!("Add a DOCTYPE, or name a schema (Assign Schema… in the XML menu), to see what the document allows."),
+    );
+    true
+}
+
+pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
+    let Some(doc) = app.session.active_document() else {
+        hint(ui, tl!("What the DTD or the schema allows at the cursor appears here."));
+        return;
+    };
+    let id = doc.id();
+    if waiting(ui, app, id) {
         return;
     }
     egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 6)).show(ui, |ui| {
@@ -174,21 +284,31 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     let mut insert = None;
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         section(ui, &crate::i18n::fmt(tl!("Elements in {name}"), &[("name", choices.parent.as_deref().unwrap_or("…"))]), choices.elements.is_empty());
-        for ElementChoice { name, mandatory, empty } in &choices.elements {
-            let detail = empty.then_some("EMPTY");
-            if row(ui, name, detail, *mandatory, false).double_clicked() {
-                insert = Some(Insert::Element(name.clone()));
+        for choice in &choices.elements {
+            let detail = choice.empty.then_some("EMPTY");
+            if row(ui, &choice.name, detail, choice.mandatory, false).double_clicked() {
+                insert = Some(Insert::Element(choice.clone()));
             }
         }
         if let Some(element) = &choices.element {
             section(ui, &crate::i18n::fmt(tl!("Attributes of {name}"), &[("name", element)]), choices.attributes.is_empty());
-            for AttributeChoice { name, mandatory, used, values } in &choices.attributes {
+            for AttributeChoice { name, mandatory, used, values, declare } in &choices.attributes {
                 let detail = (!values.is_empty()).then(|| values.join(" | "));
                 if row(ui, name, detail.as_deref(), *mandatory, *used).double_clicked()
                     && !used
                     && let Some(at) = choices.attribute_at
                 {
-                    insert = Some(Insert::Attribute { name: name.clone(), at, first_value: values.first().cloned() });
+                    insert = Some(Insert::Attribute { name: name.clone(), at, first_value: values.first().cloned(), declare: declare.clone() });
+                }
+            }
+        }
+        if !choices.values.is_empty()
+            && let Some(element) = &choices.parent
+        {
+            section(ui, &crate::i18n::fmt(tl!("Values of {name}"), &[("name", element)]), false);
+            for value in &choices.values {
+                if row(ui, value, None, false, false).double_clicked() {
+                    insert = Some(Insert::Value(value.clone()));
                 }
             }
         }
@@ -203,9 +323,10 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
         }
     });
     match insert {
-        Some(Insert::Element(name)) => app.insert_element(&name),
-        Some(Insert::Attribute { name, at, first_value }) => app.insert_attribute(&name, at, first_value.as_deref()),
+        Some(Insert::Element(choice)) => app.insert_element(&choice, &choices.scope),
+        Some(Insert::Attribute { name, at, first_value, declare }) => app.insert_attribute(&name, at, first_value.as_deref(), declare.as_ref()),
         Some(Insert::Entity(name)) => app.insert_entity(&name),
+        Some(Insert::Value(value)) => app.insert_value(&value),
         None => {}
     }
 }
@@ -237,5 +358,31 @@ mod tests {
         state.requested_key = Some(3);
         assert!(state.accept(Schema { key: 3, grammar: None }));
         assert!(state.grammar.is_none() && state.grammar_key == Some(3));
+    }
+
+    #[test]
+    fn only_the_answer_to_the_last_request_for_a_schema_is_taken() {
+        let mut state = HelperState { requested_xsd_key: Some(2), ..HelperState::default() };
+        let schema = || {
+            Ok(Arc::new(
+                xmlcraft_xsd::assemble(&xmlcraft_xsd::load(
+                    "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"/>",
+                    "",
+                    &mut xmlcraft_xsd::NoLoader,
+                ))
+                .schema,
+            ))
+        };
+        assert!(!state.accept_xsd(XsdAnswer { key: 1, schema: schema() }), "an older request");
+        assert!(state.xsd.is_none() && state.xsd_key.is_none());
+        assert!(state.accept_xsd(XsdAnswer { key: 2, schema: schema() }));
+        assert!(state.xsd.is_some() && state.xsd_key == Some(2) && state.xsd_error.is_none());
+        // A schema that cannot be loaded replaces the one there was, and says why.
+        state.requested_xsd_key = Some(3);
+        assert!(state.accept_xsd(XsdAnswer { key: 3, schema: Err("it is gone".to_owned()) }));
+        assert!(state.xsd.is_none() && state.xsd_key == Some(3) && state.xsd_error.as_deref() == Some("it is gone"));
+        // The document stops naming one: nothing is held.
+        state.forget_xsd();
+        assert!((state.xsd.is_none(), state.xsd_key, state.requested_xsd_key, state.xsd_error.is_none()) == (true, None, None, true));
     }
 }
