@@ -173,15 +173,9 @@ fn describe_problem(kind: &str, diagnostic: &Diagnostic, file: Option<String>, b
     value
 }
 
-/// The check against an XML Schema.
-fn validate_against_schema(
-    a: &mut Automation,
-    source: &crate::documents::Source,
-    root: &SyntaxNode,
-    syntax: &[Diagnostic],
-    schema: Option<&str>,
-) -> Result<Vec<Content>> {
-    let location = source.path.as_deref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+/// The resolver the schema documents of a call are found with: the documents that are open (as they are being edited, not as saved), the
+/// schemas that ship with the app, and files through the root confinement. Nothing is downloaded.
+pub(crate) fn schema_resolver(a: &Automation) -> Resolver {
     let open: Vec<(String, Arc<str>)> = a
         .session()
         .documents()
@@ -195,7 +189,19 @@ fn validate_against_schema(
         cache: None,
         clock: Arc::new(FixedClock(0)),
     };
-    let resolver = Resolver::new(env, Policy { auto_download: false, offline: true, ..Policy::default() }, &[]);
+    Resolver::new(env, Policy { auto_download: false, offline: true, ..Policy::default() }, &[])
+}
+
+/// The check against an XML Schema.
+fn validate_against_schema(
+    a: &mut Automation,
+    source: &crate::documents::Source,
+    root: &SyntaxNode,
+    syntax: &[Diagnostic],
+    schema: Option<&str>,
+) -> Result<Vec<Content>> {
+    let location = source.path.as_deref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let resolver = schema_resolver(a);
     let mut loader = ResolvingLoader::new(&resolver);
     // A schema given by a relative path is taken from the folder of the document, as the ones the document names are.
     let found = check_against_schema(root, syntax, &location, schema, &mut loader);

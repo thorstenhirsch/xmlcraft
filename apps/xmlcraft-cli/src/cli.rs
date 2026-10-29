@@ -7,6 +7,9 @@
 //! - `infer FILE… [--dtd] [--layout russian-doll|salami-slice|venetian-blind] [--no-types] [--no-enumerations] [--bounded] [--out DIR [--force]]
 //!   [--root DIR]`: generate an XML Schema (or a DTD) from the documents. One file is printed to standard output; with `--out` the files are written
 //!   there (a schema with several namespaces is one file each), and a file that exists is only replaced with `--force`.
+//! - `sample SCHEMA [--element NAME] [--no-optional] [--repeat N] [--rotate] [--named] [--max-depth N] [--kind xsd|dtd] [--location]
+//!   [--out FILE [--force]] [--root DIR]`: generate an XML document that is valid against an XML Schema or a DTD. It is printed, or written
+//!   to `--out` (a file that exists is only replaced with `--force`); what could not be made as asked is said on standard error.
 //! - `format FILE [--minify] [--indent N | --tabs] [--blank-lines keep|remove] [--check | --in-place] [--root DIR]`: pretty-print (or minify) a
 //!   file; the result goes to standard output unless `--in-place`.
 //! - `check-one FILE [--edit]`: hold the engine to its promises on one file (what the fuzzer runs): exit 1 and the broken promise on standard
@@ -32,6 +35,8 @@ pub const USAGE: &str = "Usage:
   xmlcraft-cli validate FILE... [--schema FILE] [--root DIR] [--json]
   xmlcraft-cli infer FILE... [--dtd] [--layout russian-doll|salami-slice|venetian-blind] [--no-types] [--no-enumerations] [--bounded]
                        [--out DIR [--force]] [--root DIR]
+  xmlcraft-cli sample SCHEMA [--element NAME] [--no-optional] [--repeat N] [--rotate] [--named] [--max-depth N] [--kind xsd|dtd]
+                         [--location] [--out FILE [--force]] [--root DIR]
   xmlcraft-cli format FILE [--minify] [--indent N | --tabs] [--blank-lines keep|remove] [--check | --in-place] [--root DIR]
   xmlcraft-cli tools [--json]
   xmlcraft-cli check-one FILE [--edit]
@@ -64,6 +69,14 @@ pub enum Command {
     Infer {
         files: Vec<String>,
         /// Arguments of the `xml_infer` tool beyond the documents.
+        options: Value,
+        out: Option<PathBuf>,
+        force: bool,
+        root: Option<PathBuf>,
+    },
+    Sample {
+        file: String,
+        /// Arguments of the `xml_sample` tool beyond the file.
         options: Value,
         out: Option<PathBuf>,
         force: bool,
@@ -232,6 +245,48 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
             }
             Ok(Command::Infer { files: rest, options: Value::Object(options), out, force, root })
         }
+        "sample" => {
+            let root = take_option(&mut rest, "--root")?.map(PathBuf::from);
+            let out = take_option(&mut rest, "--out")?.map(PathBuf::from);
+            let mut options = Map::new();
+            if let Some(element) = take_option(&mut rest, "--element")? {
+                options.insert("root".into(), json!(element));
+            }
+            if let Some(kind) = take_option(&mut rest, "--kind")? {
+                if kind != "xsd" && kind != "dtd" {
+                    return Err(format!("--kind is xsd or dtd, not {kind:?}"));
+                }
+                options.insert("kind".into(), json!(kind));
+            }
+            for (name, key) in [("--repeat", "repeat"), ("--max-depth", "max_depth")] {
+                if let Some(n) = take_option(&mut rest, name)? {
+                    let n: u64 = n.parse().map_err(|_| format!("{name} needs a whole number, not {n:?}"))?;
+                    options.insert(key.into(), json!(n));
+                }
+            }
+            if take_flag(&mut rest, "--no-optional") {
+                options.insert("optional".into(), json!(false));
+            }
+            if take_flag(&mut rest, "--rotate") {
+                options.insert("choice".into(), json!("rotate"));
+            }
+            if take_flag(&mut rest, "--named") {
+                options.insert("fill".into(), json!("named"));
+            }
+            let location = take_flag(&mut rest, "--location");
+            let force = take_flag(&mut rest, "--force");
+            if force && out.is_none() {
+                return Err("--force is for --out".into());
+            }
+            if let Some(flag) = rest.iter().find(|a| a.starts_with("--")) {
+                return Err(format!("unknown option {flag}"));
+            }
+            let [file] = <[String; 1]>::try_from(rest).map_err(|rest| format!("sample takes one schema, not {}", rest.len()))?;
+            if location {
+                options.insert("schema_location".into(), json!(file));
+            }
+            Ok(Command::Sample { file, options: Value::Object(options), out, force, root })
+        }
         "format" => {
             let root = take_option(&mut rest, "--root")?.map(PathBuf::from);
             let mut options = Map::new();
@@ -360,6 +415,7 @@ pub fn execute(command: Command, out: &mut impl Write, err: &mut impl Write) -> 
         }
         Command::Check { files, root, json } => check("xml_wellformed", &files, None, root, json, out, err),
         Command::Validate { files, schema, root, json } => check("xml_validate", &files, schema.as_deref(), root, json, out, err),
+        Command::Sample { file, options, out: target, force, root } => sample(&file, options, target.as_deref(), force, root, out, err),
         Command::Infer { files, options, out: dir, force, root } => infer(&files, options, dir.as_deref(), force, root, out, err),
         Command::Format { file, options, root, mode } => format_file(&file, options, root, mode, out, err),
         Command::Run { tool, args, root } => {
@@ -583,31 +639,73 @@ fn infer(files: &[String], options: Value, dir: Option<&Path>, force: bool, root
         if name.is_empty() || name.contains(['/', '\\']) || name == ".." {
             return fail(err, &format!("{name:?} is not a file name"));
         }
-        let wanted = dir.join(name);
-        let Some(wanted) = wanted.to_str() else { return fail(err, "the output path is not valid UTF-8") };
-        let path = match confinement.resolve_write(wanted) {
-            Ok(p) => p,
-            Err(e) => return fail(err, &e.to_string()),
-        };
-        if let Some(parent) = path.parent()
-            && let Err(e) = std::fs::create_dir_all(parent)
-        {
-            return fail(err, &format!("{}: {e}", parent.display()));
-        }
-        let written = if force {
-            std::fs::write(&path, text)
-        } else {
-            std::fs::OpenOptions::new().write(true).create_new(true).open(&path).and_then(|mut file| file.write_all(text.as_bytes()))
-        };
-        match written {
-            Ok(()) => say(out, &path.display().to_string()),
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                return fail(err, &format!("{} exists (--force replaces it)", path.display()));
-            }
-            Err(e) => return fail(err, &format!("{}: {e}", path.display())),
+        match write_file(&confinement, &dir.join(name), text, force) {
+            Ok(path) => say(out, &path.display().to_string()),
+            Err(message) => return fail(err, &message),
         }
     }
     0
+}
+
+/// Write `text` to `wanted` (inside the root, when there is one), making the folders it needs. A file that is there is not replaced,
+/// unless `force`. Returns the path written.
+fn write_file(confinement: &xmlcraft_automation::file_access::Confinement, wanted: &Path, text: &str, force: bool) -> Result<PathBuf, String> {
+    let Some(wanted) = wanted.to_str() else { return Err("the output path is not valid UTF-8".into()) };
+    let path = confinement.resolve_write(wanted).map_err(|e| e.to_string())?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    }
+    let written = if force {
+        std::fs::write(&path, text)
+    } else {
+        std::fs::OpenOptions::new().write(true).create_new(true).open(&path).and_then(|mut file| file.write_all(text.as_bytes()))
+    };
+    match written {
+        Ok(()) => Ok(path),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(format!("{} exists (--force replaces it)", path.display())),
+        Err(e) => Err(format!("{}: {e}", path.display())),
+    }
+}
+
+/// `sample`: the schema through `xml_sample`; the document is printed, or written to `target` (without replacing a file that is there,
+/// unless `force`). What could not be made as asked is said on standard error.
+fn sample(file: &str, options: Value, target: Option<&Path>, force: bool, root: Option<PathBuf>, out: &mut impl Write, err: &mut impl Write) -> u8 {
+    let confinement = match &root {
+        Some(root) => match xmlcraft_automation::file_access::Confinement::new(root) {
+            Ok(c) => c,
+            Err(e) => return fail(err, &e.to_string()),
+        },
+        None => xmlcraft_automation::file_access::Confinement::none(),
+    };
+    let mut automation = match automation(root) {
+        Ok(a) => a,
+        Err(e) => return fail(err, &e),
+    };
+    let mut args = options;
+    if let Value::Object(map) = &mut args {
+        map.insert("path".into(), json!(file));
+    }
+    let result = match automation.call("xml_sample", &args) {
+        Ok(content) => value_of(content),
+        Err(e) => return fail(err, &e.to_string()),
+    };
+    for warning in result["warnings"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+        let _ = writeln!(err, "xmlcraft-cli: warning: {warning}");
+    }
+    let text = result["text"].as_str().unwrap_or_default();
+    match target {
+        None => {
+            let _ = write!(out, "{text}");
+            0
+        }
+        Some(path) => match write_file(&confinement, path, text, force) {
+            Ok(written) => {
+                say(out, &written.display().to_string());
+                0
+            }
+            Err(message) => fail(err, &message),
+        },
+    }
 }
 
 /// `format`: the file through `xml_format`; the result is printed, checked against the file, or written back (atomically, through the
@@ -1095,6 +1193,96 @@ mod tests {
         let (code, out, _) = infer(inside.path().join("schemas"));
         assert_eq!(code, 0, "{out}");
         assert!(inside.path().join("schemas").join("schema.xsd").is_file());
+    }
+
+    #[test]
+    fn sample_prints_or_writes_the_document_and_says_what_it_could_not_make() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = |name: &str, text: &str| {
+            let p = dir.path().join(name);
+            std::fs::write(&p, text).expect("writes");
+            p.to_str().expect("utf-8").to_owned()
+        };
+        let xsd = path(
+            "order.xsd",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="order"><xs:complexType><xs:sequence><xs:element name="id" type="xs:int"/><xs:element name="item" type="xs:string" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element><xs:element name="other" type="xs:string"/></xs:schema>"#,
+        );
+        let sample = |file: &str, options: Value, out: Option<PathBuf>, force: bool| {
+            run(Command::Sample { file: file.to_owned(), options, out, force, root: None })
+        };
+        let (code, out, err) = sample(&xsd, json!({}), None, false);
+        assert_eq!((code, err.as_str()), (0, ""));
+        assert!(out.starts_with("<?xml") && out.contains("<order>") && out.contains("<id>1</id>"), "{out}");
+        let (_, other, _) = sample(&xsd, json!({ "root": "other", "fill": "named" }), None, false);
+        assert!(other.contains("<other>other</other>"), "{other}");
+        let (_, hinted, _) = sample(&xsd, json!({ "schema_location": xsd }), None, false);
+        assert!(hinted.contains("xsi:noNamespaceSchemaLocation="), "{hinted}");
+        // Into a file, which is not replaced without --force.
+        let target = dir.path().join("made.xml");
+        let (code, out, _) = sample(&xsd, json!({}), Some(target.clone()), false);
+        assert_eq!(code, 0);
+        assert_eq!(out.trim(), target.display().to_string());
+        assert!(std::fs::read_to_string(&target).expect("written").contains("<order>"));
+        let (code, _, err) = sample(&xsd, json!({}), Some(target.clone()), false);
+        assert_eq!(code, 1);
+        assert!(err.contains("exists") && err.contains("--force"), "{err}");
+        assert_eq!(sample(&xsd, json!({}), Some(target), true).0, 0);
+        // A value that cannot be made is a warning on standard error, and the document is still printed.
+        let never = path(
+            "never.xsd",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:simpleType name="t"><xs:restriction base="xs:string"><xs:pattern value="[a-z]{3}"/><xs:maxLength value="1"/></xs:restriction></xs:simpleType><xs:element name="r" type="t"/></xs:schema>"#,
+        );
+        let (code, out, err) = sample(&never, json!({}), None, false);
+        assert_eq!(code, 0);
+        assert!(err.contains("warning") && out.contains("<r/>"), "{err} / {out}");
+        // A schema that is not there, and one that is broken.
+        let (code, _, err) = sample(&format!("{xsd}.missing"), json!({}), None, false);
+        assert_eq!(code, 1);
+        assert!(err.contains("missing"), "{err}");
+        let broken =
+            path("broken.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="r" type="nothing"/></xs:schema>"#);
+        let (code, _, err) = sample(&broken, json!({}), None, false);
+        assert_eq!(code, 1);
+        assert!(err.contains("error"), "{err}");
+    }
+
+    #[test]
+    fn sample_writes_only_inside_the_root() {
+        let inside = tempfile::tempdir().expect("temp dir");
+        let outside = tempfile::tempdir().expect("temp dir");
+        std::fs::write(
+            inside.path().join("s.xsd"),
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="r" type="xs:string"/></xs:schema>"#,
+        )
+        .expect("writes");
+        let sample = |out: PathBuf| {
+            run(Command::Sample { file: "s.xsd".into(), options: json!({}), out: Some(out), force: false, root: Some(inside.path().to_path_buf()) })
+        };
+        let (code, _, _) = sample(outside.path().join("made.xml"));
+        assert_eq!(code, 1);
+        assert!(!outside.path().join("made.xml").exists());
+        let (code, out, _) = sample(inside.path().join("made.xml"));
+        assert_eq!(code, 0, "{out}");
+        assert!(inside.path().join("made.xml").is_file());
+    }
+
+    #[test]
+    fn sample_options_parse() {
+        assert_eq!(
+            parse(&args(
+                "sample s.xsd --element order --no-optional --repeat 3 --rotate --named --max-depth 2 --kind dtd --location --out o.xml --force --root r"
+            )),
+            Ok(Command::Sample {
+                file: "s.xsd".into(),
+                options: json!({ "root": "order", "kind": "dtd", "repeat": 3, "max_depth": 2, "optional": false, "choice": "rotate", "fill": "named", "schema_location": "s.xsd" }),
+                out: Some("o.xml".into()),
+                force: true,
+                root: Some("r".into())
+            })
+        );
+        for bad in ["sample", "sample a b", "sample s.xsd --kind json", "sample s.xsd --repeat many", "sample s.xsd --force", "sample s.xsd --nope"] {
+            assert!(parse(&args(bad)).is_err(), "{bad}");
+        }
     }
 
     #[test]

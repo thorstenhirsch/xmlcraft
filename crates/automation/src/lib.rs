@@ -17,6 +17,7 @@ mod entry_helpers;
 pub mod file_access;
 mod infer;
 mod lines;
+mod sample;
 mod schema;
 mod script;
 mod tools;

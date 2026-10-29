@@ -84,6 +84,8 @@ pub const SIDEWAYS: &[(&str, &str)] = &[
     ("sample", "format"),
     ("infer", "validate"),
     ("sample", "validate"),
+    // The tests of the sample generator run it on the schemas that inference writes.
+    ("sample", "infer"),
     // The shell hosts the editor widget and the platform services.
     ("ui-egui", "code-editor"),
     ("ui-egui", "platform"),

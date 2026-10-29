@@ -4767,6 +4767,7 @@ dependencies = [
  "xmlcraft-infer",
  "xmlcraft-platform",
  "xmlcraft-resolve",
+ "xmlcraft-sample",
  "xmlcraft-syntax",
  "xmlcraft-text",
  "xmlcraft-validate",
@@ -4921,6 +4922,22 @@ dependencies = [
  "proptest",
  "xmlcraft-catalog",
  "xmlcraft-schemas",
+]
+
+[[package]]
+name = "xmlcraft-sample"
+version = "0.0.1"
+dependencies = [
+ "proptest",
+ "regex-syntax",
+ "xmlcraft-datatypes",
+ "xmlcraft-dtd",
+ "xmlcraft-infer",
+ "xmlcraft-pattern",
+ "xmlcraft-schemas",
+ "xmlcraft-syntax",
+ "xmlcraft-validate",
+ "xmlcraft-xsd",
 ]
 
 [[package]]
