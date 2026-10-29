@@ -14,6 +14,7 @@ mod catalog;
 mod documents;
 mod entry_helpers;
 pub mod file_access;
+mod infer;
 mod lines;
 mod schema;
 mod script;
