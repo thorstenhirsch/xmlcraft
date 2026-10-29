@@ -19,6 +19,8 @@ pub struct Attr {
     /// The namespace of the attribute (`None` for an unprefixed attribute).
     pub namespace: Option<String>,
     pub local: String,
+    /// The name as written (with its prefix).
+    pub qname: String,
     /// The value after the references are replaced and each tab and line end made a space.
     pub value: String,
     pub name_range: Range<usize>,
@@ -187,7 +189,7 @@ pub fn build(root: &SyntaxNode) -> Dom {
                         }
                         None => None,
                     };
-                    attrs.push(Attr { namespace: ans, local: alocal, value, name_range, value_range });
+                    attrs.push(Attr { namespace: ans, local: alocal, qname: name, value, name_range, value_range });
                 }
                 let parent = open.last().copied();
                 let index = dom.elements.len();

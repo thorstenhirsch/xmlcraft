@@ -4764,6 +4764,7 @@ dependencies = [
  "xmlcraft-editor",
  "xmlcraft-engine",
  "xmlcraft-format",
+ "xmlcraft-infer",
  "xmlcraft-platform",
  "xmlcraft-resolve",
  "xmlcraft-syntax",
@@ -4878,6 +4879,18 @@ name = "xmlcraft-grammar"
 version = "0.0.1"
 dependencies = [
  "proptest",
+]
+
+[[package]]
+name = "xmlcraft-infer"
+version = "0.0.1"
+dependencies = [
+ "proptest",
+ "xmlcraft-datatypes",
+ "xmlcraft-dtd",
+ "xmlcraft-syntax",
+ "xmlcraft-validate",
+ "xmlcraft-xsd",
 ]
 
 [[package]]

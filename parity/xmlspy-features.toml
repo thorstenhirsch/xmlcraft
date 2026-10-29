@@ -1176,11 +1176,11 @@ title = "Generate an XSD from XML documents"
 area = "F"
 tier = "P0"
 milestone = "M4"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "Three layouts; one schema per namespace."
+tools = ["xml_infer"]
+evidence = ["crates/infer/tests/infer.rs::a_small_document_gives_the_schema_it_looks_like", "crates/infer/tests/infer.rs::the_same_document_in_the_other_layouts", "crates/infer/tests/infer.rs::an_inferred_xsd_validates_its_sources", "crates/automation/tests/infer.rs::what_is_generated_validates_its_source_through_the_other_tool"]
+notes = "An XML Schema from one or more documents (`xmlcraft-infer`), in three layouts (Russian doll, Salami slice, Venetian blind) and one schema document per namespace, with imports. The content model of an element is a sequence of repeated choices learned from the order and number of its children (deterministic by construction: every name is in one place; mixed content is a repeated choice), attributes are required when every element has them, `xml:` attributes are referred to through `xml.xsd`, and a schema inferred from documents validates each of them (property test, 1500 cases, every layout and every option set). Headless only: the tool `xml_infer` and `xmlcraft-cli infer`; missing: the Generate Schema dialog in the app and assigning the result to the source document (it is not opened or written by the app yet). Not inferred: keys and keyrefs, `xs:all`, derived types, patterns and length facets, `xsi:type`."
 
 [[feature]]
 id = "generate.schema-dtd"
@@ -1188,11 +1188,11 @@ title = "Generate a DTD from XML documents"
 area = "F"
 tier = "P0"
 milestone = "M4"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["xml_infer"]
+evidence = ["crates/infer/tests/infer.rs::a_dtd_for_a_document_with_prefixes_uses_the_names_as_written", "crates/infer/tests/infer.rs::xml_space_is_declared_the_way_a_valid_document_must", "crates/infer/tests/infer.rs::an_inferred_dtd_validates_its_sources"]
+notes = "A DTD from one or more documents: the roots first, then the others by name; content models as for the schema, mixed content as `(#PCDATA|a|b)*`, attributes `CDATA` (an enumeration of name tokens where the rule finds one; `xml:space` as the specification demands), the names as the documents wrote them, namespace declarations as attributes. An inferred DTD validates its sources (property test). Headless only: the tool `xml_infer` and `xmlcraft-cli infer`; missing: the Generate Schema dialog in the app and assigning the result to the source document (it is not opened or written by the app yet). Not inferred: ID, IDREF and NMTOKEN types, entities."
 
 [[feature]]
 id = "generate.schema-options"
@@ -1200,11 +1200,11 @@ title = "Generation options: type detection, enumeration threshold, occurrences"
 area = "F"
 tier = "P0"
 milestone = "M4"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["xml_infer"]
+evidence = ["crates/infer/tests/infer.rs::types_are_the_narrowest_the_values_allow", "crates/infer/tests/infer.rs::a_few_values_each_seen_often_are_an_enumeration", "crates/infer/tests/infer.rs::optional_and_repeated_children_and_attributes", "crates/automation/tests/infer.rs::the_options_choose_the_kind_and_the_layout"]
+notes = "Type detection (boolean, integer, decimal, double, date, dateTime, time, else string; off with `types=false`), the enumeration rule (at most N values, each seen at least M times; defaults 10 and 2) and `maxOccurs` unbounded or as many as were seen. A least number of occurrences above one is never claimed. Headless only: the tool `xml_infer` and `xmlcraft-cli infer`; missing: the Generate Schema dialog in the app and assigning the result to the source document (it is not opened or written by the app yet)."
 
 [[feature]]
 id = "generate.schema-multi-file"
@@ -1212,11 +1212,11 @@ title = "Infer one schema from several documents"
 area = "F"
 tier = "P1"
 milestone = "M4"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["xml_infer"]
+evidence = ["crates/infer/tests/infer.rs::several_documents_are_learned_together", "crates/automation/tests/infer.rs::several_documents_are_learned_together_from_files_and_open_documents"]
+notes = "One schema from several documents (files, open documents or text), learned together, up to 1000 in a call. Headless only: the tool `xml_infer` and `xmlcraft-cli infer`; missing: the Generate Schema dialog in the app and assigning the result to the source document (it is not opened or written by the app yet)."
 
 [[feature]]
 id = "generate.sample-xsd"

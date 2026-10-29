@@ -7,10 +7,12 @@
 //!   each was written, and the mistakes of the document reported (which elements and attributes may be where, the values of the
 //!   attributes, which attributes may not be given together). It is total: whatever the text says it gives diagnostics and whatever
 //!   could be read.
+//! - [`dom`]: a document as a tree of elements with the namespaces resolved, which the reader works on and which other readers of XML
+//!   (the schema inference) can use too.
 
 mod build;
 mod compile;
-mod dom;
+pub mod dom;
 mod loader;
 pub mod model;
 mod reader;

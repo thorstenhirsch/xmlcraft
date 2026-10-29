@@ -4,6 +4,9 @@
 //! - `validate FILE… [--schema FILE] [--root DIR] [--json]`: check the files for well-formedness and, when they are well-formed, validity against
 //!   their DTD, or against the XML Schema they name (`xsi:schemaLocation`) or `--schema` gives; the problems are printed as
 //!   `file:line:column: severity: message` (a problem in an external text of the DTD, or in a schema document, names that file).
+//! - `infer FILE… [--dtd] [--layout russian-doll|salami-slice|venetian-blind] [--no-types] [--no-enumerations] [--bounded] [--out DIR [--force]]
+//!   [--root DIR]`: generate an XML Schema (or a DTD) from the documents. One file is printed to standard output; with `--out` the files are written
+//!   there (a schema with several namespaces is one file each), and a file that exists is only replaced with `--force`.
 //! - `format FILE [--minify] [--indent N | --tabs] [--blank-lines keep|remove] [--check | --in-place] [--root DIR]`: pretty-print (or minify) a
 //!   file; the result goes to standard output unless `--in-place`.
 //! - `check-one FILE [--edit]`: hold the engine to its promises on one file (what the fuzzer runs): exit 1 and the broken promise on standard
@@ -18,7 +21,7 @@
 //! request failed (`check`: a problem was found; `format --check`: the file would change), and 2 for a command line that could not be understood.
 
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value, json};
 use xmlcraft_automation::control::ControlClient;
@@ -27,6 +30,8 @@ use xmlcraft_automation::{Automation, Content};
 pub const USAGE: &str = "Usage:
   xmlcraft-cli check FILE... [--root DIR] [--json]
   xmlcraft-cli validate FILE... [--schema FILE] [--root DIR] [--json]
+  xmlcraft-cli infer FILE... [--dtd] [--layout russian-doll|salami-slice|venetian-blind] [--no-types] [--no-enumerations] [--bounded]
+                       [--out DIR [--force]] [--root DIR]
   xmlcraft-cli format FILE [--minify] [--indent N | --tabs] [--blank-lines keep|remove] [--check | --in-place] [--root DIR]
   xmlcraft-cli tools [--json]
   xmlcraft-cli check-one FILE [--edit]
@@ -55,6 +60,14 @@ pub enum Command {
         schema: Option<String>,
         root: Option<PathBuf>,
         json: bool,
+    },
+    Infer {
+        files: Vec<String>,
+        /// Arguments of the `xml_infer` tool beyond the documents.
+        options: Value,
+        out: Option<PathBuf>,
+        force: bool,
+        root: Option<PathBuf>,
     },
     Format {
         file: String,
@@ -179,6 +192,45 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
                 return Err(format!("{command} needs at least one file"));
             }
             Ok(if command == "check" { Command::Check { files: rest, root, json } } else { Command::Validate { files: rest, schema, root, json } })
+        }
+        "infer" => {
+            let root = take_option(&mut rest, "--root")?.map(PathBuf::from);
+            let out = take_option(&mut rest, "--out")?.map(PathBuf::from);
+            let layout = take_option(&mut rest, "--layout")?;
+            let mut options = Map::new();
+            let dtd = take_flag(&mut rest, "--dtd");
+            if dtd {
+                options.insert("output".into(), json!("dtd"));
+            }
+            if let Some(layout) = layout {
+                if dtd {
+                    return Err("--layout is for an XML Schema, not a DTD".into());
+                }
+                if !matches!(layout.as_str(), "russian-doll" | "salami-slice" | "venetian-blind") {
+                    return Err(format!("--layout is russian-doll, salami-slice or venetian-blind, not {layout:?}"));
+                }
+                options.insert("layout".into(), json!(layout));
+            }
+            if take_flag(&mut rest, "--no-types") {
+                options.insert("types".into(), json!(false));
+            }
+            if take_flag(&mut rest, "--no-enumerations") {
+                options.insert("enumerations".into(), json!(false));
+            }
+            if take_flag(&mut rest, "--bounded") {
+                options.insert("unbounded".into(), json!(false));
+            }
+            let force = take_flag(&mut rest, "--force");
+            if force && out.is_none() {
+                return Err("--force is for --out".into());
+            }
+            if let Some(flag) = rest.iter().find(|a| a.starts_with("--")) {
+                return Err(format!("unknown option {flag}"));
+            }
+            if rest.is_empty() {
+                return Err("infer needs at least one file".into());
+            }
+            Ok(Command::Infer { files: rest, options: Value::Object(options), out, force, root })
         }
         "format" => {
             let root = take_option(&mut rest, "--root")?.map(PathBuf::from);
@@ -308,6 +360,7 @@ pub fn execute(command: Command, out: &mut impl Write, err: &mut impl Write) -> 
         }
         Command::Check { files, root, json } => check("xml_wellformed", &files, None, root, json, out, err),
         Command::Validate { files, schema, root, json } => check("xml_validate", &files, schema.as_deref(), root, json, out, err),
+        Command::Infer { files, options, out: dir, force, root } => infer(&files, options, dir.as_deref(), force, root, out, err),
         Command::Format { file, options, root, mode } => format_file(&file, options, root, mode, out, err),
         Command::Run { tool, args, root } => {
             let mut automation = match automation(root) {
@@ -480,6 +533,81 @@ fn check(tool: &str, files: &[String], schema: Option<&str>, root: Option<PathBu
         say(out, &pretty(&Value::Array(results)));
     }
     code
+}
+
+/// `infer`: the documents through `xml_infer`; the schema is printed (one file) or written into `dir` (without replacing a file that is
+/// there, unless `force`). With a root, the files are written only inside it.
+fn infer(files: &[String], options: Value, dir: Option<&Path>, force: bool, root: Option<PathBuf>, out: &mut impl Write, err: &mut impl Write) -> u8 {
+    let confinement = match &root {
+        Some(root) => match xmlcraft_automation::file_access::Confinement::new(root) {
+            Ok(c) => c,
+            Err(e) => return fail(err, &e.to_string()),
+        },
+        None => xmlcraft_automation::file_access::Confinement::none(),
+    };
+    let mut automation = match automation(root) {
+        Ok(a) => a,
+        Err(e) => return fail(err, &e),
+    };
+    let mut args = options;
+    if let Value::Object(map) = &mut args {
+        map.insert("sources".into(), Value::Array(files.iter().map(|f| json!({ "path": f })).collect()));
+    }
+    let result = match automation.call("xml_infer", &args) {
+        Ok(content) => value_of(content),
+        Err(e) => return fail(err, &e.to_string()),
+    };
+    if result["lossy"] == true {
+        let _ = writeln!(err, "xmlcraft-cli: a document has bytes that are not valid in its encoding (read with each shown as U+FFFD)");
+    }
+    let generated: Vec<(&str, &str)> = result["files"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|f| (f["name"].as_str().unwrap_or_default(), f["text"].as_str().unwrap_or_default()))
+        .collect();
+    let Some(dir) = dir else {
+        return match generated.as_slice() {
+            [(_, text)] => {
+                let _ = write!(out, "{text}");
+                0
+            }
+            many => {
+                let names: Vec<&str> = many.iter().map(|(name, _)| *name).collect();
+                fail(err, &format!("the schema is {} files ({}): give --out DIR to write them", many.len(), names.join(", ")))
+            }
+        };
+    };
+    for (name, text) in generated {
+        // The names are made here, but a path is never built from a name that could climb out.
+        if name.is_empty() || name.contains(['/', '\\']) || name == ".." {
+            return fail(err, &format!("{name:?} is not a file name"));
+        }
+        let wanted = dir.join(name);
+        let Some(wanted) = wanted.to_str() else { return fail(err, "the output path is not valid UTF-8") };
+        let path = match confinement.resolve_write(wanted) {
+            Ok(p) => p,
+            Err(e) => return fail(err, &e.to_string()),
+        };
+        if let Some(parent) = path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            return fail(err, &format!("{}: {e}", parent.display()));
+        }
+        let written = if force {
+            std::fs::write(&path, text)
+        } else {
+            std::fs::OpenOptions::new().write(true).create_new(true).open(&path).and_then(|mut file| file.write_all(text.as_bytes()))
+        };
+        match written {
+            Ok(()) => say(out, &path.display().to_string()),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                return fail(err, &format!("{} exists (--force replaces it)", path.display()));
+            }
+            Err(e) => return fail(err, &format!("{}: {e}", path.display())),
+        }
+    }
+    0
 }
 
 /// `format`: the file through `xml_format`; the result is printed, checked against the file, or written back (atomically, through the
@@ -901,6 +1029,94 @@ mod tests {
         );
         assert!(parse(&args("check a.xml --schema s.xsd")).expect_err("check has no schema").contains("unknown option --schema"));
         assert!(parse(&args("validate a.xml --schema")).expect_err("needs a value").contains("--schema needs a value"));
+    }
+
+    #[test]
+    fn infer_prints_one_file_and_writes_several_without_replacing_what_is_there() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = |name: &str, text: &str| {
+            let p = dir.path().join(name);
+            std::fs::write(&p, text).expect("writes");
+            p.to_str().expect("utf-8").to_owned()
+        };
+        let one = path("one.xml", "<order id=\"7\"><item>Tea</item></order>");
+        let two = path("two.xml", "<p:r xmlns:p=\"urn:p\" xmlns:q=\"urn:q\"><q:a/></p:r>");
+        let infer = |files: Vec<String>, options: Value, out: Option<PathBuf>, force: bool, root: Option<PathBuf>| {
+            run(Command::Infer { files, options, out, force, root })
+        };
+        // One file goes to standard output.
+        let (code, out, _) = infer(vec![one.clone()], json!({}), None, false, None);
+        assert_eq!(code, 0);
+        assert!(out.starts_with("<?xml") && out.contains("<xs:element name=\"order\">"), "{out}");
+        let (_, dtd, _) = infer(vec![one.clone()], json!({ "output": "dtd" }), None, false, None);
+        assert!(dtd.contains("<!ELEMENT order (item)>"), "{dtd}");
+        // Two namespaces are two files: they need a place to go.
+        let (code, out, err) = infer(vec![two.clone()], json!({}), None, false, None);
+        assert_eq!((code, out.as_str()), (1, ""));
+        assert!(err.contains("2 files") && err.contains("--out"), "{err}");
+        let target = dir.path().join("schemas");
+        let (code, out, _) = infer(vec![two.clone()], json!({}), Some(target.clone()), false, None);
+        assert_eq!(code, 0);
+        assert_eq!(out.lines().count(), 2, "{out}");
+        assert_eq!(std::fs::read_dir(&target).expect("made").count(), 2);
+        // A second run does not replace them; --force does.
+        let (code, _, err) = infer(vec![two.clone()], json!({}), Some(target.clone()), false, None);
+        assert_eq!(code, 1);
+        assert!(err.contains("exists") && err.contains("--force"), "{err}");
+        let (code, _, _) = infer(vec![two.clone()], json!({}), Some(target), true, None);
+        assert_eq!(code, 0);
+        // A document that is not well-formed, and one that is not there.
+        let broken = path("broken.xml", "<a><b></a>");
+        let (code, _, err) = infer(vec![one.clone(), broken], json!({}), None, false, None);
+        assert_eq!(code, 1);
+        assert!(err.contains("Document 2 is not well-formed"), "{err}");
+        let (code, _, err) = infer(vec![format!("{one}.missing")], json!({}), None, false, None);
+        assert_eq!(code, 1);
+        assert!(err.contains("missing"), "{err}");
+    }
+
+    #[test]
+    fn infer_writes_only_inside_the_root() {
+        let inside = tempfile::tempdir().expect("temp dir");
+        let outside = tempfile::tempdir().expect("temp dir");
+        std::fs::write(inside.path().join("a.xml"), "<a/>").expect("writes");
+        let infer = |out: PathBuf| {
+            run(Command::Infer {
+                files: vec!["a.xml".into()],
+                options: json!({}),
+                out: Some(out),
+                force: false,
+                root: Some(inside.path().to_path_buf()),
+            })
+        };
+        let (code, _, err) = infer(outside.path().join("schemas"));
+        assert_eq!(code, 1);
+        assert!(!outside.path().join("schemas").exists(), "nothing was made outside the root: {err}");
+        let (code, out, _) = infer(inside.path().join("schemas"));
+        assert_eq!(code, 0, "{out}");
+        assert!(inside.path().join("schemas").join("schema.xsd").is_file());
+    }
+
+    #[test]
+    fn infer_options_parse() {
+        assert_eq!(
+            parse(&args("infer a.xml b.xml --dtd --no-types --no-enumerations --bounded --out o --force --root r")),
+            Ok(Command::Infer {
+                files: vec!["a.xml".into(), "b.xml".into()],
+                options: json!({ "output": "dtd", "types": false, "enumerations": false, "unbounded": false }),
+                out: Some("o".into()),
+                force: true,
+                root: Some("r".into())
+            })
+        );
+        assert_eq!(
+            parse(&args("infer a.xml --layout venetian-blind")),
+            Ok(Command::Infer { files: vec!["a.xml".into()], options: json!({ "layout": "venetian-blind" }), out: None, force: false, root: None })
+        );
+        for bad in ["infer", "infer a.xml --layout ziggurat", "infer a.xml --dtd --layout salami-slice", "infer a.xml --force", "infer a.xml --nope"]
+        {
+            assert!(parse(&args(bad)).is_err(), "{bad}");
+        }
     }
 
     #[test]

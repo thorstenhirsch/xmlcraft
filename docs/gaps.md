@@ -1,6 +1,6 @@
 # Where XmlCraft falls short of XMLSpy
 
-> **Last reviewed:** 2026-10-29 · **Last updated:** 2026-10-29 · **Change:** gap 21: F8 in the app validates against a schema (M3.15, app), `xml_validate` and the CLI validate against an XSD (M3.15, tools); gap 3 reworded and gap 21 added (the XSD engine, M3.4–M3.9), gap 19 amended, gap 2: the resolver exists as a library, gap 2 reworded (catalog rules exist), gap 16 closed (xmlconf 100%, M2.9), gap 18 narrowed (large-file colouring, M1.15), gap 19 added (content-model automata, M2.5), gap 20 added (Entry Helpers, M2.11) · **Target:** Altova XMLSpy 2026 (public documentation)
+> **Last reviewed:** 2026-10-29 · **Last updated:** 2026-10-29 · **Change:** gap 4 narrowed (schema inference exists; no dialog, no sample generation); gap 21: F8 in the app validates against a schema (M3.15, app), `xml_validate` and the CLI validate against an XSD (M3.15, tools); gap 3 reworded and gap 21 added (the XSD engine, M3.4–M3.9), gap 19 amended, gap 2: the resolver exists as a library, gap 2 reworded (catalog rules exist), gap 16 closed (xmlconf 100%, M2.9), gap 18 narrowed (large-file colouring, M1.15), gap 19 added (content-model automata, M2.5), gap 20 added (Entry Helpers, M2.11) · **Target:** Altova XMLSpy 2026 (public documentation)
 
 The ranked gaps. Prefer fixing these over adding new features. Every gap states what is missing, why it matters and how it will be measured. At 0.0.1 the application does not exist yet, so the first entries are simply "the MVP".
 
@@ -11,7 +11,7 @@ The ranked gaps. Prefer fixing these over adding new features. Every gap states 
 | 1 | The editor lacks autosave recovery, file watching while the window is not focused and name completion (open, edit, colour, save, undo, find/replace, folding, matching tags, typing aids, tag-rename sync, comment toggle, selection expansion and formatting exist) | P0 | M1 |
 | 2 | No resolver that asks the catalogs (the catalog rules exist: M2.1, and ten W3C files with catalogs are bundled: M2.2), so a document's external DTD is found only as a file next to it; most of the core standard schemas are not bundled; nothing is downloaded or cached | P0 | M2 |
 | 3 | The XSD engine exists as libraries (schema documents are read, loaded and assembled, content models compiled, documents validated, identity constraints checked) but nothing in the app or a tool calls it, `xs:redefine` is not applied, a restriction is not checked against its base, and the W3C xsdtests are not measured yet | P0 | M3 |
-| 4 | No schema inference or sample generation | P0 | M4 |
+| 4 | Schema inference exists (`xmlcraft-infer`: an XSD in three layouts or a DTD from documents, the tool `xml_infer`, `xmlcraft-cli infer`; M4.1–M4.4 headless part); there is no dialog for it in the app yet, and no sample generation | P0 | M4 |
 | 5 | No JSON or YAML support | P1 | M5 |
 | 6 | No XPath/XQuery, XSLT or debugger | P2 | M6+ |
 | 7 | No Grid view, graphical schema editor or Authentic-style forms view | P2 | M6+ |
@@ -67,3 +67,4 @@ Details are added here as each gap is worked, including known approximations (fo
 - 2026-10-28: gap 3 reworded and gap 21 added: the XSD engine (M3.4 documents, M3.5 components, M3.7 content models, M3.8 identity constraints, M3.9 validation, first part) exists as libraries; what is missing is listed in gap 21.
 - 2026-10-29: gap 21: `xml_validate` takes a schema (or follows `xsi:schemaLocation`), and `xmlcraft-cli validate --schema FILE` (M3.15, tools); the app's F8 is what is left of its first item.
 - 2026-10-29: gap 21: F8 in the app validates a document against the schema it names (M3.15, app part); what is left of its first item is the download of a schema that is not a file (M2.4) and Assign Schema.
+- 2026-10-29: gap 4 narrowed: `xmlcraft-infer` generates an XSD (three layouts, one schema per namespace) or a DTD from documents, through `xml_infer` and `xmlcraft-cli infer`; what is left is the Generate Schema dialog and the sample generator.

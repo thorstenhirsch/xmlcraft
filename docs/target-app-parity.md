@@ -1,6 +1,6 @@
 # XmlCraft parity with Altova XMLSpy
 
-> **Last reviewed:** 2026-10-29 · **Last updated:** 2026-10-29 · **Change:** M3.15 (first part): `xml_validate` and `xmlcraft-cli validate --schema` against an XSD (`validate.xsd` and `validate.schema-association` planned → partial; 10 shipped and 46 partial, 21.7% weighted), M3.4–M3.9: the XSD engine (notes of `xsd.*` and `validate.xsd`, no status changes), M3.3: the schema document reader (a note only), M2.3 (first part): the resolver library (notes only), M3.2: XSD datatypes (notes only), M2.11: Entry Helpers from the DTD (`view.entry-helpers` planned → partial), M3.1: XSD regular expressions (a note only), M2.2 (first part): bundled schemas (`catalog.bundled-schemas` planned → partial), M2.9: validation against a DTD (partial); xmlconf now validating: not-wf, valid and invalid all 100%; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
+> **Last reviewed:** 2026-10-29 · **Last updated:** 2026-10-29 · **Change:** M4.1–M4.4 (headless): the four `generate.schema-*` features planned → partial (10 shipped and 50 partial, 23.0% weighted), M3.15 (first part): `xml_validate` and `xmlcraft-cli validate --schema` against an XSD (`validate.xsd` and `validate.schema-association` planned → partial; 10 shipped and 46 partial, 21.7% weighted), M3.4–M3.9: the XSD engine (notes of `xsd.*` and `validate.xsd`, no status changes), M3.3: the schema document reader (a note only), M2.3 (first part): the resolver library (notes only), M3.2: XSD datatypes (notes only), M2.11: Entry Helpers from the DTD (`view.entry-helpers` planned → partial), M3.1: XSD regular expressions (a note only), M2.2 (first part): bundled schemas (`catalog.bundled-schemas` planned → partial), M2.9: validation against a DTD (partial); xmlconf now validating: not-wf, valid and invalid all 100%; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
 
 The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -10,8 +10,8 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **6.6%** shipped, 21.7% with partial counted half (10 shipped + 46 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-29) |
-| Must-have (P0) features | 7.8% shipped, 35.9% weighted (5 shipped + 36 partial of 64) | measured |
+| **Feature breadth**, unweighted | **6.6%** shipped, 23.0% with partial counted half (10 shipped + 50 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-29) |
+| Must-have (P0) features | 7.8% shipped, 38.3% weighted (5 shipped + 39 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **100%** (1017 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): a valid document has no well-formedness or validity error, an invalid one is well-formed and has at least one validity error (which one is not compared; 73 of the 227 are documents with no DOCTYPE, invalid because there is nothing to validate against) | measured (same run) |
 | W3C xsdtests (XSD 1.0) | not measured | arrives with M3 |
@@ -67,3 +67,4 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 - 2026-10-28: M3.3: `xmlcraft-xsd::read`; the note of `xsd.read-1-0` says what exists; the status stays planned (no tool or command reaches it yet).
 - 2026-10-28: M3.4–M3.9 (first part): the XSD engine (`xmlcraft-xsd` assembles and compiles, `xmlcraft-validate` validates against a schema); notes of `xsd.complex-types`, `xsd.groups`, `xsd.wildcards`, `xsd.substitution-groups`, `xsd.identity-constraints`, `xsd.include-import-redefine`, `xsd.upa-check`, `xsd.component-constraints` and `validate.xsd` say what exists and what is missing; no status changes (nothing a user can reach calls it yet).
 - 2026-10-29: M3.15 (first part): validation against an XML Schema from a tool (`validate.xsd` and `validate.schema-association` planned → partial); 10 shipped and 46 partial, 21.7% weighted.
+- 2026-10-29: M4.1–M4.4 (headless): schema inference (`generate.schema-xsd`, `generate.schema-dtd`, `generate.schema-options` and `generate.schema-multi-file` planned → partial); 10 shipped and 50 partial, 23.0% weighted.
