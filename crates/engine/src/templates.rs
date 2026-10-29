@@ -47,7 +47,7 @@ pub const TEMPLATES: &[Template] = &[
     Template {
         id: "xhtml",
         title: "XHTML 1.0 Strict page",
-        description: "A page that names the XHTML 1.0 Strict DTD by its public identifier (the app has the DTD, so it validates offline).",
+        description: "A page that names the XHTML 1.0 Strict DTD by its public identifier, with a head and a body.",
         name: "page.xhtml",
         text: "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">\n<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\">\n  <head>\n    <title>Title</title>\n  </head>\n  <body>\n    <p>Text.</p>\n  </body>\n</html>\n",
     },

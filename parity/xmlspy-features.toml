@@ -1652,11 +1652,11 @@ title = "New file from templates"
 area = "J"
 tier = "P1"
 milestone = "M4"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["file.new_from_template"]
+tools = ["doc_new"]
+evidence = ["crates/ui-egui/tests/templates.rs::the_dialog_lists_every_template_and_the_one_chosen_becomes_a_new_document_with_its_name", "crates/ui-egui/tests/templates.rs::enter_creates_the_first_and_a_double_click_creates_the_one_it_is_on", "crates/ui-egui/tests/templates.rs::the_home_view_has_the_ways_to_begin", "crates/automation/tests/templates.rs::the_schema_is_a_valid_xml_schema_and_a_document_of_it_is_valid", "crates/automation/tests/templates.rs::doc_new_starts_a_document_from_a_template_with_its_name_and_text"]
+notes = "File ▸ New from Template… (⇧⌘N) and the buttons of the home view offer seven starts: an XML document, one with an internal DTD, an XML Schema, a DTD, an XHTML 1.0 Strict page, an XSLT 1.0 stylesheet and an OASIS catalog. The choice becomes a new document that is not a file yet, with the template's text and the name it is saved under by default (`doc_new` takes `template` headlessly). The texts are original; the schema is checked against the schema for schemas and a document of it validates. Missing: templates of your own (a folder of them, by file type), a choice of the encoding and line ending, templates for JSON and YAML (M5), the XHTML page does not validate offline until the DOCTYPE is resolved through the catalogs (the bundled DTD is not found by its public identifier yet), and a caret in the place to type."
 
 [[feature]]
 id = "project.diff-files"

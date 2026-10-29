@@ -12,6 +12,7 @@ pub mod generate;
 pub mod recent;
 pub mod schema;
 pub mod selfcheck;
+pub mod templates;
 pub mod validation;
 mod worker;
 pub mod xsd_schemas;

@@ -102,6 +102,7 @@ impl XmlCraftApp {
         let ctx = &ctx;
         match id {
             "file.new" => self.new_document(),
+            "file.new_from_template" => self.open_new_from_template(),
             "file.open" => return self.pick_open(ctx),
             "file.clear_recent" => {
                 self.session.clear_recent();

@@ -19,6 +19,7 @@ mod i18n;
 mod icon_data;
 mod icons;
 mod motion;
+mod new_from_template;
 mod palette;
 mod pickers;
 mod side_panels;

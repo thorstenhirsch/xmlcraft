@@ -46,6 +46,8 @@ pub(crate) enum Dialog {
     AssignSchema(Box<crate::assign::AssignForm>),
     /// The About window (drawn by `about.rs`).
     About(Box<crate::about::AboutForm>),
+    /// The kinds of document to start from (drawn by `new_from_template.rs`).
+    NewFromTemplate(Box<crate::new_from_template::TemplateForm>),
     /// The options of Generate Schema (drawn by `generate.rs`).
     GenerateSchema(Box<crate::generate::SchemaForm>),
     /// The options of Generate Sample XML (drawn by `generate.rs`).
@@ -69,6 +71,7 @@ impl Dialog {
             | Dialog::GoToLine
             | Dialog::AssignSchema(_)
             | Dialog::About(_)
+            | Dialog::NewFromTemplate(_)
             | Dialog::GenerateSchema(_)
             | Dialog::GenerateSample(_) => false,
         }
@@ -161,7 +164,7 @@ impl XmlCraftApp {
                 Describe { title: title.clone(), text: text.clone(), buttons: vec![(tl!("OK"), Choice::Ok)], input: false }
             }
             // These are forms, drawn by `assign.rs`, `about.rs` and `generate.rs`; this is only here to be total.
-            Dialog::AssignSchema(_) | Dialog::About(_) | Dialog::GenerateSchema(_) | Dialog::GenerateSample(_) => {
+            Dialog::AssignSchema(_) | Dialog::About(_) | Dialog::NewFromTemplate(_) | Dialog::GenerateSchema(_) | Dialog::GenerateSample(_) => {
                 Describe { title: String::new(), text: String::new(), buttons: vec![(tl!("Cancel"), Choice::Cancel)], input: false }
             }
         }
@@ -175,6 +178,10 @@ impl XmlCraftApp {
         }
         if matches!(self.dialog, Some(Dialog::About(_))) {
             self.show_about(ctx);
+            return;
+        }
+        if matches!(self.dialog, Some(Dialog::NewFromTemplate(_))) {
+            self.show_new_from_template(ctx);
             return;
         }
         if matches!(self.dialog, Some(Dialog::GenerateSchema(_) | Dialog::GenerateSample(_))) {

@@ -509,8 +509,10 @@ impl XmlCraftApp {
     /// The middle of the window: the editor of the document being shown, or the home view.
     pub(crate) fn central(&mut self, ui: &mut egui::Ui) {
         let Some(index) = self.session.active() else {
-            if let Some(path) = crate::home::show(ui, self.session.recent().paths()) {
-                self.open_path(&path);
+            match crate::home::show(ui, self.session.recent().paths()) {
+                Some(crate::home::Choice::Open(path)) => drop(self.open_path(&path)),
+                Some(crate::home::Choice::Command(id)) => drop(self.execute(id)),
+                None => {}
             }
             return;
         };
