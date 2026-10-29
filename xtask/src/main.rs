@@ -14,6 +14,7 @@ mod parity;
 mod schemas;
 mod vendor;
 mod version;
+mod xsdtests;
 
 type Command = fn(&[String]) -> anyhow::Result<()>;
 
@@ -29,7 +30,7 @@ const COMMANDS: &[(&str, &str, Command)] = &[
     ("assets", "Enforce the asset policy (AGENTS.md §1) against ATTRIBUTION.toml; --write regenerates ATTRIBUTION.md", assets::run),
     (
         "conformance",
-        "Run a W3C conformance suite against the parser and hold the ratchet: `conformance xmlconf [--fetch] [--write] [-v]`",
+        "Run a W3C conformance suite (xmlconf, xsdtests) against the engines and hold the ratchet: `conformance <suite> [--fetch] [--write] [-v]`",
         conformance::run,
     ),
     (

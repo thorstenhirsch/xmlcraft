@@ -35,25 +35,31 @@ pub fn run(args: &[String]) -> Result<()> {
     }
     match suite {
         Some("xmlconf") => xmlconf(fetch, write, verbose),
-        Some(other) => bail!("unknown suite `{other}` (available: xmlconf)"),
-        None => bail!("usage: cargo xtask conformance xmlconf [--fetch] [--write] [--verbose]"),
+        Some("xsdtests") => crate::xsdtests::run(fetch, write, verbose),
+        Some(other) => bail!("unknown suite `{other}` (available: xmlconf, xsdtests)"),
+        None => bail!("usage: cargo xtask conformance <xmlconf|xsdtests> [--fetch] [--write] [--verbose]"),
     }
 }
 
 // --- fetching ---------------------------------------------------------------------------------------------------------------
 
-fn suite_dir() -> PathBuf {
+pub(crate) fn suite_dir() -> PathBuf {
     root().join("conformance")
 }
 
 fn fetch_xmlconf(dir: &Path) -> Result<()> {
+    fetch_archive(dir, XMLCONF_URL, XMLCONF_SHA256, XMLCONF_ARCHIVE)
+}
+
+/// Download `url` (https only) into `dir` as `archive`, check it is the file with SHA-256 `sha256` (else delete it), and unpack it there.
+pub(crate) fn fetch_archive(dir: &Path, url: &str, sha256: &str, archive: &str) -> Result<()> {
     fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-    let archive = dir.join(XMLCONF_ARCHIVE);
-    eprintln!("fetching {XMLCONF_URL}");
+    let archive = dir.join(archive);
+    eprintln!("fetching {url}");
     let status = Command::new("curl")
         .args(["--proto", "=https", "--tlsv1.2", "--fail", "--silent", "--show-error", "--location", "--output"])
         .arg(&archive)
-        .arg(XMLCONF_URL)
+        .arg(url)
         .status()
         .context("running curl (is it installed?)")?;
     if !status.success() {
@@ -61,9 +67,9 @@ fn fetch_xmlconf(dir: &Path) -> Result<()> {
     }
     let bytes = fs::read(&archive).with_context(|| format!("reading {}", archive.display()))?;
     let digest = hex(&Sha256::digest(&bytes));
-    if digest != XMLCONF_SHA256 {
+    if digest != sha256 {
         let _ = fs::remove_file(&archive);
-        bail!("the downloaded archive has SHA-256 {digest}, expected {XMLCONF_SHA256}; it was deleted");
+        bail!("the downloaded archive has SHA-256 {digest}, expected {sha256}; it was deleted");
     }
     let status = Command::new("tar").arg("xzf").arg(&archive).arg("-C").arg(dir).status().context("running tar (is it installed?)")?;
     if !status.success() {
@@ -349,9 +355,9 @@ fn judge(bytes: &[u8], path: &Path, suite: &Path) -> (Option<String>, Option<Str
 }
 
 #[derive(Default)]
-struct Tally {
-    run: usize,
-    passed: usize,
+pub(crate) struct Tally {
+    pub(crate) run: usize,
+    pub(crate) passed: usize,
 }
 
 fn xmlconf(fetch: bool, write: bool, verbose: bool) -> Result<()> {
@@ -466,7 +472,7 @@ fn xmlconf(fetch: bool, write: bool, verbose: bool) -> Result<()> {
 
 /// The listed failures. A missing file is an empty baseline (every failure is then new); a file that cannot be read is an error, so the
 /// ratchet is never checked against nothing by accident.
-fn read_baseline(path: &Path) -> Result<BTreeSet<String>> {
+pub(crate) fn read_baseline(path: &Path) -> Result<BTreeSet<String>> {
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
@@ -476,10 +482,15 @@ fn read_baseline(path: &Path) -> Result<BTreeSet<String>> {
 }
 
 fn write_baseline(path: &Path, failed: &BTreeSet<String>) -> Result<()> {
-    let mut text = String::from(
-        "# xmlconf tests XmlCraft does not pass yet, one path per line (relative to the suite).\n\
-         # A new failure fails `cargo xtask conformance xmlconf`; so does a test that now passes and is still listed.\n\
-         # Regenerate with `cargo xtask conformance xmlconf --write`.\n",
+    write_baseline_of(path, failed, "xmlconf", "path per line (relative to the suite)")
+}
+
+/// Write the list of failing tests of `suite`, `what` saying what a line is.
+pub(crate) fn write_baseline_of(path: &Path, failed: &BTreeSet<String>, suite: &str, what: &str) -> Result<()> {
+    let mut text = format!(
+        "# {suite} tests XmlCraft does not pass yet, one {what}.\n\
+         # A new failure fails `cargo xtask conformance {suite}`; so does a test that now passes and is still listed.\n\
+         # Regenerate with `cargo xtask conformance {suite} --write`.\n",
     );
     for path in failed {
         text.push_str(path);
