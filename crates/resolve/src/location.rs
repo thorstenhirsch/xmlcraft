@@ -27,6 +27,31 @@ fn is_absolute_path(path: &str) -> bool {
     path.starts_with('/') || path.starts_with('\\') || drive
 }
 
+/// A Windows path as the system gives it back from `canonicalize` (`\\?\C:\dir`, `\\?\UNC\server\share\dir`) in its ordinary spelling (`C:\dir`,
+/// `\\server\share\dir`): the arithmetic on paths below is for those.
+fn without_verbatim(path: &str) -> String {
+    for prefix in ["\\\\?\\UNC\\", "//?/UNC/"] {
+        if let Some(rest) = path.strip_prefix(prefix) {
+            return format!("\\\\{rest}");
+        }
+    }
+    for prefix in ["\\\\?\\", "//?/"] {
+        if let Some(rest) = path.strip_prefix(prefix) {
+            return rest.to_owned();
+        }
+    }
+    path.to_owned()
+}
+
+/// The place `location` is, spelled so that two spellings of one place are equal: a `file:` URI as the path it names, a Windows path
+/// without the verbatim prefix, with `/` for `\`, and (on Windows, where names are not case-sensitive) in lower case. For finding an open
+/// document by the location a schema document was asked for with.
+pub fn normalized(location: &str) -> String {
+    let plain = file_path(location).unwrap_or_else(|| location.to_owned());
+    let slashed = without_verbatim(&plain).replace('\\', "/");
+    if cfg!(windows) { slashed.to_lowercase() } else { slashed }
+}
+
 /// `reference` resolved against `base`, which is a URI or a path (or empty). A reference that has a scheme, or is an absolute path
 /// while the base is a path, stands as it is. A path base gives a path: with `/` as the separator, and anchored at the root when the base
 /// is not itself absolute (a `..` that goes above it is dropped).
@@ -44,7 +69,7 @@ pub fn join(base: &str, reference: &str) -> String {
         return reference.to_owned();
     }
     // Both are paths: do the arithmetic as a URI, on the path with forward slashes.
-    let base = base.replace('\\', "/");
+    let base = without_verbatim(base).replace('\\', "/");
     let reference = reference.replace('\\', "/");
     let rooted = if base.starts_with('/') { base.clone() } else { format!("/{base}") };
     let joined = resolve_reference(&format!("file://{rooted}"), &reference);

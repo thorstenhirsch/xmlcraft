@@ -11,7 +11,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use xmlcraft_dtd::SubsetLoader;
-use xmlcraft_resolve::{Buffers, Resolver};
+use xmlcraft_resolve::{Buffers, Resolver, normalized};
 use xmlcraft_syntax::{Code, Diagnostic, Severity, SyntaxKind, SyntaxNode, parse};
 use xmlcraft_text::Buffer;
 use xmlcraft_validate::{SchemaOutcome, check_against_schema, schema_hints};
@@ -177,7 +177,9 @@ struct OpenDocuments(Vec<(String, Buffer)>);
 
 impl Buffers for OpenDocuments {
     fn text(&self, location: &str) -> Option<Arc<str>> {
-        self.0.iter().find(|(l, _)| l == location).map(|(_, buffer)| Arc::from(buffer.text().as_str()))
+        // The spellings of one place differ (the verbatim `\\?\C:\…` a Windows path has when the system gave it, `C:/…` when it was joined).
+        let wanted = normalized(location);
+        self.0.iter().find(|(l, _)| normalized(l) == wanted).map(|(_, buffer)| Arc::from(buffer.text().as_str()))
     }
 }
 
@@ -358,6 +360,17 @@ mod tests {
         assert!(files.contains(&Some("mem:order.xsd")), "{files:?}");
         // The ones in the document (none, or first) come before those in the schema.
         assert!(files.windows(2).all(|w| w[0].is_none() || w[1].is_some()), "{files:?}");
+    }
+
+    #[test]
+    fn a_schema_is_found_among_the_open_documents_however_the_path_is_spelled() {
+        // How a path comes back from the system on Windows, and how it is spelled once a reference has been joined to it.
+        let validator = Validator::inline(Arc::new(|| Box::new(NoLoader)), no_resolvers());
+        let schema = Buffer::from_text(&order_schema());
+        let doc = Buffer::from_text(&named("<id>7</id>"));
+        validator.submit(1, 1, &doc, Some(Path::new("\\\\?\\C:\\work\\doc.xml")), vec![("\\\\?\\C:\\work\\order.xsd".to_owned(), schema)]);
+        let got = validator.poll();
+        assert_eq!((got[0].1.verdict, codes(&got[0].1)), (Verdict::Valid, vec![]), "{:?}", got[0].1);
     }
 
     #[test]
