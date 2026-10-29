@@ -67,11 +67,16 @@ impl FileAccess for ConfinedFiles {
 }
 
 /// The documents that are open, by their paths: a schema that is being edited is validated against as it is.
-struct OpenDocuments(Vec<(String, Arc<str>)>);
+struct OpenDocuments {
+    open: Vec<(String, Arc<str>)>,
+    /// An open document is kept under the path the confinement resolved, so a location is resolved the same way to find it.
+    confinement: crate::file_access::Confinement,
+}
 
 impl Buffers for OpenDocuments {
     fn text(&self, location: &str) -> Option<Arc<str>> {
-        self.0.iter().find(|(l, _)| l == location).map(|(_, t)| t.clone())
+        let find = |wanted: &str| self.open.iter().find(|(l, _)| l == wanted).map(|(_, t)| t.clone());
+        find(location).or_else(|| find(&self.confinement.resolve_read(location).ok()?.to_string_lossy()))
     }
 }
 
@@ -179,7 +184,7 @@ fn validate_against_schema(
         .filter_map(|d| d.path().map(|p| (p.to_string_lossy().into_owned(), Arc::from(d.editor().text().as_str()))))
         .collect();
     let env = Environment {
-        buffers: Arc::new(OpenDocuments(open)),
+        buffers: Arc::new(OpenDocuments { open, confinement: a.confinement.clone() }),
         files: Arc::new(ConfinedFiles { confinement: a.confinement.clone() }),
         fetcher: None,
         cache: None,

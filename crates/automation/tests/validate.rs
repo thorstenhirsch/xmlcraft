@@ -241,3 +241,64 @@ fn without_a_schema_or_a_doctype_it_is_still_the_dtd_that_has_nothing() {
     let result = call(&mut a, json!({ "text": text })).expect("runs");
     assert_eq!(result.get("kind"), None, "{result}");
 }
+
+#[test]
+fn a_schema_that_is_open_is_used_as_it_is_not_as_it_was_saved() {
+    let dir = tempfile::tempdir().expect("dir");
+    let saved = write(dir.path(), "order.xsd", &schema_of(ORDER));
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    let text = "<order><id>seven</id></order>";
+    let result = call(&mut a, json!({ "text": text, "schema": saved })).expect("runs");
+    assert_eq!(result["valid"], json!(false), "the saved schema wants an integer: {result}");
+    let opened = a.call("doc_open", &json!({ "path": saved })).expect("opens");
+    let Some(Content::Json(opened)) = opened.into_iter().next() else { panic!("json") };
+    a.call("doc_set_text", &json!({ "id": opened["id"], "text": schema_of(&ORDER.replace("xs:int", "xs:string")) })).expect("edits");
+    let result = call(&mut a, json!({ "text": text, "schema": saved })).expect("runs");
+    assert_eq!(result["valid"], json!(true), "the unsaved text of the schema is what counts: {result}");
+}
+
+#[test]
+fn a_document_that_is_not_well_formed_is_not_checked_against_the_schema() {
+    let dir = tempfile::tempdir().expect("dir");
+    let schema = write(dir.path(), "order.xsd", &schema_of(ORDER));
+    let mut a = Automation::new();
+    let result = call(&mut a, json!({ "text": "<order><id>1</order>", "schema": schema })).expect("runs");
+    assert_eq!(
+        (result["well_formed"].clone(), result["valid"].clone(), result["validated"].clone(), result["kind"].clone()),
+        (json!(false), json!(false), json!(false), json!("xsd")),
+        "{result}"
+    );
+    assert!(result["errors"].as_u64().is_some_and(|n| n > 0), "{result}");
+    assert!(result["problems"].as_array().is_some_and(|p| !p.is_empty() && p.iter().all(|p| p["kind"] == "well-formedness")), "{result}");
+}
+
+#[test]
+fn a_warning_about_the_document_is_counted_and_listed() {
+    let dir = tempfile::tempdir().expect("dir");
+    let schema = write(dir.path(), "order.xsd", &schema_of(ORDER));
+    let mut a = Automation::new();
+    let result = call(&mut a, json!({ "text": "<?xml version=\"1.1\"?><order><id>1</id></order>", "schema": schema })).expect("runs");
+    assert_eq!((result["valid"].clone(), result["errors"].clone(), result["warnings"].clone()), (json!(true), json!(0), json!(1)), "{result}");
+    let problem = &result["problems"][0];
+    assert_eq!((problem["kind"].clone(), problem["severity"].clone()), (json!("well-formedness"), json!("warning")), "{result}");
+}
+
+#[test]
+fn only_so_many_problems_are_listed_and_it_says_so() {
+    let dir = tempfile::tempdir().expect("dir");
+    let schema = write(
+        dir.path(),
+        "list.xsd",
+        &schema_of(
+            "<xs:element name=\"r\"><xs:complexType><xs:sequence><xs:element name=\"n\" type=\"xs:int\" maxOccurs=\"unbounded\"/></xs:sequence></xs:complexType></xs:element>",
+        ),
+    );
+    let mut a = Automation::new();
+    let many = format!("<r>{}</r>", "<n>x</n>".repeat(600));
+    let result = call(&mut a, json!({ "text": many, "schema": schema })).expect("runs");
+    assert_eq!(result["errors"], json!(600), "{}", result["errors"]);
+    assert_eq!((result["problems"].as_array().map(Vec::len), result["truncated"].clone()), (Some(500), json!(true)));
+    let few = format!("<r>{}</r>", "<n>x</n>".repeat(3));
+    let result = call(&mut a, json!({ "text": few, "schema": schema })).expect("runs");
+    assert_eq!((result["problems"].as_array().map(Vec::len), result["truncated"].clone()), (Some(3), json!(false)));
+}

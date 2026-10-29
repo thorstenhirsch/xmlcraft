@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use xmlcraft_resolve::{Buffers, Environment, FileAccess, FixedClock, Policy, Resolver};
 use xmlcraft_xsd::model::QName;
-use xmlcraft_xsd::{ResolvingLoader, XSD_NAMESPACE, assemble, load};
+use xmlcraft_xsd::{LoadKind, LoadRequest, ResolvingLoader, SchemaLoader, XSD_NAMESPACE, assemble, load};
 
 struct Open(HashMap<String, Arc<str>>);
 
@@ -49,6 +49,8 @@ fn an_included_document_is_found_next_to_the_one_that_includes_it() {
     assert_eq!(documents.list.len(), 2);
     assert!(assemble(&documents).diagnostics.is_empty());
     assert!(loader.log.iter().any(|l| l.contains("inc.xsd: found at /s/inc.xsd")), "{:?}", loader.log);
+    // What was read is kept, to say where in it a problem is.
+    assert_eq!(loader.read, [("/s/inc.xsd".to_owned(), inc.clone())]);
 }
 
 #[test]
@@ -84,10 +86,38 @@ fn an_import_without_a_location_is_found_by_its_namespace_in_the_bundle() {
 fn a_document_that_cannot_be_found_is_reported_with_why() {
     let root = schema("<xs:include schemaLocation=\"missing.xsd\"/>");
     let r = resolver(&[], &[]);
-    let documents = load(&root, "/s/root.xsd", &mut ResolvingLoader::new(&r));
+    let mut loader = ResolvingLoader::new(&r);
+    let documents = load(&root, "/s/root.xsd", &mut loader);
     assert_eq!(documents.diagnostics.len(), 1);
     assert_eq!(documents.diagnostics[0].diagnostic.code.key(), "xsd.document-not-loaded");
     assert!(documents.diagnostics[0].diagnostic.message().contains("missing.xsd"), "{}", documents.diagnostics[0].diagnostic.message());
+    assert!(loader.log.iter().any(|l| l.starts_with("missing.xsd: ")), "what was asked for and why it was not found is kept: {:?}", loader.log);
+    assert!(loader.read.is_empty());
+}
+
+#[test]
+fn the_location_is_tried_before_the_namespace_and_every_reason_is_given() {
+    // The XML namespace is in the bundle, but the document says where its schema is: that is what is read.
+    let xml_ns = "http://www.w3.org/XML/1998/namespace";
+    let own =
+        format!("<xs:schema xmlns:xs=\"{XSD_NAMESPACE}\" targetNamespace=\"{xml_ns}\"><xs:attribute name=\"other\" type=\"xs:string\"/></xs:schema>");
+    let root = schema(&format!("<xs:import namespace=\"{xml_ns}\" schemaLocation=\"own.xsd\"/>"));
+    let r = resolver(&[], &[("/s/own.xsd", own.as_bytes())]);
+    let documents = load(&root, "/s/root.xsd", &mut ResolvingLoader::new(&r));
+    let assembly = assemble(&documents);
+    assert!(assembly.schema.attribute_by_name(&QName::new(Some(xml_ns), "other")).is_some());
+    assert!(assembly.schema.attribute_by_name(&QName::new(Some(xml_ns), "lang")).is_none());
+    // Neither a location nor a namespace: nothing to look for. Both given and neither found: both reasons.
+    let r = resolver(&[], &[]);
+    let mut loader = ResolvingLoader::new(&r);
+    let ask = |loader: &mut ResolvingLoader<'_>, namespace, location| {
+        loader.load(&LoadRequest { kind: LoadKind::Import, namespace, location, base: "/s/root.xsd" })
+    };
+    let why = ask(&mut loader, None, None).expect_err("nothing to look for");
+    assert_eq!(why, "it names neither a location nor a namespace");
+    let why = ask(&mut loader, Some("urn:nowhere"), Some("gone.xsd")).expect_err("not found");
+    let (first, second) = why.split_once("; ").expect("one reason for each");
+    assert!(first.contains("gone.xsd") && second.contains("urn:nowhere"), "{why}");
 }
 
 #[test]

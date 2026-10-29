@@ -88,6 +88,10 @@ fn without_a_schema_or_with_one_that_is_missing_nothing_is_validated_and_it_is_s
     let xml = format!("<r {XSI} xsi:noNamespaceSchemaLocation=\"gone.xsd\"><n>1</n></r>");
     let found = check(&xml, None, vec![]);
     assert!(matches!(&found.outcome, SchemaOutcome::NoSchema(why) if why.contains("gone.xsd") && why.contains("no such file")), "{found:?}");
+    assert!(
+        matches!(&found.outcome, SchemaOutcome::NoSchema(why) if why.starts_with("the schema 'gone.xsd' could not be loaded: ")),
+        "it says which schema it was: {found:?}"
+    );
 }
 
 #[test]
@@ -107,12 +111,62 @@ fn the_problems_of_the_schema_are_reported_with_the_document_they_are_in() {
     assert_eq!(found.schema_errors(), 1);
 }
 
+/// Loads nothing, and remembers where each request was said to be from.
+struct Bases(Vec<String>);
+
+impl SchemaLoader for Bases {
+    fn load(&mut self, request: &LoadRequest<'_>) -> Result<Loaded, String> {
+        self.0.push(request.base.to_owned());
+        Err("not here".to_owned())
+    }
+}
+
+#[test]
+fn a_schema_is_looked_for_from_the_place_of_the_document() {
+    let parsed = parse("<r/>");
+    let mut bases = Bases(Vec::new());
+    check_against_schema(&parsed.syntax(), parsed.diagnostics(), "/d/doc.xml", Some("r.xsd"), &mut bases);
+    assert_eq!(bases.0, ["/d/doc.xml"]);
+    // Several are imported by a schema that is made for it, in the place of the document too.
+    let parsed = parse(&format!("<r {XSI} xsi:schemaLocation=\"urn:a a.xsd urn:b b.xsd\"/>"));
+    let mut bases = Bases(Vec::new());
+    check_against_schema(&parsed.syntax(), parsed.diagnostics(), "/d/doc.xml", None, &mut bases);
+    assert_eq!(bases.0, ["/d/doc.xml", "/d/doc.xml"]);
+}
+
+#[test]
+fn locations_with_markup_characters_survive_the_schema_that_imports_several() {
+    let xml = format!("<r {XSI} xsi:schemaLocation='urn:a a&amp;b.xsd urn:b c&lt;d.xsd urn:e f\"g.xsd'/>");
+    let empty = |ns: &str| format!("<xs:schema xmlns:xs=\"{XSD_NAMESPACE}\" targetNamespace=\"{ns}\"/>");
+    let files = vec![("/d/a&b.xsd", empty("urn:a")), ("/d/c<d.xsd", empty("urn:b")), ("/d/f\"g.xsd", empty("urn:e"))];
+    let found = check(&xml, None, files);
+    assert!(found.schema_problems.is_empty(), "{:?}", found.schema_problems.iter().map(|p| p.diagnostic.message()).collect::<Vec<_>>());
+    for read in ["/d/a&b.xsd", "/d/c<d.xsd", "/d/f\"g.xsd"] {
+        assert!(found.sources.iter().any(|s| s == read), "{read} was read: {:?}", found.sources);
+    }
+}
+
+#[test]
+fn a_document_a_schema_cannot_load_is_a_problem_of_the_schema() {
+    let schema = format!(
+        "<xs:schema xmlns:xs=\"{XSD_NAMESPACE}\"><xs:include schemaLocation=\"gone.xsd\"/><xs:element name=\"r\" type=\"xs:string\"/></xs:schema>"
+    );
+    let found = check("<r>x</r>", Some("r.xsd"), vec![("/d/r.xsd", schema)]);
+    assert_eq!(found.outcome, SchemaOutcome::Validated);
+    assert!(found.validity.is_empty());
+    let codes: Vec<&str> = found.schema_problems.iter().map(|p| p.diagnostic.code.key()).collect();
+    assert_eq!(codes, ["xsd.document-not-loaded"]);
+}
+
 #[test]
 fn the_hints_of_the_root_element() {
     let parsed = parse(&format!("<r {XSI} xsi:schemaLocation=\"urn:a a.xsd  urn:b\nb.xsd urn:odd\" xsi:noNamespaceSchemaLocation=\"c.xsd\"/>"));
     let hints = schema_hints(&parsed.syntax());
     let shown: Vec<(Option<&str>, &str)> = hints.iter().map(|h| (h.namespace.as_deref(), h.location.as_str())).collect();
     assert_eq!(shown, [(Some("urn:a"), "a.xsd"), (Some("urn:b"), "b.xsd"), (None, "c.xsd")], "an odd word is ignored");
+    // References in the value are read.
+    let escaped = parse(&format!("<r {XSI} xsi:noNamespaceSchemaLocation=\"a&amp;b.xsd\"/>"));
+    assert_eq!(schema_hints(&escaped.syntax())[0].location, "a&b.xsd");
     // Another prefix for the same namespace; not on the root, or in no namespace: no hint.
     let other =
         parse("<r xmlns:i=\"http://www.w3.org/2001/XMLSchema-instance\" i:noNamespaceSchemaLocation=\"d.xsd\"><c schemaLocation=\"x y\"/></r>");
