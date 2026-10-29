@@ -62,6 +62,7 @@ pub fn tools() -> &'static [ToolDef] {
         table.extend(crate::validate::tools());
         table.extend(crate::entry_helpers::tools());
         table.extend(crate::infer::tools());
+        table.extend(crate::sample::tools());
         table
     })
 }
