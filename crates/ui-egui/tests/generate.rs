@@ -30,6 +30,14 @@ fn wait(h: &mut Harness<'static, XmlCraftApp>, what: &str, done: impl Fn(&Harnes
     h.run_steps(2);
 }
 
+/// Wait for the schema or DTD that Generate Sample XML reads in the background: the form says it is reading until then. The form has to
+/// be drawn first: before that the words are not there either, and a wait that only looks for their absence is over before it begins (and
+/// the combo box is then opened on a form that has nothing to offer yet, on a machine that is slow to start a thread).
+fn wait_until_read(h: &mut Harness<'static, XmlCraftApp>, what: &str) {
+    h.run_steps(3);
+    wait(h, what, |h| h.query_by_label("Reading the schema…").is_none());
+}
+
 fn open(h: &mut Harness<'static, XmlCraftApp>, path: &Path) {
     assert!(h.state_mut().open_path(path));
     wait(h, "the first analysis", |h| h.state().problems().is_some());
@@ -147,7 +155,7 @@ fn generate_sample_reads_the_schema_and_makes_a_document_that_names_its_roots() 
     let mut h = shell();
     open(&mut h, &file(dir.path(), "order.xsd", SCHEMA));
     assert!(h.state_mut().execute("xml.generate_sample"));
-    wait(&mut h, "the schema to be read", |h| h.query_by_label("Reading the schema…").is_none());
+    wait_until_read(&mut h, "the schema to be read");
     assert!(h.query_by_label("Generate Sample XML").is_some());
     // The elements it can start with are offered.
     h.get_by_label("The element to start with").click();
@@ -168,7 +176,7 @@ fn the_options_of_generate_sample_shape_the_document() {
     let mut h = shell();
     open(&mut h, &file(dir.path(), "order.xsd", SCHEMA));
     assert!(h.state_mut().execute("xml.generate_sample"));
-    wait(&mut h, "the schema to be read", |h| h.query_by_label("Reading the schema…").is_none());
+    wait_until_read(&mut h, "the schema to be read");
     h.get_by_label("the name of its element").click();
     h.run_steps(2);
     h.get_by_label("Say where the schema is (xsi:schemaLocation)").click();
@@ -185,7 +193,7 @@ fn generate_sample_from_a_dtd_and_from_something_that_is_no_grammar() {
     let mut h = shell();
     open(&mut h, &file(dir.path(), "lib.dtd", "<!ELEMENT lib (book+)>\n<!ELEMENT book (#PCDATA)>\n"));
     assert!(h.state_mut().execute("xml.generate_sample"));
-    wait(&mut h, "the DTD to be read", |h| h.query_by_label("Reading the schema…").is_none());
+    wait_until_read(&mut h, "the DTD to be read");
     h.get_by_label("Generate").click();
     wait(&mut h, "the sample", |h| names(h).contains(&"sample.xml".to_owned()));
     assert!(text_of(&h, "sample.xml").contains("<lib>") && text_of(&h, "sample.xml").contains("<book>"), "{}", text_of(&h, "sample.xml"));
@@ -212,7 +220,7 @@ fn a_schema_that_is_open_and_being_edited_is_what_the_sample_is_made_from() {
     let at = editor.text().find("name=\"note\"").expect("the element");
     assert!(editor.apply_edits(&[xmlcraft_text::Edit { range: at + 6..at + 10, text: "memo".to_owned() }]));
     assert!(h.state_mut().execute("xml.generate_sample"));
-    wait(&mut h, "the schema to be read", |h| h.query_by_label("Reading the schema…").is_none());
+    wait_until_read(&mut h, "the schema to be read");
     h.get_by_label("The element to start with").click();
     h.run_steps(3);
     assert!(h.query_by_label("memo").is_some() && h.query_by_label("note").is_none(), "the unsaved text is what was read");
