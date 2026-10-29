@@ -12,6 +12,7 @@ mod documents;
 pub mod editor_view;
 mod entry_helpers;
 mod find_bar;
+mod generate;
 mod home;
 mod i18n;
 mod icon_data;
@@ -113,6 +114,11 @@ pub struct XmlCraftApp {
     analyzer: Analyzer,
     /// Checks each document against its DTD in the background, when asked (F8).
     validator: Validator,
+    /// Make schemas and sample documents in the background, when the Generate dialogs ask.
+    schema_generator: xmlcraft_engine::generate::SchemaGenerator,
+    sample_generator: xmlcraft_engine::generate::SampleGenerator,
+    /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
+    generate_serial: u64,
     /// Reads each document's DOCTYPE into a grammar in the background (what Entry Helpers offer comes from it).
     schemas: Schemas,
     /// Entry Helpers write the content an element requires with it.
@@ -180,6 +186,14 @@ impl XmlCraftApp {
             let repaint = repaint.clone();
             move || repaint.request_repaint()
         });
+        app.schema_generator.on_done({
+            let repaint = repaint.clone();
+            move || repaint.request_repaint()
+        });
+        app.sample_generator.on_done({
+            let repaint = repaint.clone();
+            move || repaint.request_repaint()
+        });
         app.schemas.on_done(move || repaint.request_repaint());
         app
     }
@@ -205,6 +219,12 @@ impl XmlCraftApp {
                 std::sync::Arc::new(|| Box::new(xmlcraft_platform::subset::FileSubsetLoader::unconfined())),
                 std::sync::Arc::new(xmlcraft_platform::schema_files::local_resolver),
             ),
+            schema_generator: xmlcraft_engine::generate::SchemaGenerator::new(),
+            sample_generator: xmlcraft_engine::generate::SampleGenerator::new(
+                std::sync::Arc::new(|| Box::new(xmlcraft_platform::subset::FileSubsetLoader::unconfined())),
+                std::sync::Arc::new(xmlcraft_platform::schema_files::local_resolver),
+            ),
+            generate_serial: 0,
             outline_filter: String::new(),
             outline_rows: None,
             find: find_bar::FindBar::default(),
@@ -306,6 +326,7 @@ impl eframe::App for XmlCraftApp {
         self.was_focused = focused;
         // After everything above that can change a text, so that this frame asks for the analysis of the text it will draw.
         self.pump_analysis();
+        self.pump_generate();
         for command in self.viewport_commands.drain(..) {
             ctx.send_viewport_cmd(command);
         }

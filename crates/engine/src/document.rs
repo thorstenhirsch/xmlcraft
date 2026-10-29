@@ -148,6 +148,14 @@ impl Document {
         self.path.as_deref()
     }
 
+    /// Give a document that is not a file yet (generated text, a new document) the name it is shown and saved under by default.
+    /// A document that is a file keeps the name of its file.
+    pub fn name_untitled(&mut self, name: &str) {
+        if self.path.is_none() && !name.is_empty() {
+            self.name = name.to_owned();
+        }
+    }
+
     pub fn editor(&self) -> &Editor {
         &self.editor
     }
