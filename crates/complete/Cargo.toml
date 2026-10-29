@@ -11,8 +11,10 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+xmlcraft-datatypes = { workspace = true }
 xmlcraft-grammar = { workspace = true }
 xmlcraft-syntax = { workspace = true }
+xmlcraft-xsd = { workspace = true }
 
 [dev-dependencies]
 xmlcraft-dtd = { workspace = true }

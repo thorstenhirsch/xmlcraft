@@ -83,6 +83,18 @@ impl ContentModel {
         }
     }
 
+    /// The shortest run of elements that finishes what was read: empty when the content is complete, `None` when nothing finishes it.
+    /// In an `xs:all` group it is the first option of each slot still to be filled that is required.
+    pub fn shortest_completion(&self, state: &ModelState) -> Option<Vec<&Symbol>> {
+        match (&self.matcher, state) {
+            (Matcher::Automaton(a), ModelState::Automaton(s)) => {
+                Some(a.shortest_completion(s)?.into_iter().filter_map(|symbol| self.symbols.get(symbol.token)).collect())
+            }
+            (Matcher::All(a), ModelState::All(s)) => Some(a.required_tokens(s).into_iter().filter_map(|token| self.symbols.get(token)).collect()),
+            _ => None,
+        }
+    }
+
     /// What may come next.
     pub fn expected(&self, state: &ModelState) -> Vec<Next<'_>> {
         match (&self.matcher, state) {
@@ -143,6 +155,19 @@ impl AllGroup {
             return true;
         }
         self.slots.iter().zip(&state.taken).all(|(slot, taken)| *taken || !slot.required)
+    }
+
+    /// The first option of each required slot not taken yet (none when the group may be left out and nothing was taken).
+    fn required_tokens(&self, state: &AllState) -> Vec<usize> {
+        if !state.taken.iter().any(|t| *t) && self.optional {
+            return Vec::new();
+        }
+        self.slots
+            .iter()
+            .zip(&state.taken)
+            .filter(|(slot, taken)| slot.required && !**taken)
+            .filter_map(|(slot, _)| slot.options.first().map(|(_, token)| *token))
+            .collect()
     }
 
     fn expected(&self, state: &AllState) -> Vec<(usize, bool)> {

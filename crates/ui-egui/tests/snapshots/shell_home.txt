@@ -17,7 +17,7 @@ Splitter "Resize panels"
 Pane "Entry Helpers"
 Label value="Entry Helpers"
 Button "Close" [toggled=false]
-Label value="What the DTD allows at the cursor appears here."
+Label value="What the DTD or the schema allows at the cursor appears here."
 Splitter "Resize panels"
 Pane "Messages"
 Label value="Messages"

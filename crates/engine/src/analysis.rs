@@ -6,6 +6,7 @@
 
 use std::ops::Range;
 use xmlcraft_syntax::{Diagnostic, Limits, Severity, SyntaxKind, parse_with};
+use xmlcraft_validate::SchemaHint;
 
 use crate::folding::{FoldRange, fold_ranges};
 use crate::worker::Worker;
@@ -62,6 +63,9 @@ pub struct Analysis {
     pub folds_truncated: bool,
     /// The DOCTYPE declaration, if the text has one: a byte range of the text.
     pub doctype: Option<Range<usize>>,
+    /// The schemas the root element names with `xsi:schemaLocation` and `xsi:noNamespaceSchemaLocation` (a DOCTYPE, when there is
+    /// one, is what the document is checked against, and these are not looked at).
+    pub schema_hints: Vec<SchemaHint>,
     /// The text was not analysed, and why.
     pub skipped: Option<Skipped>,
 }
@@ -125,6 +129,7 @@ impl Analysis {
             folds: Vec::new(),
             folds_truncated: false,
             doctype: None,
+            schema_hints: Vec::new(),
             skipped: Some(why),
         }
     }
@@ -181,7 +186,8 @@ pub fn analyze(text: &str, version: u64) -> Analysis {
     let (outline, outline_truncated) = outline_of(&parsed.syntax(), text);
     let (folds, folds_truncated) = fold_ranges(&parsed.syntax(), text);
     let doctype = xmlcraft_dtd::doctype_parts(&parsed.syntax()).map(|p| p.range);
-    Analysis { version, diagnostics, outline, outline_truncated, folds, folds_truncated, doctype, skipped: None }
+    let schema_hints = xmlcraft_validate::schema_hints(&parsed.syntax());
+    Analysis { version, diagnostics, outline, outline_truncated, folds, folds_truncated, doctype, schema_hints, skipped: None }
 }
 
 fn outline_of(root: &xmlcraft_syntax::SyntaxNode, text: &str) -> (Vec<OutlineItem>, bool) {
