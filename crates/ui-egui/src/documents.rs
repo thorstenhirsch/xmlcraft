@@ -488,7 +488,7 @@ impl XmlCraftApp {
         // What can be folded is right for the lines above the first one that changed since the analysis (and for none before there is one).
         let valid_before = view.analysis.as_ref().map_or(0, |a| doc.editor().first_changed_line_since(a.version).unwrap_or(usize::MAX));
         view.styler.set_folds_valid_before(valid_before);
-        let salt = egui::Id::new(("xmlcraft-editor", id));
+        let salt = egui::Id::unique(("xmlcraft-editor", id));
         if focus {
             let widget = ui.make_persistent_id(salt);
             ui.memory_mut(|m| m.request_focus(widget));
@@ -507,7 +507,7 @@ impl XmlCraftApp {
         }
         let t = Tokens::get(ctx);
         let screen = ctx.content_rect();
-        let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("xmlcraft-drop-hint")));
+        let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("xmlcraft-drop-hint")));
         painter.rect_filled(screen, 0.0, t.accent.gamma_multiply(0.12));
         painter.rect_stroke(screen.shrink(8.0), 10.0, egui::Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
         painter.text(screen.center(), egui::Align2::CENTER_CENTER, tl!("Drop to open"), theme::semibold(20.0), t.accent_text);

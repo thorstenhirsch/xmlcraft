@@ -105,7 +105,7 @@ fn main() -> Result<(), String> {
     let mut harness = Harness::builder().with_size(size).with_pixels_per_point(scale).build_ui_state(
         |ui, state: &mut State| {
             ui.visuals_mut().override_text_color = None;
-            CodeEditor::new(Id::new("shot"), &mut state.editor, &mut state.view, colors).blink(false).styler(&mut state.styler).show(ui);
+            CodeEditor::new(Id::unique("shot"), &mut state.editor, &mut state.view, colors).blink(false).styler(&mut state.styler).show(ui);
         },
         State { editor, view: ViewState::new(), styler: Simple(palette) },
     );

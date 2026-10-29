@@ -73,7 +73,7 @@ fn clicking_by_label_does_what_the_user_would() {
     assert_eq!(save["enabled"], false, "nothing to save yet");
     ask(&mut h, &c, "ui.click", json!({"label": "Menu"})).expect("opens the menu");
     h.run_steps(6);
-    ask(&mut h, &c, "ui.click", json!({"label": "File ⏵"})).expect("opens the File submenu");
+    ask(&mut h, &c, "ui.click", json!({"label": "File"})).expect("opens the File submenu");
     h.run_steps(6);
     let entry = ask(&mut h, &c, "ui.inspect", json!({"query": "Save"})).expect("inspect");
     let entry = entry["widgets"]

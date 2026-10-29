@@ -267,7 +267,7 @@ fn outline_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
                 Some(label) => format!("{} {label}", item.name),
                 None => item.name.clone(),
             };
-            response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label.clone()));
+            response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label.clone()));
             if Some(index) == current {
                 ui.painter().rect_filled(rect, 0.0, t.selected);
             } else if response.hovered() {
@@ -365,7 +365,7 @@ fn messages_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
             let Some(row) = rows.get(index) else { continue };
             let (message, place) = (row.message.as_str(), row.place.clone());
             let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), egui::Sense::click());
-            response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("{message} ({place})")));
+            response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("{message} ({place})")));
             if response.hovered() {
                 ui.painter().rect_filled(rect, 0.0, t.hover);
             }
@@ -398,7 +398,7 @@ fn messages_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
 fn right_rail(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     let items = [RailItem::new(RightPanel::EntryHelpers, icons::source("braces"), tl!("Entry Helpers"))];
-    let rail = Rail::new("rail")
+    let rail = Rail::new(egui::Id::unique("rail"))
         .edge(Edge::End)
         .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(6, 8)).stroke(Stroke::new(1.0, t.divider)))
         .show(ui, &items, app.right.as_ref(), |_ui| {});
@@ -420,7 +420,7 @@ pub fn show(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     let labels = PaneLabels { resize: tl!("Resize panels").to_owned(), ..PaneLabels::default() };
     let panels = app.side_panels;
-    let output = PaneHost::new("xmlcraft-side-panels")
+    let output = PaneHost::new(egui::Id::unique("xmlcraft-side-panels"))
         .policy(SidePolicy::Columns)
         .f6(false)
         .labels(labels)

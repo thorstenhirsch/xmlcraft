@@ -705,7 +705,7 @@ sha256 = "eb19f1cd5f574f5ad7a2f086e775cdddc437d7430fdd62494a6b04ab4f1384e1"
 
 [[bundled]]
 crate = "epaint_default_fonts"
-version = "0.36.2"
+version = "0.37.0"
 path = "fonts/Ubuntu-Light.ttf"
 title = "Ubuntu Light"
 author = "Canonical Ltd. / Dalton Maag"
@@ -717,7 +717,7 @@ sha256 = "80307b8da7649aa4ee4d484b232140e3ce1ec0ca093073d3c53c8f5a5ced7a70"
 
 [[bundled]]
 crate = "epaint_default_fonts"
-version = "0.36.2"
+version = "0.37.0"
 path = "fonts/Hack-Regular.ttf"
 title = "Hack Regular"
 author = "Source Foundry Authors (derived from Bitstream Vera / DejaVu)"
@@ -729,7 +729,7 @@ sha256 = "15f55cc0c85a2988d2b4b3a8cdb5d77fdfbaf319e1bb5309d725db9818fb7125"
 
 [[bundled]]
 crate = "epaint_default_fonts"
-version = "0.36.2"
+version = "0.37.0"
 path = "fonts/NotoEmoji-Regular.ttf"
 title = "Noto Emoji (monochrome)"
 author = "Google Inc."
@@ -741,7 +741,7 @@ sha256 = "415dc6290378574135b64c808dc640c1df7531973290c4970c51fdeb849cb0c5"
 
 [[bundled]]
 crate = "epaint_default_fonts"
-version = "0.36.2"
+version = "0.37.0"
 path = "fonts/emoji-icon-font.ttf"
 title = "emoji-icon-font"
 author = "John Slegers"
@@ -750,6 +750,18 @@ licence = "MIT"
 kind = "font"
 usage = "egui fallback fonts (eframe feature default_fonts)"
 sha256 = "f426bec371f484646d002717e2c555a95cd5145e635d83a48bbef83f3abf18ca"
+
+[[bundled]]
+crate = "epaint_default_fonts"
+version = "0.37.0"
+path = "fonts/egui-icons.ttf"
+title = "egui-icons (the five glyphs of emoji-icon-font that egui::special_emojis names)"
+author = "John Slegers (subset made by the egui authors)"
+source = "https://github.com/jslegers/emoji-icon-font"
+licence = "MIT"
+kind = "font"
+usage = "egui fallback fonts (eframe feature default_fonts)"
+sha256 = "122806555c73df7cef55aa1d945289ae27fbc4dbbd31abbb4204ee0cda829cc8"
 # BEGIN bundled schemas: generated from schemas/manifest.toml by `cargo xtask schemas --update`; do not edit by hand
 
 [[asset]]

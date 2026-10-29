@@ -6,8 +6,8 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use egui::{
-    Align2, Color32, CursorIcon, Event, EventFilter, FontId, Id, ImeEvent, Key, Modifiers, Pos2, Rect, Response, ScrollArea, Sense, Stroke, Ui,
-    WidgetInfo, WidgetType, pos2, vec2,
+    Align2, Color32, CursorIcon, Event, EventFilter, FontId, Id, ImeEvent, Key, Modifiers, Pos2, Rect, Response, Role, ScrollArea, Sense, Stroke, Ui,
+    WidgetInfo, pos2, vec2,
 };
 use xmlcraft_editor::Editor;
 use xmlcraft_editor::motion::{display_column, snap_to_cluster};
@@ -342,9 +342,9 @@ impl<'a> CodeEditor<'a> {
                         text_painter.rect_filled(Rect::from_min_max(pos2(x0, y), pos2(x1, y + row_h)), 0.0, selection_color);
                     }
                 }
-                let galley = layout.galley();
+                let galley = layout.galley_for_painting(&text_painter);
                 let dy = ((row_h - layout.size().y) / 2.0).max(0.0);
-                text_painter.galley(pos2(text_x + layout.x_origin(), y + dy), galley.clone(), colors.text);
+                text_painter.galley(pos2(text_x + layout.x_origin(), y + dy), galley, colors.text);
                 let marks = frame.styler.borrow_mut().as_mut().map(|styler| styler.marks(editor.buffer(), line)).unwrap_or_default();
                 for mark in marks {
                     let Some(range) = layout.in_window(&mark.range) else { continue };
@@ -458,7 +458,7 @@ impl<'a> CodeEditor<'a> {
         let _ = outer;
         ui.spacing_mut().scroll.fade = fade;
         let response = response_slot.unwrap_or_else(|| ui.interact(ui.min_rect(), id, Sense::hover()));
-        response.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, "XML editor"));
+        response.widget_info(|| WidgetInfo::labeled(Role::TextInput, true, "XML editor"));
         CodeEditorOutput {
             response,
             changed: editor.version() != version_before,

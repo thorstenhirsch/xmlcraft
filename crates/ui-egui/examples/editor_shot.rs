@@ -82,7 +82,7 @@ fn main() -> Result<(), String> {
                 return;
             }
             let tokens = Tokens::for_kind(state.kind);
-            CodeEditor::new(Id::new("shot"), &mut state.editor, &mut state.view, editor_colors(&tokens))
+            CodeEditor::new(Id::unique("shot"), &mut state.editor, &mut state.view, editor_colors(&tokens))
                 .blink(false)
                 .styler(&mut state.styler)
                 .show(ui);

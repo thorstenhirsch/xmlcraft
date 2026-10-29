@@ -186,7 +186,7 @@ fn app_creator<'a>(started: Rc<Cell<bool>>, control: Option<PathBuf>, files: Vec
         // winit's Quit (⌘Q) ends the process without asking about unsaved changes. This menu's Quit closes the window instead, so
         // the app's close handling asks, as for the close button.
         #[cfg(target_os = "macos")]
-        if let Err(e) = craft_quit::install_app_menu(&cc.egui_ctx, APP_NAME) {
+        if let Err(e) = craft_menu::mac::install_app_menu(&cc.egui_ctx, APP_NAME) {
             log::warn!("couldn't install the app menu, so ⌘Q quits without asking to save: {e}");
         }
         let mut app = XmlCraftApp::new(cc);

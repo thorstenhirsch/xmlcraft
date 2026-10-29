@@ -8,7 +8,8 @@ use egui_kittest::kittest::Queryable;
 use xmlcraft_ui_egui::XmlCraftApp;
 
 fn shell() -> Harness<'static, XmlCraftApp> {
-    let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).build_eframe(|cc| XmlCraftApp::new(cc));
+    // These tests open text in other scripts than the bundled fonts cover; the app draws a box for them, as the test harness is told to.
+    let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).allow_missing_glyphs().build_eframe(|cc| XmlCraftApp::new(cc));
     h.run_steps(4);
     h
 }
