@@ -40,11 +40,32 @@ pub(crate) struct DocView {
     requested: Option<u64>,
     /// The grammar of the DOCTYPE, and what Entry Helpers offer from it.
     pub(crate) helpers: crate::entry_helpers::HelperState,
+    /// Validating while the text is typed in.
+    auto: AutoValidation,
+}
+
+/// What is known of validating a document while it is typed in.
+#[derive(Default)]
+struct AutoValidation {
+    /// The version of the text the app saw last, and when it first saw it: how long the text has stood as it is.
+    seen: Option<(u64, std::time::Instant)>,
+    /// The version of the text a validation was asked for (by F8 or by this).
+    requested: Option<u64>,
+    /// How many validations of this document were asked for.
+    count: usize,
 }
 
 impl DocView {
     pub fn new(kind: ThemeKind) -> Self {
-        Self { view: ViewState::new(), styler: XmlStyler::new(kind), analysis: None, validation: None, requested: None, helpers: Default::default() }
+        Self {
+            view: ViewState::new(),
+            styler: XmlStyler::new(kind),
+            analysis: None,
+            validation: None,
+            requested: None,
+            helpers: Default::default(),
+            auto: AutoValidation::default(),
+        }
     }
 
     /// Keep `analysis`, underline its problems in the editor and offer what it says can be folded.
@@ -209,6 +230,7 @@ impl XmlCraftApp {
         }
         self.request_schema();
         self.request_xsd();
+        self.auto_validate();
         self.report_check();
         self.report_validation();
         self.finish_waiting();
@@ -302,6 +324,54 @@ impl XmlCraftApp {
         self.validate_pending = None;
     }
 
+    /// Validate the document being shown in the background when it names a grammar and has been left alone for a moment (and the person
+    /// has not turned that off): what is found is underlined and listed, without a word in the status bar and without opening Messages.
+    /// Called every frame; asks for a frame when the moment is still to come.
+    pub(crate) fn auto_validate(&mut self) {
+        let Some(doc) = self.session.active_document() else { return };
+        let (id, version, size) = (doc.id(), doc.editor().version(), doc.editor().buffer().len());
+        let Some(view) = self.views.get_mut(&id) else { return };
+        let now = std::time::Instant::now();
+        let quiet_for = match view.auto.seen {
+            Some((seen, at)) if seen == version => now.saturating_duration_since(at),
+            _ => {
+                view.auto.seen = Some((version, now));
+                std::time::Duration::ZERO
+            }
+        };
+        let ready = view.analysis.as_ref().is_some_and(|a| crate::auto_validate::ready(a, version));
+        // Both ways of asking for a validation (F8, and this) say which version they asked for.
+        let done = view.auto.requested == Some(version);
+        let inputs = crate::auto_validate::Inputs { enabled: self.validate_typing, ready, size, done, quiet_for, delay: self.validate_delay };
+        match crate::auto_validate::decide(&inputs) {
+            crate::auto_validate::Decision::Not => {}
+            crate::auto_validate::Decision::Wait(left) => {
+                if let Some(ctx) = &self.ctx {
+                    ctx.request_repaint_after(left);
+                }
+            }
+            crate::auto_validate::Decision::Now => {
+                view.auto.requested = Some(version);
+                view.auto.count += 1;
+                let open = self.open_documents();
+                if let Some(doc) = self.session.active_document() {
+                    self.validator.submit(id, version, doc.editor().buffer(), doc.path(), open);
+                }
+            }
+        }
+    }
+
+    /// How many times a validation of the document being shown was asked for (by F8 or while typing). What tests count.
+    pub fn validations_requested(&self) -> usize {
+        let Some(id) = self.session.active_document().map(Document::id) else { return 0 };
+        self.views.get(&id).map_or(0, |v| v.auto.count)
+    }
+
+    /// How long a text is left alone before it is validated while it is typed in (the default is [`crate::auto_validate::DELAY`]).
+    pub fn set_validate_delay(&mut self, delay: std::time::Duration) {
+        self.validate_delay = delay;
+    }
+
     /// Validate the document being shown now against its DTD and show the result in Messages (F8). The work is done in the background
     /// (the external parts of the DTD are files, read there) and reported when it arrives.
     pub(crate) fn validate_now(&mut self) {
@@ -320,6 +390,8 @@ impl XmlCraftApp {
         view.validation = None;
         view.refresh_underlines();
         // The documents that are open are what a schema is read from first: one being edited is validated against as it is.
+        view.auto.requested = Some(version);
+        view.auto.count += 1;
         let open = self.open_documents();
         self.validator.submit(id, version, doc.editor().buffer(), doc.path(), open);
         self.validate_pending = Some((id, version));
