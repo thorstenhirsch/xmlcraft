@@ -300,3 +300,54 @@ fn an_all_group_is_only_the_whole_content_in_xml_schema_1_0() {
     assert!(messages(&a)[0].contains("ext"), "{:?}", messages(&a));
     assert!(reads(model(&a.schema, "ext"), &["p", "q"]));
 }
+
+/// The local names of what a completion is made of.
+fn names(a: &Assembly, completion: Option<Vec<&Symbol>>) -> Option<Vec<String>> {
+    completion.map(|symbols| {
+        symbols
+            .into_iter()
+            .map(|s| match s {
+                Symbol::Element(id) => a.schema.element(*id).expect("an element").name.local.clone(),
+                Symbol::Wildcard(_) => "*".to_owned(),
+            })
+            .collect()
+    })
+}
+
+#[test]
+fn the_shortest_completion_is_what_a_content_model_cannot_do_without() {
+    let a = build(
+        "<xs:complexType name=\"seq\"><xs:sequence>\
+           <xs:element name=\"a\"/><xs:element name=\"o\" minOccurs=\"0\"/>\
+           <xs:choice><xs:sequence><xs:element name=\"x\"/><xs:element name=\"y\"/></xs:sequence><xs:element name=\"z\"/></xs:choice>\
+           <xs:element name=\"m\" minOccurs=\"2\" maxOccurs=\"3\"/>\
+         </xs:sequence></xs:complexType>\
+         <xs:complexType name=\"all\"><xs:all><xs:element name=\"p\"/><xs:element name=\"q\" minOccurs=\"0\"/><xs:element name=\"r\"/></xs:all></xs:complexType>\
+         <xs:complexType name=\"maybe\"><xs:all minOccurs=\"0\"><xs:element name=\"p\"/></xs:all></xs:complexType>\
+         <xs:complexType name=\"empty\"><xs:sequence><xs:element name=\"a\" minOccurs=\"0\"/></xs:sequence></xs:complexType>",
+    );
+    assert!(a.diagnostics.is_empty(), "{:?}", messages(&a));
+    let strings = |v: &[&str]| Some(v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>());
+    let seq = model(&a.schema, "seq");
+    // The shortest way through the choice (z, one element, not x and y), and the minimum of the counted one.
+    assert_eq!(names(&a, seq.shortest_completion(&seq.start())), strings(&["a", "z", "m", "m"]));
+    // From the middle: what is read is not repeated.
+    let after_a = seq.step(&seq.start(), &Name::local("a")).expect("a").0;
+    assert_eq!(names(&a, seq.shortest_completion(&after_a)), strings(&["z", "m", "m"]));
+    let after_x = seq.step(&after_a, &Name::local("x")).expect("x").0;
+    assert_eq!(names(&a, seq.shortest_completion(&after_x)), strings(&["y", "m", "m"]));
+    // Complete already: nothing more.
+    let done = ["a", "z", "m", "m"].iter().fold(seq.start(), |s, n| seq.step(&s, &Name::local(n)).expect("fits").0);
+    assert_eq!(names(&a, seq.shortest_completion(&done)), strings(&[]));
+    // An `xs:all` group: the required slots not taken.
+    let all = model(&a.schema, "all");
+    assert_eq!(names(&a, all.shortest_completion(&all.start())), strings(&["p", "r"]));
+    let after_r = all.step(&all.start(), &Name::local("r")).expect("r").0;
+    assert_eq!(names(&a, all.shortest_completion(&after_r)), strings(&["p"]));
+    // A group that may be left out needs nothing until it is begun.
+    let maybe = model(&a.schema, "maybe");
+    assert_eq!(names(&a, maybe.shortest_completion(&maybe.start())), strings(&[]));
+    assert_eq!(names(&a, model(&a.schema, "empty").shortest_completion(&model(&a.schema, "empty").start())), strings(&[]));
+    // A state of the other kind of model is no state of this one.
+    assert!(seq.shortest_completion(&all.start()).is_none());
+}

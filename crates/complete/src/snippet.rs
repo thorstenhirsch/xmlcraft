@@ -14,7 +14,7 @@ pub struct Snippet {
     pub caret: usize,
 }
 
-fn escape_attribute(value: &str) -> String {
+pub(crate) fn escape_attribute(value: &str) -> String {
     value.replace('&', "&amp;").replace('<', "&lt;").replace('"', "&quot;")
 }
 
@@ -79,7 +79,7 @@ fn write_element(grammar: &Grammar, name: &str, mandatory: bool, depth: usize, o
 
 /// Where the caret goes in the tag just written: inside the first empty `""` of its attributes, else just after the tag name's end of
 /// the start tag (for the content).
-fn first_value(out: &str, name: &str) -> usize {
+pub(crate) fn first_value(out: &str, name: &str) -> usize {
     let tag_start = out.rfind(&format!("<{name}")).unwrap_or(0);
     let tag = out.get(tag_start..).unwrap_or_default();
     let end = tag.find('>').map_or(tag.len(), |e| e + 1);

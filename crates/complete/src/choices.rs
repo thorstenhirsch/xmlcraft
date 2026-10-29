@@ -5,14 +5,21 @@ use std::ops::Range;
 use xmlcraft_grammar::{AttributeDefault, AttributeType, Content, EntityKind, Grammar, Name, Term};
 use xmlcraft_syntax::{SyntaxKind, SyntaxNode};
 
+use crate::scope::Declaration;
+
 /// An element that may come at the position.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ElementChoice {
+    /// The name as it is written at the place (with the prefix it has there).
     pub name: String,
     /// The enclosing element cannot be complete without it.
     pub mandatory: bool,
-    /// It is declared EMPTY.
+    /// It is declared EMPTY (has no content).
     pub empty: bool,
+    /// The declaration in an XML Schema (an `ElementId`); none for a DTD, where the name says it.
+    pub id: Option<usize>,
+    /// The namespace declaration the name needs where it is put, if the namespace is not in scope there.
+    pub declare: Option<Declaration>,
 }
 
 /// An attribute of the element at the position.
@@ -25,6 +32,8 @@ pub struct AttributeChoice {
     pub used: bool,
     /// The values it can have, when it is an enumeration.
     pub values: Vec<String>,
+    /// The namespace declaration the name needs where it is put, if the namespace is not in scope there.
+    pub declare: Option<Declaration>,
 }
 
 /// A general entity that can be referred to.
@@ -45,31 +54,35 @@ pub struct Choices {
     pub elements: Vec<ElementChoice>,
     pub attributes: Vec<AttributeChoice>,
     pub entities: Vec<EntityChoice>,
+    /// The values the text of `element` can have, when its type lists them (an XML Schema enumeration, or a boolean).
+    pub values: Vec<String>,
+    /// The namespace declarations in scope at the position (the innermost last): what a name is written with where a choice goes.
+    pub scope: Vec<Declaration>,
     /// Where a new attribute goes: the end of the name and attributes in the start tag of `element`.
     pub attribute_at: Option<usize>,
     /// The position is inside a start tag (so that elements and entities are not offered there).
     pub in_start_tag: bool,
 }
 
-fn range_of(node: &SyntaxNode) -> Range<usize> {
+pub(crate) fn range_of(node: &SyntaxNode) -> Range<usize> {
     usize::from(node.text_range().start())..usize::from(node.text_range().end())
 }
 
 /// The name in a start tag.
-fn name_of(element: &SyntaxNode) -> Option<String> {
+pub(crate) fn name_of(element: &SyntaxNode) -> Option<String> {
     let start = element.children().find(|c| c.kind() == SyntaxKind::StartTag)?;
     start.children_with_tokens().filter_map(|c| c.into_token()).find(|t| t.kind() == SyntaxKind::Name).map(|t| t.text().to_owned())
 }
 
 /// Where the position is in an element.
-enum Place {
+pub(crate) enum Place {
     StartTag,
     Content,
     /// In the end tag, or somewhere nothing is offered.
     Nowhere,
 }
 
-fn place_in(element: &SyntaxNode, offset: usize) -> Place {
+pub(crate) fn place_in(element: &SyntaxNode, offset: usize) -> Place {
     let Some(start) = element.children().find(|c| c.kind() == SyntaxKind::StartTag) else { return Place::Nowhere };
     let tag = range_of(&start);
     let self_closing = start.children_with_tokens().filter_map(|c| c.into_token()).any(|t| t.kind() == SyntaxKind::SlashGt);
@@ -90,7 +103,7 @@ fn place_in(element: &SyntaxNode, offset: usize) -> Place {
 }
 
 /// The deepest element that has the position in its start tag or its content.
-fn locate(root: &SyntaxNode, offset: usize) -> Option<(SyntaxNode, Place)> {
+pub(crate) fn locate(root: &SyntaxNode, offset: usize) -> Option<(SyntaxNode, Place)> {
     let mut current = root.children().find(|c| c.kind() == SyntaxKind::Element)?;
     let mut place = place_in(&current, offset);
     loop {
@@ -116,6 +129,16 @@ fn locate(root: &SyntaxNode, offset: usize) -> Option<(SyntaxNode, Place)> {
     }
 }
 
+/// Where a new attribute goes in a start tag: after the name and the attributes, before `>` or `/>`.
+pub(crate) fn attribute_end(start: &SyntaxNode) -> usize {
+    start
+        .children_with_tokens()
+        .filter(|c| c.kind() != SyntaxKind::Gt && c.kind() != SyntaxKind::SlashGt && c.kind() != SyntaxKind::Whitespace)
+        .last()
+        .map(|c| usize::from(c.text_range().end()))
+        .unwrap_or_else(|| range_of(start).end)
+}
+
 /// What the grammar allows at `offset` of the document `root` is the tree of.
 pub fn choices_at(root: &SyntaxNode, offset: usize, grammar: &Grammar) -> Choices {
     let mut out = Choices::default();
@@ -125,7 +148,13 @@ pub fn choices_at(root: &SyntaxNode, offset: usize, grammar: &Grammar) -> Choice
         if let Some(name) = &grammar.root
             && let Some(decl) = grammar.element(name)
         {
-            out.elements.push(ElementChoice { name: name.local.clone(), mandatory: false, empty: matches!(decl.content, Content::Empty) });
+            out.elements.push(ElementChoice {
+                name: name.local.clone(),
+                mandatory: false,
+                empty: matches!(decl.content, Content::Empty),
+                id: None,
+                declare: None,
+            });
         }
         return out;
     }
@@ -159,17 +188,10 @@ pub fn choices_at(root: &SyntaxNode, offset: usize, grammar: &Grammar) -> Choice
                     AttributeType::Enumeration(values) | AttributeType::Notation(values) => values.clone(),
                     _ => Vec::new(),
                 },
+                declare: None,
             })
             .collect();
-        // After the name and the attributes, before `>` or `/>`.
-        let tag = range_of(start);
-        let last = start
-            .children_with_tokens()
-            .filter(|c| c.kind() != SyntaxKind::Gt && c.kind() != SyntaxKind::SlashGt && c.kind() != SyntaxKind::Whitespace)
-            .last()
-            .map(|c| usize::from(c.text_range().end()))
-            .unwrap_or(tag.end);
-        out.attribute_at = Some(last);
+        out.attribute_at = Some(attribute_end(start));
     }
     if matches!(place, Place::StartTag) {
         return out;
@@ -186,6 +208,8 @@ fn elements_in(element: &SyntaxNode, offset: usize, content: Option<&Content>, g
         name: name.to_owned(),
         mandatory,
         empty: grammar.element(&Name::local(name)).is_some_and(|d| matches!(d.content, Content::Empty)),
+        id: None,
+        declare: None,
     };
     match content {
         None | Some(Content::Empty) => Vec::new(),
