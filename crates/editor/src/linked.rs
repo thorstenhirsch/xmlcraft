@@ -138,7 +138,15 @@ fn remap(names: &[Range<usize>; 2], edits: &[Edit], mirrored: bool) -> Option<[R
         }
     }
     let map = |name: &Range<usize>| map_offset(edits, name.start, Bias::Before)..map_offset(edits, name.end, Bias::After);
-    Some([map(&names[0]), map(&names[1])])
+    let mapped = [map(&names[0]), map(&names[1])];
+    // Between the name in a start tag and the one in its end tag there are always at least the `>` and the `</`. Names that touch or
+    // overlap (what was between them was deleted) are not the names of a pair of tags any more, and what is typed in one would be
+    // written at the same place twice.
+    let (first, second) = if mapped[0].start <= mapped[1].start { (&mapped[0], &mapped[1]) } else { (&mapped[1], &mapped[0]) };
+    if first.end >= second.start {
+        return None;
+    }
+    Some(mapped)
 }
 
 #[cfg(test)]
@@ -302,6 +310,71 @@ mod tests {
         assert_eq!(e.linked_names(), Some(&[3..4, 10..11]));
         assert!(e.apply_edits(&[Edit::delete(2..4)]), "from before the name into it");
         assert_eq!(e.linked_names(), None);
+    }
+
+    #[test]
+    fn names_that_come_together_are_not_linked_any_more() {
+        // The text between the two names goes: they would touch, and a name typed in one would be written twice at the same place.
+        let mut e = linked("<ab>x</ab>", 1..3, 7..9, 3);
+        e.backspace();
+        e.backspace();
+        assert_eq!(
+            (e.text().as_str(), e.linked_names()),
+            ("<>x</>", Some(&[1..1, 5..5])),
+            "emptied names are still linked: the next thing typed is the new name"
+        );
+        assert!(e.apply_edits(&[Edit::delete(1..5)]));
+        assert_eq!((e.text().as_str(), e.linked_names()), ("<>", None));
+        e.set_selection(1, 1);
+        e.type_input("a");
+        assert_eq!(e.text(), "<a>", "typed once");
+        // Overlapping is touching too, whichever name comes first.
+        let mut e = linked("<ab>x</ab>", 7..9, 1..3, 3);
+        e.backspace();
+        e.backspace();
+        assert!(e.apply_edits(&[Edit::delete(1..5)]));
+        assert_eq!(e.linked_names(), None);
+    }
+
+    /// The run of operations that the property test found on CI: it took the characters between two emptied names, one by one, until
+    /// the names were the same place, and then typed.
+    #[test]
+    fn the_run_the_property_test_found_keeps_the_names_apart_or_ends_the_link() {
+        let ops: [(usize, &str); 15] = [
+            (4, "a"),
+            (5, "a"),
+            (4, "a"),
+            (6, "a"),
+            (0, "a"),
+            (4, "a"),
+            (3, "a"),
+            (5, "a"),
+            (4, "a"),
+            (4, "a"),
+            (6, "a"),
+            (6, "a"),
+            (5, "a"),
+            (3, "a"),
+            (0, "a"),
+        ];
+        let mut e = Editor::new("<ab>x</ab>");
+        assert!(e.link_names(1..3, 7..9));
+        e.set_selection(2, 2);
+        for (op, text) in ops {
+            match op {
+                0..=2 => drop(e.type_input(text)),
+                3 => drop(e.backspace()),
+                4 => drop(e.delete_forward()),
+                5 => e.move_carets(Motion::Left, false),
+                6 => e.move_carets(Motion::Right, false),
+                _ => e.move_carets(Motion::Left, true),
+            }
+            if let Some([a, b]) = e.linked_names() {
+                assert!(a.end < b.start, "{:?} in {:?}", e.linked_names(), e.text());
+            }
+        }
+        assert_eq!(e.linked_names(), None, "the link ended when the names touched: {:?}", e.text());
+        assert_eq!(e.text(), "<a>", "and the last `a` was typed once, not mirrored");
     }
 
     proptest::proptest! {
