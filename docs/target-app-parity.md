@@ -1,6 +1,6 @@
 # XmlCraft parity with Altova XMLSpy
 
-> **Last reviewed:** 2026-10-29 · **Last updated:** 2026-10-29 · **Change:** M3.11 (first part): `xsd.authoring-completion` planned → partial (10 shipped and 55 partial, 24.7% weighted), M3.10: the W3C XML Schema Test Suite is measured (98.23%), M4.4 and M4.6: the two Generate dialogs (commands and evidence for the eight `generate.schema-*` and `generate.sample-*` features; no status changes), M4.5–M4.6 (headless): the four `generate.sample-*` features planned → partial (10 shipped and 54 partial, 24.3% weighted), M4.1–M4.4 (headless): the four `generate.schema-*` features planned → partial (10 shipped and 50 partial, 23.0% weighted), M3.15 (first part): `xml_validate` and `xmlcraft-cli validate --schema` against an XSD (`validate.xsd` and `validate.schema-association` planned → partial; 10 shipped and 46 partial, 21.7% weighted), M3.4–M3.9: the XSD engine (notes of `xsd.*` and `validate.xsd`, no status changes), M3.3: the schema document reader (a note only), M2.3 (first part): the resolver library (notes only), M3.2: XSD datatypes (notes only), M2.11: Entry Helpers from the DTD (`view.entry-helpers` planned → partial), M3.1: XSD regular expressions (a note only), M2.2 (first part): bundled schemas (`catalog.bundled-schemas` planned → partial), M2.9: validation against a DTD (partial); xmlconf now validating: not-wf, valid and invalid all 100%; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
+> **Last reviewed:** 2026-10-29 · **Last updated:** 2026-10-29 · **Change:** M3.11 (first part): `xsd.authoring-completion` planned → partial (10 shipped and 55 partial, 24.7% weighted), xsdtests 98.23% (37,756 of 38,438; `schZ012_b` and `_c` count again), M3.10: the W3C XML Schema Test Suite is measured (98.23%), M4.4 and M4.6: the two Generate dialogs (commands and evidence for the eight `generate.schema-*` and `generate.sample-*` features; no status changes), M4.5–M4.6 (headless): the four `generate.sample-*` features planned → partial (10 shipped and 54 partial, 24.3% weighted), M4.1–M4.4 (headless): the four `generate.schema-*` features planned → partial (10 shipped and 50 partial, 23.0% weighted), M3.15 (first part): `xml_validate` and `xmlcraft-cli validate --schema` against an XSD (`validate.xsd` and `validate.schema-association` planned → partial; 10 shipped and 46 partial, 21.7% weighted), M3.4–M3.9: the XSD engine (notes of `xsd.*` and `validate.xsd`, no status changes), M3.3: the schema document reader (a note only), M2.3 (first part): the resolver library (notes only), M3.2: XSD datatypes (notes only), M2.11: Entry Helpers from the DTD (`view.entry-helpers` planned → partial), M3.1: XSD regular expressions (a note only), M2.2 (first part): bundled schemas (`catalog.bundled-schemas` planned → partial), M2.9: validation against a DTD (partial); xmlconf now validating: not-wf, valid and invalid all 100%; feature breadth 6.6% shipped of 152 counted · **Target:** Altova XMLSpy 2026 (Professional and Enterprise feature sets as described in Altova's public documentation)
 
 The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -14,7 +14,7 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 | Must-have (P0) features | 7.8% shipped, 40.6% weighted (5 shipped + 42 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **100%** (1017 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): a valid document has no well-formedness or validity error, an invalid one is well-formed and has at least one validity error (which one is not compared; 73 of the 227 are documents with no DOCTYPE, invalid because there is nothing to validate against) | measured (same run) |
-| W3C xsdtests (XSD 1.0) | **98.2%** (37,754 of 38,436 accepted tests: schemas 96.2%, instances 99.3%) | measured (`cargo xtask conformance xsdtests`, 2026-10-29) |
+| W3C xsdtests (XSD 1.0) | **98.2%** (37,756 of 38,438 accepted tests: schemas 96.2%, instances 99.3%) | measured (`cargo xtask conformance xsdtests`, 2026-10-29) |
 | Verdict agreement with `xmllint` | not measured | arrives with M2 (`cargo xtask oracle`) |
 | **Stage** | **pre-alpha** | |
 
@@ -26,14 +26,14 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 ## W3C XML Schema Test Suite (xsdtests, 2007 release for XML Schema 1.0)
 
-`cargo xtask conformance xsdtests [--fetch]` builds the schema of each test group through the same loader and assembler the app uses, validates each instance against it, and compares with the verdicts the working group accepted (tests that were queried, or are neither valid nor invalid, are left out, and so are the three groups that test that file URLs are compared case-insensitively, `schZ012_a` to `_c`, whose verdict depends on the file system of the machine: 984). A schema test passes when the schema has an error exactly when the suite says it is invalid; an instance test, when the instance has an error exactly when the suite says it is invalid.
+`cargo xtask conformance xsdtests [--fetch]` builds the schema of each test group through the same loader and assembler the app uses, validates each instance against it, and compares with the verdicts the working group accepted (tests that were queried, or are neither valid nor invalid, are left out, and so is the group `schZ012_a`, which tests that file URLs are compared case-insensitively and whose verdict is the file system's (a file by another case is that file on a Mac or on Windows and none on Linux): 982). A schema test passes when the schema has an error exactly when the suite says it is invalid; an instance test, when the instance has an error exactly when the suite says it is invalid.
 
 | Contributor | Schema tests | Instance tests |
 |---|---:|---:|
 | NIST (datatypes) | 3938 of 3938 | 19142 of 19142 |
 | Sun | 674 of 679 | 901 of 919 |
-| Microsoft | 8593 of 9108 | 4506 of 4650 |
-| **All** | **13205 of 13725 (96.2%)** | **24549 of 24711 (99.3%)** |
+| Microsoft | 8595 of 9110 | 4506 of 4650 |
+| **All** | **13207 of 13727 (96.2%)** | **24549 of 24711 (99.3%)** |
 
 The 682 that fail are listed in `xtask/baselines/xsdtests.txt`; a new failure fails the run, and so does one that is fixed and still listed. What they are is in [gaps.md](gaps.md) (gap 21).
 

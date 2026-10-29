@@ -237,6 +237,16 @@ impl Resolver {
         }
     }
 
+    /// What the document at `location` is, so that two locations of one document are told to be one: for a file (a path, or a `file:` URI)
+    /// what the files say it is (see [`FileAccess::identity`]), for anything else (the address of a resource, which is case-sensitive) the
+    /// location itself.
+    pub fn identity(&self, location: &str) -> String {
+        match file_path(location) {
+            Some(path) => self.env.files.identity(&path),
+            None => location.to_owned(),
+        }
+    }
+
     fn is_remote(&self, location: &str) -> bool {
         matches!(scheme_of(location).as_deref(), Some("http" | "https"))
     }

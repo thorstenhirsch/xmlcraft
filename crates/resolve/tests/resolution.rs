@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use xmlcraft_resolve::{
     Budget, Buffers, CacheEntry, Clock, Conditions, Environment, FetchError, FetchLimits, FetchOutcome, Fetched, Fetcher, FileAccess,
-    MAX_DOWNLOAD_BYTES, MemoryCache, NoBuffers, Origin, Outcome, Policy, Request, Resolver, ResourceCache, Stage,
+    MAX_DOWNLOAD_BYTES, MemoryCache, NoBuffers, NoFiles, Origin, Outcome, Policy, Request, Resolver, ResourceCache, Stage,
 };
 
 #[derive(Default)]
@@ -21,6 +21,11 @@ impl Files {
 impl FileAccess for Files {
     fn read(&self, path: &str) -> Result<Vec<u8>, String> {
         self.0.lock().expect("lock").get(path).cloned().ok_or_else(|| format!("{path}: no such file"))
+    }
+
+    /// These files are on a system that folds case.
+    fn identity(&self, path: &str) -> String {
+        path.to_lowercase()
     }
 }
 
@@ -505,4 +510,19 @@ fn a_copy_is_current_up_to_the_last_second_of_its_time() {
     w.net.answer("https://example.org/a.xsd", Ok(FetchOutcome::NotModified));
     assert_eq!(r.resolve(&request, &mut Budget::new()).expect("found").origin, Origin::Cache { stale: false });
     assert_eq!(w.net.urls().len(), 2, "30 days: asked");
+}
+
+#[test]
+fn a_document_has_one_identity_whatever_it_is_called() {
+    let r = World::new().resolver();
+    // A file is what the files say it is: here, the case does not matter.
+    assert_eq!(r.identity("/S/Types.xsd"), r.identity("/s/types.xsd"));
+    // A `file:` URI is the file it names.
+    assert_eq!(r.identity("file:///S/Types.xsd"), r.identity("/s/types.xsd"));
+    assert_ne!(r.identity("/s/a.xsd"), r.identity("/s/b.xsd"));
+    // Anything else is its own spelling: the case of a URL counts.
+    assert_ne!(r.identity("https://example.org/A.xsd"), r.identity("https://example.org/a.xsd"));
+    assert_eq!(r.identity("https://example.org/a.xsd"), "https://example.org/a.xsd");
+    // Files that cannot tell better answer with the spelling made plain.
+    assert_eq!(NoFiles.identity("a\\b/C"), xmlcraft_resolve::normalized("a\\b/C"));
 }
