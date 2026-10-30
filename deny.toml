@@ -52,3 +52,11 @@ ignore = [
 [[licenses.exceptions]]
 crate = "epaint_default_fonts"
 allow = ["OFL-1.1", "Ubuntu-font-1.0"]
+
+# rustls-platform-verifier (the TLS verifier of the download client, xmlcraft-platform) lists webpki-root-certs, Mozilla's CA list as
+# CDLA-Permissive-2.0 data, as a dependency for wasm32 only. xmlcraft-platform builds the client for native targets alone, so it is not
+# compiled into anything XmlCraft ships: the client trusts the operating system's roots. cargo-deny cannot tell (it checks each
+# dependency edge against the targets on its own). Remove if rustls-platform-verifier drops it, or if it should ever reach a build.
+[[licenses.exceptions]]
+crate = "webpki-root-certs"
+allow = ["CDLA-Permissive-2.0"]

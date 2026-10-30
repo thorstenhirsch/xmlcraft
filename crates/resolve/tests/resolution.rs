@@ -250,6 +250,46 @@ fn the_dtds_and_schemas_that_ship_with_the_app_are_found_by_their_identifiers_na
 }
 
 #[test]
+fn a_name_that_is_looked_up_only_is_never_read_at_its_own_address() {
+    let w = World::new();
+    w.net.serve("https://example.com/ns", "<xs:schema/>");
+    w.net.serve("http://example.com/ns", "<xs:schema/>");
+    let r = w.resolver();
+    // The same reference as an address is downloaded; as a name it is not, and no file is read for it either.
+    assert!(r.resolve(&Request::uri("http://example.com/ns", ""), &mut Budget::new()).is_ok());
+    let calls = w.net.urls().len();
+    assert!(calls > 0);
+    let w = World::new();
+    w.net.serve("https://example.com/ns", "<xs:schema/>");
+    w.files.0.lock().expect("lock").insert("/docs/urn:ns".to_owned(), b"<xs:schema/>".to_vec());
+    let r = w.resolver();
+    for name in ["http://example.com/ns", "urn:ns"] {
+        let failure = r.resolve(&Request::uri(name, "/docs/s.xsd").lookup_only(), &mut Budget::new()).expect_err("nothing knows it");
+        assert!(failure.message.contains("no catalog knows"), "{failure}");
+        assert!(failure.trail.of(Stage::Network).next().is_none() && failure.trail.of(Stage::File).all(|s| matches!(s.outcome, Outcome::Skipped(_))));
+    }
+    assert!(w.net.urls().is_empty(), "nothing was asked of the web");
+    // What the catalogs know by that name is found all the same.
+    let found =
+        r.resolve(&Request::uri("http://www.w3.org/2001/XMLSchema", "/docs/s.xsd").lookup_only(), &mut Budget::new()).expect("the bundle knows it");
+    assert_eq!(found.origin, Origin::Bundle);
+}
+
+#[test]
+fn a_user_catalog_may_lead_a_name_to_an_address_and_that_is_downloaded() {
+    let mut w = World::new();
+    w.files = Files::with(&[(
+        "/c/catalog.xml",
+        r#"<catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog"><uri name="http://example.com/ns" uri="https://schemas.example.org/ns.xsd"/></catalog>"#,
+    )]);
+    w.catalogs = vec!["/c/catalog.xml".to_owned()];
+    w.net.serve("https://schemas.example.org/ns.xsd", "<xs:schema/>");
+    let found = w.resolver().resolve(&Request::uri("http://example.com/ns", "").lookup_only(), &mut Budget::new()).expect("the catalog leads there");
+    assert_eq!(found.origin, Origin::Network);
+    assert_eq!(w.net.urls(), ["https://schemas.example.org/ns.xsd"]);
+}
+
+#[test]
 fn a_bundled_file_finds_its_neighbours_by_their_relative_names() {
     let w = World::new();
     let r = w.resolver();

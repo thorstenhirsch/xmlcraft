@@ -35,7 +35,8 @@ use serde::{Deserialize, Serialize};
 use xmlcraft_engine::Session;
 use xmlcraft_engine::analysis::Analyzer;
 use xmlcraft_engine::schema::Schemas;
-use xmlcraft_engine::validation::Validator;
+use xmlcraft_engine::validation::{ResolverFactory, Validator};
+pub use xmlcraft_platform::network::Network;
 
 use crate::dialog::Dialog;
 use crate::documents::DocView;
@@ -78,6 +79,9 @@ struct Prefs {
     entry_mandatory: bool,
     /// A document that names a grammar is validated in the background when it has been left alone for a moment.
     validate_typing: bool,
+    /// Nothing is downloaded (XML ▸ Work Offline): the schemas and DTDs a document names are taken from what is open, the catalogs, the
+    /// bundle, files and the copies downloaded before.
+    work_offline: bool,
 }
 
 impl Default for Prefs {
@@ -91,6 +95,7 @@ impl Default for Prefs {
             recent: Vec::new(),
             entry_mandatory: true,
             validate_typing: true,
+            work_offline: false,
         }
     }
 }
@@ -133,6 +138,10 @@ pub struct XmlCraftApp {
     entry_mandatory: bool,
     /// Validate a document that names a grammar when it has been left alone for a moment (View: XML ▸ Validate While Typing).
     validate_typing: bool,
+    /// The person's switch for downloading (XML ▸ Work Offline); the network says whether anything is downloaded at all.
+    work_offline: bool,
+    /// What the grammars a document names are downloaded with.
+    network: Network,
     /// How long a text is left alone before that.
     validate_delay: std::time::Duration,
     /// The text typed into the Outline's filter box.
@@ -183,11 +192,17 @@ pub struct XmlCraftApp {
 }
 
 impl XmlCraftApp {
+    /// An app that downloads nothing: what tests make. The program makes it with [`XmlCraftApp::with_network`].
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        Self::with_network(cc, Network::offline())
+    }
+
+    /// An app whose schemas and DTDs are downloaded with `network` (unless the person works offline).
+    pub fn with_network(cc: &eframe::CreationContext<'_>, network: Network) -> Self {
         egui_extras::install_image_loaders(&cc.egui_ctx);
         theme::install_fonts(&cc.egui_ctx);
         let prefs = Prefs::load(cc.storage.and_then(|s| s.get_string(STORAGE_KEY)).as_deref());
-        let mut app = Self::with_prefs(prefs);
+        let mut app = Self::with_prefs_and_network(prefs, network);
         app.ctx = Some(cc.egui_ctx.clone());
         let repaint = cc.egui_ctx.clone();
         app.analyzer.on_done({
@@ -214,7 +229,18 @@ impl XmlCraftApp {
         app
     }
 
+    #[cfg(test)]
     fn with_prefs(prefs: Prefs) -> Self {
+        Self::with_prefs_and_network(prefs, Network::offline())
+    }
+
+    fn with_prefs_and_network(prefs: Prefs, network: Network) -> Self {
+        network.set_offline(prefs.work_offline);
+        // The resolvers of the background workers are made when a request is: they see the switch as it is then.
+        let resolvers = || -> ResolverFactory {
+            let network = network.clone();
+            std::sync::Arc::new(move |buffers| network.resolver(buffers))
+        };
         let mut session = Session::new();
         session.set_recent(xmlcraft_engine::Recent::from_paths(prefs.recent.iter().map(std::path::PathBuf::from)));
         Self {
@@ -230,10 +256,11 @@ impl XmlCraftApp {
             session,
             analyzer: Analyzer::new(),
             // The external parts of a DTD, and the documents of a schema, are open documents, the DTDs and schemas that ship with the app
-            // (found by their public identifiers and namespaces) and files the person can read; nothing is downloaded.
-            validator: Validator::new(std::sync::Arc::new(xmlcraft_platform::schema_files::local_resolver)),
+            // (found by their public identifiers and namespaces), files the person can read and, unless they work offline, what the
+            // web has (kept on disk).
+            validator: Validator::new(resolvers()),
             schema_generator: xmlcraft_engine::generate::SchemaGenerator::new(),
-            sample_generator: xmlcraft_engine::generate::SampleGenerator::new(std::sync::Arc::new(xmlcraft_platform::schema_files::local_resolver)),
+            sample_generator: xmlcraft_engine::generate::SampleGenerator::new(resolvers()),
             generate_serial: 0,
             outline_filter: String::new(),
             outline_rows: None,
@@ -242,10 +269,12 @@ impl XmlCraftApp {
             goto_focus: false,
             check_pending: None,
             validate_pending: None,
-            schemas: Schemas::new(std::sync::Arc::new(xmlcraft_platform::schema_files::local_resolver)),
-            xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas::new(std::sync::Arc::new(xmlcraft_platform::schema_files::local_resolver)),
+            schemas: Schemas::new(resolvers()),
+            xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas::new(resolvers()),
             entry_mandatory: prefs.entry_mandatory,
             validate_typing: prefs.validate_typing,
+            work_offline: prefs.work_offline,
+            network,
             validate_delay: auto_validate::DELAY,
             waiting: None,
             views: HashMap::new(),
@@ -277,6 +306,7 @@ impl XmlCraftApp {
             recent: self.session.recent().paths().iter().filter_map(|path| path.to_str().map(str::to_owned)).collect(),
             entry_mandatory: self.entry_mandatory,
             validate_typing: self.validate_typing,
+            work_offline: self.work_offline,
         }
     }
 
@@ -435,6 +465,20 @@ mod tests {
         let again = Prefs::load(Some(&serde_json::to_string(&off).expect("serialises")));
         assert!(!again.validate_typing);
         assert!(!XmlCraftApp::with_prefs(again).prefs().validate_typing, "it is what the app saves, too");
+    }
+
+    #[test]
+    fn working_offline_is_saved_with_the_preferences_and_is_off_unless_it_was_turned_on() {
+        assert!(!Prefs::default().work_offline);
+        assert!(!Prefs::load(Some(r#"{"left_open": false}"#)).work_offline, "an old file that does not say is online");
+        assert!(!Prefs::load(Some("not json")).work_offline);
+        let on = Prefs { work_offline: true, ..Prefs::default() };
+        let again = Prefs::load(Some(&serde_json::to_string(&on).expect("serializes")));
+        assert!(again.work_offline);
+        let app = XmlCraftApp::with_prefs(again);
+        assert_eq!(app.command_checked("xml.work_offline"), Some(true));
+        assert!(app.prefs().work_offline, "it is what the app saves, too");
+        assert_eq!(XmlCraftApp::with_prefs(Prefs::default()).command_checked("xml.work_offline"), Some(false));
     }
 
     #[test]

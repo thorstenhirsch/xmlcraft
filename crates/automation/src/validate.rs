@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 use xmlcraft_dtd::DtdDiagnostic;
-use xmlcraft_resolve::{Buffers, Environment, FileAccess, FixedClock, Policy, Resolver, normalized};
+use xmlcraft_resolve::{Buffers, FileAccess, Resolver, normalized};
 use xmlcraft_syntax::{Diagnostic, Severity, SyntaxKind, SyntaxNode, parse};
 use xmlcraft_text::Buffer;
 use xmlcraft_validate::{SchemaOutcome, check, check_against_schema, schema_hints};
@@ -184,7 +184,8 @@ fn describe_problem(kind: &str, diagnostic: &Diagnostic, file: Option<String>, b
 }
 
 /// The resolver the schema documents of a call are found with: the documents that are open (as they are being edited, not as saved), the
-/// schemas that ship with the app, and files through the root confinement. Nothing is downloaded.
+/// schemas that ship with the app, files through the root confinement and, if the program gave the session a network that downloads and
+/// it is not offline, the web through the cache (the root confines files, not that).
 pub(crate) fn schema_resolver(a: &Automation) -> Resolver {
     let open: Vec<(String, Arc<str>)> = a
         .session()
@@ -192,14 +193,10 @@ pub(crate) fn schema_resolver(a: &Automation) -> Resolver {
         .iter()
         .filter_map(|d| d.path().map(|p| (p.to_string_lossy().into_owned(), Arc::from(d.editor().text().as_str()))))
         .collect();
-    let env = Environment {
-        buffers: Arc::new(OpenDocuments { open, confinement: a.confinement.clone() }),
-        files: Arc::new(ConfinedFiles { confinement: a.confinement.clone() }),
-        fetcher: None,
-        cache: None,
-        clock: Arc::new(FixedClock(0)),
-    };
-    Resolver::new(env, Policy { auto_download: false, offline: true, ..Policy::default() }, &[])
+    a.network().resolver_with_files(
+        Arc::new(OpenDocuments { open, confinement: a.confinement.clone() }),
+        Arc::new(ConfinedFiles { confinement: a.confinement.clone() }),
+    )
 }
 
 /// The check against an XML Schema.

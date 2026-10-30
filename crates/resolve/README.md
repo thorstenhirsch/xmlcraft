@@ -18,8 +18,10 @@ Downloading follows the `Policy`: `auto_download` (on by default), `offline` (no
 
 One load has a `Budget`: 256 resources and 64 MiB in all (a download may have 10 MiB). What does not fit is not read and is not counted.
 
+A `Request` can be `lookup_only`: the open documents and the catalogs are asked, but not the address itself (not as a file, not on the web). A namespace is asked for so, since it names a schema and is not where one is; what a catalog maps it to is read (and downloaded) all the same.
+
 `Resolved::trail` / `Failure::trail` list every place that was looked in and what it said (found, nothing, not asked and why, failed and why).
 
-The world is traits the caller implements: `Buffers`, `FileAccess` (the implementation confines and caps), `Fetcher` (http), `ResourceCache`, `Clock` (the crate reads no clock). `MemoryCache` and `FixedClock` are there for tests and for the web. The disk cache and the HTTP client are `xmlcraft-platform`'s (M2.4).
+The world is traits the caller implements: `Buffers`, `FileAccess` (the implementation confines and caps), `Fetcher` (http), `ResourceCache`, `Clock` (the crate reads no clock). `MemoryCache` and `FixedClock` are there for tests and for the web. The HTTP client (`HttpFetcher`), the disk cache (`DiskCache`) and the `Network` that bundles them with the person's offline switch are `xmlcraft-platform`'s (M2.4).
 
 Tests: `tests/resolution.rs` (the chain, with a world made of maps), `tests/location.rs` (schemes, joining, `file:` URIs; with property tests), `tests/budget.rs`.
