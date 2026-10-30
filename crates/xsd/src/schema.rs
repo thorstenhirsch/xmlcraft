@@ -228,6 +228,12 @@ impl Schema {
         self.global_elements.get(name).copied()
     }
 
+    /// Whether `id` is a global element: declared at the top of a schema document, and so a root a document may have. (`scope` is `None`
+    /// for it, and also for an element declared in a named model group, which belongs to whichever types use the group.)
+    pub fn is_global(&self, id: ElementId) -> bool {
+        self.element(id).is_some_and(|e| self.global_elements.get(&e.name) == Some(&id))
+    }
+
     pub fn attribute_by_name(&self, name: &QName) -> Option<AttributeId> {
         self.global_attributes.get(name).copied()
     }

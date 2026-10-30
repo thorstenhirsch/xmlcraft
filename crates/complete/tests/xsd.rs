@@ -50,6 +50,19 @@ const ORDER: &str = "<xs:element name=\"order\"><xs:complexType><xs:sequence>\
       </xs:sequence><xs:attribute name=\"id\" type=\"xs:ID\" use=\"required\"/></xs:complexType></xs:element>";
 
 #[test]
+fn an_element_declared_in_a_named_group_is_not_offered_as_a_root() {
+    // `inner` belongs to the types that use the group; only `outer` may start a document.
+    let s = schema(
+        "qualified",
+        "<xs:group name=\"g\"><xs:sequence><xs:element name=\"inner\" type=\"xs:string\"/></xs:sequence></xs:group>\
+         <xs:element name=\"outer\"><xs:complexType><xs:sequence><xs:group ref=\"o:g\"/></xs:sequence></xs:complexType></xs:element>",
+    );
+    assert_eq!(names(&at(&s, "|")), [pair("outer", false)]);
+    // Inside `outer` it is offered, as what the group puts there.
+    assert_eq!(names(&at(&s, "<outer xmlns=\"urn:o\">|</outer>")), [pair("inner", true)]);
+}
+
+#[test]
 fn the_root_element_is_one_of_the_global_elements() {
     let s = schema(
         "qualified",
