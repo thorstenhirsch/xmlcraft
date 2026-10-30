@@ -874,3 +874,47 @@ kind = "schema"
 usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
 sha256 = "6946432ca7af2e9584f91b48564111fd2c73c8debbbcd9a0e3f5ddd382eeb51c"
 # END bundled schemas
+
+[[asset]]
+path = "docs/screenshots/editor.png"
+title = "XmlCraft screenshot: the editor with Entry Helpers"
+author = "XmlCraft contributors"
+source = "Contributor-original (see docs/screenshots/README.md): rendered by packaging/screenshots.sh from synthetic documents"
+licence = "MIT OR Apache-2.0"
+licence_file = "docs/screenshots/LICENSE.txt"
+kind = "image"
+usage = "README and docs: the editor, its outline and Entry Helpers from an XML Schema"
+sha256 = "b0571c6d5db0ae1470cc5481dee8539a090dd64a0d29010a119e9aa918c3a233"
+
+[[asset]]
+path = "docs/screenshots/validation.png"
+title = "XmlCraft screenshot: validation errors (dark theme)"
+author = "XmlCraft contributors"
+source = "Contributor-original (see docs/screenshots/README.md): rendered by packaging/screenshots.sh from synthetic documents"
+licence = "MIT OR Apache-2.0"
+licence_file = "docs/screenshots/LICENSE.txt"
+kind = "image"
+usage = "README and docs: the problems of a document that does not follow its schema"
+sha256 = "2ed7683c83b01f3048a01e65704539a02e602cb21fc29af9e8e4b51aeb0bed0b"
+
+[[asset]]
+path = "docs/screenshots/generate-schema.png"
+title = "XmlCraft screenshot: the Generate Schema dialog"
+author = "XmlCraft contributors"
+source = "Contributor-original (see docs/screenshots/README.md): rendered by packaging/screenshots.sh from synthetic documents"
+licence = "MIT OR Apache-2.0"
+licence_file = "docs/screenshots/LICENSE.txt"
+kind = "image"
+usage = "README and docs: XML ▸ Generate Schema…"
+sha256 = "16dbfad26cb806222feff01fbb93bbfff92aad61c102a6fede738ba1a1e390e0"
+
+[[asset]]
+path = "docs/screenshots/new-from-template.png"
+title = "XmlCraft screenshot: the New from Template dialog"
+author = "XmlCraft contributors"
+source = "Contributor-original (see docs/screenshots/README.md): rendered by packaging/screenshots.sh from synthetic documents"
+licence = "MIT OR Apache-2.0"
+licence_file = "docs/screenshots/LICENSE.txt"
+kind = "image"
+usage = "README and docs: File ▸ New from Template…"
+sha256 = "66aaeadff750c5f23f8ca98f93421fb3b1ec188169851b268de4e80eaf2cc87a"
