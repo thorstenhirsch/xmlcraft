@@ -1,0 +1,12 @@
+The screenshots in this directory (editor.png, validation.png, generate-schema.png, new-from-template.png) and the documents they show
+(fixtures/library.xsd, fixtures/library.xml, fixtures/library-errors.xml).
+
+Original material made for this project: pictures of XmlCraft's own window, drawn by its own headless renderer
+(packaging/screenshots.sh), showing synthetic documents written for the purpose. They contain nothing from any other software, no
+personal data and no third-party artwork: the interface is XmlCraft's, the icons are Lucide (ISC), the fonts are Inter and JetBrains
+Mono (OFL-1.1), all of which ship with the app. Licensed like the rest of XmlCraft, under either of
+
+  * Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+  * MIT license (https://opensource.org/licenses/MIT)
+
+at your option.

@@ -4,7 +4,7 @@
 
 Every asset XmlCraft includes, bundles or uses to build its published material, with its author, source and licence. The policy is in [AGENTS.md](AGENTS.md) §1. The machine-readable list, with the SHA-256 of every asset but the translation catalogs, is [ATTRIBUTION.toml](ATTRIBUTION.toml). Licence texts are kept beside the assets and summarised in [NOTICE](NOTICE).
 
-## In this repository (73)
+## In this repository (77)
 
 | Asset | Title | Author | Licence | Source | Used for |
 |---|---|---|---|---|---|
@@ -81,6 +81,10 @@ Every asset XmlCraft includes, bundles or uses to build its published material, 
 | `schemas/w3c/xmlschema/XMLSchema.dtd` | XML Schema: the DTD for schemas | World Wide Web Consortium (MIT, ERCIM, Keio, Beihang) | W3C-20150513 | https://www.w3.org/2001/XMLSchema.dtd (retrieved 2026-10-28) | Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline |
 | `schemas/w3c/xmlschema/XMLSchema.xsd` | XML Schema: the schema for schemas (structures) | World Wide Web Consortium (MIT, ERCIM, Keio, Beihang) | W3C-20150513 | https://www.w3.org/2001/XMLSchema.xsd (retrieved 2026-10-28) | Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline |
 | `schemas/w3c/xmlschema/datatypes.dtd` | XML Schema: the datatypes DTD | World Wide Web Consortium (MIT, ERCIM, Keio, Beihang) | W3C-20150513 | https://www.w3.org/2001/datatypes.dtd (retrieved 2026-10-28) | Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline |
+| `docs/screenshots/editor.png` | XmlCraft screenshot: the editor with Entry Helpers | XmlCraft contributors | MIT OR Apache-2.0 | Contributor-original (see docs/screenshots/README.md): rendered by packaging/screenshots.sh from synthetic documents | README and docs: the editor, its outline and Entry Helpers from an XML Schema |
+| `docs/screenshots/validation.png` | XmlCraft screenshot: validation errors (dark theme) | XmlCraft contributors | MIT OR Apache-2.0 | Contributor-original (see docs/screenshots/README.md): rendered by packaging/screenshots.sh from synthetic documents | README and docs: the problems of a document that does not follow its schema |
+| `docs/screenshots/generate-schema.png` | XmlCraft screenshot: the Generate Schema dialog | XmlCraft contributors | MIT OR Apache-2.0 | Contributor-original (see docs/screenshots/README.md): rendered by packaging/screenshots.sh from synthetic documents | README and docs: XML ▸ Generate Schema… |
+| `docs/screenshots/new-from-template.png` | XmlCraft screenshot: the New from Template dialog | XmlCraft contributors | MIT OR Apache-2.0 | Contributor-original (see docs/screenshots/README.md): rendered by packaging/screenshots.sh from synthetic documents | README and docs: File ▸ New from Template… |
 
 ## Compiled in through dependencies (5)
 
