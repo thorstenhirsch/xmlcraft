@@ -219,6 +219,25 @@ fn hint(ui: &mut egui::Ui, text: &str) {
     });
 }
 
+/// Whether the interface fonts (Inter, and the icon font) have a glyph for `c`: Basic Latin, Latin-1, Latin Extended, Greek, Cyrillic,
+/// the general punctuation of running text and the euro sign. What is not here is not drawn (a box, or a refusal in the tests).
+fn drawable(c: char) -> bool {
+    c.is_ascii_graphic()
+        || c == ' '
+        || ('\u{00A1}'..='\u{024F}').contains(&c)
+        || ('\u{0370}'..='\u{03FF}').contains(&c)
+        || ('\u{0400}'..='\u{04FF}').contains(&c)
+        || ('\u{2010}'..='\u{2027}').contains(&c)
+        || c == '\u{20AC}'
+}
+
+/// The text of an entity as it is shown beside its name: its first 24 characters, or nothing when one of them could not be drawn (the
+/// XHTML DTD has some two hundred entities for symbols, which would be boxes).
+fn shown_value(value: &str) -> Option<String> {
+    let shown: String = value.chars().take(24).collect();
+    (!shown.is_empty() && shown.chars().all(drawable)).then_some(shown)
+}
+
 /// What a click on a row asks for.
 enum Insert {
     Element(ElementChoice),
@@ -316,7 +335,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
         if !choices.entities.is_empty() {
             section(ui, tl!("Entities"), false);
             for EntityChoice { name, value } in &choices.entities {
-                let shown = value.as_deref().map(|v| v.chars().take(24).collect::<String>());
+                let shown = value.as_deref().and_then(shown_value);
                 if row(ui, &format!("&{name};"), shown.as_deref(), false, false).double_clicked() {
                     insert = Some(Insert::Entity(name.clone()));
                 }
@@ -346,6 +365,20 @@ fn section(ui: &mut egui::Ui, title: &str, empty: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_value_of_an_entity_is_shown_when_it_can_be_drawn() {
+        assert_eq!(shown_value("text").as_deref(), Some("text"));
+        assert_eq!(shown_value("© 2026 é").as_deref(), Some("© 2026 é"));
+        assert_eq!(shown_value("Ωμέγα и €").as_deref(), Some("Ωμέγα и €"));
+        assert_eq!(shown_value(&"x".repeat(40)).map(|s| s.len()), Some(24), "the first 24 characters");
+        // Not drawn: a symbol outside the fonts, a non-breaking space, a control character, nothing at all.
+        for undrawable in ["\u{2118}", "a\u{2211}b", "\u{00A0}", "a\u{0007}", "", "\u{1F600}"] {
+            assert_eq!(shown_value(undrawable), None, "{undrawable:?}");
+        }
+        // The cut is made before the check: a symbol past the 24th character is not looked at.
+        assert_eq!(shown_value(&format!("{}\u{2118}", "x".repeat(24))).map(|s| s.len()), Some(24));
+    }
 
     #[test]
     fn only_the_answer_to_the_last_request_is_taken() {

@@ -11,7 +11,7 @@ use xmlcraft_syntax::{Severity, parse};
 use xmlcraft_text::Buffer;
 use xmlcraft_xsd::{ResolvingLoader, XSD_NAMESPACE, assemble, dom, load};
 
-use crate::validation::{LoaderFactory, OpenDocuments, ResolverFactory};
+use crate::validation::{OpenDocuments, ResolverFactory};
 use crate::worker::Worker;
 
 /// The most problems of a schema that are named when it is refused.
@@ -235,12 +235,11 @@ pub struct SampleGenerator {
     worker: Worker<SampleJob, SampleOutcome>,
 }
 
-fn run_sample(loaders: &LoaderFactory, resolvers: &ResolverFactory, job: SampleJob) -> SampleOutcome {
-    let mut subsets = loaders();
+fn run_sample(resolvers: &ResolverFactory, job: SampleJob) -> SampleOutcome {
     let resolver = resolvers(Arc::new(OpenDocuments::new(job.open.clone())));
+    let mut subsets = xmlcraft_dtd::ResolvingSubsetLoader::new(&resolver);
     let result =
-        match crate::guard(|| sample_document(&job.grammar, &job.location, job.kind, job.root.as_deref(), &job.options, &resolver, subsets.as_mut()))
-        {
+        match crate::guard(|| sample_document(&job.grammar, &job.location, job.kind, job.root.as_deref(), &job.options, &resolver, &mut subsets)) {
             Ok(done) => done,
             Err(panic) => {
                 log::error!("generating a sample failed: {panic}");
@@ -251,14 +250,14 @@ fn run_sample(loaders: &LoaderFactory, resolvers: &ResolverFactory, job: SampleJ
 }
 
 impl SampleGenerator {
-    /// A generator whose requests read the files of a DTD with the loaders `loaders` makes and find schema documents with the resolvers
-    /// `resolvers` makes (as [`crate::validation::Validator`] does).
-    pub fn new(loaders: LoaderFactory, resolvers: ResolverFactory) -> Self {
-        Self { worker: Worker::new("sample generation", move |job| run_sample(&loaders, &resolvers, job)) }
+    /// A generator whose requests find the external parts of a DTD and schema documents with the resolvers `resolvers` makes (as
+    /// [`crate::validation::Validator`] does).
+    pub fn new(resolvers: ResolverFactory) -> Self {
+        Self { worker: Worker::new("sample generation", move |job| run_sample(&resolvers, job)) }
     }
 
-    pub fn inline(loaders: LoaderFactory, resolvers: ResolverFactory) -> Self {
-        Self { worker: Worker::inline(move |job| run_sample(&loaders, &resolvers, job)) }
+    pub fn inline(resolvers: ResolverFactory) -> Self {
+        Self { worker: Worker::inline(move |job| run_sample(&resolvers, job)) }
     }
 
     pub fn on_done(&self, notify: impl Fn() + Send + Sync + 'static) {
@@ -355,7 +354,7 @@ mod tests {
 
     #[test]
     fn a_sample_generator_uses_an_open_schema_and_says_which_request_it_answers() {
-        let generator = SampleGenerator::inline(Arc::new(|| Box::new(NoLoader)), resolvers());
+        let generator = SampleGenerator::inline(resolvers());
         let main = "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:include schemaLocation=\"part.xsd\"/><xs:element name=\"r\" type=\"t\"/></xs:schema>";
         let part = "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:simpleType name=\"t\"><xs:restriction base=\"xs:string\"><xs:enumeration value=\"from the open part\"/></xs:restriction></xs:simpleType></xs:schema>";
         let job = |serial: u64, open: Vec<(String, Buffer)>| SampleJob {

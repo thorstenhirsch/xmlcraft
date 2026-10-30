@@ -12,7 +12,9 @@ workspace = true
 
 [dependencies]
 xmlcraft-grammar = { workspace = true }
+xmlcraft-resolve = { workspace = true }
 xmlcraft-syntax = { workspace = true }
+xmlcraft-text = { workspace = true }
 rowan = { workspace = true }
 
 [dev-dependencies]

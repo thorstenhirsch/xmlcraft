@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 use xmlcraft_dtd::DtdDiagnostic;
-use xmlcraft_platform::subset::FileSubsetLoader;
 use xmlcraft_resolve::{Buffers, Environment, FileAccess, FixedClock, Policy, Resolver, normalized};
 use xmlcraft_syntax::{Diagnostic, Severity, SyntaxKind, SyntaxNode, parse};
 use xmlcraft_text::Buffer;
@@ -106,8 +105,10 @@ fn xml_validate(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     if schema.is_some() || (!has_doctype && !schema_hints(&root).is_empty()) {
         return validate_against_schema(a, &source, &root, parsed.diagnostics(), schema);
     }
-    let confinement = a.confinement.clone();
-    let mut loader = FileSubsetLoader::confined(move |path| confinement.resolve_read(path).map_err(|e| e.to_string()));
+    // The external parts of the DTD are found the way a schema's documents are: open documents, the catalogs, the DTDs that ship with
+    // the app, and files through the root confinement; nothing is downloaded.
+    let resolver = schema_resolver(a);
+    let mut loader = xmlcraft_dtd::ResolvingSubsetLoader::new(&resolver);
     let location = source.path.as_deref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
     let found = check(&parsed.syntax(), &source.text, parsed.diagnostics(), &location, &mut loader);
     let own = Buffer::from_text(&source.text);

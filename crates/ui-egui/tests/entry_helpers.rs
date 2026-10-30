@@ -431,3 +431,16 @@ fn a_namespace_no_schema_is_known_for_is_no_problem_to_report() {
     assert!(h.query_by_label("No DTD or schema").is_some(), "not a complaint that a schema named by nobody could not be read");
     assert!(h.query_by_label("No schema to show").is_none() && h.query_by_label("Reading the schema…").is_none());
 }
+
+#[test]
+fn entry_helpers_offer_what_the_xhtml_dtd_that_ships_with_the_app_allows() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    let page = "<?xml version=\"1.0\"?>\n<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">\n\
+        <html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>T</title></head><body>¦</body></html>";
+    open_at(&mut h, dir.path(), page);
+    assert!(h.query_by_label("blockquote").is_some() && h.query_by_label("table").is_some(), "the block elements of Strict are offered in the body");
+    assert!(h.query_by_label("span").is_none(), "a span may not come directly in it");
+    double_click(&mut h, "table");
+    assert!(text(&h).contains("<body><table"), "{}", text(&h));
+}

@@ -375,3 +375,36 @@ fn a_schema_that_is_open_and_edited_is_what_the_validation_while_typing_uses() {
     wait(&mut h, "the validation", |app| app.validity().is_some());
     assert_eq!(h.state().validity(), Some((1, 0)), "valid against the file on disk, invalid against the schema as it is being edited");
 }
+
+const XHTML: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">\n\
+    <html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\"><head><title>T</title></head><body><p>Text.</p></body></html>\n";
+
+#[test]
+fn f8_checks_a_page_against_the_xhtml_dtd_that_ships_with_the_app() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "page.xhtml", XHTML));
+    validate(&mut h);
+    assert_eq!(h.state().validity(), Some((0, 0)));
+    assert!(h.query_by_label("No problems").is_some(), "and not even a note that the DTD was not read");
+    // A broken page is found by the same DTD.
+    open(&mut h, &file(dir.path(), "bad.xhtml", &XHTML.replace("<p>Text.</p>", "Text.")));
+    validate(&mut h);
+    assert!(h.state().validity().is_some_and(|(errors, _)| errors >= 1), "{:?}", h.state().validity());
+}
+
+#[test]
+fn f8_uses_a_dtd_that_is_open_as_it_is_edited() {
+    let dir = tempfile::tempdir().expect("dir");
+    let dtd = file(dir.path(), "r.dtd", "<!ELEMENT r EMPTY>");
+    let mut h = shell();
+    // The DTD is open, and changed in the editor, not saved: `r` now needs a child.
+    assert!(h.state_mut().open_path(&dtd));
+    h.run_steps(4);
+    let doc = h.state_mut().session.active_document_mut().expect("shown");
+    let len = doc.editor().text().len();
+    assert!(doc.editor_mut().apply_edits(&[xmlcraft_text::Edit::replace(0..len, "<!ELEMENT r (a)><!ELEMENT a EMPTY>")]));
+    open(&mut h, &file(dir.path(), "doc.xml", "<!DOCTYPE r SYSTEM \"r.dtd\"><r/>"));
+    validate(&mut h);
+    assert_eq!(h.state().validity(), Some((1, 0)), "valid against the file on disk, invalid against the DTD as it is being edited");
+}

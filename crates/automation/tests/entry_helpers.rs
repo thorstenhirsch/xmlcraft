@@ -310,3 +310,18 @@ fn a_document_in_a_namespace_that_no_schema_is_known_for_is_the_same_as_one_that
     assert_eq!(missing["grammar"], false, "{missing}");
     assert!(missing["why"].as_str().is_some_and(|w| w.contains("gone.xsd")), "its failure is its own: {missing}");
 }
+
+#[test]
+fn entry_helpers_offer_what_the_xhtml_dtd_that_ships_with_the_app_allows() {
+    let mut a = Automation::new();
+    let text = "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">\n\
+        <html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>T</title></head><body></body></html>";
+    let at = text.find("</body>").expect("a place");
+    let v = call(&mut a, json!({ "text": text, "offset": at })).expect("runs");
+    assert_eq!((v["grammar"].clone(), v["kind"].clone(), v["parent"].clone()), (json!(true), json!("dtd"), json!("body")), "{v}");
+    let names: Vec<&str> = v["elements"].as_array().expect("elements").iter().filter_map(|e| e["name"].as_str()).collect();
+    for wanted in ["p", "div", "table", "ul", "blockquote"] {
+        assert!(names.contains(&wanted), "{wanted} is not offered in body: {names:?}");
+    }
+    assert!(!names.contains(&"span"), "a span is not allowed directly in the body of Strict: {names:?}");
+}

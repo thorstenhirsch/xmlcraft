@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use xmlcraft_catalog::{Catalog, Catalogs, Loader};
 use xmlcraft_text::encoding::{decode, sniff};
 
-use xmlcraft_platform::subset::path_of;
+use xmlcraft_platform::file_uri::path_of;
 
 use crate::file_access::Confinement;
 use crate::tools::ToolDef;
