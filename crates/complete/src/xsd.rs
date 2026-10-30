@@ -183,7 +183,7 @@ fn type_chain(chain: &[SyntaxNode], schema: &Schema) -> Typed {
 fn root_choices(schema: &Schema) -> Vec<ElementChoice> {
     let scope = Scope::default();
     (0..schema.elements.len())
-        .filter(|&i| schema.element(ElementId(i)).is_some_and(|d| d.scope.is_none()))
+        .filter(|&i| schema.is_global(ElementId(i)))
         .filter_map(|i| element_choice(schema, ElementId(i), false, &scope))
         .take(MAX_ELEMENTS)
         .collect()

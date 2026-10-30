@@ -88,3 +88,4 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 - 2026-10-29: M4.9: the About window and `cargo xtask contributors` (`app.about-credits` planned → partial); 10 shipped and 56 partial, 25.0% weighted.
 - 2026-10-29: M3.11 (first part): XSD files are offered what XML Schema allows from the bundled XMLSchema.xsd (`xsd.authoring-completion` planned → partial); 10 shipped and 55 partial, 24.7% weighted.
 - 2026-10-29: M4.4 and M4.6 (the dialogs): the `generate.schema-*` and `generate.sample-*` features get their commands (`xml.generate_schema`, `xml.generate_sample`) and UI evidence; still partial (what is missing is in their notes); 10 shipped and 54 partial, 24.3% weighted.
+- 2026-10-30: M4.7 (first part): the bundle has 100 W3C files; the note of `catalog.bundled-schemas` says which and what is missing; no status change.

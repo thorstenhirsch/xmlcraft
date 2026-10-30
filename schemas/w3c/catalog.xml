@@ -28,4 +28,112 @@
   <rewriteSystem systemIdStartString="http://www.w3.org/TR/xhtml1/DTD/" rewritePrefix="xhtml1/"/>
   <rewriteSystem systemIdStartString="https://www.w3.org/TR/xhtml1/DTD/" rewritePrefix="xhtml1/"/>
 
+  <!-- XHTML 1.1 (modular): the DTD, its modules and its entity sets -->
+  <public publicId="-//W3C//DTD XHTML 1.1//EN" uri="xhtml11/xhtml11.dtd"/>
+  <public publicId="-//W3C//ELEMENTS XHTML BIDI Override Element 1.0//EN" uri="xhtml11/xhtml-bdo-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Base Architecture 1.0//EN" uri="xhtml11/xhtml-arch-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Base Element 1.0//EN" uri="xhtml11/xhtml-base-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Block Phrasal 1.0//EN" uri="xhtml11/xhtml-blkphras-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Block Presentation 1.0//EN" uri="xhtml11/xhtml-blkpres-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Block Structural 1.0//EN" uri="xhtml11/xhtml-blkstruct-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Client-side Image Maps 1.0//EN" uri="xhtml11/xhtml-csismap-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Document Structure 1.0//EN" uri="xhtml11/xhtml-struct-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Editing Elements 1.0//EN" uri="xhtml11/xhtml-edit-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Embedded Object 1.0//EN" uri="xhtml11/xhtml-object-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Forms 1.0//EN" uri="xhtml11/xhtml-form-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Frames 1.0//EN" uri="xhtml11/xhtml-frames-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Hypertext 1.0//EN" uri="xhtml11/xhtml-hypertext-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Images 1.0//EN" uri="xhtml11/xhtml-image-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Inline Frame Element 1.0//EN" uri="xhtml11/xhtml-iframe-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Inline Phrasal 1.0//EN" uri="xhtml11/xhtml-inlphras-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Inline Presentation 1.0//EN" uri="xhtml11/xhtml-inlpres-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Inline Structural 1.0//EN" uri="xhtml11/xhtml-inlstruct-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Inline Style 1.0//EN" uri="xhtml11/xhtml-inlstyle-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Legacy Markup 1.0//EN" uri="xhtml11/xhtml-legacy-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Link Element 1.0//EN" uri="xhtml11/xhtml-link-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Lists 1.0//EN" uri="xhtml11/xhtml-list-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Metainformation 1.0//EN" uri="xhtml11/xhtml-meta-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Param Element 1.0//EN" uri="xhtml11/xhtml-param-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Presentation 1.0//EN" uri="xhtml11/xhtml-pres-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Ruby 1.0//EN" uri="xhtml11/xhtml-ruby-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Scripting 1.0//EN" uri="xhtml11/xhtml-script-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Server-side Image Maps 1.0//EN" uri="xhtml11/xhtml-ssismap-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Style Sheets 1.0//EN" uri="xhtml11/xhtml-style-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Tables 1.0//EN" uri="xhtml11/xhtml-table-1.mod"/>
+  <public publicId="-//W3C//ELEMENTS XHTML Text 1.0//EN" uri="xhtml11/xhtml-text-1.mod"/>
+  <public publicId="-//W3C//ENTITIES XHTML 1.1 Document Model 1.0//EN" uri="xhtml11/xhtml11-model-1.mod"/>
+  <public publicId="-//W3C//ENTITIES XHTML Character Entities 1.0//EN" uri="xhtml11/xhtml-charent-1.mod"/>
+  <public publicId="-//W3C//ENTITIES XHTML Common Attributes 1.0//EN" uri="xhtml11/xhtml-attribs-1.mod"/>
+  <public publicId="-//W3C//ENTITIES XHTML Datatypes 1.0//EN" uri="xhtml11/xhtml-datatypes-1.mod"/>
+  <public publicId="-//W3C//ENTITIES XHTML Intrinsic Events 1.0//EN" uri="xhtml11/xhtml-events-1.mod"/>
+  <public publicId="-//W3C//ENTITIES XHTML Modular Framework 1.0//EN" uri="xhtml11/xhtml-framework-1.mod"/>
+  <public publicId="-//W3C//ENTITIES XHTML Qualified Names 1.0//EN" uri="xhtml11/xhtml-qname-1.mod"/>
+  <public publicId="-//W3C//NOTATIONS XHTML Notations 1.0//EN" uri="xhtml11/xhtml-notations-1.mod"/>
+  <system systemId="http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd" uri="xhtml11/xhtml11.dtd"/>
+  <system systemId="https://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd" uri="xhtml11/xhtml11.dtd"/>
+  <rewriteSystem systemIdStartString="http://www.w3.org/MarkUp/DTD/" rewritePrefix="xhtml11/"/>
+  <rewriteSystem systemIdStartString="https://www.w3.org/MarkUp/DTD/" rewritePrefix="xhtml11/"/>
+  <rewriteSystem systemIdStartString="http://www.w3.org/TR/xhtml11/DTD/" rewritePrefix="xhtml11/"/>
+  <rewriteSystem systemIdStartString="https://www.w3.org/TR/xhtml11/DTD/" rewritePrefix="xhtml11/"/>
+
+  <!-- SVG 1.1: the DTD and its modules -->
+  <public publicId="-//W3C//DTD SVG 1.1//EN" uri="svg11/svg11.dtd"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Animation//EN" uri="svg11/svg-animation.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Clip//EN" uri="svg11/svg-clip.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Color Profile//EN" uri="svg11/svg-profile.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Conditional Processing//EN" uri="svg11/svg-conditional.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Cursor//EN" uri="svg11/svg-cursor.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Extensibility//EN" uri="svg11/svg-extensibility.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Filter//EN" uri="svg11/svg-filter.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Font//EN" uri="svg11/svg-font.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Gradient//EN" uri="svg11/svg-gradient.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Hyperlinking//EN" uri="svg11/svg-hyperlink.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Image//EN" uri="svg11/svg-image.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Marker//EN" uri="svg11/svg-marker.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Mask//EN" uri="svg11/svg-mask.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Pattern//EN" uri="svg11/svg-pattern.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Scripting//EN" uri="svg11/svg-script.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Shape//EN" uri="svg11/svg-shape.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Structure//EN" uri="svg11/svg-structure.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Style//EN" uri="svg11/svg-style.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 Text//EN" uri="svg11/svg-text.mod"/>
+  <public publicId="-//W3C//ELEMENTS SVG 1.1 View//EN" uri="svg11/svg-view.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 Animation Events Attribute//EN" uri="svg11/svg-animevents-attrib.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 Attribute Collection//EN" uri="svg11/svg11-attribs.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 Container Attribute//EN" uri="svg11/svg-container-attrib.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 Core Attribute//EN" uri="svg11/svg-core-attrib.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 Datatypes//EN" uri="svg11/svg-datatypes.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 Document Events Attribute//EN" uri="svg11/svg-docevents-attrib.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 Document Model//EN" uri="svg11/svg11-model.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 External Resources Attribute//EN" uri="svg11/svg-extresources-attrib.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 Graphical Element Events Attribute//EN" uri="svg11/svg-graphevents-attrib.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 Graphics Attribute//EN" uri="svg11/svg-graphics-attrib.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 Modular Framework//EN" uri="svg11/svg-framework.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 Paint Attribute//EN" uri="svg11/svg-paint-attrib.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 Paint Opacity Attribute//EN" uri="svg11/svg-opacity-attrib.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 Qualified Name//EN" uri="svg11/svg-qname.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 Viewport Attribute//EN" uri="svg11/svg-viewport-attrib.mod"/>
+  <public publicId="-//W3C//ENTITIES SVG 1.1 XLink Attribute//EN" uri="svg11/svg-xlink-attrib.mod"/>
+  <rewriteSystem systemIdStartString="http://www.w3.org/Graphics/SVG/1.1/DTD/" rewritePrefix="svg11/"/>
+  <rewriteSystem systemIdStartString="https://www.w3.org/Graphics/SVG/1.1/DTD/" rewritePrefix="svg11/"/>
+
+  <!-- MathML 3 -->
+  <rewriteURI uriStartString="http://www.w3.org/Math/XMLSchema/mathml3/" rewritePrefix="mathml3/"/>
+  <rewriteURI uriStartString="https://www.w3.org/Math/XMLSchema/mathml3/" rewritePrefix="mathml3/"/>
+  <uri name="http://www.w3.org/1998/Math/MathML" uri="mathml3/mathml3.xsd"/>
+
+  <!-- XLink (the attributes), XML Signature, SOAP 1.2 and WSDL 2.0 -->
+  <uri name="http://www.w3.org/1999/xlink" uri="xlink/xlink.xsd"/>
+  <uri name="http://www.w3.org/1999/xlink.xsd" uri="xlink/xlink.xsd"/>
+  <uri name="https://www.w3.org/1999/xlink.xsd" uri="xlink/xlink.xsd"/>
+  <uri name="http://www.w3.org/2000/09/xmldsig#" uri="xmldsig/xmldsig-core-schema.xsd"/>
+  <uri name="http://www.w3.org/TR/xmldsig-core/xmldsig-core-schema.xsd" uri="xmldsig/xmldsig-core-schema.xsd"/>
+  <uri name="https://www.w3.org/TR/xmldsig-core/xmldsig-core-schema.xsd" uri="xmldsig/xmldsig-core-schema.xsd"/>
+  <uri name="http://www.w3.org/2003/05/soap-envelope" uri="soap12/soap-envelope.xsd"/>
+  <uri name="http://www.w3.org/2003/05/soap-envelope/" uri="soap12/soap-envelope.xsd"/>
+  <uri name="https://www.w3.org/2003/05/soap-envelope/" uri="soap12/soap-envelope.xsd"/>
+  <uri name="http://www.w3.org/ns/wsdl" uri="wsdl20/wsdl20.xsd"/>
+  <uri name="http://www.w3.org/2007/06/wsdl/wsdl20.xsd" uri="wsdl20/wsdl20.xsd"/>
+  <uri name="https://www.w3.org/2007/06/wsdl/wsdl20.xsd" uri="wsdl20/wsdl20.xsd"/>
+
 </catalog>
