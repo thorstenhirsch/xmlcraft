@@ -146,12 +146,16 @@ fn lookup(host: &str, port: u16) -> Result<Vec<IpAddr>, String> {
     }
 }
 
+/// How a host name is turned into addresses (the real one asks the system; a test gives its own).
+type Lookup = Box<dyn Fn(&str, u16) -> Result<Vec<IpAddr>, String> + Send + Sync>;
+
 /// Downloads over HTTP and HTTPS, within the rules in the module documentation.
 pub struct HttpFetcher {
     agent: ureq::Agent,
     allow_private_hosts: bool,
     /// A proxy is in use: it looks the host up, so the names are not.
     proxied: bool,
+    lookup: Lookup,
     /// When a request to a server (scheme, host and port) last failed to get an answer. The server for `https` is not the one for `http`:
     /// the resolver tries one and then the other.
     failed: Mutex<HashMap<String, Instant>>,
@@ -181,7 +185,7 @@ impl HttpFetcher {
             .http_status_as_error(false)
             .build()
             .into();
-        Self { agent, allow_private_hosts: false, proxied, failed: Mutex::new(HashMap::new()) }
+        Self { agent, allow_private_hosts: false, proxied, lookup: Box::new(lookup), failed: Mutex::new(HashMap::new()) }
     }
 
     /// Whether addresses on this computer and on the local network may be downloaded from (off unless the person turns it on).
@@ -194,37 +198,41 @@ impl HttpFetcher {
     /// Whether a request to `target` may be made now.
     fn allowed(&self, url: &str, target: &Target<'_>) -> Result<(), FetchError> {
         let refused = |why: String| Err(FetchError::Network(why));
-        if !self.allow_private_hosts {
-            if is_local_name(target.host) {
-                return refused(format!("{url}: {} is this computer, which is not downloaded from", target.host));
-            }
-            match target.host.parse::<IpAddr>() {
-                Ok(address) if !is_public_address(address) => {
-                    return refused(format!("{url}: {} is not an address on the internet, which is all that is downloaded from", target.host));
-                }
-                Ok(_) => {}
-                // A name: where it leads must be checked too (unless a proxy looks it up, and decides).
-                Err(_) if !self.proxied => match lookup(target.host, target.port) {
-                    Ok(addresses) => {
-                        if let Some(address) = first_private(&addresses) {
-                            return refused(format!(
-                                "{url}: {} leads to {address}, which is not an address on the internet, which is all that is downloaded from",
-                                target.host
-                            ));
-                        }
-                    }
-                    // Not found, or not in time: the request would not do better, and its error says so.
-                    Err(why) => return refused(why),
-                },
-                Err(_) => {}
+        // A server that could not be reached a moment ago is not asked again, nor is its name looked up again.
+        {
+            let failed = self.failed.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            if failed.get(&server_of(target)).is_some_and(|when| when.elapsed() < COOLDOWN) {
+                return refused(format!("{url}: {} could not be reached a moment ago; it is not asked again yet", target.host));
             }
         }
-        let failed = self.failed.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        match failed.get(&server_of(target)) {
-            Some(when) if when.elapsed() < COOLDOWN => {
-                refused(format!("{url}: {} could not be reached a moment ago; it is not asked again yet", target.host))
+        if self.allow_private_hosts {
+            return Ok(());
+        }
+        if is_local_name(target.host) {
+            return refused(format!("{url}: {} is this computer, which is not downloaded from", target.host));
+        }
+        match target.host.parse::<IpAddr>() {
+            Ok(address) if !is_public_address(address) => {
+                refused(format!("{url}: {} is not an address on the internet, which is all that is downloaded from", target.host))
             }
-            _ => Ok(()),
+            Ok(_) => Ok(()),
+            // A name: where it leads must be checked too (unless a proxy looks it up, and decides).
+            Err(_) if !self.proxied => match (self.lookup)(target.host, target.port) {
+                Ok(addresses) => match first_private(&addresses) {
+                    Some(address) => refused(format!(
+                        "{url}: {} leads to {address}, which is not an address on the internet, which is all that is downloaded from",
+                        target.host
+                    )),
+                    None => Ok(()),
+                },
+                // Not found, or not in time: the request would not do better, and its error says so. The server is left alone for a while,
+                // so that a hundred references to it wait once.
+                Err(why) => {
+                    self.note_failure(target);
+                    refused(why)
+                }
+            },
+            Err(_) => Ok(()),
         }
     }
 
@@ -422,6 +430,67 @@ mod tests {
         assert_eq!(first_private(&[ip("93.184.216.34"), ip("2606:2800:220:1::1")]), None);
         assert_eq!(first_private(&[ip("93.184.216.34"), ip("10.0.0.7")]), Some(ip("10.0.0.7")));
         assert_eq!(first_private(&[ip("::1")]), Some(ip("::1")));
+    }
+
+    /// A client whose lookups are `answers` (and counted), and that makes no request in these tests.
+    fn client_with_lookup(
+        answers: impl Fn(&str) -> Result<Vec<IpAddr>, String> + Send + Sync + 'static,
+    ) -> (HttpFetcher, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = asked.clone();
+        let mut fetcher = HttpFetcher::new("test");
+        fetcher.proxied = false;
+        fetcher.lookup = Box::new(move |host, _| {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            answers(host)
+        });
+        (fetcher, asked)
+    }
+
+    fn may(fetcher: &HttpFetcher, url: &str) -> Result<(), String> {
+        let target = target_of(url).expect("an address");
+        fetcher.allowed(url, &target).map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn a_name_that_leads_to_this_computer_or_the_local_network_is_refused_by_the_lookup() {
+        let (fetcher, asked) = client_with_lookup(|host| match host {
+            "intranet.example" => Ok(vec!["10.1.2.3".parse().expect("ip")]),
+            "mixed.example" => Ok(vec!["93.184.216.34".parse().expect("ip"), "127.0.0.1".parse().expect("ip")]),
+            _ => Ok(vec!["93.184.216.34".parse().expect("ip")]),
+        });
+        assert!(may(&fetcher, "http://intranet.example/s.xsd").expect_err("private").contains("leads to 10.1.2.3"));
+        assert!(may(&fetcher, "https://mixed.example/s.xsd").expect_err("one of two").contains("leads to 127.0.0.1"));
+        assert_eq!(may(&fetcher, "http://www.example/s.xsd"), Ok(()));
+        // An address that is written is not looked up, and the person's switch lets the local network in without a lookup.
+        assert_eq!(may(&fetcher, "http://93.184.216.34/s.xsd"), Ok(()));
+        assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 3);
+        let (open, asked) = client_with_lookup(|_| Ok(vec!["10.1.2.3".parse().expect("ip")]));
+        let open = open.allow_private_hosts(true);
+        assert_eq!(may(&open, "http://intranet.example/s.xsd"), Ok(()));
+        assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 0);
+        // Behind a proxy the proxy looks the name up: it is not looked up here.
+        let (mut proxied, asked) = client_with_lookup(|_| Ok(vec!["10.1.2.3".parse().expect("ip")]));
+        proxied.proxied = true;
+        assert_eq!(may(&proxied, "http://intranet.example/s.xsd"), Ok(()));
+        assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn a_name_that_cannot_be_looked_up_is_left_alone_for_a_while_and_not_looked_up_again() {
+        let (fetcher, asked) = client_with_lookup(|host| Err(format!("{host}: no such host")));
+        let first = may(&fetcher, "http://gone.example/a.xsd").expect_err("not found");
+        assert!(first.contains("no such host"), "{first}");
+        // A hundred more references to it: none is looked up (each lookup could take its five seconds), and each says why.
+        for i in 0..100 {
+            let again = may(&fetcher, &format!("http://gone.example/{i}.xsd")).expect_err("left alone");
+            assert!(again.contains("not asked again"), "{again}");
+        }
+        assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 1);
+        // Another server is another matter, and so is the other scheme of the same one.
+        assert!(may(&fetcher, "http://other.example/a.xsd").expect_err("not found").contains("no such host"));
+        assert!(may(&fetcher, "https://gone.example/a.xsd").expect_err("not found").contains("no such host"));
+        assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 3);
     }
 
     #[test]
