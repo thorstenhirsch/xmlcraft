@@ -6,7 +6,7 @@ Button "Menu"
 Button "Text" [toggled=true]
 Button "Find tools and commands"
 Label value="Ready"
-Label value="XmlCraft 0.0.1"
+Label value="XmlCraft {version}"
 Button "Messages"
 Button "Entry Helpers" [toggled=false]
 Image

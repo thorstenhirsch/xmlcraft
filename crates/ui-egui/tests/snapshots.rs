@@ -58,7 +58,8 @@ fn dump(node: &egui_kittest::Node<'_>, depth: usize, out: &mut String) {
 fn tree_text(h: &Harness<'_, XmlCraftApp>) -> String {
     let mut out = String::new();
     dump(&h.root(), 0, &mut out);
-    out
+    // The status bar names the version; a release is no reason for every snapshot to change.
+    out.replace(&format!("XmlCraft {}", xmlcraft_ui_egui::VERSION), "XmlCraft {version}")
 }
 
 fn check(name: &str, actual: &str) {

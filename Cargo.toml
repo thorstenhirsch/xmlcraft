@@ -5,7 +5,7 @@ exclude = ["vendor"]
 default-members = ["crates/*", "apps/xmlcraft", "apps/xmlcraft-cli", "xtask"]
 
 [workspace.package]
-version = "0.0.1"
+version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"
@@ -23,27 +23,27 @@ craft-settings = { git = "https://github.com/storytold/craft-libs", version = "0
 craft-window = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "edc41f68fa24c46651c3b5117d10f0ead75ec9cb" }
 
 # internal
-xmlcraft-text = { path = "crates/text", version = "0.0.1" }
-xmlcraft-syntax = { path = "crates/syntax", version = "0.0.1" }
-xmlcraft-format = { path = "crates/format", version = "0.0.1" }
-xmlcraft-catalog = { path = "crates/catalog", version = "0.0.1" }
-xmlcraft-schemas = { path = "crates/schemas", version = "0.0.1" }
-xmlcraft-resolve = { path = "crates/resolve", version = "0.0.1" }
-xmlcraft-pattern = { path = "crates/pattern", version = "0.0.1" }
-xmlcraft-datatypes = { path = "crates/datatypes", version = "0.0.1" }
-xmlcraft-xsd = { path = "crates/xsd", version = "0.0.1" }
-xmlcraft-dtd = { path = "crates/dtd", version = "0.0.1" }
-xmlcraft-grammar = { path = "crates/grammar", version = "0.0.1" }
-xmlcraft-complete = { path = "crates/complete", version = "0.0.1" }
-xmlcraft-validate = { path = "crates/validate", version = "0.0.1" }
-xmlcraft-infer = { path = "crates/infer", version = "0.0.1" }
-xmlcraft-sample = { path = "crates/sample", version = "0.0.1" }
-xmlcraft-editor = { path = "crates/editor", version = "0.0.1" }
-xmlcraft-code-editor = { path = "crates/code-editor", version = "0.0.1" }
-xmlcraft-platform = { path = "crates/platform", version = "0.0.1" }
-xmlcraft-engine = { path = "crates/engine", version = "0.0.1" }
-xmlcraft-automation = { path = "crates/automation", version = "0.0.1" }
-xmlcraft-ui-egui = { path = "crates/ui-egui", version = "0.0.1" }
+xmlcraft-text = { path = "crates/text", version = "0.1.0" }
+xmlcraft-syntax = { path = "crates/syntax", version = "0.1.0" }
+xmlcraft-format = { path = "crates/format", version = "0.1.0" }
+xmlcraft-catalog = { path = "crates/catalog", version = "0.1.0" }
+xmlcraft-schemas = { path = "crates/schemas", version = "0.1.0" }
+xmlcraft-resolve = { path = "crates/resolve", version = "0.1.0" }
+xmlcraft-pattern = { path = "crates/pattern", version = "0.1.0" }
+xmlcraft-datatypes = { path = "crates/datatypes", version = "0.1.0" }
+xmlcraft-xsd = { path = "crates/xsd", version = "0.1.0" }
+xmlcraft-dtd = { path = "crates/dtd", version = "0.1.0" }
+xmlcraft-grammar = { path = "crates/grammar", version = "0.1.0" }
+xmlcraft-complete = { path = "crates/complete", version = "0.1.0" }
+xmlcraft-validate = { path = "crates/validate", version = "0.1.0" }
+xmlcraft-infer = { path = "crates/infer", version = "0.1.0" }
+xmlcraft-sample = { path = "crates/sample", version = "0.1.0" }
+xmlcraft-editor = { path = "crates/editor", version = "0.1.0" }
+xmlcraft-code-editor = { path = "crates/code-editor", version = "0.1.0" }
+xmlcraft-platform = { path = "crates/platform", version = "0.1.0" }
+xmlcraft-engine = { path = "crates/engine", version = "0.1.0" }
+xmlcraft-automation = { path = "crates/automation", version = "0.1.0" }
+xmlcraft-ui-egui = { path = "crates/ui-egui", version = "0.1.0" }
 
 # foundation
 crop = "0.4"
