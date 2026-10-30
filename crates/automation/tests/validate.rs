@@ -364,3 +364,62 @@ fn an_open_dtd_is_what_a_document_is_validated_against_as_it_is_being_edited() {
     assert_eq!(found["valid"], false, "the unsaved DTD is the one used: {found}");
     assert_eq!(std::fs::read_to_string(dir.path().join("r.dtd")).expect("reads"), "<!ELEMENT r EMPTY>", "and the file is as it was");
 }
+
+const XHTML_11: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd\">\n\
+    <html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\"><head><title>T</title></head><body><p>Text with an <em>emphasis</em> and a <a href=\"x.html\">link</a>&#160;&nbsp;.</p>\
+    <ul><li>One</li></ul><table><tr><td>Cell</td></tr></table><form action=\"f\"><fieldset><input type=\"text\" name=\"n\"/></fieldset></form></body></html>\n";
+
+#[test]
+fn an_xhtml_1_1_document_is_validated_offline_against_the_modular_dtd_that_ships_with_the_app() {
+    let mut a = Automation::new();
+    let ok = call(&mut a, json!({ "text": XHTML_11 })).expect("runs");
+    assert_eq!((ok["well_formed"].clone(), ok["valid"].clone(), ok["errors"].clone()), (json!(true), json!(true), json!(0)), "{ok}");
+    assert_eq!(ok["problems"], json!([]), "the whole DTD was read, every module of it: {ok}");
+    // The grammar is the real one: XHTML 1.1 has no `<font>` and the body takes blocks, not text.
+    for broken in [XHTML_11.replace("<em>emphasis</em>", "<font>emphasis</font>"), XHTML_11.replace("<p>Text", "Text<p>Text")] {
+        let found = call(&mut a, json!({ "text": broken })).expect("runs");
+        assert_eq!(found["valid"], false, "{found}");
+        assert!(codes(&found).iter().any(|c| c.starts_with("vc.")), "{found}");
+    }
+}
+
+const SVG_11: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n\
+    <svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" version=\"1.1\" width=\"100\" height=\"100\" viewBox=\"0 0 100 100\">\
+    <title>T</title><defs><linearGradient id=\"g\"><stop offset=\"0\" stop-color=\"red\"/><stop offset=\"1\" stop-color=\"blue\"/></linearGradient></defs>\
+    <g fill=\"url(#g)\"><rect x=\"10\" y=\"10\" width=\"80\" height=\"80\" rx=\"5\"/><circle cx=\"50\" cy=\"50\" r=\"20\"/>\
+    <path d=\"M10 10 L90 90\" stroke=\"black\"/><text x=\"5\" y=\"95\">Hi</text><a xlink:href=\"x.svg\"><use xlink:href=\"#g\"/></a></g></svg>\n";
+
+#[test]
+fn an_svg_1_1_document_is_validated_offline_against_the_dtd_that_ships_with_the_app() {
+    let mut a = Automation::new();
+    let ok = call(&mut a, json!({ "text": SVG_11 })).expect("runs");
+    assert_eq!((ok["well_formed"].clone(), ok["valid"].clone(), ok["errors"].clone()), (json!(true), json!(true), json!(0)), "{ok}");
+    assert_eq!(ok["problems"], json!([]), "the whole DTD was read, every module of it: {ok}");
+    for broken in [SVG_11.replace("<circle cx=\"50\"", "<circle shape=\"x\" cx=\"50\""), SVG_11.replace("<rect ", "<square ")] {
+        let found = call(&mut a, json!({ "text": broken })).expect("runs");
+        assert_eq!(found["valid"], false, "{found}");
+        assert!(codes(&found).iter().any(|c| c.starts_with("vc.")), "{found}");
+    }
+}
+
+#[test]
+fn documents_of_the_namespaces_that_ship_with_the_app_are_validated_against_those_schemas() {
+    let mut a = Automation::new();
+    let soap = "<env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\"><env:Header/><env:Body><m:Ping xmlns:m=\"urn:example\">x</m:Ping></env:Body></env:Envelope>";
+    let wsdl = "<description xmlns=\"http://www.w3.org/ns/wsdl\" targetNamespace=\"urn:example\"><types/><interface name=\"I\"><operation name=\"op\" pattern=\"http://www.w3.org/ns/wsdl/in-out\"/></interface></description>";
+    let mathml = "<math xmlns=\"http://www.w3.org/1998/Math/MathML\"><mrow><mi>x</mi><mo>+</mo><mn>1</mn></mrow></math>";
+    for (text, namespace, broken) in [
+        (soap, "http://www.w3.org/2003/05/soap-envelope", soap.replace("<env:Header/>", "<env:Header/><env:Header/>")),
+        (wsdl, "http://www.w3.org/ns/wsdl", wsdl.replace("<interface name=\"I\">", "<interface>")),
+        (mathml, "http://www.w3.org/1998/Math/MathML", mathml.replace("<mi>x</mi>", "<mi><mrow/></mi>")),
+    ] {
+        let ok = call(&mut a, json!({ "text": text, "schema": namespace })).expect("runs");
+        assert_eq!(
+            (ok["validated"].clone(), ok["valid"].clone(), ok["schema_errors"].clone()),
+            (json!(true), json!(true), json!(0)),
+            "{namespace}: {ok}"
+        );
+        let found = call(&mut a, json!({ "text": broken, "schema": namespace })).expect("runs");
+        assert_eq!((found["validated"].clone(), found["valid"].clone()), (json!(true), json!(false)), "{namespace}: {found}");
+    }
+}

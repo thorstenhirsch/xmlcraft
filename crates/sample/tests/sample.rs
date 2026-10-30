@@ -249,6 +249,71 @@ fn a_wildcard_is_filled_with_a_declared_element() {
     assert!(text.contains("<r>") && (text.contains("<other>") || text.contains("<r>\n  <r")), "{text}");
 }
 
+#[test]
+fn an_element_declared_in_a_named_group_is_not_a_root_and_not_what_a_wildcard_is_filled_with() {
+    // `inner` is declared inside the group, so it belongs to the types that use it; it is not a global element.
+    let schema = assembled(&schema_of(
+        "<xs:group name=\"g\"><xs:sequence><xs:element name=\"inner\" type=\"xs:string\"/></xs:sequence></xs:group>\
+         <xs:element name=\"outer\"><xs:complexType><xs:sequence><xs:group ref=\"g\"/><xs:any processContents=\"lax\" namespace=\"##local\" minOccurs=\"0\"/></xs:sequence></xs:complexType></xs:element>",
+    ));
+    let names: Vec<String> = schema_roots(&schema).iter().map(|q| q.local.clone()).collect();
+    assert_eq!(names, ["outer"]);
+    assert!(sample_from_schema(&schema, Some(&QName::new(None, "inner")), &Options::default()).is_err(), "it is not a root");
+    // With no root asked for, the first element that can be made is `outer`, and the wildcard has nothing declared to take.
+    let text = valid_sample(&schema, None, &Options::default());
+    assert!(text.contains("<outer>") && text.matches("<inner>").count() == 1, "{text}");
+}
+
+#[test]
+fn an_element_in_a_group_that_is_named_like_a_global_one_is_not_that_global_element() {
+    let schema = assembled(&schema_of(
+        "<xs:group name=\"g\"><xs:sequence><xs:element name=\"r\" type=\"xs:int\"/></xs:sequence></xs:group>\
+         <xs:element name=\"r\"><xs:complexType><xs:sequence><xs:group ref=\"g\"/></xs:sequence></xs:complexType></xs:element>",
+    ));
+    assert_eq!(schema_roots(&schema).len(), 1, "one root, not two");
+    let text = valid_sample(&schema, None, &Options::default());
+    assert!(text.contains("<r>\n  <r>1</r>"), "{text}");
+}
+
+#[test]
+fn a_wildcard_with_nothing_declared_is_left_out_when_it_may_be_and_given_a_placeholder_when_it_may_not() {
+    let root = |any: &str| {
+        assembled(&schema_of(&format!(
+            "<xs:element name=\"r\"><xs:complexType><xs:sequence><xs:element name=\"a\" type=\"xs:string\"/>{any}</xs:sequence></xs:complexType></xs:element>"
+        )))
+    };
+    // May be left out: no element, no warning.
+    let optional = root("<xs:any namespace=\"##other\" processContents=\"lax\" minOccurs=\"0\"/>");
+    let text = valid_sample(&optional, None, &Options::default());
+    assert!(!text.contains("extension"), "{text}");
+    // Required, and lax or skip: an element of no declaration, in a namespace the wildcard allows, which is valid since nothing checks it.
+    for (constraint, namespace) in [
+        ("##other", Some("urn:example:extension")),
+        ("##any", Some("urn:example:extension")),
+        ("urn:listed ##local", Some("urn:listed")),
+        ("##local", None),
+    ] {
+        for process in ["lax", "skip"] {
+            let schema = root(&format!("<xs:any namespace=\"{constraint}\" processContents=\"{process}\"/>"));
+            let text = valid_sample(&schema, None, &Options::default());
+            match namespace {
+                Some(ns) => assert!(text.contains(ns) && text.contains("extension"), "{constraint} {process}: {text}"),
+                None => assert!(text.contains("<extension/>"), "{constraint} {process}: {text}"),
+            }
+        }
+    }
+    // Several required: one each.
+    let two = root("<xs:any namespace=\"##other\" processContents=\"lax\" minOccurs=\"2\" maxOccurs=\"2\"/>");
+    assert_eq!(valid_sample(&two, None, &Options::default()).matches("extension/>").count(), 2);
+    // Strict checks what it lets in, and nothing is declared: it cannot be satisfied, and says so.
+    let strict = root("<xs:any namespace=\"##other\" processContents=\"strict\"/>");
+    let made = sample_from_schema(&strict, None, &Options::default()).expect("a document is made");
+    assert!(made.warnings.iter().any(|w| w.contains("wildcard")), "{:?}", made.warnings);
+    // ...but not when it may be left out.
+    let strict_optional = root("<xs:any namespace=\"##other\" processContents=\"strict\" minOccurs=\"0\"/>");
+    assert!(sample_from_schema(&strict_optional, None, &Options::default()).expect("made").warnings.is_empty());
+}
+
 /// The schemas that ship with the app, and the loader that finds the ones they include and import among them.
 struct Bundle;
 
@@ -261,34 +326,67 @@ impl SchemaLoader for Bundle {
     }
 }
 
+/// Files of the bundle that are parts of another schema, which includes them and so gets every element of them tested; on their own they
+/// refer to elements their siblings declare.
+const PARTS: &[&str] = &[
+    "w3c/mathml3/mathml3-common.xsd",
+    "w3c/mathml3/mathml3-content.xsd",
+    "w3c/mathml3/mathml3-presentation.xsd",
+    "w3c/mathml3/mathml3-strict-content.xsd",
+];
+
+/// Elements of the bundle that no sample is made of, and why: a value this generator cannot write. The test fails when one of them
+/// starts to work, so that the list does not outlive its reasons.
+const EXCEPTIONS: &[(&str, Option<&str>, &str)] = &[(
+    "w3c/soap12/soap-envelope.xsd",
+    Some("Fault"),
+    "its code is an enumeration of QNames (`env:Receiver`): the prefix would have to be declared where the value is written",
+)];
+
+fn excepted(path: &str, root: &str) -> bool {
+    EXCEPTIONS.iter().any(|(file, element, _)| path.ends_with(file) && element.is_none_or(|e| e == root))
+}
+
 #[test]
 fn most_of_the_global_elements_of_the_bundled_schemas_give_a_valid_document() {
     let (mut made, mut valid) = (0usize, 0usize);
     let mut failures: Vec<String> = Vec::new();
-    for path in xmlcraft_schemas::paths().filter(|p| p.ends_with(".xsd")) {
+    let mut excepted_that_work: Vec<String> = Vec::new();
+    for path in xmlcraft_schemas::paths().filter(|p| p.ends_with(".xsd") && !PARTS.iter().any(|part| p.ends_with(part))) {
         let text = xmlcraft_schemas::get_text(path).expect("text");
         let documents = load(&text, &xmlcraft_schemas::uri_of(path), &mut Bundle);
         let assembly = assemble(&documents);
         for root in schema_roots(&assembly.schema) {
-            made += 1;
-            match sample_from_schema(&assembly.schema, Some(&root), &Options::default()) {
+            let works = match sample_from_schema(&assembly.schema, Some(&root), &Options::default()) {
                 Ok(sample) => {
                     let found = problems(&assembly.schema, &sample.text);
                     if found.is_empty() && sample.warnings.is_empty() {
-                        valid += 1;
+                        Ok(())
                     } else {
-                        failures.push(format!("{path} {root}: {:?} {:?}", found.first(), sample.warnings.first()));
+                        Err(format!("{path} {root}: {:?} {:?}", found.first(), sample.warnings.first()))
                     }
                 }
-                Err(e) => failures.push(format!("{path} {root}: {e}")),
+                Err(e) => Err(format!("{path} {root}: {e}")),
+            };
+            if excepted(path, &root.local) {
+                if works.is_ok() {
+                    excepted_that_work.push(format!("{path} {root}"));
+                }
+                continue;
+            }
+            made += 1;
+            match works {
+                Ok(()) => valid += 1,
+                Err(why) => failures.push(why),
             }
         }
     }
     eprintln!("bundled global elements: {valid} of {made} give a valid document without a warning\n{}", failures.join("\n"));
-    assert!(made > 20, "the bundle has schemas with elements: {made}");
+    assert!(made > 100, "the bundle has schemas with elements: {made}");
     // The bar of the plan is 95%; every global element of the bundle gives one today, and none is allowed to stop. An exception that has
-    // to be accepted goes on this list, with why, and not into a lower number.
+    // to be accepted goes on the list above, with why, and not into a lower number.
     assert_eq!(valid, made, "{valid} of {made}:\n{}", failures.join("\n"));
+    assert!(excepted_that_work.is_empty(), "these work now, so they are no exceptions: {excepted_that_work:?}");
 }
 
 // --- DTD ---------------------------------------------------------------------------------------------------------------------

@@ -5,8 +5,8 @@
 //! What ends the nesting of a recursive schema is the *height* of each element, the least depth of a valid tree below it: at the depth
 //! the options allow only what is required is made, and of a choice the branch that is the shallowest.
 
-use xmlcraft_xsd::model::QName;
-use xmlcraft_xsd::schema::{ContentType, ElementId, Particle, Schema, Term, TypeId, TypeKind, Wildcard};
+use xmlcraft_xsd::model::{ProcessContents, QName};
+use xmlcraft_xsd::schema::{ContentType, ElementId, NamespaceSet, Particle, Schema, Term, TypeId, TypeKind, Wildcard};
 
 use crate::tree::{AttrValue, Node, XSI_NAMESPACE};
 use crate::value::Values;
@@ -22,7 +22,13 @@ const MAX_OCCURRENCES: u32 = 10_000;
 
 /// The names of the global elements a document may start with (the ones that are not abstract), in the order they were declared.
 pub fn roots(schema: &Schema) -> Vec<QName> {
-    schema.elements.iter().filter(|e| e.scope.is_none() && !e.abstract_).map(|e| e.name.clone()).collect()
+    (0..schema.elements.len())
+        .map(ElementId)
+        .filter(|&id| schema.is_global(id))
+        .filter_map(|id| schema.element(id))
+        .filter(|e| !e.abstract_)
+        .map(|e| e.name.clone())
+        .collect()
 }
 
 pub fn sample(schema: &Schema, root: Option<&QName>, options: &Options) -> Result<Sample, SampleError> {
@@ -30,7 +36,8 @@ pub fn sample(schema: &Schema, root: Option<&QName>, options: &Options) -> Resul
     let id = match root {
         Some(name) => schema.element_by_name(name).ok_or_else(|| SampleError::UnknownRoot(name.to_string()))?,
         None => {
-            let candidates = schema.elements.iter().enumerate().filter(|(_, e)| e.scope.is_none() && !e.abstract_).map(|(i, _)| ElementId(i));
+            let candidates =
+                (0..schema.elements.len()).map(ElementId).filter(|&id| schema.is_global(id) && schema.element(id).is_some_and(|e| !e.abstract_));
             candidates.into_iter().find(|id| generator.height(*id) != INFINITE).ok_or(SampleError::NoRoot)?
         }
     };
@@ -278,12 +285,13 @@ impl<'a> Generator<'a> {
             return Err(SampleError::TooLarge);
         }
         for _ in 0..count {
-            self.term(&p.term, depth, at_cap, out)?;
+            self.term(&p.term, depth, at_cap, p.min > 0, out)?;
         }
         Ok(())
     }
 
-    fn term(&mut self, term: &Term, depth: usize, at_cap: bool, out: &mut Vec<Node>) -> Result<(), SampleError> {
+    /// `required`: the particle that holds `term` must occur at least once (only a wildcard asks).
+    fn term(&mut self, term: &Term, depth: usize, at_cap: bool, required: bool, out: &mut Vec<Node>) -> Result<(), SampleError> {
         match term {
             Term::Element(id) => match self.effective(*id) {
                 Some(effective) => out.push(self.element(effective, depth + 1)?),
@@ -316,26 +324,53 @@ impl<'a> Generator<'a> {
                     None => return Err(SampleError::Unsatisfiable("a choice no branch of which can be made".to_owned())),
                 }
             }
-            Term::Wildcard(wildcard) => self.wildcard(wildcard, depth, out)?,
+            Term::Wildcard(wildcard) => self.wildcard(wildcard, depth, required, out)?,
         }
         Ok(())
     }
 
     /// Something the wildcard allows: the global element, declared in a namespace it lets in, that is the shallowest (the first of them),
-    /// leaving out the elements that are being made, so that a wildcard does not nest the document in itself.
-    fn wildcard(&mut self, wildcard: &Wildcard, depth: usize, out: &mut Vec<Node>) -> Result<(), SampleError> {
+    /// leaving out the elements that are being made, so that a wildcard does not nest the document in itself. When none is declared, an
+    /// extension point that may be left out is left out; one that is required and does not check what it lets in (`lax` or `skip`) gets a
+    /// placeholder element, which is valid since nothing is checked of it; a required `strict` one cannot be satisfied, and says so.
+    fn wildcard(&mut self, wildcard: &Wildcard, depth: usize, required: bool, out: &mut Vec<Node>) -> Result<(), SampleError> {
         let found = (0..self.schema.elements.len())
             .map(ElementId)
             .filter(|id| !self.path.contains(id))
             .filter(|&id| {
-                self.schema.element(id).is_some_and(|e| e.scope.is_none() && !e.abstract_ && wildcard.constraint.allows(e.name.namespace.as_deref()))
+                self.schema.is_global(id)
+                    && self.schema.element(id).is_some_and(|e| !e.abstract_ && wildcard.constraint.allows(e.name.namespace.as_deref()))
                     && self.height(id) != INFINITE
             })
             .min_by_key(|&id| self.height(id));
         match found {
             Some(id) => out.push(self.element(id, depth + 1)?),
+            None if !required => {}
+            None if wildcard.process_contents != ProcessContents::Strict => {
+                self.nodes += 1;
+                if self.nodes > MAX_NODES {
+                    return Err(SampleError::TooLarge);
+                }
+                out.push(placeholder(&wildcard.constraint));
+            }
             None => self.warnings.push("A wildcard needs an element, and none is declared that it allows.".to_owned()),
         }
         Ok(())
     }
+}
+
+/// The namespace the placeholder element of a wildcard is put in when the wildcard lets in any.
+const PLACEHOLDER_NAMESPACE: &str = "urn:example:extension";
+
+/// An element no schema declares, in a namespace the wildcard lets in.
+fn placeholder(constraint: &NamespaceSet) -> Node {
+    let namespace = match constraint {
+        NamespaceSet::Any => Some(PLACEHOLDER_NAMESPACE),
+        // Anything but the target namespace (and no namespace): the placeholder's own, unless that is the one left out.
+        NamespaceSet::Not(excluded) if excluded.as_deref() == Some(PLACEHOLDER_NAMESPACE) => Some("urn:example:other"),
+        NamespaceSet::Not(_) => Some(PLACEHOLDER_NAMESPACE),
+        // The first namespace that is listed; if only no namespace is, none.
+        NamespaceSet::List(list) => list.iter().find_map(|n| n.as_deref()),
+    };
+    Node::new(QName::new(namespace, "extension"))
 }

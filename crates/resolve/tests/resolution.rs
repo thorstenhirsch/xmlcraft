@@ -209,6 +209,47 @@ fn a_namespace_or_a_schema_location_is_a_uri_entry() {
 }
 
 #[test]
+fn the_dtds_and_schemas_that_ship_with_the_app_are_found_by_their_identifiers_namespaces_and_addresses() {
+    let w = World::new();
+    let r = w.resolver();
+    let dtd = |public: Option<&str>, system: Option<&str>| {
+        let request = Request::external_id(public, system, "/docs/a.xml");
+        r.resolve(&request, &mut Budget::new()).map(|found| (found.origin, found.location))
+    };
+    let uri = |name: &str| r.resolve(&Request::uri(name, "/docs/a.xsd"), &mut Budget::new()).map(|found| (found.origin, found.location));
+    let bundled = |path: &str| Ok((Origin::Bundle, format!("bundled:/{path}")));
+    // XHTML 1.1 and SVG 1.1: by the public identifier of the DTD and of its modules, and by the address of any of them.
+    assert_eq!(
+        dtd(Some("-//W3C//DTD XHTML 1.1//EN"), Some("http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd")).map_err(|f| f.message),
+        bundled("w3c/xhtml11/xhtml11.dtd")
+    );
+    assert_eq!(
+        dtd(Some("-//W3C//ELEMENTS XHTML Text 1.0//EN"), Some("http://www.w3.org/MarkUp/DTD/xhtml-text-1.mod")).map_err(|f| f.message),
+        bundled("w3c/xhtml11/xhtml-text-1.mod")
+    );
+    assert_eq!(dtd(None, Some("https://www.w3.org/MarkUp/DTD/xhtml-table-1.mod")).map_err(|f| f.message), bundled("w3c/xhtml11/xhtml-table-1.mod"));
+    assert_eq!(
+        dtd(Some("-//W3C//DTD SVG 1.1//EN"), Some("http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd")).map_err(|f| f.message),
+        bundled("w3c/svg11/svg11.dtd")
+    );
+    assert_eq!(dtd(None, Some("http://www.w3.org/Graphics/SVG/1.1/DTD/svg-filter.mod")).map_err(|f| f.message), bundled("w3c/svg11/svg-filter.mod"));
+    // The schemas: by namespace, and by the address a document gives.
+    for (name, path) in [
+        ("http://www.w3.org/1998/Math/MathML", "w3c/mathml3/mathml3.xsd"),
+        ("http://www.w3.org/Math/XMLSchema/mathml3/mathml3-common.xsd", "w3c/mathml3/mathml3-common.xsd"),
+        ("http://www.w3.org/1999/xlink", "w3c/xlink/xlink.xsd"),
+        ("https://www.w3.org/1999/xlink.xsd", "w3c/xlink/xlink.xsd"),
+        ("http://www.w3.org/2000/09/xmldsig#", "w3c/xmldsig/xmldsig-core-schema.xsd"),
+        ("http://www.w3.org/2003/05/soap-envelope", "w3c/soap12/soap-envelope.xsd"),
+        ("http://www.w3.org/ns/wsdl", "w3c/wsdl20/wsdl20.xsd"),
+        ("http://www.w3.org/2007/06/wsdl/wsdl20.xsd", "w3c/wsdl20/wsdl20.xsd"),
+    ] {
+        assert_eq!(uri(name).map_err(|f| f.message), bundled(path), "{name}");
+    }
+    assert!(w.net.urls().is_empty(), "nothing was downloaded");
+}
+
+#[test]
 fn a_name_that_is_looked_up_only_is_never_read_at_its_own_address() {
     let w = World::new();
     w.net.serve("https://example.com/ns", "<xs:schema/>");
