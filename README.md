@@ -15,6 +15,20 @@ An open-source, clean-room XML editor in the spirit of Altova XMLSpy, written in
 
 Not there yet: JSON and YAML (validated with JSON Schema) are planned right after 0.1.0; XPath, XQuery and XSLT, a grid view and a graphical schema editor are further out.
 
+## A look
+
+![The editor: a document, its outline, and Entry Helpers offering what its XML Schema allows at the caret](docs/screenshots/editor.png)
+
+*Entry Helpers offer what the schema allows at the caret: the elements (the required ones marked) and the attributes with the values their types list.*
+
+![Validation: the problems of a document that does not follow its schema, underlined and listed](docs/screenshots/validation.png)
+
+*F8 checks the document against the schema it names; the problems are underlined in the text and listed in Messages.*
+
+![The Generate Schema dialog](docs/screenshots/generate-schema.png)
+
+*Generate an XML Schema (three layouts) or a DTD from the open documents.* The pictures are of the real window, drawn from synthetic documents ([how](docs/screenshots/README.md)).
+
 ## Try it
 
 You need a recent stable Rust toolchain.
