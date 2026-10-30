@@ -8,7 +8,7 @@ Button "Menu"
 Button "Text" [toggled=true]
 Button "Find tools and commands"
 Label value="Ready"
-Label value="XmlCraft 0.0.1"
+Label value="XmlCraft {version}"
 Label value="Spaces: 2"
 Label value="LF"
 Label value="UTF-8"

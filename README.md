@@ -2,7 +2,7 @@
 
 An open-source, clean-room XML editor in the spirit of Altova XMLSpy, written in Rust.
 
-> **Status: pre-alpha (0.0.1).** The editor, the XSD and DTD engines, validation and the schema and sample generators work and are tested; there is **no release to download yet** (0.1.0 is the first). Build it from source to try it. What is done and what is not is kept honestly in [ROADMAP.md](ROADMAP.md), [docs/gaps.md](docs/gaps.md) and [docs/target-app-parity.md](docs/target-app-parity.md).
+> **Status: 0.1.0, the first release, is prepared and not published yet.** The editor, the XSD and DTD engines, validation and the schema and sample generators work and are tested; there is **nothing to download yet**. Build it from source to try it. What is done and what is not is kept honestly in [ROADMAP.md](ROADMAP.md), [docs/gaps.md](docs/gaps.md) and [docs/target-app-parity.md](docs/target-app-parity.md).
 
 ## What it does today
 
