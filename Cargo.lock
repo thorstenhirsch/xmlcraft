@@ -4833,7 +4833,9 @@ dependencies = [
  "proptest",
  "rowan",
  "xmlcraft-grammar",
+ "xmlcraft-resolve",
  "xmlcraft-syntax",
+ "xmlcraft-text",
 ]
 
 [[package]]

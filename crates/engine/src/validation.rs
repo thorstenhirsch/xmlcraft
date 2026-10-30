@@ -10,7 +10,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use xmlcraft_dtd::SubsetLoader;
+use xmlcraft_dtd::{ResolvingSubsetLoader, SubsetLoader};
 use xmlcraft_resolve::{Buffers, Resolver, normalized};
 use xmlcraft_syntax::{Code, Diagnostic, Severity, SyntaxKind, SyntaxNode, parse};
 use xmlcraft_text::Buffer;
@@ -165,11 +165,8 @@ pub fn validate_guarded(text: &str, version: u64, location: &str, loader: &mut d
     })
 }
 
-/// Makes the loader for one validation (the worker asks for one per request, in its own thread).
-pub type LoaderFactory = Arc<dyn Fn() -> Box<dyn SubsetLoader> + Send + Sync>;
-
-/// Makes the resolver the schema documents of one validation are found with. It is given the documents that are open, so that a
-/// schema being edited is validated against as it is, not as it was saved.
+/// Makes the resolver the external parts of the DTD and the schema documents of one validation are found with. It is given the documents
+/// that are open, so that a DTD or a schema being edited is validated against as it is, not as it was saved.
 pub type ResolverFactory = Arc<dyn Fn(Arc<dyn Buffers>) -> Resolver + Send + Sync>;
 
 /// The documents that are open, by their paths (as they were when a validation was asked for).
@@ -202,15 +199,14 @@ pub struct Validator {
 }
 
 impl Validator {
-    /// A validator whose requests read the external parts of DTDs with the loaders `loaders` makes, and find schema documents with the
-    /// resolvers `resolvers` makes.
-    pub fn new(loaders: LoaderFactory, resolvers: ResolverFactory) -> Self {
-        Self { worker: Worker::new("validation", move |request| run(&loaders, &resolvers, request)) }
+    /// A validator whose requests find the external parts of DTDs and the schema documents with the resolvers `resolvers` makes.
+    pub fn new(resolvers: ResolverFactory) -> Self {
+        Self { worker: Worker::new("validation", move |request| run(&resolvers, request)) }
     }
 
     /// A validator with no thread: `submit` validates in the caller's thread (what the web does, and handy for tests).
-    pub fn inline(loaders: LoaderFactory, resolvers: ResolverFactory) -> Self {
-        Self { worker: Worker::inline(move |request| run(&loaders, &resolvers, request)) }
+    pub fn inline(resolvers: ResolverFactory) -> Self {
+        Self { worker: Worker::inline(move |request| run(&resolvers, request)) }
     }
 
     /// Called whenever a result is ready (the app asks for a repaint).
@@ -231,11 +227,11 @@ impl Validator {
     }
 }
 
-fn run(loaders: &LoaderFactory, resolvers: &ResolverFactory, request: Request) -> Validation {
-    let mut loader = loaders();
+fn run(resolvers: &ResolverFactory, request: Request) -> Validation {
     let resolver = resolvers(Arc::new(OpenDocuments(request.open)));
+    let mut subsets = ResolvingSubsetLoader::new(&resolver);
     let mut schemas = ResolvingLoader::new(&resolver);
-    validate_guarded(&request.text.text(), request.version, &request.location, loader.as_mut(), &mut schemas)
+    validate_guarded(&request.text.text(), request.version, &request.location, &mut subsets, &mut schemas)
 }
 
 #[cfg(test)]
@@ -371,7 +367,7 @@ mod tests {
     #[test]
     fn a_schema_is_found_among_the_open_documents_however_the_path_is_spelled() {
         // How a path comes back from the system on Windows, and how it is spelled once a reference has been joined to it.
-        let validator = Validator::inline(Arc::new(|| Box::new(NoLoader)), no_resolvers());
+        let validator = Validator::inline(no_resolvers());
         let schema = Buffer::from_text(&order_schema());
         let doc = Buffer::from_text(&named("<id>7</id>"));
         validator.submit(1, 1, &doc, Some(Path::new("\\\\?\\C:\\work\\doc.xml")), vec![("\\\\?\\C:\\work\\order.xsd".to_owned(), schema)]);
@@ -398,7 +394,7 @@ mod tests {
     #[test]
     fn the_validator_finds_a_schema_in_an_open_document_as_it_is_edited_not_as_it_was_saved() {
         // Nothing is on disk: the schema is only in a buffer, at the path the document names it by.
-        let validator = Validator::inline(Arc::new(|| Box::new(NoLoader)), no_resolvers());
+        let validator = Validator::inline(no_resolvers());
         let schema = Buffer::from_text(&order_schema());
         let doc = Buffer::from_text(&named("<id>7</id>"));
         validator.submit(1, 1, &doc, Some(Path::new("/work/doc.xml")), vec![("/work/order.xsd".to_owned(), schema)]);
@@ -459,16 +455,22 @@ mod tests {
         assert_eq!(validate(&big, 2, "", &mut NoLoader, &mut NoSchemas).verdict, Verdict::Skipped(Skipped::TooLarge));
     }
 
+    /// Files by path, for the resolver of a test.
+    struct MapFiles(HashMap<String, Vec<u8>>);
+
+    impl FileAccess for MapFiles {
+        fn read(&self, path: &str) -> Result<Vec<u8>, String> {
+            self.0.get(path).cloned().ok_or_else(|| format!("{path}: no such file"))
+        }
+    }
+
     #[test]
-    fn the_validator_runs_in_the_background_with_a_loader_of_its_own_per_request() {
-        let validator = Validator::new(
-            Arc::new(|| {
-                let mut files = HashMap::new();
-                files.insert("r.dtd".to_owned(), "<!ELEMENT r EMPTY>".to_owned());
-                Box::new(Files(files))
-            }),
-            no_resolvers(),
-        );
+    fn the_validator_runs_in_the_background_with_a_resolver_of_its_own_per_request() {
+        let validator = Validator::new(Arc::new(|buffers| {
+            let files = HashMap::from([("r.dtd".to_owned(), b"<!ELEMENT r EMPTY>".to_vec())]);
+            let env = Environment { buffers, files: Arc::new(MapFiles(files)), fetcher: None, cache: None, clock: Arc::new(FixedClock(0)) };
+            Resolver::new(env, xmlcraft_resolve::Policy { offline: true, ..Policy::default() }, &[])
+        }));
         let (tx, rx) = std::sync::mpsc::channel();
         validator.on_done(move || {
             let _ = tx.send(());

@@ -229,17 +229,11 @@ impl XmlCraftApp {
             palette_selected: 0,
             session,
             analyzer: Analyzer::new(),
-            // The external parts of a DTD, and the documents of a schema, are open documents, the schemas that ship with the app and files the
-            // person can read; nothing is downloaded.
-            validator: Validator::new(
-                std::sync::Arc::new(|| Box::new(xmlcraft_platform::subset::FileSubsetLoader::unconfined())),
-                std::sync::Arc::new(xmlcraft_platform::schema_files::local_resolver),
-            ),
+            // The external parts of a DTD, and the documents of a schema, are open documents, the DTDs and schemas that ship with the app
+            // (found by their public identifiers and namespaces) and files the person can read; nothing is downloaded.
+            validator: Validator::new(std::sync::Arc::new(xmlcraft_platform::schema_files::local_resolver)),
             schema_generator: xmlcraft_engine::generate::SchemaGenerator::new(),
-            sample_generator: xmlcraft_engine::generate::SampleGenerator::new(
-                std::sync::Arc::new(|| Box::new(xmlcraft_platform::subset::FileSubsetLoader::unconfined())),
-                std::sync::Arc::new(xmlcraft_platform::schema_files::local_resolver),
-            ),
+            sample_generator: xmlcraft_engine::generate::SampleGenerator::new(std::sync::Arc::new(xmlcraft_platform::schema_files::local_resolver)),
             generate_serial: 0,
             outline_filter: String::new(),
             outline_rows: None,
@@ -248,7 +242,7 @@ impl XmlCraftApp {
             goto_focus: false,
             check_pending: None,
             validate_pending: None,
-            schemas: Schemas::new(std::sync::Arc::new(|| Box::new(xmlcraft_platform::subset::FileSubsetLoader::unconfined()))),
+            schemas: Schemas::new(std::sync::Arc::new(xmlcraft_platform::schema_files::local_resolver)),
             xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas::new(std::sync::Arc::new(xmlcraft_platform::schema_files::local_resolver)),
             entry_mandatory: prefs.entry_mandatory,
             validate_typing: prefs.validate_typing,

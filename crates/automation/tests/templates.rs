@@ -85,3 +85,15 @@ fn doc_new_starts_a_document_from_a_template_with_its_name_and_text() {
     let Some(Content::Json(got)) = got.into_iter().next() else { panic!("no text") };
     assert_eq!(got["text"], "<a/>");
 }
+
+#[test]
+fn the_xhtml_page_is_valid_against_the_dtd_that_ships_with_the_app_and_a_wrong_one_is_not() {
+    let mut a = Automation::new();
+    let ok = validate(&mut a, json!({ "text": text_of("xhtml") })).expect("runs");
+    assert_eq!((ok["well_formed"].clone(), ok["valid"].clone(), ok["errors"].clone()), (json!(true), json!(true), json!(0)), "{ok}");
+    assert_eq!(ok["problems"], json!([]), "not even a note that the DTD was not read: {ok}");
+    // The DTD is the one that was read: the body of XHTML Strict takes block elements, not text.
+    let bad = text_of("xhtml").replace("<p>Text.</p>", "Text.");
+    let found = validate(&mut a, json!({ "text": bad })).expect("runs");
+    assert_eq!(found["valid"], false, "{found}");
+}

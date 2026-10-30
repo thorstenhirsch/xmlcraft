@@ -5,11 +5,11 @@
 //! - **Layer:** L7. The native code is behind `cfg(not(target_arch = "wasm32"))`; on the web the same functions exist so that the crate
 //!   compiles for it: those that return `io::Result` fail with `ErrorKind::Unsupported`, and `changed_on_disk` reports
 //!   `DiskChange::Missing`. Callers say "not available" instead of failing to build.
-//! - [`subset`]: the external parts of a DTD read from files (no network).
-//! - [`schema_files`]: the files a schema is loaded from, for the resolver (no network).
+//! - [`file_uri`]: the path a `file:` URI names.
+//! - [`schema_files`]: the files the resolver reads (the external parts of DTDs and the documents of schemas; no network).
 //! - [`files`]: reading a file with a size limit, writing it atomically (a crash or a full disk leaves the old file whole), and noticing
 //!   that something else changed or removed it.
 
+pub mod file_uri;
 pub mod files;
 pub mod schema_files;
-pub mod subset;
