@@ -54,8 +54,10 @@ pub fn cache_dir_for(os: Os, var: &dyn Fn(&str) -> Option<OsString>) -> Option<P
     match os {
         Os::Mac => set("HOME").map(|home| home.join("Library").join("Caches").join("XmlCraft").join("schemas")),
         Os::Windows => set("LOCALAPPDATA").map(|base| base.join("XmlCraft").join("Cache").join("schemas")),
+        // The XDG rules are about POSIX paths: one that does not start with a slash is relative and is ignored (whatever machine this runs
+        // on, which is why this is not `Path::is_absolute`).
         Os::Other => set("XDG_CACHE_HOME")
-            .filter(|dir| dir.is_absolute())
+            .filter(|dir| dir.to_str().is_some_and(|dir| dir.starts_with('/')))
             .or_else(|| set("HOME").map(|home| home.join(".cache")))
             .map(|base| base.join("xmlcraft").join("schemas")),
     }
