@@ -54,6 +54,14 @@ struct Cached {
 }
 
 impl HelperState {
+    /// Forget what was asked for, so that the grammar and the schema are asked for again (what they are made from may have changed
+    /// without the text having).
+    pub(crate) fn forget_requests(&mut self) {
+        self.requested_key = None;
+        self.requested_xsd_key = None;
+        self.checked_version = None;
+    }
+
     /// Take the answer to a request for a grammar, if it is the answer to the last one asked: a DOCTYPE that was edited meanwhile has been
     /// asked for again, and the old answer would be the wrong grammar.
     pub(crate) fn accept(&mut self, schema: Schema) -> bool {

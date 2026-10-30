@@ -39,17 +39,27 @@ pub struct Request<'a> {
     pub system: Option<&'a str>,
     /// The location of the document that has the reference (a URI or a path; empty when it has none).
     pub base: &'a str,
+    /// Look in the open documents and the catalogs only, never at the address itself (not as a file and not on the web). A namespace is
+    /// asked for so: it names a schema, and is not where one is.
+    pub lookup_only: bool,
 }
 
 impl<'a> Request<'a> {
     /// A DTD's external subset or parameter entity.
     pub fn external_id(public: Option<&'a str>, system: Option<&'a str>, base: &'a str) -> Self {
-        Self { kind: Kind::Identifier, public, system, base }
+        Self { kind: Kind::Identifier, public, system, base, lookup_only: false }
     }
 
     /// A schema import, include or location.
     pub fn uri(uri: &'a str, base: &'a str) -> Self {
-        Self { kind: Kind::Uri, public: None, system: Some(uri), base }
+        Self { kind: Kind::Uri, public: None, system: Some(uri), base, lookup_only: false }
+    }
+
+    /// The same reference, looked for in the open documents and the catalogs only (see [`Request::lookup_only`]).
+    #[must_use]
+    pub fn lookup_only(mut self) -> Self {
+        self.lookup_only = true;
+        self
     }
 
     fn describe(&self) -> String {
@@ -229,6 +239,10 @@ impl Resolver {
         }
         // 4. The location itself.
         match absolute {
+            Some(_) if request.lookup_only => {
+                trail.push(Stage::File, request.describe(), Outcome::Skipped("it is looked up in the catalogs only".to_owned()));
+                Err(fail(format!("no catalog knows {}", request.describe()), trail))
+            }
             Some(location) => match self.load(&location, &mut trail) {
                 Ok(found) => self.finish(found, budget, trail),
                 Err(why) => Err(fail(why, trail)),

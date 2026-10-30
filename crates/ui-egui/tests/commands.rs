@@ -90,6 +90,9 @@ fn clicking_a_hit_runs_it() {
     let mut h = shell();
     h.state_mut().execute("view.palette");
     h.run_steps(3);
+    // The list is longer than the palette is tall: narrow it down to the hit, as a person would.
+    h.event(egui::Event::Text("light".into()));
+    h.run_steps(3);
     h.get_by_label("Light theme").click();
     h.run_steps(3);
     assert_eq!(h.state().theme_preference, ThemePreference::Light);

@@ -48,9 +48,10 @@ pub fn xsd_key(hints: &[SchemaHint], path: Option<&Path>, open: &[(String, u64)]
 }
 
 /// What to ask for when a document names no schema but its root element is in `namespace`: the schema the catalogs or the bundle know
-/// for it (the namespace is asked for as a location, which they answer by what they map it to).
+/// for it. There is no location, only the namespace, and a namespace is a name: it is looked up in the catalogs and never read as a file
+/// or downloaded, so opening a document asks nobody anything.
 pub fn implicit_hints(namespace: &str) -> Vec<SchemaHint> {
-    vec![SchemaHint { namespace: Some(namespace.to_owned()), location: namespace.to_owned() }]
+    vec![SchemaHint { namespace: Some(namespace.to_owned()), location: String::new() }]
 }
 
 struct Request {
@@ -144,8 +145,18 @@ mod tests {
     }
 
     #[test]
-    fn the_schema_for_a_namespace_is_asked_for_by_the_namespace() {
-        assert_eq!(implicit_hints("urn:a"), [SchemaHint { namespace: Some("urn:a".to_owned()), location: "urn:a".to_owned() }]);
+    fn the_schema_for_a_namespace_is_asked_for_by_the_namespace_alone() {
+        assert_eq!(implicit_hints("urn:a"), [SchemaHint { namespace: Some("urn:a".to_owned()), location: String::new() }]);
+    }
+
+    #[test]
+    fn a_namespace_that_nothing_knows_is_not_looked_for_on_the_web() {
+        // The resolvers here could download; a namespace is not an address.
+        let schemas = XsdSchemas::inline(resolvers());
+        schemas.submit(3, 9, implicit_hints("http://example.com/ns"), None, Vec::new());
+        let answers = schemas.poll();
+        let why = answers[0].1.schema.as_ref().expect_err("nothing knows it");
+        assert!(why.contains("http://example.com/ns"), "{why}");
     }
 
     #[test]

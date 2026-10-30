@@ -22,8 +22,9 @@ impl<'r> ResolvingLoader<'r> {
         Self { resolver, budget: Budget::default(), log: Vec::new(), read: Vec::new() }
     }
 
-    fn ask(&mut self, reference: &str, base: &str) -> Result<Loaded, String> {
-        match self.resolver.resolve(&Request::uri(reference, base), &mut self.budget) {
+    fn ask(&mut self, reference: &str, base: &str, lookup_only: bool) -> Result<Loaded, String> {
+        let request = Request::uri(reference, base);
+        match self.resolver.resolve(&if lookup_only { request.lookup_only() } else { request }, &mut self.budget) {
             Ok(found) => {
                 let decoded = decode(&found.bytes, &sniff(&found.bytes));
                 if decoded.lossy {
@@ -47,10 +48,12 @@ impl SchemaLoader for ResolvingLoader<'_> {
     }
 
     fn load(&mut self, request: &LoadRequest<'_>) -> Result<Loaded, String> {
-        // The location the document gives, and then the namespace (the catalogs may know a schema by its namespace).
+        // The location the document gives, and then the namespace (the catalogs may know a schema by its namespace; a namespace is a name,
+        // not an address, so it is looked for there and is never read as a file or downloaded). A location that is empty names nothing.
         let mut why = Vec::new();
-        for reference in [request.location, request.namespace].into_iter().flatten() {
-            match self.ask(reference, request.base) {
+        for (reference, lookup_only) in [(request.location, false), (request.namespace, true)] {
+            let Some(reference) = reference.filter(|r| !r.is_empty()) else { continue };
+            match self.ask(reference, request.base, lookup_only) {
                 Ok(loaded) => return Ok(loaded),
                 Err(problem) => why.push(problem),
             }
