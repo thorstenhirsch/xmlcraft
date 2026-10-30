@@ -87,7 +87,9 @@ pub fn load_hinted(hints: Vec<SchemaHint>, location: &str, loader: &mut dyn Sche
             match loader.load(&request) {
                 Ok(loaded) => load(&loaded.text, &loaded.location, loader),
                 Err(why) => {
-                    let why = format!("the schema '{}' could not be loaded: {why}", only.location);
+                    // (A hint with no location is a namespace to be looked up.)
+                    let name = if only.location.is_empty() { only.namespace.as_deref().unwrap_or_default() } else { only.location.as_str() };
+                    let why = format!("the schema '{name}' could not be loaded: {why}");
                     return Err(NoSchema { why, hints });
                 }
             }

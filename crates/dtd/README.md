@@ -29,6 +29,6 @@ The DTD of a document, read (layer L3, no UI, no I/O, compiles for the web).
   expanded: each entity is analysed once per place it can be used and the verdict is remembered, so a billion-laughs DTD costs what
   its declarations cost; entities refer to entities at most 256 deep. Not done: attribute-value normalisation, and a namespace
   declaration whose value is written with entities.
-- Not here: compiling content models to automata and validating (M2.5 and M2.9), and downloading what nothing has (M2.4).
+- Not here: compiling content models to automata and validating (M2.5 and M2.9), and downloading (the resolver finds and downloads the external parts: `ResolvingSubsetLoader`).
 
 Tests: `tests/declarations.rs`, `tests/references.rs`; the xmlconf run (`cargo xtask conformance xmlconf`) reads every DTD of the W3C suite through it.

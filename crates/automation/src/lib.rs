@@ -32,6 +32,7 @@ use std::path::Path;
 
 use serde_json::Value;
 use xmlcraft_engine::Session;
+pub use xmlcraft_platform::network::Network;
 
 pub use schema::validate as validate_arguments;
 pub use script::{StepResult, run_script};
@@ -74,6 +75,9 @@ pub(crate) type Result<T> = std::result::Result<T, ToolError>;
 pub struct Automation {
     session: Session,
     confinement: Confinement,
+    /// What the schemas and DTDs that documents name are downloaded with. Nothing is downloaded unless the program gives a network that
+    /// does ([`Automation::with_network`]); `--root` confines files, not this.
+    network: Network,
 }
 
 impl Default for Automation {
@@ -85,12 +89,23 @@ impl Default for Automation {
 impl Automation {
     /// A session with no root: paths are not confined (a person at their own terminal).
     pub fn new() -> Self {
-        Self { session: Session::new(), confinement: Confinement::none() }
+        Self { session: Session::new(), confinement: Confinement::none(), network: Network::offline() }
     }
 
     /// A session whose tools may only touch files under `root`.
     pub fn with_root(root: &Path) -> Result<Self> {
-        Ok(Self { session: Session::new(), confinement: Confinement::new(root)? })
+        Ok(Self { session: Session::new(), confinement: Confinement::new(root)?, network: Network::offline() })
+    }
+
+    /// The same session, with the schemas and DTDs that documents name downloaded (and kept) with `network`.
+    #[must_use]
+    pub fn with_network(mut self, network: Network) -> Self {
+        self.network = network;
+        self
+    }
+
+    pub fn network(&self) -> &Network {
+        &self.network
     }
 
     pub fn session(&self) -> &Session {

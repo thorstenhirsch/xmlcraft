@@ -11,7 +11,7 @@ use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use xmlcraft_ui_egui::XmlCraftApp;
+use xmlcraft_ui_egui::{Network, XmlCraftApp};
 
 /// Wayland app id and macOS bundle identifier suffix; matches packaging/linux/io.github.thorstenhirsch.xmlcraft.desktop.
 const APP_ID: &str = "io.github.thorstenhirsch.xmlcraft";
@@ -189,7 +189,8 @@ fn app_creator<'a>(started: Rc<Cell<bool>>, control: Option<PathBuf>, files: Vec
         if let Err(e) = craft_menu::mac::install_app_menu(&cc.egui_ctx, APP_NAME) {
             log::warn!("couldn't install the app menu, so ⌘Q quits without asking to save: {e}");
         }
-        let mut app = XmlCraftApp::new(cc);
+        // The one place the app is given the web: schemas and DTDs that documents name are downloaded and kept (XML ▸ Work Offline).
+        let mut app = XmlCraftApp::with_network(cc, Network::standard());
         app.open_paths(files.iter().map(Path::new));
         if let Some(file) = &control {
             open_control_channel(&mut app, &cc.egui_ctx, file)?;

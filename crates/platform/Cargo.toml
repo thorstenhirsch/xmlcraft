@@ -1,6 +1,6 @@
 [package]
 name = "xmlcraft-platform"
-description = "XmlCraft's native services: reading and atomically writing files, and noticing that a file changed on disk"
+description = "XmlCraft's native services: reading and atomically writing files, noticing that a file changed on disk, and downloading and caching the grammars that documents name"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,6 +19,12 @@ xmlcraft-text = { workspace = true }
 # The file functions are native only (on the web they are stubs, see files.rs): the web build does not resolve the atomic-write crate.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 craft-atomic = { workspace = true }
+# The client for the resolver's Fetcher, and the name of a cache file (the SHA-256 of the URL).
+ureq = { workspace = true }
+sha2 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

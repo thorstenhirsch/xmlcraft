@@ -236,6 +236,20 @@ impl XmlCraftApp {
         self.finish_waiting();
     }
 
+    /// Work offline, or stop doing so (XML ▸ Work Offline). What was asked for before is asked for again: a schema that could not be
+    /// found while offline may be downloaded now, and one that was downloaded is no longer needed to be.
+    pub(crate) fn set_work_offline(&mut self, offline: bool) {
+        self.work_offline = offline;
+        self.network.set_offline(offline);
+        for view in self.views.values_mut() {
+            view.helpers.forget_requests();
+            view.auto.requested = None;
+        }
+        if !offline && self.network.offline_by_environment() {
+            self.status = tl!("XMLCRAFT_OFFLINE is set, so nothing is downloaded.").to_owned();
+        }
+    }
+
     /// Ask for the XML Schema the document being shown names (when it has no DOCTYPE) when what it is made of is not what the schema
     /// was asked for with: the schemas named, the place the document is at, or the other documents that are open (a schema may be one
     /// of them, as it is being edited). Looked at every frame, since an edit of another document changes the answer.

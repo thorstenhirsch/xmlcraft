@@ -137,3 +137,52 @@ fn an_encoding_is_read_by_its_byte_order_mark_and_a_broken_one_is_refused() {
     assert_eq!(documents.diagnostics.len(), 1, "{:?}", documents.diagnostics);
     assert!(documents.diagnostics[0].diagnostic.message().contains("not valid in its encoding"));
 }
+
+/// A web that counts what it is asked and has a schema at one address.
+struct Web(std::sync::Mutex<Vec<String>>);
+
+impl xmlcraft_resolve::Fetcher for Web {
+    fn fetch(
+        &self,
+        url: &str,
+        _: &xmlcraft_resolve::Conditions,
+        _: &xmlcraft_resolve::FetchLimits,
+    ) -> Result<xmlcraft_resolve::FetchOutcome, xmlcraft_resolve::FetchError> {
+        self.0.lock().expect("lock").push(url.to_owned());
+        let body = schema("<xs:element name=\"e\" type=\"xs:string\"/>").into_bytes();
+        Ok(xmlcraft_resolve::FetchOutcome::Fresh(xmlcraft_resolve::Fetched { body, final_url: url.to_owned(), etag: None, last_modified: None }))
+    }
+}
+
+fn online(web: &Arc<Web>) -> Resolver {
+    let env = Environment {
+        buffers: Arc::new(Open(HashMap::new())),
+        files: Arc::new(Files(HashMap::new())),
+        fetcher: Some(web.clone()),
+        cache: None,
+        clock: Arc::new(FixedClock(0)),
+    };
+    Resolver::new(env, Policy::default(), &[])
+}
+
+#[test]
+fn a_location_is_downloaded_but_a_namespace_is_a_name_that_is_not_looked_for_on_the_web() {
+    let web = Arc::new(Web(std::sync::Mutex::new(Vec::new())));
+    let r = online(&web);
+    let mut loader = ResolvingLoader::new(&r);
+    let ask = |loader: &mut ResolvingLoader<'_>, namespace, location| {
+        loader.load(&LoadRequest { kind: LoadKind::Import, namespace, location, base: "/s/root.xsd" })
+    };
+    // The namespace alone, or after a location that could not be read: the catalogs know it or nothing does.
+    assert!(ask(&mut loader, Some("http://example.com/ns"), None).is_err());
+    let why = ask(&mut loader, Some("http://example.com/ns"), Some("")).expect_err("an empty location names nothing");
+    assert!(!why.contains("; "), "there is one reason, for the namespace: {why}");
+    assert!(web.0.lock().expect("lock").is_empty(), "{:?}", web.0.lock().expect("lock"));
+    // A namespace that the bundle knows is found without a location.
+    let found = ask(&mut loader, Some(XSD_NAMESPACE), None).expect("the bundle knows it");
+    assert!(found.location.starts_with("bundled:/"), "{}", found.location);
+    // A location is an address: downloaded, and the namespace is then not asked for.
+    let loaded = ask(&mut loader, Some("http://example.com/ns"), Some("http://example.com/s/ns.xsd")).expect("downloaded");
+    assert!(loaded.location.contains("example.com/s/ns.xsd"), "{}", loaded.location);
+    assert!(web.0.lock().expect("lock").iter().all(|u| u.contains("/s/ns.xsd")), "{:?}", web.0.lock().expect("lock"));
+}
