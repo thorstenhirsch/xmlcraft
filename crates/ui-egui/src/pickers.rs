@@ -92,9 +92,8 @@ impl XmlCraftApp {
 
     /// Show the panel that chooses a catalog for Preferences ▸ Schemas.
     pub(crate) fn pick_catalog(&mut self, ctx: &egui::Context) -> bool {
-        let dialog = rfd::AsyncFileDialog::new()
-            .set_title(crate::i18n::tl!("Choose a catalog"))
-            .add_filter(crate::i18n::tl!("OASIS catalogs"), &["xml", "cat"]);
+        // No extension filter: a catalog is often called just `catalog`.
+        let dialog = rfd::AsyncFileDialog::new().set_title(crate::i18n::tl!("Choose a catalog"));
         self.ask(ctx, PickFor::Catalog, Ask::Open(dialog))
     }
 
@@ -198,7 +197,13 @@ impl XmlCraftApp {
                 }
                 (PickFor::Catalog, false) => {
                     if let Some(path) = paths.first() {
-                        self.add_user_catalog(&path.to_string_lossy());
+                        match path.to_str() {
+                            Some(text) => self.add_user_catalog(text),
+                            None => {
+                                self.status =
+                                    crate::i18n::tl!("That file's name is not text this app can keep, so it cannot be used as a catalog.").to_owned()
+                            }
+                        }
                     }
                 }
                 (PickFor::SaveAs { id, then }, false) => {

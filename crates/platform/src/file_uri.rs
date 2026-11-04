@@ -49,7 +49,8 @@ pub fn uri_of(path: &str) -> String {
     if has_scheme {
         return path.to_owned();
     }
-    let slashed = path.replace('\\', "/");
+    // A backslash separates folders only on Windows; elsewhere it is a character of the name (and is escaped below).
+    let slashed = if cfg!(windows) { path.replace('\\', "/") } else { path.to_owned() };
     let rooted = if slashed.starts_with('/') { slashed } else { format!("/{slashed}") };
     let mut out = String::from("file://");
     for b in rooted.bytes() {
@@ -68,15 +69,23 @@ mod tests {
 
     #[test]
     fn a_path_becomes_a_file_uri_that_names_it_again() {
-        for path in ["/tmp/a b/ä#c.xml", "/x/y.xml", "C:\\dir\\f.xml"] {
+        let mut paths = vec!["/tmp/a b/ä#c.xml", "/x/y.xml"];
+        if cfg!(windows) {
+            paths.push("C:\\dir\\f.xml");
+        }
+        for path in paths {
             let uri = uri_of(path);
             assert!(uri.starts_with("file:///"), "{uri}");
             assert!(uri.is_ascii() && !uri.contains(' ') && !uri.contains('#'), "{uri}");
             let back = path_of(&uri).expect("a file uri");
-            assert_eq!(back.trim_start_matches('/'), path.replace('\\', "/").trim_start_matches('/'), "{uri}");
+            assert_eq!(back.trim_start_matches('/'), path.replace('\\', if cfg!(windows) { "/" } else { "\\" }).trim_start_matches('/'), "{uri}");
         }
         assert_eq!(uri_of("http://x/y"), "http://x/y", "a location with a scheme stays as it is");
         assert_eq!(uri_of(""), "file:///");
+        if !cfg!(windows) {
+            assert_eq!(uri_of("/tmp/a\\b.xml"), "file:///tmp/a%5Cb.xml", "a backslash is a letter of a Unix name");
+            assert_eq!(path_of("file:///tmp/a%5Cb.xml").as_deref(), Some("/tmp/a\\b.xml"));
+        }
     }
     #[test]
     fn file_uris_are_paths_and_other_schemes_are_not() {

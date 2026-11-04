@@ -80,6 +80,7 @@ impl Shortcut {
             "Slash" => "/",
             "Equals" => "=",
             "Minus" => "-",
+            "Comma" => ",",
             "ArrowRight" => "→",
             "ArrowLeft" => "←",
             other => other,
@@ -409,6 +410,7 @@ mod tests {
         assert_eq!(Shortcut::cmd("Equals").label(true), "⌘=");
         assert_eq!(Shortcut::cmd("Minus").label(false), "Ctrl+-");
         assert_eq!(Shortcut::cmd("0").label(false), "Ctrl+0");
+        assert_eq!(Shortcut::cmd("Comma").label(true), "⌘,");
         assert_eq!(Shortcut::cmd_alt("ArrowRight").label(false), "Ctrl+Alt+→");
         assert_eq!(Shortcut::cmd_shift("Backslash").label(true), "⇧⌘\\");
         assert_eq!(Shortcut::cmd_shift("Backslash").label(false), "Ctrl+Shift+\\");

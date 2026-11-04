@@ -36,16 +36,6 @@ fn shell(web: &Arc<Web>) -> Harness<'static, XmlCraftApp> {
     h
 }
 
-fn wait(h: &mut Harness<'static, XmlCraftApp>, what: &str, done: impl Fn(&XmlCraftApp) -> bool) {
-    let started = Instant::now();
-    while !done(h.state()) {
-        assert!(started.elapsed() < Duration::from_secs(10), "waiting for {what}");
-        h.run_steps(1);
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    h.run_steps(2);
-}
-
 fn open_preferences(h: &mut Harness<'static, XmlCraftApp>) {
     assert!(h.state_mut().execute("app.preferences"));
     h.run_steps(3);
@@ -102,13 +92,17 @@ fn the_downloads_are_counted_and_can_be_deleted() {
     assert!(h.query_by_label_contains("0 files").is_some());
     assert!(h.get_by_label("Clear Cache").accesskit_node().is_disabled(), "nothing to delete");
     h.state_mut().session.open(Some(file(dir.path(), "n.xml", DOCUMENT)), DOCUMENT.as_bytes(), None).expect("opens");
-    wait(&mut h, "the download for Entry Helpers", |_| *web.asked.lock().expect("lock") >= 1);
-    h.run_steps(3);
-    assert!(h.query_by_label_contains("1 files").is_some(), "the schema that was downloaded is counted");
+    // The cache is written by the worker after the fetch: wait for the window to say so, not for the fetch to start.
+    let started = Instant::now();
+    while h.query_by_label_contains("1 files").is_none() {
+        assert!(started.elapsed() < Duration::from_secs(10), "waiting for the cache to hold the schema");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(10));
+    }
     h.get_by_label("Clear Cache").click();
     h.run_steps(3);
+    // (The document asks for its schema again, so the cache may hold it again by now: the message is what says it was cleared.)
     assert!(h.state().status.contains("Deleted 1 downloaded files"), "{}", h.state().status);
-    assert!(h.query_by_label_contains("0 files").is_some());
 }
 
 #[test]

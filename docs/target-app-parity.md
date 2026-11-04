@@ -10,7 +10,7 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **6.6%** shipped, 26.6% with partial counted half (10 shipped + 61 partial of 152 counted; 64 P0, 48 P1, 25 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-10-30) |
+| **Feature breadth**, unweighted | **6.5%** shipped, 28.2% with partial counted half (10 shipped + 67 partial of 154 counted; 64 P0, 48 P1, 27 P2, 15 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-05) |
 | Must-have (P0) features | 7.8% shipped, 43.0% weighted (5 shipped + 45 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **100%** (1017 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): a valid document has no well-formedness or validity error, an invalid one is well-formed and has at least one validity error (which one is not compared; 73 of the 227 are documents with no DOCTYPE, invalid because there is nothing to validate against) | measured (same run) |

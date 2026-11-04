@@ -48,7 +48,7 @@ struct Inner {
     /// `XMLCRAFT_OFFLINE` was on when the network was made.
     forced: bool,
     /// The catalogs the person named (locations), consulted before the ones that ship with the app.
-    user_catalogs: Mutex<Vec<String>>,
+    user_catalogs: Mutex<Vec<(String, String)>>,
 }
 
 /// How a download is made, how long a copy is kept, and whether it is allowed now. Clones share the offline switch.
@@ -100,13 +100,25 @@ impl Network {
     /// Use these catalogs (paths of OASIS catalog files) from now on, before the bundled ones: seen by the resolvers made after this. What
     /// a catalog names with a relative location is found next to the catalog.
     pub fn set_user_catalogs(&self, catalogs: Vec<String>) {
-        let uris = catalogs.iter().map(|path| crate::file_uri::uri_of(path)).collect();
-        *self.inner.user_catalogs.lock().unwrap_or_else(PoisonError::into_inner) = uris;
+        let both = catalogs
+            .into_iter()
+            .map(|path| {
+                // A relative path means the folder the program was started in, now: not the root of the file system.
+                let absolute = std::path::absolute(&path).ok().and_then(|p| p.to_str().map(str::to_owned)).unwrap_or_else(|| path.clone());
+                let uri = crate::file_uri::uri_of(&absolute);
+                (path, uri)
+            })
+            .collect();
+        *self.inner.user_catalogs.lock().unwrap_or_else(PoisonError::into_inner) = both;
     }
 
-    /// The catalogs the person named.
+    /// The catalogs the person named, as they were given.
     pub fn user_catalogs(&self) -> Vec<String> {
-        self.inner.user_catalogs.lock().unwrap_or_else(PoisonError::into_inner).clone()
+        self.inner.user_catalogs.lock().unwrap_or_else(PoisonError::into_inner).iter().map(|(path, _)| path.clone()).collect()
+    }
+
+    fn user_catalog_uris(&self) -> Vec<String> {
+        self.inner.user_catalogs.lock().unwrap_or_else(PoisonError::into_inner).iter().map(|(_, uri)| uri.clone()).collect()
     }
 
     /// How much the download cache holds (nothing, when there is none).
@@ -141,7 +153,7 @@ impl Network {
         let env =
             Environment { buffers, files, fetcher: self.inner.fetcher.clone(), cache: self.inner.cache.clone(), clock: self.inner.clock.clone() };
         let offline = self.is_offline();
-        Resolver::new(env, Policy { offline, ..Policy::default() }, &self.user_catalogs())
+        Resolver::new(env, Policy { offline, ..Policy::default() }, &self.user_catalog_uris())
     }
 }
 
@@ -231,10 +243,16 @@ mod tests {
         let network = Network::offline();
         assert!(resolve(&network, "urn:mine:schema").is_err(), "nothing knows the name yet");
         network.set_user_catalogs(vec![catalog.to_string_lossy().into_owned()]);
-        assert_eq!(network.user_catalogs().len(), 1);
+        assert_eq!(network.user_catalogs(), [catalog.to_string_lossy().into_owned()], "as they were given");
         assert_eq!(resolve(&network, "urn:mine:schema"), Ok(Origin::File));
         network.set_user_catalogs(Vec::new());
         assert!(resolve(&network, "urn:mine:schema").is_err(), "and not any more");
+        // A relative path is the file in the folder the program runs in.
+        let relative = std::path::Path::new("Cargo.toml").exists();
+        assert!(relative, "the tests run in the crate's folder");
+        network.set_user_catalogs(vec!["Cargo.toml".to_owned()]);
+        let uris = network.user_catalog_uris();
+        assert!(uris[0].starts_with("file:///") && uris[0].ends_with("/Cargo.toml") && uris[0].len() > "file:///Cargo.toml".len(), "{uris:?}");
     }
 
     #[test]
