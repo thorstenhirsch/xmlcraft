@@ -535,7 +535,7 @@ milestone = "M1"
 status = "partial"
 commands = ["view.messages", "xml.next_problem", "xml.previous_problem"]
 tools = []
-evidence = ["crates/ui-egui/tests/analysis.rs::problems_are_listed_and_a_click_goes_to_them", "crates/ui-egui/tests/analysis.rs::a_well_formed_document_says_so", "crates/ui-egui/tests/problems.rs::the_panel_lists_the_problems_and_a_filter_narrows_them", "crates/ui-egui/tests/problems.rs::the_keys_step_from_one_problem_to_the_next_and_round", "crates/ui-egui/src/problems.rs::tests::a_problem_in_another_file_is_grouped_so_and_cannot_be_jumped_to"]
+evidence = ["crates/ui-egui/tests/analysis.rs::problems_are_listed_and_a_click_goes_to_them", "crates/ui-egui/tests/analysis.rs::a_well_formed_document_says_so", "crates/ui-egui/tests/problems.rs::the_panel_lists_the_problems_and_a_filter_narrows_them", "crates/ui-egui/tests/problems.rs::the_keys_step_from_one_problem_to_the_next_and_round", "crates/ui-egui/src/problems.rs::a_problem_in_another_file_is_grouped_so_and_cannot_be_jumped_to"]
 notes = "The Problems panel (M4.12): what is wrong with the document as XML and, once validated, as a document of its grammar, with line and column; filters by severity with counts (All, Errors, Warnings), grouped by where a problem comes from (well-formedness, validity, other files) when there is more than one group; a click selects the problem; the rail's button counts them and the header's pill says where the document stands. Still missing: the Def link, the Fix button, the resolution trail, a problem in another file cannot be opened from the panel."
 
 [[feature]]
