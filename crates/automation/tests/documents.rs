@@ -676,3 +676,20 @@ fn the_files_that_were_opened_are_listed_newest_first_and_the_list_can_be_cleare
     let listed = ok(&mut a, "recent_files", json!({}));
     assert!(listed["files"][0].as_str().is_some_and(|f| f.ends_with("saved.xml")), "{listed}");
 }
+
+#[test]
+fn line_endings_and_indentation_are_set_without_touching_anything_else() {
+    let mut a = Automation::new();
+    let id = ok(&mut a, "doc_new", json!({ "text": "<a>\n<b/>\r\n</a>" }))["id"].as_u64().expect("id");
+    let text = |a: &mut Automation| ok(a, "doc_text", json!({ "id": id }))["text"].as_str().expect("text").to_owned();
+    let changed = ok(&mut a, "doc_set_line_endings", json!({ "id": id, "eol": "crlf" }));
+    assert_eq!(changed["changed"], 1, "only the one LF");
+    assert_eq!(text(&mut a), "<a>\r\n<b/>\r\n</a>");
+    ok(&mut a, "doc_undo", json!({ "id": id }));
+    assert_eq!(text(&mut a), "<a>\n<b/>\r\n</a>");
+    assert!(err(&mut a, "doc_set_line_endings", json!({ "id": id, "eol": "cr" })).contains("eol"), "an ending the editor does not write is refused");
+    let indent = ok(&mut a, "doc_set_indent", json!({ "id": id, "style": "spaces", "size": 4 }));
+    assert_eq!((indent["style"].as_str(), indent["size"].as_u64()), (Some("spaces"), Some(4)));
+    assert_eq!(text(&mut a), "<a>\n<b/>\r\n</a>", "the text is not changed");
+    assert!(err(&mut a, "doc_set_indent", json!({ "id": id, "style": "tabs", "size": 99 })).contains("size"));
+}

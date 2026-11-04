@@ -302,8 +302,8 @@ milestone = "M1"
 status = "partial"
 commands = []
 tools = ["doc_set_encoding"]
-evidence = ["crates/text/src/encoding.rs::any_bytes_are_either_flagged_or_written_back_identically", "crates/ui-egui/tests/documents.rs::a_latin_1_file_stays_latin_1"]
-notes = "UTF-8, UTF-16 (both orders) and legacy encodings are read, shown in the status bar and written back; a character the encoding cannot hold offers character references or UTF-8. Not yet: reloading as, or converting to, another encoding on request. ISO-8859-1 is read as windows-1252."
+evidence = ["crates/ui-egui/tests/status_pickers.rs::the_encoding_menu_changes_how_the_file_is_written", "crates/text/src/encoding.rs::any_bytes_are_either_flagged_or_written_back_identically", "crates/ui-egui/tests/documents.rs::a_latin_1_file_stays_latin_1"]
+notes = "UTF-8, UTF-16 (both orders) and legacy encodings are read, shown in the status bar and written back; a character the encoding cannot hold offers character references or UTF-8. The status bar's encoding menu (and `doc_set_encoding`) changes how the file is written from now on, bringing the XML declaration in line. Not yet: reloading the file as another encoding (to repair one that was misdetected). ISO-8859-1 is read as windows-1252."
 
 [[feature]]
 id = "editor.line-endings"
@@ -313,9 +313,9 @@ tier = "P0"
 milestone = "M1"
 status = "partial"
 commands = []
-tools = ["doc_open"]
-evidence = ["crates/engine/src/document.rs::new_lines_use_the_files_line_ending_and_its_indentation", "crates/ui-egui/tests/documents.rs::typing_and_saving_keep_the_encoding_the_byte_order_mark_and_the_line_endings", "crates/engine/src/document.rs::a_character_the_encoding_cannot_hold_is_reported_and_becomes_a_reference_in_the_text"]
-notes = "LF, CRLF and CR are detected, kept, used for new lines, and shown (including mixed). Not yet: converting a file's line endings."
+tools = ["doc_open", "doc_set_line_endings"]
+evidence = ["crates/editor/src/line_endings.rs::only_the_breaks_that_differ_are_changed_in_one_undoable_step", "crates/ui-egui/tests/status_pickers.rs::the_line_ending_menu_converts_the_file_in_one_undoable_step", "crates/automation/tests/documents.rs::line_endings_and_indentation_are_set_without_touching_anything_else", "crates/engine/src/document.rs::new_lines_use_the_files_line_ending_and_its_indentation", "crates/ui-egui/tests/documents.rs::typing_and_saving_keep_the_encoding_the_byte_order_mark_and_the_line_endings", "crates/engine/src/document.rs::a_character_the_encoding_cannot_hold_is_reported_and_becomes_a_reference_in_the_text"]
+notes = "LF, CRLF and CR are detected, kept, used for new lines, and shown (including mixed). The status bar's line-ending menu (and `doc_set_line_endings`) converts the whole file to LF or CRLF as one undoable edit that rewrites only the breaks that differ (a lone CR counts as a break). Not yet: converting to CR (the editor shows a CR file as one line), and a per-file default in Preferences."
 
 [[feature]]
 id = "editor.byte-faithful-save"
@@ -571,8 +571,8 @@ milestone = "M1"
 status = "partial"
 commands = []
 tools = []
-evidence = ["crates/ui-egui/src/chrome.rs::the_status_summary_describes_the_caret_and_the_file", "crates/ui-egui/tests/analysis.rs::a_well_formed_document_says_so"]
-notes = "Caret line and column, selection size, encoding, line ending and indentation, and a well-formedness badge (problems found, or Well-formed). No schema association or clickable encoding and line-ending switchers yet."
+evidence = ["crates/ui-egui/tests/status_pickers.rs::the_encoding_menu_changes_how_the_file_is_written", "crates/ui-egui/tests/status_pickers.rs::the_indentation_menu_changes_how_new_lines_are_indented_and_not_the_text", "crates/ui-egui/src/chrome.rs::the_status_summary_describes_the_caret_and_the_file", "crates/ui-egui/tests/analysis.rs::a_well_formed_document_says_so"]
+notes = "Caret line and column, selection size, encoding, line ending and indentation, and a well-formedness badge (problems found, or Well-formed). The encoding, the line ending and the indentation are menus (M1.12): UTF-8, UTF-8 with BOM, UTF-16 LE/BE with BOM or Windows-1252; convert to LF or CRLF; 2, 4 or 8 spaces or tabs for new lines (a setting of that document). No schema or validity chip yet (the header has them)."
 
 [[feature]]
 id = "view.command-palette"
