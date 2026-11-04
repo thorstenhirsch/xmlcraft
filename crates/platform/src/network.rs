@@ -12,8 +12,8 @@
 
 #[cfg(any(test, not(target_arch = "wasm32")))]
 use std::ffi::OsString;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use xmlcraft_resolve::{Buffers, Clock, Environment, Fetcher, FileAccess, Policy, Resolver, ResourceCache};
 
@@ -47,6 +47,8 @@ struct Inner {
     offline: AtomicBool,
     /// `XMLCRAFT_OFFLINE` was on when the network was made.
     forced: bool,
+    /// The catalogs the person named (locations), consulted before the ones that ship with the app.
+    user_catalogs: Mutex<Vec<String>>,
 }
 
 /// How a download is made, how long a copy is kept, and whether it is allowed now. Clones share the offline switch.
@@ -82,7 +84,7 @@ impl Network {
     }
 
     fn build(fetcher: Option<Arc<dyn Fetcher>>, cache: Option<Arc<dyn ResourceCache>>, clock: Arc<dyn Clock>, forced: bool) -> Self {
-        Self { inner: Arc::new(Inner { fetcher, cache, clock, offline: AtomicBool::new(false), forced }) }
+        Self { inner: Arc::new(Inner { fetcher, cache, clock, offline: AtomicBool::new(false), forced, user_catalogs: Mutex::new(Vec::new()) }) }
     }
 
     /// Work offline (or stop doing so): seen by every clone, and by the resolvers made from now on.
@@ -93,6 +95,28 @@ impl Network {
     /// Whether nothing is downloaded now: the switch is on, `XMLCRAFT_OFFLINE` is, or there is no client.
     pub fn is_offline(&self) -> bool {
         self.inner.forced || !self.can_download() || self.inner.offline.load(Ordering::Relaxed)
+    }
+
+    /// Use these catalogs (paths of OASIS catalog files) from now on, before the bundled ones: seen by the resolvers made after this. What
+    /// a catalog names with a relative location is found next to the catalog.
+    pub fn set_user_catalogs(&self, catalogs: Vec<String>) {
+        let uris = catalogs.iter().map(|path| crate::file_uri::uri_of(path)).collect();
+        *self.inner.user_catalogs.lock().unwrap_or_else(PoisonError::into_inner) = uris;
+    }
+
+    /// The catalogs the person named.
+    pub fn user_catalogs(&self) -> Vec<String> {
+        self.inner.user_catalogs.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
+
+    /// How much the download cache holds (nothing, when there is none).
+    pub fn cache_stats(&self) -> xmlcraft_resolve::CacheStats {
+        self.inner.cache.as_ref().map(|c| c.stats()).unwrap_or_default()
+    }
+
+    /// Delete every downloaded copy; how many there were.
+    pub fn clear_cache(&self) -> usize {
+        self.inner.cache.as_ref().map_or(0, |c| c.clear())
     }
 
     /// Whether `XMLCRAFT_OFFLINE` was on when this network was made (the switch cannot turn downloading on then).
@@ -117,7 +141,7 @@ impl Network {
         let env =
             Environment { buffers, files, fetcher: self.inner.fetcher.clone(), cache: self.inner.cache.clone(), clock: self.inner.clock.clone() };
         let offline = self.is_offline();
-        Resolver::new(env, Policy { offline, ..Policy::default() }, &[])
+        Resolver::new(env, Policy { offline, ..Policy::default() }, &self.user_catalogs())
     }
 }
 
@@ -172,6 +196,45 @@ mod tests {
         // Online again.
         network.set_offline(false);
         assert_eq!(resolve(&network, "http://example.com/b.xsd"), Ok(Origin::Network));
+    }
+
+    #[test]
+    fn the_cache_says_what_it_holds_and_can_be_cleared() {
+        let mock = Arc::new(Mock { asked: Mutex::new(Vec::new()) });
+        let network = Network::new(Some(mock.clone()), Some(Arc::new(MemoryCache::new())), Arc::new(FixedClock(1000)));
+        assert_eq!(network.cache_stats().entries, 0);
+        assert_eq!(resolve(&network, "http://example.com/a.xsd"), Ok(Origin::Network));
+        assert_eq!(resolve(&network, "http://example.com/b.xsd"), Ok(Origin::Network));
+        let stats = network.cache_stats();
+        assert_eq!(stats.entries, 2);
+        assert!(stats.bytes > 0);
+        assert_eq!(network.clear_cache(), 2);
+        assert_eq!(network.cache_stats().entries, 0);
+        // Asked for again, it is downloaded again.
+        assert_eq!(resolve(&network, "http://example.com/a.xsd"), Ok(Origin::Network));
+        // A network with no cache has nothing to say and nothing to clear.
+        let none = Network::offline();
+        assert_eq!((none.cache_stats().entries, none.clear_cache()), (0, 0));
+    }
+
+    #[test]
+    fn a_catalog_the_person_named_finds_what_the_bundle_and_the_web_do_not() {
+        let dir = tempfile::tempdir().expect("dir");
+        let schema = dir.path().join("mine.xsd");
+        std::fs::write(&schema, "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"/>").expect("writes");
+        let catalog = dir.path().join("catalog.xml");
+        std::fs::write(
+            &catalog,
+            "<catalog xmlns=\"urn:oasis:names:tc:entity:xmlns:xml:catalog\"><uri name=\"urn:mine:schema\" uri=\"mine.xsd\"/></catalog>",
+        )
+        .expect("writes");
+        let network = Network::offline();
+        assert!(resolve(&network, "urn:mine:schema").is_err(), "nothing knows the name yet");
+        network.set_user_catalogs(vec![catalog.to_string_lossy().into_owned()]);
+        assert_eq!(network.user_catalogs().len(), 1);
+        assert_eq!(resolve(&network, "urn:mine:schema"), Ok(Origin::File));
+        network.set_user_catalogs(Vec::new());
+        assert!(resolve(&network, "urn:mine:schema").is_err(), "and not any more");
     }
 
     #[test]

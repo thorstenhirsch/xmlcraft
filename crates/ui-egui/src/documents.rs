@@ -236,15 +236,21 @@ impl XmlCraftApp {
         self.finish_waiting();
     }
 
+    /// What was asked for a schema or a DTD is asked for again (what the answer depends on, such as the catalogs or the downloads, changed
+    /// without the text having).
+    pub(crate) fn forget_schema_requests(&mut self) {
+        for view in self.views.values_mut() {
+            view.helpers.forget_requests();
+            view.auto.requested = None;
+        }
+    }
+
     /// Work offline, or stop doing so (XML ▸ Work Offline). What was asked for before is asked for again: a schema that could not be
     /// found while offline may be downloaded now, and one that was downloaded is no longer needed to be.
     pub(crate) fn set_work_offline(&mut self, offline: bool) {
         self.work_offline = offline;
         self.network.set_offline(offline);
-        for view in self.views.values_mut() {
-            view.helpers.forget_requests();
-            view.auto.requested = None;
-        }
+        self.forget_schema_requests();
         if !offline && self.network.offline_by_environment() {
             self.status = tl!("XMLCRAFT_OFFLINE is set, so nothing is downloaded.").to_owned();
         }

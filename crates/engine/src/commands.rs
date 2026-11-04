@@ -220,6 +220,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("edit.fold_level_1", "Fold Level 1", EDIT, None, Needs::Document, "chevron-right"),
     c("edit.fold_level_2", "Fold Level 2", EDIT, None, Needs::Document, "chevron-right"),
     c("edit.fold_level_3", "Fold Level 3", EDIT, None, Needs::Document, "chevron-right"),
+    c("app.preferences", "Preferences…", EDIT, Some(Shortcut::cmd("Comma")), Nothing, "settings").sep(),
     c("xml.check", "Check Well-formedness", XML, Some(Shortcut::key("F7")), Needs::Document, "file-check"),
     c("xml.validate", "Validate", XML, Some(Shortcut::key("F8")), Needs::Document, "shield-check"),
     c("xml.validate_typing", "Validate While Typing", XML, None, Nothing, "shield-check").toggle(),
@@ -362,7 +363,8 @@ mod tests {
                 "edit.unfold_all",
                 "edit.fold_level_1",
                 "edit.fold_level_2",
-                "edit.fold_level_3"
+                "edit.fold_level_3",
+                "app.preferences"
             ]
         );
         assert_eq!(

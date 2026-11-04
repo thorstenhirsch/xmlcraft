@@ -30,6 +30,21 @@ impl CacheEntry {
 pub trait ResourceCache: Send + Sync {
     fn get(&self, url: &str) -> Option<CacheEntry>;
     fn put(&self, entry: CacheEntry);
+    /// How much is kept (a cache that cannot tell says nothing is).
+    fn stats(&self) -> CacheStats {
+        CacheStats::default()
+    }
+    /// Forget everything; how many copies there were. A cache that cannot is left as it is.
+    fn clear(&self) -> usize {
+        0
+    }
+}
+
+/// What a cache holds.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CacheStats {
+    pub entries: usize,
+    pub bytes: u64,
 }
 
 /// A cache that lives as long as the program.
@@ -61,5 +76,17 @@ impl ResourceCache for MemoryCache {
     fn put(&self, entry: CacheEntry) {
         let mut entries = self.entries.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         entries.insert(entry.url.clone(), entry);
+    }
+
+    fn stats(&self) -> CacheStats {
+        let entries = self.entries.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        CacheStats { entries: entries.len(), bytes: entries.values().map(|e| e.body.len() as u64).fold(0, u64::saturating_add) }
+    }
+
+    fn clear(&self) -> usize {
+        let mut entries = self.entries.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let before = entries.len();
+        entries.clear();
+        before
     }
 }
