@@ -395,11 +395,11 @@ title = "Hover documentation, types and diagnostics"
 area = "A"
 tier = "P1"
 milestone = "M2"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/tests/problems.rs::the_pointer_resting_on_a_mistake_shows_its_message", "crates/ui-egui/tests/problems.rs::what_is_wrong_at_a_place_is_what_the_hover_tip_says"]
+notes = "Resting the pointer on text that has a problem shows its message (up to four, the well-formedness ones first, an icon for the severity) in a tip, for well-formedness and, once validated (F8), validity problems of the document; text edited since the analysis shows nothing rather than a tip in the wrong place. Missing: the schema's documentation and type of the element or attribute under the pointer (a tip needs the grammar at that place), tips for problems in other files, and a headless tool (the messages are the ones `xml_check` and `xml_validate` return)."
 
 [[feature]]
 id = "editor.snippets"
