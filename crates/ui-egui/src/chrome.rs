@@ -239,13 +239,19 @@ pub fn command_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
 
 /// Generate…: a schema from the document (the main part), or a sample document from it (the choices behind the arrow).
 fn generate_button(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool) {
-    let (main, more) = if compact {
-        let main = icons::button(ui, "file-code", 32.0, false, tl!("Generate Schema…"));
-        (main.clone(), main)
-    } else {
-        kit::split_pill(ui, Some("sparkles"), tl!("Generate…"), tl!("More generators"))
-    };
-    if main.clicked() && !compact {
+    if compact {
+        // Two buttons, so that the schema is one click away and the sample is reachable too.
+        for (id, icon) in [("xml.generate_schema", "file-code"), ("xml.generate_sample", "sparkles")] {
+            let Some(spec) = xmlcraft_engine::commands::command(id) else { continue };
+            let enabled = app.command_enabled(spec);
+            if ui.add_enabled_ui(enabled, |ui| icons::button(ui, icon, 32.0, false, tl!(spec.label))).inner.clicked() {
+                app.execute(id);
+            }
+        }
+        return;
+    }
+    let (main, more) = kit::split_pill(ui, Some("sparkles"), tl!("Generate…"), tl!("More generators"));
+    if main.clicked() {
         app.execute("xml.generate_schema");
     }
     egui::Popup::menu(&more).show(|ui| {
@@ -277,9 +283,10 @@ fn main_menu(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool) {
 /// The problems of the document being shown, as (errors, warnings): the well-formedness check and, when it has been asked for, the
 /// validation.
 pub(crate) fn problem_counts(app: &XmlCraftApp) -> (usize, usize) {
-    let (mut errors, warnings) = app.active_analysis().map_or((0, 0), |a| (a.error_count(), a.warning_count()));
+    let (mut errors, mut warnings) = app.active_analysis().map_or((0, 0), |a| (a.error_count(), a.warning_count()));
     if let Some(v) = app.active_validation() {
         errors += v.error_count();
+        warnings += v.warning_count();
     }
     (errors, warnings)
 }

@@ -652,8 +652,17 @@ fn handle_pointer(
 fn handle_events(ui: &mut Ui, editor: &mut Editor, view: &mut ViewState, mac: bool, read_only: bool, page: usize, now: f64, focused: bool) {
     // Text that arrives with or after marked text, or as an input method's commit, is the input method's: typing aids (a quote in a tag
     // is paired) are for the keyboard. (The composer hands a commit with nothing composing over as plain text, so it is looked for here.)
-    let commit = ui.input(|i| i.events.iter().any(|e| matches!(e, Event::Ime(egui::ImeEvent::Commit(_)))));
-    let mut from_input_method = view.composer.is_composing() || commit;
+    // Per text: an insertion that is one of this frame's commits is the input method's; a key pressed in the same frame is not.
+    let mut commits: Vec<String> = ui.input(|i| {
+        i.events
+            .iter()
+            .filter_map(|e| match e {
+                Event::Ime(egui::ImeEvent::Commit(text)) => Some(text.clone()),
+                _ => None,
+            })
+            .collect()
+    });
+    let mut from_input_method = view.composer.is_composing();
     let edits = view.composer.update(ui.ctx(), focused && !read_only);
     for edit in edits {
         // The kind only: what was typed or pasted is the user's document, and a debug log gets shared.
@@ -672,9 +681,10 @@ fn handle_events(ui: &mut Ui, editor: &mut Editor, view: &mut ViewState, mac: bo
         match edit {
             ImeEdit::Preedit { .. } => from_input_method = true,
             ImeEdit::Insert(text) => {
+                let committed = commits.iter().position(|c| *c == text).map(|i| commits.remove(i)).is_some();
                 let text: String = text.chars().filter(|c| !c.is_control()).collect();
                 if !text.is_empty() {
-                    if from_input_method {
+                    if from_input_method || committed {
                         editor.type_text(&text);
                     } else {
                         editor.type_input(&text);

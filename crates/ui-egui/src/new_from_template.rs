@@ -46,7 +46,8 @@ impl XmlCraftApp {
                 _ => None,
             },
         );
-        if action.is_none() && closed {
+        if closed {
+            // The header's close button wins over an Enter pressed in the same frame.
             action = Some(Action::Cancel);
         }
         match (action, &dialog) {

@@ -43,6 +43,13 @@ mod tests {
         ("egui-winit", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
         ("egui-wgpu", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
         ("eframe", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("ecolor", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("emath", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("epaint", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("epaint_default_fonts", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("egui_glow", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("egui_extras", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("egui_kittest", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
         ("winit", "https://github.com/storytold/winit.git", "a517b3846ee8457d84ee4975110bfda6797c44dc"),
     ];
 

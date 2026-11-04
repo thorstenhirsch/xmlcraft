@@ -465,7 +465,7 @@ fn the_home_view_lists_the_files_opened_lately_and_a_click_opens_one() {
     let dir = tempfile::tempdir().expect("dir");
     let (a, b) = (file(dir.path(), "alpha.xml", b"<alpha/>"), file(dir.path(), "beta.xml", b"<beta/>"));
     let mut h = shell();
-    assert!(h.query_by_label("Recent").is_none(), "nothing has been opened yet");
+    assert!(h.query_by_label("Files you open appear here").is_some(), "nothing has been opened yet");
     open(&mut h, &a);
     open(&mut h, &b);
     // Close both: the home view is shown, with the newest first.
@@ -493,5 +493,5 @@ fn the_home_view_lists_the_files_opened_lately_and_a_click_opens_one() {
     h.state_mut().execute("file.clear_recent");
     h.run_steps(3);
     assert!(h.state().recent_files().is_empty());
-    assert!(h.query_by_label("Recent").is_none());
+    assert!(h.query_by_label("Files you open appear here").is_some(), "the empty list says so");
 }

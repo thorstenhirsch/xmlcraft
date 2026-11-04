@@ -123,7 +123,7 @@ impl XmlCraftApp {
 fn form_ui(ui: &mut egui::Ui, form: &mut AboutForm) -> bool {
     let t = Tokens::get(ui.ctx());
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 14.0;
+        ui.spacing_mut().item_spacing.x = kit::GAP_GROUP;
         ui.add(egui::Image::new(egui::include_image!("../../../assets/app-icon/xmlcraft.svg")).fit_to_exact_size(vec2(56.0, 56.0)));
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
@@ -132,7 +132,7 @@ fn form_ui(ui: &mut egui::Ui, form: &mut AboutForm) -> bool {
             ui.label(egui::RichText::new("© 2026 Thorsten Hirsch and the XmlCraft contributors").font(theme::regular(12.0)).color(t.text_muted));
         });
     });
-    ui.add_space(8.0);
+    ui.add_space(kit::GAP);
     ui.add(
         egui::Label::new(
             egui::RichText::new(tl!(

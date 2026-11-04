@@ -59,7 +59,8 @@ fn the_keys_step_from_one_problem_to_the_next_and_round() {
     let errors = h.state().problems().expect("analysed").0;
     assert!(errors >= 3, "{errors} errors");
     h.state_mut().session.active_document_mut().expect("shown").editor_mut().place_caret(0, false);
-    let lines = starts_of_lines(BROKEN, &[1, 2, 3, 4, 5, 6, 7]);
+    let starts = starts_of_lines(BROKEN, &[2, 3, 4, 5, 6, 7]);
+    let wrong_lines = [(starts[0], starts[1]), (starts[2], starts[3]), (starts[4], starts[5])];
     // Each step lands on a line that has a mistake, going forward through the text.
     let mut seen = Vec::new();
     for _ in 0..errors {
@@ -68,7 +69,7 @@ fn the_keys_step_from_one_problem_to_the_next_and_round() {
         seen.push(caret(&h));
     }
     assert!(seen.windows(2).all(|w| w[0] < w[1]), "forward: {seen:?}");
-    assert!(seen.iter().all(|c| lines.iter().any(|l| l <= c)), "inside the text");
+    assert!(seen.iter().all(|c| wrong_lines.iter().any(|(from, to)| from <= c && c < to)), "each stop is on line 2, 4 or 6: {seen:?}");
     // Past the last it is the first again.
     assert!(h.state_mut().execute("xml.next_problem"));
     h.run_steps(2);

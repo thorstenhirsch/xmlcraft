@@ -1,8 +1,7 @@
-//! The panes around the document: the Outline on the left, the Entry Helpers on the right behind an icon rail, and the Messages along
-//! the bottom, drawn with craft-ui task panes ([`craft_ui::panes`]) like PdfCraft's.
+//! The panes around the document: the Outline on the left, the Entry Helpers on the right and the Problems along the bottom, drawn with
+//! craft-ui task panes ([`craft_ui::panes`]) like PdfCraft's. The rail that opens them is on the left edge (`chrome::activity_rail`).
 //!
-//! On the right, outermost first: the rail, then the open pane, then the document. Panes are docked only; their sizes are
-//! resizable and saved with the preferences.
+//! Panes are docked only; their sizes are resizable and saved with the preferences.
 
 use std::ops::RangeInclusive;
 
@@ -51,7 +50,7 @@ impl Pane {
     }
 }
 
-/// What the rail on the right can open.
+/// What the pane on the right can show.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RightPanel {
     EntryHelpers,
@@ -290,7 +289,7 @@ fn outline_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     }
 }
 
-/// Draws the rail and the open panes. Call after the top and bottom bars and before the central panel.
+/// Draws the open panes (the rail that opens them is `chrome::activity_rail`). Call after the top and bottom bars and before the central panel.
 pub fn show(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
     let open = open_panes(app);
     if open.is_empty() {

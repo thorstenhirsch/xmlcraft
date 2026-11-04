@@ -92,6 +92,10 @@ fn the_rail_toggles_the_panes() {
     h.get_by_label("Toggle Problems").click();
     h.run_steps(3);
     assert!(!h.state().bottom_open);
+    let outline = h.state().left_open;
+    h.get_by_label("Toggle Outline").click();
+    h.run_steps(3);
+    assert_eq!(h.state().left_open, !outline, "the Outline toggles too");
 }
 
 #[test]

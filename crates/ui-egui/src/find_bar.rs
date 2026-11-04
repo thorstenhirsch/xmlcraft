@@ -208,8 +208,9 @@ impl XmlCraftApp {
             return;
         }
         let t = Tokens::get(ui.ctx());
-        // The two fields are the same width, so that they line up; they give way in a narrow window.
-        let field_width = (ui.available_width() - 420.0).clamp(120.0, 340.0);
+        // The two fields are the same width, so that they line up; they give way in a narrow window, down to a few characters, so that the
+        // buttons after them stay in reach (the rest of a row is about 350 points).
+        let field_width = (ui.available_width() - 420.0).clamp(48.0, 340.0);
         let before = self.find.current_query();
         let stats = self.find_summary();
         let error = self.find.error();

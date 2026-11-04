@@ -124,6 +124,17 @@ pub(crate) fn step_from(starts: &[usize], caret: usize, delta: isize) -> Option<
 }
 
 impl XmlCraftApp {
+    /// Mark the problem that starts at `start` in the document being shown as the one last gone to.
+    fn select_problem(&mut self, start: usize) {
+        self.problem_selected = self.session.active_document().map(|d| (d.id(), start));
+    }
+
+    /// Where the problem last gone to starts, in the document being shown (None when it was gone to in another document).
+    fn selected_problem(&self) -> Option<usize> {
+        let id = self.session.active_document()?.id();
+        self.problem_selected.filter(|(doc, _)| *doc == id).map(|(_, start)| start)
+    }
+
     /// Go to the next (`delta` 1) or the previous (`delta` -1) problem in the text, wrapping round, and say which it is.
     pub(crate) fn step_problem(&mut self, delta: isize) {
         let problems = collect(self);
@@ -137,7 +148,14 @@ impl XmlCraftApp {
         // From the start of the selection: after a jump the selection is the problem, and the one before it is before its start.
         let Some(caret) = self.session.active_document().map(|d| d.editor().primary().start()) else { return };
         let Some(start) = step_from(&starts, caret, delta) else {
-            self.status = tl!("There are no problems.").to_owned();
+            self.status = if !problems.is_empty() {
+                tl!("The problems listed are in other files.")
+            } else if self.active_analysis().is_none() {
+                tl!("The document has not been checked yet.")
+            } else {
+                tl!("There are no problems.")
+            }
+            .to_owned();
             return;
         };
         let Some((span, message)) =
@@ -148,7 +166,7 @@ impl XmlCraftApp {
         let number = starts.iter().position(|s| *s == start).map_or(1, |i| i + 1);
         self.status =
             fmt(tl!("Problem {n} of {total}: {message}"), &[("n", &number.to_string()), ("total", &starts.len().to_string()), ("message", &message)]);
-        self.problem_selected = Some(start);
+        self.select_problem(start);
         self.jump_to(span);
     }
 }
@@ -178,7 +196,7 @@ fn lines(problems: &[Problem], filter: Filter) -> Vec<Line> {
 pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     let t = Tokens::get(ui.ctx());
     if app.session.active_document().is_none() {
-        widgets::empty_state(ui, 6.0, tl!("No messages"), tl!("Well-formedness and validation results appear here."));
+        widgets::empty_state(ui, 6.0, tl!("No problems"), tl!("Well-formedness and validation results appear here."));
         return;
     }
     let Some(analysis) = app.active_analysis() else {
@@ -232,7 +250,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     }
     let syntax = SyntaxTokens::for_kind(t.kind);
     let mut clicked = None;
-    let selected = app.problem_selected;
+    let selected = app.selected_problem();
     egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, ROW, lines.len(), |ui, range| {
         for line in lines.get(range).unwrap_or_default() {
             let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), Sense::click());
@@ -254,7 +272,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
                     let is_selected = problem.jump.as_ref().is_some_and(|j| Some(j.start) == selected);
                     if is_selected {
                         ui.painter().rect_filled(row, 6.0, t.accent_soft);
-                    } else if response.hovered() {
+                    } else if response.hovered() && problem.jump.is_some() {
                         ui.painter().rect_filled(row, 6.0, t.hover);
                     }
                     let (icon, color) = match problem.severity {
@@ -278,7 +296,9 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
                         theme::regular(12.5),
                         t.text,
                     );
-                    if theme::hand(response).clicked() {
+                    // A problem in another file cannot be gone to: no pointer for it.
+                    let response = if problem.jump.is_some() { theme::hand(response) } else { response };
+                    if response.clicked() {
                         clicked = Some((problem.jump.clone(), problem.message.clone()));
                     }
                 }
@@ -289,7 +309,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
         app.step_problem(step);
     }
     if let Some((Some(span), _)) = clicked {
-        app.problem_selected = Some(span.start);
+        app.select_problem(span.start);
         app.jump_to(span);
     }
 }

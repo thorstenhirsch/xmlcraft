@@ -45,18 +45,45 @@ fn quoted(text: &str) -> Vec<&str> {
 /// A short name for the DTD a DOCTYPE declaration names: the file of its system identifier, else its public identifier, else that it is
 /// declared in the document.
 pub(crate) fn dtd_label(doctype: &str) -> String {
+    let (has_system, has_public) = external_id_keywords(doctype);
     let strings = quoted(doctype);
-    let system = doctype
-        .contains("SYSTEM")
-        .then(|| strings.first().copied())
-        .flatten()
-        .or_else(|| doctype.contains("PUBLIC").then(|| strings.get(1).copied()).flatten());
+    let system = if has_system {
+        strings.first().copied()
+    } else if has_public {
+        strings.get(1).copied()
+    } else {
+        None
+    };
     let file = system.and_then(|s| s.rsplit('/').next()).filter(|f| !f.is_empty());
     match (file, strings.first()) {
         (Some(file), _) => file.to_owned(),
-        (None, Some(public)) if doctype.contains("PUBLIC") => (*public).to_owned(),
+        (None, Some(public)) if has_public => (*public).to_owned(),
         _ => tl!("declared in the document").to_owned(),
     }
+}
+
+/// Whether the DOCTYPE's external identifier starts with SYSTEM or with PUBLIC: the keywords outside the quoted literals and before the
+/// internal subset, so that a `SYSTEM` inside a public identifier or an entity declaration is not taken for one.
+fn external_id_keywords(doctype: &str) -> (bool, bool) {
+    let mut outside = String::new();
+    let mut quote = None;
+    for c in doctype.chars() {
+        match quote {
+            Some(q) => {
+                if c == q {
+                    quote = None;
+                }
+            }
+            None if c == '"' || c == '\'' => {
+                quote = Some(c);
+                outside.push(' ');
+            }
+            None if c == '[' => break,
+            None => outside.push(c),
+        }
+    }
+    let words: Vec<&str> = outside.split(|c: char| !c.is_ascii_alphanumeric()).collect();
+    (words.contains(&"SYSTEM"), words.contains(&"PUBLIC"))
 }
 
 /// A short name for the schema a hint names: the file of its location, else its namespace.
@@ -90,7 +117,14 @@ fn grammar_chip(app: &XmlCraftApp) -> Option<GrammarChip> {
         return Some(GrammarChip {
             kind: Some(GrammarKind::Dtd),
             tone: if loaded { Tone::Accent } else { Tone::Neutral },
-            tip: fmt(tl!("This document is checked against the DTD {name}. Click to assign another."), &[("name", &label)]),
+            tip: if loaded {
+                fmt(tl!("This document is checked against the DTD {name}. Click to assign another."), &[("name", &label)])
+            } else {
+                fmt(
+                    tl!("The DTD {name} could not be loaded, so the document is not checked against it. Click to assign another."),
+                    &[("name", &label)],
+                )
+            },
             label,
         });
     }
@@ -219,6 +253,9 @@ fn breadcrumb(ui: &mut egui::Ui, path: &[(String, Option<String>, Range<usize>)]
     let t = Tokens::get(ui.ctx());
     let mut jump = None;
     let skipped = path.len().saturating_sub(MAX_CRUMBS);
+    let shown = path.len().saturating_sub(skipped).max(1);
+    // What one crumb may take: the room, less the "…" and a separator for each crumb, shared out.
+    let share = ((room - 24.0 - 14.0 * shown as f32) / shown as f32 - 12.0).max(40.0);
     ui.allocate_ui_with_layout(vec2(room, HEADER_HEIGHT - 8.0), Layout::left_to_right(Align::Center), |ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         if skipped > 0 {
@@ -242,13 +279,19 @@ fn breadcrumb(ui: &mut egui::Ui, path: &[(String, Option<String>, Range<usize>)]
                 Some(label) if last => format!("{name}  {label}"),
                 _ => name.clone(),
             };
-            let galley = ui.painter().layout_no_wrap(text.clone(), font, if last { t.text } else { t.text_muted });
+            // Each crumb gets an equal share of the room at most; a longer name is elided (and shown whole on hover).
+            let colour = if last { t.text } else { t.text_muted };
+            let mut job = egui::text::LayoutJob::simple_singleline(text.clone(), font, colour);
+            job.wrap = egui::text::TextWrapping { max_width: share, max_rows: 1, break_anywhere: true, ..Default::default() };
+            let galley = ui.painter().layout_job(job);
+            let elided = galley.elided;
             let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 12.0, 24.0), Sense::click());
             let name = fmt(tl!("Select element {name}"), &[("name", &text)]);
             resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
             let press = theme::Press::track(ui, &resp);
             press.wash(ui, rect, 6, false);
             ui.painter().galley(rect.center() - galley.size() / 2.0 + press.offset(), galley, if last { t.text } else { t.text_muted });
+            let resp = if elided { resp.on_hover_text(&text) } else { resp };
             if theme::hand(resp).clicked() {
                 jump = Some(range.clone());
             }
@@ -296,6 +339,12 @@ mod tests {
         assert_eq!(dtd_label("<!DOCTYPE r PUBLIC \"-//X//DTD R//EN\">"), "-//X//DTD R//EN");
         assert_eq!(dtd_label("<!DOCTYPE r [<!ELEMENT r EMPTY>]>"), "declared in the document");
         assert_eq!(dtd_label("<!DOCTYPE r SYSTEM 'a/b/'>"), "declared in the document", "no file name in it");
+        assert_eq!(
+            dtd_label("<!DOCTYPE r PUBLIC \"-//X//SYSTEM R//EN\" \"http://x/r.dtd\">"),
+            "r.dtd",
+            "SYSTEM inside a public identifier is not the keyword"
+        );
+        assert_eq!(dtd_label("<!DOCTYPE r [<!ENTITY e SYSTEM \"e.txt\">]>"), "declared in the document", "an entity is not the DTD");
         assert_eq!(dtd_label(""), "declared in the document");
         assert_eq!(dtd_label("<!DOCTYPE r SYSTEM \"unterminated"), "declared in the document");
     }

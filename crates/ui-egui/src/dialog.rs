@@ -65,7 +65,9 @@ fn icon_of(dialog: &Dialog) -> (&'static str, Tone) {
         Dialog::OverwriteChanged { .. } | Dialog::Unmappable { .. } | Dialog::Lossy { .. } => ("triangle-alert", Tone::Warn),
         Dialog::ConfirmRevert { .. } => ("undo-2", Tone::Warn),
         Dialog::GoToLine => ("text-cursor-input", Tone::Accent),
-        Dialog::Reload { .. } | Dialog::Message { .. } => ("info", Tone::Accent),
+        Dialog::Reload { .. } => ("info", Tone::Accent),
+        // Messages report a failure (a file that could not be saved or read).
+        Dialog::Message { .. } => ("circle-x", Tone::Bad),
         _ => ("info", Tone::Neutral),
     }
 }

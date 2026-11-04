@@ -322,7 +322,7 @@ fn layout_cards(ui: &mut egui::Ui, layout: &mut Layout) {
         for (value, title, text) in cards {
             let (rect, response) = ui.allocate_exact_size(egui::vec2(width, 96.0), egui::Sense::click());
             let selected = *layout == value;
-            response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, enabled, selected, title));
+            response.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, enabled, selected, title));
             let press = theme::Press::track(ui, &response);
             let fill = if selected { t.accent_soft } else { press.fill(t.card, t.hover, t.pressed) };
             let edge = if selected { t.accent } else { t.border.lerp_to_gamma(t.text_muted, press.hover * 0.4) };
