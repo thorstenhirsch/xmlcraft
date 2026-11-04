@@ -31,7 +31,8 @@ impl XmlCraftApp {
             }
             StatusChoice::Encoding(encoding, bom) => {
                 if doc.set_encoding(encoding, bom) {
-                    self.status = fmt(tl!("The file will be saved as {name}"), &[("name", encoding.name())]);
+                    let name = if bom { format!("{} BOM", encoding.name()) } else { encoding.name().to_owned() };
+                    self.status = fmt(tl!("The file will be saved as {name}"), &[("name", &name)]);
                 }
             }
         }

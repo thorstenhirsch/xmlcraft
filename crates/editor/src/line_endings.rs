@@ -58,6 +58,21 @@ mod eol_tests {
     }
 
     #[test]
+    fn undoing_a_conversion_brings_back_the_ending_new_lines_are_written_with() {
+        let mut e = Editor::new("<a>\n<b/>\n</a>");
+        assert_eq!(e.convert_line_endings(Eol::CrLf), 2);
+        assert_eq!(e.settings().eol, Eol::CrLf);
+        assert!(e.undo());
+        assert_eq!(e.settings().eol, Eol::Lf, "the text is LF again, and Enter writes LF");
+        assert!(e.redo());
+        assert_eq!(e.settings().eol, Eol::CrLf, "and CRLF again after a redo");
+        assert!(e.undo());
+        e.set_selection(3, 3);
+        e.insert_newline();
+        assert!(!e.text().contains('\r'), "no CRLF in an LF file: {:?}", e.text());
+    }
+
+    #[test]
     fn a_text_that_has_the_ending_already_or_no_breaks_is_not_touched() {
         let mut e = Editor::new("<a>\n<b/>\n</a>");
         let version = e.version();

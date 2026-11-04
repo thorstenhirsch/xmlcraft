@@ -691,5 +691,12 @@ fn line_endings_and_indentation_are_set_without_touching_anything_else() {
     let indent = ok(&mut a, "doc_set_indent", json!({ "id": id, "style": "spaces", "size": 4 }));
     assert_eq!((indent["style"].as_str(), indent["size"].as_u64()), (Some("spaces"), Some(4)));
     assert_eq!(text(&mut a), "<a>\n<b/>\r\n</a>", "the text is not changed");
+    // What Enter writes follows: after a start tag the new line is one level in, with four spaces now, with a tab after the next call.
+    ok(&mut a, "doc_key", json!({ "id": id, "key": "Enter", "line": 1, "column": 4 }));
+    assert!(text(&mut a).starts_with("<a>\n    \n"), "four spaces: {:?}", text(&mut a));
+    ok(&mut a, "doc_undo", json!({ "id": id }));
+    ok(&mut a, "doc_set_indent", json!({ "id": id, "style": "tabs" }));
+    ok(&mut a, "doc_key", json!({ "id": id, "key": "Enter", "line": 1, "column": 4 }));
+    assert!(text(&mut a).starts_with("<a>\n\t\n"), "a tab: {:?}", text(&mut a));
     assert!(err(&mut a, "doc_set_indent", json!({ "id": id, "style": "tabs", "size": 99 })).contains("size"));
 }

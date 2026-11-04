@@ -814,6 +814,11 @@ impl Editor {
                 // Which lines an undo touched is not known here: everything counts as changed.
                 self.log_change(0);
                 self.remap_folds(&applied.edits);
+                // New line breaks are written as the text has most of them: after an undo (or a redo) of an edit that wrote line breaks,
+                // such as converting them, that is what the text is now.
+                if applied.edits.iter().any(|e| e.text.contains(['\r', '\n'])) {
+                    self.settings.eol = line_ending_of(&self.text(), self.settings.eol);
+                }
                 self.set_selections(&applied.selections);
                 true
             }

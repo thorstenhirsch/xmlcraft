@@ -334,7 +334,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
         ToolDef {
             name: "doc_set_indent",
             title: "Set how a document indents",
-            description: "Indent the new lines of an open document (what Enter writes, Tab, and pretty-printing) with `spaces` (of `size`, 1 to 16, default 2) or \
+            description: "Indent the new lines of an open document (what Enter writes, Tab, and pretty-printing) with `spaces` (of `size`, 1 to 16; default: the size the document has now) or \
                           with `tabs`. The text is not changed.",
             input_schema: object(
                 json!({ "id": id.clone(), "style": { "type": "string", "enum": ["spaces", "tabs"] }, "size": { "type": "integer", "minimum": 1, "maximum": 16 } }),
