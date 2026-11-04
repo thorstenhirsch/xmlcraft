@@ -52,8 +52,9 @@ hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT" "$DMG" >/dev/null
 APP="$MOUNT/XmlCraft.app"
 [[ -d "$APP" ]] || fail "XmlCraft.app is not in the disk image"
 [[ -L "$MOUNT/Applications" ]] || fail "the disk image has no Applications shortcut"
-[[ -f "$MOUNT/.background/background.tiff" ]] || fail "the disk image has no window background"
-[[ -f "$MOUNT/.DS_Store" ]] || fail "the disk image has no window layout"
+[[ -s "$MOUNT/.background/background.tiff" ]] || fail "the disk image has no window background"
+# The layout is a binary Finder file; its window settings ('bwsp') and icon positions ('Iloc') are what make the window.
+grep -aq bwsp "$MOUNT/.DS_Store" && grep -aq Iloc "$MOUNT/.DS_Store" || fail "the disk image has no window layout"
 codesign --verify --strict --deep --verbose=1 "$APP"
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 plist() { plutil -extract "$1" raw -o - "$APP/Contents/Info.plist"; }

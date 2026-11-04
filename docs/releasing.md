@@ -35,7 +35,7 @@ Signing runs only when its secrets exist; otherwise the artifact ships unsigned 
 
 ## The macOS disk image
 
-The window Finder shows (artwork, icon positions) is made of three committed files in `packaging/macos/dmg/`; `package.sh` copies them into the image and `verify.sh` checks they are there. How to change them, and why the volume name has no version: `packaging/macos/dmg/README.md`. The two Python helpers there are a packaging-only exception to "Rust only" (approved by the owner, 2026-11-04) and never run in the build.
+The window Finder shows (artwork, icon positions) comes from committed files in `packaging/macos/dmg/`: `package.sh` copies the rendered background (`background.tiff`) and the Finder layout (`dmg-layout.DS_Store`) into the image and `verify.sh` checks them there; `background.svg` is the source artwork and is not shipped. How to change them, and why the volume name has no version: `packaging/macos/dmg/README.md`. The two Python helpers there are a packaging-only exception to "Rust only" (approved by the owner, 2026-11-04) and never run in the build.
 
 ## Known gaps
 

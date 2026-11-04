@@ -4,7 +4,7 @@
 
 Every asset XmlCraft includes, bundles or uses to build its published material, with its author, source and licence. The policy is in [AGENTS.md](AGENTS.md) §1. The machine-readable list, with the SHA-256 of every asset but the translation catalogs, is [ATTRIBUTION.toml](ATTRIBUTION.toml). Licence texts are kept beside the assets and summarised in [NOTICE](NOTICE).
 
-## In this repository (177)
+## In this repository (178)
 
 | Asset | Title | Author | Licence | Source | Used for |
 |---|---|---|---|---|---|
@@ -185,6 +185,7 @@ Every asset XmlCraft includes, bundles or uses to build its published material, 
 | `assets/icons/list.svg` | Lucide icon "list" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/list.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 | `packaging/macos/dmg/background.svg` | XmlCraft macOS DMG window background | XmlCraft contributors (original artwork composed with AI assistance at the project owner's direction) | MIT OR Apache-2.0 | Original work for this repository, written by packaging/macos/dmg/make_background.py; it shows the app icon (assets/app-icon/xmlcraft.svg, referenced via an SVG image element, not copied) and text outlined from Inter and JetBrains Mono (assets/fonts, OFL-1.1) | Finder window of the macOS DMG; rendered to background.tiff by packaging/macos/dmg/generate.py |
 | `packaging/macos/dmg/background.tiff` | XmlCraft macOS DMG window background (rendered) | XmlCraft contributors (rendered from background.svg) | MIT OR Apache-2.0 | Rendered from packaging/macos/dmg/background.svg by packaging/macos/dmg/generate.py (1x and 2x in one HiDPI TIFF; carries LittleCMS's built-in sRGB profile) | Copied into the DMG as .background/background.tiff by packaging/macos/package.sh |
+| `packaging/macos/dmg/dmg-layout.DS_Store` | XmlCraft macOS DMG window layout | XmlCraft contributors (written by packaging/macos/dmg/generate.py) | MIT OR Apache-2.0 | Generated from scratch by packaging/macos/dmg/generate.py (window size, icon size, icon positions, the background alias); it holds nothing from the machine that made it | Copied into the DMG as .DS_Store by packaging/macos/package.sh |
 
 ## Compiled in through dependencies (5)
 
