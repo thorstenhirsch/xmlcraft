@@ -1,6 +1,6 @@
 //! The ⌘K command palette: every registered command with its shortcut, found by a forgiving match.
 
-use egui::{Align2, CornerRadius, Rect, Sense, vec2};
+use egui::{Align2, CornerRadius, Rect, Sense, Stroke, vec2};
 use xmlcraft_engine::commands::{COMMANDS, CommandSpec};
 
 use crate::i18n::tl;
@@ -114,7 +114,9 @@ pub fn show(app: &mut XmlCraftApp, ctx: &egui::Context) {
                         field.request_focus();
                     }
                 });
-                ui.separator();
+                ui.add_space(6.0);
+                ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top(), Stroke::new(1.0, t.divider));
+                ui.add_space(6.0);
                 for (index, hit) in found.iter().enumerate() {
                     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::click());
                     let press = theme::Press::track(ui, &resp);
@@ -124,19 +126,57 @@ pub fn show(app: &mut XmlCraftApp, ctx: &egui::Context) {
                     let label = XmlCraftApp::command_label(hit.spec);
                     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, hit.ready, label));
                     let fg = if hit.ready { t.text } else { t.text_faint };
-                    let detail_font = theme::regular(12.0);
+                    let detail_font = theme::medium(11.5);
                     let detail_w = widgets::text_width(ui, &hit.detail, &detail_font);
-                    ui.painter().text(body.right_center() - vec2(10.0, 0.0), Align2::RIGHT_CENTER, &hit.detail, detail_font, t.text_faint);
-                    ui.painter().text(body.left_center() + vec2(36.0, 0.0), Align2::LEFT_CENTER, label, theme::regular(13.5), fg);
-                    let _ = detail_w;
+                    if hit.spec.shortcut.is_some() {
+                        // The keys, on a keycap.
+                        let cap = Rect::from_center_size(
+                            egui::pos2(body.right() - 12.0 - (detail_w + 14.0) / 2.0, body.center().y),
+                            vec2(detail_w + 14.0, 22.0),
+                        );
+                        ui.painter().rect(cap, 6.0, t.field, Stroke::new(1.0, t.border), egui::StrokeKind::Inside);
+                        ui.painter().text(cap.center(), Align2::CENTER_CENTER, &hit.detail, detail_font, t.text_muted);
+                    } else {
+                        ui.painter().text(
+                            body.right_center() - vec2(12.0, 0.0),
+                            Align2::RIGHT_CENTER,
+                            &hit.detail,
+                            theme::regular(11.5),
+                            t.text_faint,
+                        );
+                    }
+                    let label_rect = Rect::from_min_max(body.min, egui::pos2(body.right() - detail_w - 36.0, body.max.y));
+                    ui.painter().with_clip_rect(label_rect).text(
+                        body.left_center() + vec2(38.0, 0.0),
+                        Align2::LEFT_CENTER,
+                        label,
+                        theme::regular(13.5),
+                        fg,
+                    );
+                    if index == selected {
+                        ui.painter().rect_filled(Rect::from_min_size(rect.min + vec2(0.0, 8.0), vec2(3.0, rect.height() - 16.0)), 2.0, t.accent);
+                    }
                     if theme::hand(resp).clicked() && hit.ready {
                         chosen = Some(hit.spec.id);
                     }
                 }
                 if found.is_empty() {
-                    ui.label(egui::RichText::new(tl!("No matching commands")).color(t.text_muted));
+                    ui.add_space(10.0);
+                    ui.vertical_centered(|ui| {
+                        ui.label(egui::RichText::new(tl!("No matching commands")).font(theme::medium(13.0)).color(t.text_muted))
+                    });
+                    ui.add_space(10.0);
                 }
-                ui.add_space(2.0);
+                // What the keys do.
+                ui.add_space(4.0);
+                ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top(), Stroke::new(1.0, t.divider));
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 14.0;
+                    for hint in [tl!("↑↓ move"), tl!("Enter runs"), tl!("Esc closes")] {
+                        ui.label(egui::RichText::new(hint).font(theme::regular(11.5)).color(t.text_faint));
+                    }
+                });
             });
         });
     ctx.data_mut(|d| d.insert_temp(rect_id, area.response.rect));

@@ -1,11 +1,12 @@
-//! Window chrome: tab strip (with the integrated macOS title bar), mode bar, messages panel and status bar. The layout and the
-//! measurements are PdfCraft's, so the two apps read as one family.
+//! Window chrome: the tab strip (with the integrated macOS title bar), the command bar with the actions that matter for the document, the
+//! activity rail that opens the panes, and the status bar. The measurements are PdfCraft's, so the two apps read as one family.
 
 use egui::{Align, Align2, Color32, CornerRadius, Layout, Rect, Sense, Stroke, vec2};
 
 use crate::i18n::tl;
+use crate::kit::{self, PillKind};
 use crate::theme::{self, ThemePreference, Tokens};
-use crate::{Mode, XmlCraftApp, icons, widgets};
+use crate::{XmlCraftApp, icons, widgets};
 
 /// Height of the tab strip when it doubles as the macOS title bar. AppKit draws the traffic lights itself, centred in the standard
 /// 28 pt title-bar band at the top of the window, and moving them takes AppKit calls the workspace forbids (`unsafe`). So on macOS
@@ -98,6 +99,16 @@ pub fn tab_strip(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
         });
 }
 
+/// The icon of a document by what its name says it is: a schema, a DTD, a stylesheet, or plain XML.
+pub(crate) fn file_icon(name: &str) -> &'static str {
+    match name.rsplit_once('.').map(|(_, extension)| extension.to_ascii_lowercase()).as_deref() {
+        Some("xsd") => "book-open",
+        Some("dtd" | "ent" | "mod") => "file-code",
+        Some("xsl" | "xslt") => "wand-sparkles",
+        _ => "code-xml",
+    }
+}
+
 /// A tab name, at most 28 characters (longer names end in "…").
 pub fn tab_name(name: &str) -> String {
     if name.chars().count() > 28 { format!("{}…", name.chars().take(27).collect::<String>()) } else { name.to_string() }
@@ -128,7 +139,7 @@ fn tab(ui: &mut egui::Ui, t: &Tokens, name: &str, dirty: bool, active: bool, clo
             icons::paint(
                 ui,
                 Rect::from_min_size(rect.min + vec2(6.0, (height - 16.0) / 2.0), vec2(16.0, 16.0)),
-                "file-code",
+                file_icon(name),
                 15.0,
                 if active { t.accent } else { t.text_muted },
             );
@@ -157,28 +168,68 @@ fn tab(ui: &mut egui::Ui, t: &Tokens, name: &str, dirty: bool, active: bool, clo
     theme::hand(resp).on_hover_text(tip)
 }
 
-pub fn mode_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
+/// How wide the window must be for the command bar to write its actions out; narrower, they are icons.
+const COMPACT_BELOW: f32 = 1000.0;
+
+/// An action of the command bar, drawn from the command registry (its icon, its shortcut in the tooltip, disabled when it cannot run).
+/// True when it was clicked.
+fn action(app: &mut XmlCraftApp, ui: &mut egui::Ui, id: &'static str, label: &str, kind: PillKind, compact: bool) -> bool {
+    let Some(spec) = xmlcraft_engine::commands::command(id) else { return false };
+    let enabled = app.command_enabled(spec);
+    let tip = match crate::commands::command_shortcut_label(ui.ctx(), id) {
+        s if s.is_empty() => spec.label.to_owned(),
+        s => format!("{} ({s})", spec.label),
+    };
+    let clicked = ui
+        .add_enabled_ui(enabled, |ui| {
+            if compact && kind != PillKind::Primary {
+                icons::button(ui, spec.icon, 32.0, false, &tip)
+            } else {
+                kit::pill(ui, kind, Some(spec.icon), label).on_hover_text(&tip)
+            }
+        })
+        .inner
+        .clicked();
+    clicked && enabled
+}
+
+pub fn command_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
-    egui::Panel::top("mode_bar")
+    let editing = app.session.active().is_some();
+    egui::Panel::top("command_bar")
         .exact_size(MODE_BAR)
-        .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(10, 0)).stroke(Stroke::new(1.0, t.divider)))
+        .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(12, 0)).stroke(Stroke::new(1.0, t.divider)))
         .show(ui, |ui| {
+            let compact = ui.available_width() < COMPACT_BELOW;
             ui.horizontal_centered(|ui| {
-                ui.spacing_mut().item_spacing.x = 2.0;
-                main_menu(app, ui);
-                ui.add_space(6.0);
-                ui.painter().vline(ui.cursor().left(), ui.max_rect().y_range().shrink(12.0), Stroke::new(1.0, t.divider));
-                ui.add_space(10.0);
-                // The editing views of the active document. Only the text view exists in the first release; Grid, Schema and
-                // Browser views appear here only when they ship.
-                if widgets::mode_tab(ui, tl!("Text"), app.mode == Mode::Text).clicked() {
-                    app.mode = Mode::Text;
+                ui.spacing_mut().item_spacing.x = 6.0;
+                main_menu(app, ui, compact);
+                if editing {
+                    ui.add_space(4.0);
+                    ui.painter().vline(ui.cursor().left(), ui.max_rect().y_range().shrink(12.0), Stroke::new(1.0, t.divider));
+                    ui.add_space(8.0);
+                    // What matters most for an XML document, left to right: say whether it is valid; then change it or what it follows.
+                    if action(app, ui, "xml.validate", tl!("Validate"), PillKind::Primary, compact) {
+                        app.execute("xml.validate");
+                    }
+                    if action(app, ui, "xml.check", tl!("Check"), PillKind::Ghost, compact) {
+                        app.execute("xml.check");
+                    }
+                    if action(app, ui, "xml.pretty_print", tl!("Format"), PillKind::Ghost, compact) {
+                        app.execute("xml.pretty_print");
+                    }
+                    if action(app, ui, "xml.assign_schema", tl!("Assign Schema…"), PillKind::Ghost, compact) {
+                        app.execute("xml.assign_schema");
+                    }
+                    ui.add_space(2.0);
+                    generate_button(app, ui, compact);
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
-                    ui.add_space(8.0);
+                    ui.add_space(2.0);
                     let shortcut = crate::commands::command_shortcut_label(ui.ctx(), "view.palette");
-                    if widgets::search_box(ui, tl!("Find tools and commands"), &shortcut, 260.0).clicked() {
+                    let width = if compact { 190.0 } else { 260.0 };
+                    if widgets::search_box(ui, tl!("Find tools and commands"), &shortcut, width).clicked() {
                         app.execute("view.palette");
                     }
                 });
@@ -186,8 +237,32 @@ pub fn mode_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
         });
 }
 
-fn main_menu(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
-    let resp = widgets::ghost_button(ui, "panel-left", tl!("Menu"));
+/// Generate…: a schema from the document (the main part), or a sample document from it (the choices behind the arrow).
+fn generate_button(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool) {
+    let (main, more) = if compact {
+        let main = icons::button(ui, "file-code", 32.0, false, tl!("Generate Schema…"));
+        (main.clone(), main)
+    } else {
+        kit::split_pill(ui, Some("sparkles"), tl!("Generate…"), tl!("More generators"))
+    };
+    if main.clicked() && !compact {
+        app.execute("xml.generate_schema");
+    }
+    egui::Popup::menu(&more).show(|ui| {
+        ui.set_min_width(220.0);
+        for id in ["xml.generate_schema", "xml.generate_sample"] {
+            if let Some(spec) = xmlcraft_engine::commands::command(id)
+                && ui.add_enabled(app.command_enabled(spec), egui::Button::new(spec.label)).clicked()
+            {
+                app.execute(id);
+                ui.close();
+            }
+        }
+    });
+}
+
+fn main_menu(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool) {
+    let resp = if compact { icons::button(ui, "list", 32.0, false, tl!("Menu")) } else { widgets::ghost_button(ui, "list", tl!("Menu")) };
     egui::Popup::menu(&resp).show(|ui| {
         ui.set_min_width(230.0);
         // Straight from the command registry; a menu with no commands yet is not shown.
@@ -197,6 +272,83 @@ fn main_menu(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
             }
         }
     });
+}
+
+/// The problems of the document being shown, as (errors, warnings): the well-formedness check and, when it has been asked for, the
+/// validation.
+pub(crate) fn problem_counts(app: &XmlCraftApp) -> (usize, usize) {
+    let (mut errors, warnings) = app.active_analysis().map_or((0, 0), |a| (a.error_count(), a.warning_count()));
+    if let Some(v) = app.active_validation() {
+        errors += v.error_count();
+    }
+    (errors, warnings)
+}
+
+/// The width of the rail that opens the panes.
+const RAIL_WIDTH: f32 = 48.0;
+
+/// The rail on the left: one toggle for each pane (the outline, what the grammar allows here, the problems), with the number of
+/// problems on the last. A pane that is open is marked.
+pub fn activity_rail(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
+    let t = Tokens::get(ui.ctx());
+    let (errors, warnings) = if app.session.active().is_some() { problem_counts(app) } else { (0, 0) };
+    let syntax = crate::editor_view::SyntaxTokens::for_kind(t.kind);
+    let items = [
+        ("list-tree", tl!("Outline"), "view.outline", app.left_open, 0usize, syntax.error),
+        ("braces", tl!("Entry Helpers"), "view.entry_helpers", app.right.is_some(), 0, syntax.error),
+        (
+            "triangle-alert",
+            tl!("Problems"),
+            "view.messages",
+            app.bottom_open,
+            errors + warnings,
+            if errors > 0 { syntax.error } else { syntax.warning },
+        ),
+    ];
+    egui::Panel::left("activity_rail")
+        .exact_size(RAIL_WIDTH)
+        .resizable(false)
+        .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(0, 10)).stroke(Stroke::new(1.0, t.divider)))
+        .show(ui, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.spacing_mut().item_spacing.y = 6.0;
+                for (icon, label, command, open, count, badge) in items {
+                    let response = rail_button(ui, icon, label, open, count);
+                    if open {
+                        // The mark of an open pane: a bar on the rail's outer edge.
+                        let bar = Rect::from_min_size(egui::pos2(ui.max_rect().left(), response.rect.top() + 7.0), vec2(3.0, 22.0));
+                        ui.painter().rect_filled(bar, CornerRadius { nw: 0, sw: 0, ne: 2, se: 2 }, t.accent);
+                    }
+                    if count > 0 {
+                        let text = if count > 99 { "99+".to_owned() } else { count.to_string() };
+                        let galley = ui.painter().layout_no_wrap(text, theme::semibold(9.5), Color32::WHITE);
+                        let size = vec2((galley.size().x + 8.0).max(15.0), 15.0);
+                        let pill = Rect::from_min_size(egui::pos2(response.rect.right() - size.x + 1.0, response.rect.top() + 1.0), size);
+                        ui.painter().rect_filled(pill, CornerRadius::same(8), badge);
+                        ui.painter().galley(pill.center() - galley.size() / 2.0, galley, Color32::WHITE);
+                    }
+                    if response.clicked() {
+                        app.execute(command);
+                    }
+                }
+            });
+        });
+}
+
+/// A toggle on the rail: a rounded square that washes on hover, and is filled with the accent tint (the icon in the accent) while its pane is
+/// open. Its accessible name says it toggles the pane, so that it is not mistaken for the pane's own title.
+fn rail_button(ui: &mut egui::Ui, icon: &str, pane: &str, open: bool, count: usize) -> egui::Response {
+    let t = Tokens::get(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(vec2(36.0, 36.0), Sense::click());
+    let mut name = crate::i18n::fmt(tl!("Toggle {pane}"), &[("pane", pane)]);
+    if count > 0 {
+        name = crate::i18n::fmt(tl!("{name}, {count} problems"), &[("name", &name), ("count", &count.to_string())]);
+    }
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, open, &name));
+    let press = theme::Press::track(ui, &resp);
+    press.wash(ui, rect, 8, open);
+    icons::paint(ui, rect.translate(press.offset()), icon, 18.0, if open { t.accent_text } else { t.icon });
+    theme::hand(resp).on_hover_text(pane)
 }
 
 pub fn status_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
@@ -212,38 +364,11 @@ pub fn status_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
                     ui.label(egui::RichText::new(format!("{} {}", crate::APP_NAME, crate::VERSION)).font(theme::regular(11.5)).color(t.text_faint));
-                    if !app.bottom_open && widgets::ghost_button_sized(ui, "panel-bottom", tl!("Messages"), 22.0).clicked() {
-                        app.execute("view.messages");
-                    }
                     // About the document being shown: where the caret is, and how the file is written.
                     if let Some(doc) = app.session.active_document() {
                         ui.spacing_mut().item_spacing.x = 14.0;
                         for part in document_summary(doc).into_iter().rev() {
                             ui.label(egui::RichText::new(part).font(theme::regular(11.5)).color(t.text_muted));
-                        }
-                        // Whether the document is well-formed: a click shows the list.
-                        let syntax = crate::editor_view::SyntaxTokens::for_kind(t.kind);
-                        let (text, color) = match app.active_analysis() {
-                            None => (tl!("Checking…").to_owned(), t.text_faint),
-                            Some(a) if a.skipped == Some(xmlcraft_engine::analysis::Skipped::Failed) => {
-                                (tl!("The check failed").to_owned(), syntax.error)
-                            }
-                            Some(a) if a.skipped.is_some() => (tl!("Not checked").to_owned(), t.text_faint),
-                            Some(a) if a.error_count() > 0 => {
-                                (crate::i18n::fmt(tl!("{count} errors"), &[("count", &a.error_count().to_string())]), syntax.error)
-                            }
-                            // Well-formed; and, once F8 has been pressed for this text, valid or not.
-                            Some(_) => match app.active_validation() {
-                                Some(v) if v.error_count() > 0 => {
-                                    (crate::i18n::fmt(tl!("{count} validity errors"), &[("count", &v.error_count().to_string())]), syntax.error)
-                                }
-                                Some(v) if v.is_valid() => (tl!("Valid").to_owned(), t.text_muted),
-                                _ => (tl!("Well-formed").to_owned(), t.text_muted),
-                            },
-                        };
-                        let badge = ui.add(egui::Label::new(egui::RichText::new(text).font(theme::medium(11.5)).color(color)).sense(Sense::click()));
-                        if badge.clicked() {
-                            app.bottom_open = true;
                         }
                     }
                 });
@@ -302,6 +427,19 @@ mod tests {
         assert_eq!(MAC_CONTENT_LEFT - lights_end, margin);
         // `egui::Margin` is in `i8`.
         assert!(MAC_CONTENT_LEFT <= f32::from(i8::MAX));
+    }
+
+    #[test]
+    fn a_document_has_the_icon_of_what_its_name_says_it_is() {
+        assert_eq!(file_icon("library.xsd"), "book-open");
+        assert_eq!(file_icon("LIBRARY.XSD"), "book-open", "whatever the case");
+        assert_eq!(file_icon("rules.dtd"), "file-code");
+        assert_eq!(file_icon("xhtml-lat1.ent"), "file-code");
+        assert_eq!(file_icon("page.xsl"), "wand-sparkles");
+        assert_eq!(file_icon("page.xslt"), "wand-sparkles");
+        for plain in ["a.xml", "Untitled-1", "", "xsd", ".hidden", "archive.tar.gz"] {
+            assert_eq!(file_icon(plain), "code-xml", "{plain:?}");
+        }
     }
 
     #[test]

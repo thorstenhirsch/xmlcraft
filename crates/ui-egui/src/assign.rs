@@ -8,7 +8,7 @@ use xmlcraft_engine::assign::{Assignment, assign, is_dtd_location, relative_loca
 use crate::XmlCraftApp;
 use crate::dialog::Dialog;
 use crate::i18n::{fmt, tl};
-use crate::theme::{self, Tokens};
+use crate::kit::{self, Footer, Tone};
 use crate::widgets;
 
 /// What the location is: told by the end of its name, or said.
@@ -68,15 +68,16 @@ impl XmlCraftApp {
     /// Draw the form and act on what was done in it.
     pub(crate) fn show_assign(&mut self, ctx: &egui::Context) {
         let Some(mut dialog) = self.dialog.take() else { return };
-        let t = Tokens::get(ctx);
-        let mut action = None;
-        let response = egui::Modal::new(egui::Id::unique("xmlcraft-assign")).show(ctx, |ui| {
-            ui.set_width(460.0);
-            if let Dialog::AssignSchema(form) = &mut dialog {
-                action = form_ui(ui, &t, form);
-            }
+        let name = match &dialog {
+            Dialog::AssignSchema(form) => form.name.clone(),
+            _ => String::new(),
+        };
+        let subtitle = fmt(tl!("Say which XML Schema or DTD {name} is checked against."), &[("name", &name)]);
+        let (mut action, closed) = kit::dialog(ctx, "xmlcraft-assign", 520.0, "book-open", tl!("Assign Schema"), &subtitle, |ui| match &mut dialog {
+            Dialog::AssignSchema(form) => form_ui(ui, form),
+            _ => None,
         });
-        if action.is_none() && response.should_close() {
+        if action.is_none() && closed {
             action = Some(Action::Cancel);
         }
         match action {
@@ -151,55 +152,40 @@ fn in_real_folder(path: &Path) -> PathBuf {
     }
 }
 
-fn form_ui(ui: &mut egui::Ui, t: &Tokens, form: &mut AssignForm) -> Option<Action> {
+fn form_ui(ui: &mut egui::Ui, form: &mut AssignForm) -> Option<Action> {
     let mut action = None;
-    ui.label(egui::RichText::new(tl!("Assign Schema")).font(theme::semibold(15.0)).color(t.text));
-    ui.add_space(4.0);
-    ui.label(
-        egui::RichText::new(fmt(tl!("Say which XML Schema or DTD {name} is checked against."), &[("name", &form.name)]))
-            .font(theme::regular(13.0))
-            .color(t.text_muted),
-    );
-    ui.add_space(10.0);
-    ui.label(egui::RichText::new(tl!("Location")).font(theme::medium(12.0)).color(t.text_muted));
-    ui.horizontal(|ui| {
-        let field = ui.add(egui::TextEdit::singleline(&mut form.location).hint_text(tl!("schema.xsd, a DTD or a URL")).desired_width(330.0));
-        widgets::name_for_assistive_technology(ui, &field, tl!("The location of the schema or the DTD"));
-        if std::mem::take(&mut form.focus) {
-            field.request_focus();
-        }
-        if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-            action = Some(Action::Assign);
-        }
-        if field.changed() {
-            form.error = None;
-        }
-        if ui.button(tl!("Browse…")).clicked() {
-            action = Some(Action::Browse);
-        }
-    });
-    ui.add_space(6.0);
-    ui.label(egui::RichText::new(tl!("It is")).font(theme::medium(12.0)).color(t.text_muted));
-    ui.horizontal(|ui| {
-        for (kind, label) in [(Kind::Detect, tl!("told by its name")), (Kind::Schema, tl!("an XML Schema")), (Kind::Dtd, tl!("a DTD"))] {
-            if ui.add(widgets::radio(form.kind == kind, label)).clicked() {
-                form.kind = kind;
+    kit::section(ui, tl!("Location"), |ui| {
+        // Browse at the right edge, the field in what is left.
+        ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), kit::PILL_HEIGHT), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = kit::GAP;
+            if kit::pill(ui, kit::PillKind::Secondary, Some("folder-open"), tl!("Browse…")).clicked() {
+                action = Some(Action::Browse);
             }
-        }
+            let field = ui.add(widgets::line(&mut form.location).hint_text(tl!("schema.xsd, a DTD or a URL")).desired_width(ui.available_width()));
+            widgets::name_for_assistive_technology(ui, &field, tl!("The location of the schema or the DTD"));
+            if std::mem::take(&mut form.focus) {
+                field.request_focus();
+            }
+            if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                action = Some(Action::Assign);
+            }
+            if field.changed() {
+                form.error = None;
+            }
+        });
+        kit::help(ui, tl!("A file name is written from the folder of the document. An address starting with http is downloaded when it is needed."));
+    });
+    kit::section(ui, tl!("It is"), |ui| {
+        kit::segmented(ui, &mut form.kind, &[(Kind::Detect, tl!("Told by its name")), (Kind::Schema, tl!("XML Schema")), (Kind::Dtd, tl!("DTD"))]);
     });
     if let Some(message) = &form.error {
-        ui.add_space(8.0);
-        ui.label(egui::RichText::new(message).font(theme::regular(13.0)).color(crate::editor_view::SyntaxTokens::for_kind(t.kind).error));
+        ui.add_space(kit::GAP_GROUP);
+        kit::banner(ui, Tone::Bad, message);
     }
-    ui.add_space(14.0);
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        let button = egui::Button::new(egui::RichText::new(tl!("Assign")).color(egui::Color32::WHITE)).fill(t.accent);
-        if ui.add(button).clicked() {
-            action = Some(Action::Assign);
-        }
-        if ui.button(tl!("Cancel")).clicked() {
-            action = Some(Action::Cancel);
-        }
-    });
+    match kit::footer(ui, tl!("Cancel"), tl!("Assign"), Some("check"), true, "") {
+        Footer::Primary => action = Some(Action::Assign),
+        Footer::Cancel => action = Some(Action::Cancel),
+        Footer::Nothing => {}
+    }
     action
 }

@@ -473,7 +473,7 @@ fn the_home_view_lists_the_files_opened_lately_and_a_click_opens_one() {
     h.state_mut().execute("file.close");
     h.run_steps(4);
     assert!(h.state().tabs().is_empty());
-    assert!(h.query_by_label("Recent").is_some());
+    assert!(h.query_by_label("RECENT FILES").is_some());
     let names: Vec<String> =
         h.state().recent_files().iter().map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()).collect();
     assert_eq!(names, ["beta.xml", "alpha.xml"]);

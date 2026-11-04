@@ -9,6 +9,7 @@ use xmlcraft_text::Buffer;
 use crate::XmlCraftApp;
 use crate::dialog::Dialog;
 use crate::i18n::{fmt, tl};
+use crate::kit::{self, Footer, Tone};
 use crate::theme::{self, Tokens};
 use crate::widgets;
 
@@ -221,17 +222,30 @@ impl XmlCraftApp {
     /// Draw the form that is open and act on what was done in it.
     pub(crate) fn show_generate(&mut self, ctx: &egui::Context) {
         let Some(mut dialog) = self.dialog.take() else { return };
-        let t = Tokens::get(ctx);
-        let mut action = None;
-        let response = egui::Modal::new(egui::Id::unique("xmlcraft-generate")).show(ctx, |ui| {
-            ui.set_width(460.0);
-            match &mut dialog {
-                Dialog::GenerateSchema(form) => action = schema_form(ui, &t, form),
-                Dialog::GenerateSample(form) => action = sample_form(ui, &t, form),
-                _ => {}
+        let (icon, title, subtitle) = match &dialog {
+            Dialog::GenerateSchema(_) => {
+                ("file-code", tl!("Generate Schema").to_owned(), tl!("Learn an XML Schema or a DTD from the documents that are open.").to_owned())
             }
+            Dialog::GenerateSample(form) => {
+                let what = match form.kind {
+                    Some(GrammarKind::Xsd) => tl!("an XML Schema"),
+                    Some(GrammarKind::Dtd) => tl!("a DTD"),
+                    None => tl!("a schema"),
+                };
+                (
+                    "sparkles",
+                    tl!("Generate Sample XML").to_owned(),
+                    fmt(tl!("Make a document that is valid against {name}, {what}."), &[("name", &form.name), ("what", what)]),
+                )
+            }
+            _ => ("sparkles", String::new(), String::new()),
+        };
+        let (mut action, closed) = kit::dialog(ctx, "xmlcraft-generate", 520.0, icon, &title, &subtitle, |ui| match &mut dialog {
+            Dialog::GenerateSchema(form) => schema_form(ui, form),
+            Dialog::GenerateSample(form) => sample_form(ui, form),
+            _ => None,
         });
-        if action.is_none() && response.should_close() {
+        if action.is_none() && closed {
             action = Some(Action::Cancel);
         }
         match action {
@@ -277,153 +291,196 @@ impl XmlCraftApp {
     }
 }
 
-/// A radio button for `option` of `value`.
-fn choose<T: PartialEq>(ui: &mut egui::Ui, value: &mut T, option: T, label: &str) {
-    if ui.add(widgets::radio(*value == option, label)).clicked() {
-        *value = option;
-    }
-}
-
-fn heading(ui: &mut egui::Ui, t: &Tokens, title: &str, subtitle: &str) {
-    ui.label(egui::RichText::new(title).font(theme::semibold(15.0)).color(t.text));
-    ui.add_space(4.0);
-    ui.label(egui::RichText::new(subtitle).font(theme::regular(13.0)).color(t.text_muted));
-    ui.add_space(10.0);
-}
-
-fn caption(ui: &mut egui::Ui, t: &Tokens, text: &str) {
-    ui.add_space(6.0);
-    ui.label(egui::RichText::new(text).font(theme::medium(12.0)).color(t.text_muted));
-}
-
-/// The buttons: Cancel and the primary one (right to left, so the primary is drawn first, at the right).
-fn buttons(ui: &mut egui::Ui, t: &Tokens, primary: &str, enabled: bool) -> Option<Action> {
-    let mut action = None;
-    ui.add_space(14.0);
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        let button = egui::Button::new(egui::RichText::new(primary).color(egui::Color32::WHITE)).fill(t.accent);
-        if ui.add_enabled(enabled, button).clicked() {
-            action = Some(Action::Generate);
-        }
-        if ui.button(tl!("Cancel")).clicked() {
-            action = Some(Action::Cancel);
-        }
-    });
-    action
-}
-
-fn error_line(ui: &mut egui::Ui, t: &Tokens, error: &Option<String>) {
-    if let Some(message) = error {
-        ui.add_space(8.0);
-        ui.label(egui::RichText::new(message).font(theme::regular(13.0)).color(crate::editor_view::SyntaxTokens::for_kind(t.kind).error));
-    }
-}
-
 fn number(ui: &mut egui::Ui, value: &mut usize, range: std::ops::RangeInclusive<usize>, name: &str) {
-    let response = ui.add(egui::DragValue::new(value).range(range));
+    let response = ui.add(egui::DragValue::new(value).range(range).speed(0.2));
     crate::widgets::name_for_assistive_technology(ui, &response, name);
 }
 
-fn schema_form(ui: &mut egui::Ui, t: &Tokens, form: &mut SchemaForm) -> Option<Action> {
-    heading(ui, t, tl!("Generate Schema"), tl!("Learn an XML Schema or a DTD from the documents that are open."));
+/// What the dialog says while a worker is at it.
+fn working(ui: &mut egui::Ui, text: &str) {
+    let t = Tokens::get(ui.ctx());
+    ui.add_space(kit::GAP_GROUP);
+    ui.horizontal(|ui| {
+        ui.add(egui::Spinner::new().size(14.0).color(t.accent));
+        ui.label(egui::RichText::new(text).font(theme::regular(12.5)).color(t.text_muted));
+    });
+}
+
+/// The three layouts of a generated schema, as cards with a small drawing of each.
+fn layout_cards(ui: &mut egui::Ui, layout: &mut Layout) {
+    let t = Tokens::get(ui.ctx());
+    let cards = [
+        (Layout::RussianDoll, tl!("Russian doll"), tl!("Nested, as in the document.")),
+        (Layout::SalamiSlice, tl!("Salami slice"), tl!("Every element declared once, by name.")),
+        (Layout::VenetianBlind, tl!("Venetian blind"), tl!("Types declared once, elements use them.")),
+    ];
+    let gap = 10.0;
+    let width = (ui.available_width() - 2.0 * gap) / 3.0;
+    let enabled = ui.is_enabled();
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = gap;
+        for (value, title, text) in cards {
+            let (rect, response) = ui.allocate_exact_size(egui::vec2(width, 96.0), egui::Sense::click());
+            let selected = *layout == value;
+            response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, enabled, selected, title));
+            let press = theme::Press::track(ui, &response);
+            let fill = if selected { t.accent_soft } else { press.fill(t.card, t.hover, t.pressed) };
+            let edge = if selected { t.accent } else { t.border.lerp_to_gamma(t.text_muted, press.hover * 0.4) };
+            ui.painter().rect(rect, 10.0, fill, egui::Stroke::new(if selected { 1.5 } else { 1.0 }, edge), egui::StrokeKind::Inside);
+            diagram(
+                ui,
+                egui::Rect::from_min_size(rect.min + egui::vec2(12.0, 10.0), egui::vec2(width - 24.0, 28.0)),
+                value,
+                if selected { t.accent_text } else { t.text_faint },
+            );
+            ui.painter().text(rect.min + egui::vec2(12.0, 46.0), egui::Align2::LEFT_TOP, title, theme::semibold(12.5), t.text);
+            let galley = ui.painter().layout(text.to_owned(), theme::regular(11.0), t.text_muted, width - 24.0);
+            ui.painter().galley(rect.min + egui::vec2(12.0, 64.0), galley, t.text_muted);
+            if theme::hand(response).clicked() && enabled {
+                *layout = value;
+            }
+        }
+    });
+}
+
+/// A tiny drawing of how a layout arranges declarations.
+fn diagram(ui: &egui::Ui, rect: egui::Rect, layout: Layout, color: egui::Color32) {
+    let p = ui.painter();
+    let stroke = egui::Stroke::new(1.5, color);
+    let (w, h) = (rect.width().min(120.0), rect.height());
+    let o = rect.min;
+    match layout {
+        // Boxes inside boxes.
+        Layout::RussianDoll => {
+            p.rect_stroke(egui::Rect::from_min_size(o, egui::vec2(w, h)), 4.0, stroke, egui::StrokeKind::Inside);
+            p.rect_stroke(egui::Rect::from_min_size(o + egui::vec2(8.0, 6.0), egui::vec2(w - 16.0, h - 12.0)), 3.0, stroke, egui::StrokeKind::Inside);
+            p.rect_stroke(
+                egui::Rect::from_min_size(o + egui::vec2(16.0, 11.0), egui::vec2(w - 32.0, h - 22.0)),
+                2.0,
+                stroke,
+                egui::StrokeKind::Inside,
+            );
+        }
+        // Separate boxes, joined by lines.
+        Layout::SalamiSlice => {
+            let bw = (w - 20.0) / 3.0;
+            for i in 0..3 {
+                let x = o.x + i as f32 * (bw + 10.0);
+                p.rect_stroke(egui::Rect::from_min_size(egui::pos2(x, o.y + 4.0), egui::vec2(bw, h - 8.0)), 3.0, stroke, egui::StrokeKind::Inside);
+                if i < 2 {
+                    p.hline(x + bw..=x + bw + 10.0, o.y + h / 2.0, stroke);
+                }
+            }
+        }
+        // Slats: the types, with elements that use them.
+        Layout::VenetianBlind => {
+            for i in 0..4 {
+                let y = o.y + 2.0 + i as f32 * (h - 4.0) / 3.5;
+                p.line_segment([egui::pos2(o.x, y), egui::pos2(o.x + w, y)], stroke);
+            }
+        }
+    }
+}
+
+fn schema_form(ui: &mut egui::Ui, form: &mut SchemaForm) -> Option<Action> {
     let busy = form.waiting != 0;
     ui.add_enabled_ui(!busy, |ui| {
         if form.inputs.len() > 1 {
-            caption(ui, t, tl!("Learn from"));
-            for input in &mut form.inputs {
-                ui.add(widgets::checkbox(&mut input.used, input.name.clone()));
-            }
+            kit::section(ui, tl!("Learn from"), |ui| {
+                for input in &mut form.inputs {
+                    ui.add(widgets::checkbox(&mut input.used, input.name.clone()));
+                }
+            });
         }
-        caption(ui, t, tl!("Write"));
-        ui.horizontal(|ui| {
-            choose(ui, &mut form.dtd, false, tl!("XML Schema"));
-            choose(ui, &mut form.dtd, true, tl!("DTD"));
+        kit::section(ui, tl!("Write"), |ui| {
+            let mut kind = form.dtd;
+            kit::segmented(ui, &mut kind, &[(false, tl!("XML Schema")), (true, tl!("DTD"))]);
+            form.dtd = kind;
         });
         ui.add_enabled_ui(!form.dtd, |ui| {
-            caption(ui, t, tl!("Layout"));
-            ui.horizontal_wrapped(|ui| {
-                choose(ui, &mut form.layout, Layout::RussianDoll, tl!("Russian doll"));
-                choose(ui, &mut form.layout, Layout::SalamiSlice, tl!("Salami slice"));
-                choose(ui, &mut form.layout, Layout::VenetianBlind, tl!("Venetian blind"));
-            });
+            kit::section(ui, tl!("Layout"), |ui| layout_cards(ui, &mut form.layout));
         });
-        caption(ui, t, tl!("Values"));
-        ui.add(widgets::checkbox(&mut form.detect_types, tl!("Detect types (boolean, integer, decimal, date, …)")));
-        ui.horizontal(|ui| {
-            ui.add(widgets::checkbox(&mut form.enumerations, tl!("Enumerations of at most")));
+        kit::section(ui, tl!("Values"), |ui| {
+            ui.add(widgets::checkbox(&mut form.detect_types, tl!("Detect types (boolean, integer, decimal, date, …)")));
+            ui.add(widgets::checkbox(&mut form.unbounded, tl!("An element seen more than once may occur any number of times")));
+            ui.add(widgets::checkbox(&mut form.enumerations, tl!("List the values of what has only a few")));
             ui.add_enabled_ui(form.enumerations, |ui| {
-                number(ui, &mut form.rule.max_values, 2..=100, tl!("The most values of an enumeration"));
-                ui.label(tl!("values, each seen at least"));
-                number(ui, &mut form.rule.min_occurrences, 1..=100, tl!("The fewest times each value is seen"));
-                ui.label(tl!("times"));
+                ui.add_space(4.0);
+                kit::row(ui, tl!("Most values"), tl!("More distinct values than this are not made a list."), |ui| {
+                    number(ui, &mut form.rule.max_values, 2..=100, tl!("The most values of an enumeration"));
+                });
+                kit::row(ui, tl!("Seen at least"), tl!("A value has to occur this many times to be listed."), |ui| {
+                    number(ui, &mut form.rule.min_occurrences, 1..=100, tl!("The fewest times each value is seen"));
+                });
             });
         });
-        ui.add(widgets::checkbox(&mut form.unbounded, tl!("An element seen more than once may occur any number of times")));
     });
     if busy {
-        ui.add_space(8.0);
-        ui.label(egui::RichText::new(tl!("Generating…")).font(theme::regular(13.0)).color(t.text_muted));
+        working(ui, tl!("Generating…"));
     }
-    error_line(ui, t, &form.error);
-    buttons(ui, t, tl!("Generate"), !busy && form.inputs.iter().any(|i| i.used))
+    if let Some(message) = &form.error {
+        ui.add_space(kit::GAP_GROUP);
+        kit::banner(ui, Tone::Bad, message);
+    }
+    let ready = !busy && form.inputs.iter().any(|i| i.used);
+    let why = if form.inputs.iter().any(|i| i.used) { "" } else { tl!("Choose a document to learn from.") };
+    action_of(kit::footer(ui, tl!("Cancel"), tl!("Generate"), Some("sparkles"), ready, why))
 }
 
-fn sample_form(ui: &mut egui::Ui, t: &Tokens, form: &mut SampleForm) -> Option<Action> {
-    let what = match form.kind {
-        Some(GrammarKind::Xsd) => tl!("an XML Schema"),
-        Some(GrammarKind::Dtd) => tl!("a DTD"),
-        None => tl!("a schema"),
-    };
-    heading(
-        ui,
-        t,
-        tl!("Generate Sample XML"),
-        &fmt(tl!("Make a document that is valid against {name}, {what}."), &[("name", &form.name), ("what", what)]),
-    );
+fn sample_form(ui: &mut egui::Ui, form: &mut SampleForm) -> Option<Action> {
     let reading = matches!(form.phase, Phase::Reading(_));
     let busy = !matches!(form.phase, Phase::Ready);
     ui.add_enabled_ui(!busy, |ui| {
-        caption(ui, t, tl!("Start with"));
-        let current = match form.root.checked_sub(1).and_then(|i| form.roots.get(i)) {
-            Some(name) => name.clone(),
-            None => tl!("the first element that can be made").to_owned(),
-        };
-        let combo = egui::ComboBox::from_id_salt("xmlcraft-sample-root").selected_text(current).width(300.0).show_ui(ui, |ui| {
-            ui.selectable_value(&mut form.root, 0, tl!("the first element that can be made"));
-            for (i, name) in form.roots.iter().enumerate() {
-                ui.selectable_value(&mut form.root, i + 1, name.clone());
-            }
+        kit::section(ui, tl!("Start with"), |ui| {
+            let current = match form.root.checked_sub(1).and_then(|i| form.roots.get(i)) {
+                Some(name) => name.clone(),
+                None => tl!("the first element that can be made").to_owned(),
+            };
+            let combo =
+                egui::ComboBox::from_id_salt("xmlcraft-sample-root").selected_text(current).width(ui.available_width() - 8.0).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut form.root, 0, tl!("the first element that can be made"));
+                    for (i, name) in form.roots.iter().enumerate() {
+                        ui.selectable_value(&mut form.root, i + 1, name.clone());
+                    }
+                });
+            crate::widgets::name_for_assistive_technology(ui, &combo.response, tl!("The element to start with"));
         });
-        crate::widgets::name_for_assistive_technology(ui, &combo.response, tl!("The element to start with"));
-        caption(ui, t, tl!("Content"));
-        ui.add(widgets::checkbox(&mut form.options.optional, tl!("Optional elements and attributes")));
-        ui.horizontal(|ui| {
-            ui.label(tl!("An element that may repeat occurs"));
-            number(ui, &mut form.options.repeat, 0..=100, tl!("How often an element repeats"));
-            ui.label(tl!("times"));
+        kit::section(ui, tl!("Content"), |ui| {
+            ui.add(widgets::checkbox(&mut form.options.optional, tl!("Optional elements and attributes")));
+            ui.add_enabled(form.has_file, widgets::checkbox(&mut form.location, tl!("Say where the schema is (xsi:schemaLocation)")));
+            ui.add_space(4.0);
+            kit::row(ui, tl!("Repetitions"), tl!("How often an element that may repeat occurs."), |ui| {
+                number(ui, &mut form.options.repeat, 0..=100, tl!("How often an element repeats"));
+            });
+            kit::row(ui, tl!("Choices"), "", |ui| {
+                kit::segmented(
+                    ui,
+                    &mut form.options.choice,
+                    &[(ChoicePolicy::First, tl!("First branch")), (ChoicePolicy::Rotate, tl!("Each branch in turn"))],
+                );
+            });
+            kit::row(ui, tl!("Text"), "", |ui| {
+                kit::segmented(ui, &mut form.options.fill, &[(Fill::Typed, tl!("Typed value")), (Fill::Named, tl!("Element name"))]);
+            });
+            kit::row(ui, tl!("Depth"), tl!("Elements nest at most this deep, then only what is required."), |ui| {
+                number(ui, &mut form.options.max_depth, 0..=50, tl!("How deep elements nest"));
+            });
         });
-        ui.horizontal(|ui| {
-            ui.label(tl!("Of a choice:"));
-            choose(ui, &mut form.options.choice, ChoicePolicy::First, tl!("the first branch"));
-            choose(ui, &mut form.options.choice, ChoicePolicy::Rotate, tl!("each branch in turn"));
-        });
-        ui.horizontal(|ui| {
-            ui.label(tl!("Text:"));
-            choose(ui, &mut form.options.fill, Fill::Typed, tl!("a value of its type"));
-            choose(ui, &mut form.options.fill, Fill::Named, tl!("the name of its element"));
-        });
-        ui.horizontal(|ui| {
-            ui.label(tl!("Nest at most"));
-            number(ui, &mut form.options.max_depth, 0..=50, tl!("How deep elements nest"));
-            ui.label(tl!("levels deep, then only what is required"));
-        });
-        ui.add_enabled(form.has_file, widgets::checkbox(&mut form.location, tl!("Say where the schema is (xsi:schemaLocation)")));
     });
     if busy {
-        ui.add_space(8.0);
-        let text = if reading { tl!("Reading the schema…") } else { tl!("Generating…") };
-        ui.label(egui::RichText::new(text).font(theme::regular(13.0)).color(t.text_muted));
+        working(ui, if reading { tl!("Reading the schema…") } else { tl!("Generating…") });
     }
-    error_line(ui, t, &form.error);
-    buttons(ui, t, tl!("Generate"), !busy && form.kind.is_some())
+    if let Some(message) = &form.error {
+        ui.add_space(kit::GAP_GROUP);
+        kit::banner(ui, Tone::Bad, message);
+    }
+    action_of(kit::footer(ui, tl!("Cancel"), tl!("Generate"), Some("sparkles"), !busy && form.kind.is_some(), ""))
+}
+
+fn action_of(footer: Footer) -> Option<Action> {
+    match footer {
+        Footer::Nothing => None,
+        Footer::Cancel => Some(Action::Cancel),
+        Footer::Primary => Some(Action::Generate),
+    }
 }

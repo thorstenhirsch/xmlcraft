@@ -6,8 +6,8 @@
 
 use std::ops::RangeInclusive;
 
-use craft_ui::panes::{Edge, PaneContent, PaneHost, PaneLabels, PaneRequest, PaneState, Rail, RailItem, RailRequest, SidePolicy};
-use egui::{Align, Layout, Stroke, vec2};
+use craft_ui::panes::{Edge, PaneContent, PaneHost, PaneLabels, PaneRequest, PaneState, SidePolicy};
+use egui::{Align, Layout, vec2};
 use serde::{Deserialize, Serialize};
 use xmlcraft_engine::analysis::Skipped;
 
@@ -20,10 +20,10 @@ pub const OUTLINE_WIDTH: f32 = 272.0;
 /// Default width of the Entry Helpers pane.
 pub const HELPERS_WIDTH: f32 = 330.0;
 /// Default height of the Messages pane.
-pub const MESSAGES_HEIGHT: f32 = 170.0;
+pub const MESSAGES_HEIGHT: f32 = 230.0;
 const OUTLINE_RANGE: RangeInclusive<f32> = 240.0..=520.0;
 const HELPERS_RANGE: RangeInclusive<f32> = 260.0..=520.0;
-const MESSAGES_RANGE: RangeInclusive<f32> = 90.0..=600.0;
+const MESSAGES_RANGE: RangeInclusive<f32> = 120.0..=600.0;
 
 /// The panes [`PaneHost`] draws.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -46,7 +46,7 @@ impl Pane {
         match self {
             Self::Outline => tl!("Outline"),
             Self::EntryHelpers => tl!("Entry Helpers"),
-            Self::Messages => tl!("Messages"),
+            Self::Messages => tl!("Problems"),
         }
     }
 }
@@ -120,7 +120,7 @@ impl PaneContent<Pane> for Content<'_> {
         match pane {
             Pane::Outline => outline_body(ui, self.app),
             Pane::EntryHelpers => crate::entry_helpers::body(ui, self.app),
-            Pane::Messages => messages_body(ui, self.app),
+            Pane::Messages => crate::problems::body(ui, self.app),
         }
         if close {
             match pane {
@@ -290,129 +290,8 @@ fn outline_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     }
 }
 
-/// One line of Messages: a problem of the well-formedness check or of the validation.
-struct MessageRow {
-    severity: xmlcraft_syntax::Severity,
-    message: String,
-    /// Where it is: `Ln 3, Col 7` in the document; the name of the file for a problem in an external text of the DTD.
-    place: String,
-    /// What a click selects in the document; none for a problem in another file.
-    jump: Option<std::ops::Range<usize>>,
-}
-
-/// The rows of Messages: what is wrong with the text as XML first, then, when a validation of the same text has been asked for, what is
-/// wrong with it as a document of its DTD.
-fn message_rows(app: &XmlCraftApp, analysis: &xmlcraft_engine::analysis::Analysis, buffer: &xmlcraft_text::Buffer) -> Vec<MessageRow> {
-    let at = |offset: usize| {
-        let position = buffer.position(offset.min(buffer.len()));
-        crate::i18n::fmt(tl!("Ln {line}, Col {col}"), &[("line", &(position.line + 1).to_string()), ("col", &(position.col + 1).to_string())])
-    };
-    let mut rows: Vec<MessageRow> = analysis
-        .diagnostics
-        .iter()
-        .map(|d| MessageRow { severity: d.severity(), message: d.message(), place: at(d.span.start), jump: Some(d.span.clone()) })
-        .collect();
-    let validation = app.active_validation();
-    rows.extend(validation.into_iter().flat_map(|v| v.problems.iter()).map(|p| MessageRow {
-        severity: p.diagnostic.severity(),
-        message: p.diagnostic.message(),
-        place: match &p.file {
-            None => at(p.diagnostic.span.start),
-            Some(file) => std::path::Path::new(file).file_name().map_or_else(|| file.clone(), |n| n.to_string_lossy().into_owned()),
-        },
-        jump: p.file.is_none().then(|| p.diagnostic.span.clone()),
-    }));
-    rows
-}
-
-fn messages_body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
-    let t = Tokens::get(ui.ctx());
-    let Some(doc) = app.session.active_document() else {
-        widgets::empty_state(ui, 6.0, tl!("No messages"), tl!("Well-formedness and validation results appear here."));
-        return;
-    };
-    let buffer = doc.editor().buffer();
-    let Some(analysis) = app.active_analysis() else {
-        widgets::empty_state(ui, 6.0, tl!("Checking…"), "");
-        return;
-    };
-    match analysis.skipped {
-        Some(Skipped::TooLarge) => {
-            widgets::empty_state(ui, 6.0, tl!("Not checked"), tl!("The document is too large to check while typing."));
-            return;
-        }
-        Some(Skipped::Failed) => {
-            widgets::empty_state(ui, 6.0, tl!("The check failed"), tl!("This is a bug. The document is unchanged."));
-            return;
-        }
-        None => {}
-    }
-    let rows = message_rows(app, analysis, buffer);
-    if rows.is_empty() {
-        let valid = app.active_validation().is_some_and(|v| v.is_valid());
-        widgets::empty_state(
-            ui,
-            6.0,
-            tl!("No problems"),
-            if valid { tl!("The document is well-formed and valid.") } else { tl!("The document is well-formed.") },
-        );
-        return;
-    }
-    let syntax = crate::editor_view::SyntaxTokens::for_kind(t.kind);
-    let mut clicked = None;
-    egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, ROW, rows.len(), |ui, range| {
-        for index in range {
-            let Some(row) = rows.get(index) else { continue };
-            let (message, place) = (row.message.as_str(), row.place.clone());
-            let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), egui::Sense::click());
-            response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("{message} ({place})")));
-            if response.hovered() {
-                ui.painter().rect_filled(rect, 0.0, t.hover);
-            }
-            let (icon, color) = match row.severity {
-                xmlcraft_syntax::Severity::Error => ("circle-x", syntax.error),
-                xmlcraft_syntax::Severity::Warning => ("triangle-alert", syntax.warning),
-                xmlcraft_syntax::Severity::Info => ("info", syntax.info),
-            };
-            icons::paint(ui, egui::Rect::from_min_size(rect.left_center() + vec2(12.0, -8.0), vec2(16.0, 16.0)), icon, 15.0, color);
-            let place_galley = ui.painter().layout_no_wrap(place, theme::regular(11.5), t.text_faint);
-            let right = rect.right() - 14.0;
-            ui.painter().galley(
-                egui::pos2(right - place_galley.size().x, rect.center().y - place_galley.size().y / 2.0),
-                place_galley.clone(),
-                t.text_faint,
-            );
-            let clip = ui.painter().with_clip_rect(egui::Rect::from_min_max(rect.min, egui::pos2(right - place_galley.size().x - 10.0, rect.max.y)));
-            clip.text(rect.left_center() + vec2(36.0, 0.0), egui::Align2::LEFT_CENTER, message, theme::regular(12.5), t.text);
-            if response.clicked() {
-                clicked = row.jump.clone();
-            }
-        }
-    });
-    if let Some(span) = clicked {
-        app.jump_to(span);
-    }
-}
-
-/// The rail on the right: one icon per pane that can open there.
-fn right_rail(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
-    let t = Tokens::get(ui.ctx());
-    let items = [RailItem::new(RightPanel::EntryHelpers, icons::source("braces"), tl!("Entry Helpers"))];
-    let rail = Rail::new(egui::Id::unique("rail"))
-        .edge(Edge::End)
-        .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(6, 8)).stroke(Stroke::new(1.0, t.divider)))
-        .show(ui, &items, app.right.as_ref(), |_ui| {});
-    match rail.request {
-        Some(RailRequest::Open(panel)) => app.right = Some(panel),
-        Some(RailRequest::Close(_)) => app.right = None,
-        _ => {}
-    }
-}
-
 /// Draws the rail and the open panes. Call after the top and bottom bars and before the central panel.
 pub fn show(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
-    // The rail first: it is the outermost panel on the right.
-    right_rail(app, ui);
     let open = open_panes(app);
     if open.is_empty() {
         return;
@@ -466,7 +345,7 @@ mod tests {
     #[test]
     fn a_damaged_saved_layout_is_repaired_on_load() {
         let loaded = SidePanels { outline_width: f32::NAN, helpers_width: 1.0e9, messages_height: -3.0 }.sanitized();
-        assert_eq!(loaded, SidePanels { outline_width: OUTLINE_WIDTH, helpers_width: 520.0, messages_height: 90.0 });
+        assert_eq!(loaded, SidePanels { outline_width: OUTLINE_WIDTH, helpers_width: 520.0, messages_height: 120.0 });
         assert_eq!(SidePanels::default().sanitized(), SidePanels::default());
     }
 

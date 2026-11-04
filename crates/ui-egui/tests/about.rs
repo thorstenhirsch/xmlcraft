@@ -26,6 +26,10 @@ fn the_about_window_says_what_the_app_is_and_who_made_it() {
     // The credits compiled into the binary name the person the project belongs to.
     assert!(h.query_all_by_label_contains("@thorstenhirsch").count() >= 1, "the owner is credited by their username");
     assert!(h.query_by_label("AI MODELS").is_some());
+    // The third-party material has a tab of its own.
+    assert!(h.query_by_label("THIRD-PARTY MATERIAL").is_none());
+    h.get_by_label("Third-party material").click();
+    h.run_steps(3);
     assert!(h.query_by_label("THIRD-PARTY MATERIAL").is_some());
     assert!(h.query_by_label_contains("Lucide icons").is_some(), "the NOTICE of the third-party material is in the window");
 }
@@ -36,14 +40,14 @@ fn the_window_closes_with_its_button_and_with_escape() {
     open(&mut h);
     h.get_by_label("OK").click();
     h.run_steps(3);
-    assert!(h.query_by_label("THIRD-PARTY MATERIAL").is_none(), "the button closes it");
+    assert!(h.query_by_label("CONTRIBUTORS").is_none(), "the button closes it");
     open(&mut h);
     h.key_press(egui::Key::Escape);
     h.run_steps(3);
-    assert!(h.query_by_label("THIRD-PARTY MATERIAL").is_none(), "Escape closes it");
+    assert!(h.query_by_label("CONTRIBUTORS").is_none(), "Escape closes it");
     // It can be opened again.
     open(&mut h);
-    assert!(h.query_by_label("THIRD-PARTY MATERIAL").is_some());
+    assert!(h.query_by_label("CONTRIBUTORS").is_some());
 }
 
 #[test]

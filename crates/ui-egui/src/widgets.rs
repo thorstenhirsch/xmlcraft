@@ -10,34 +10,6 @@ pub(crate) fn text_width(ui: &egui::Ui, text: &str, font: &egui::FontId) -> f32 
     ui.fonts_mut(|f| f.layout_no_wrap(text.to_owned(), font.clone(), Color32::WHITE).size().x)
 }
 
-/// A mode-bar tab: text with an underline when active.
-pub fn mode_tab(ui: &mut egui::Ui, label: &str, active: bool) -> Response {
-    let t = Tokens::get(ui.ctx());
-    let font = if active { theme::semibold(13.5) } else { theme::medium(13.5) };
-    let w = text_width(ui, label, &font);
-    // The row's own height, not a fixed 48: the bar's frame stroke takes 2 pt of it, and a taller tab would have its underline
-    // clipped away at the bottom edge.
-    let height = ui.available_height().clamp(24.0, 48.0);
-    let (rect, resp) = ui.allocate_exact_size(vec2(w + 22.0, height), Sense::click());
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, ui.is_enabled(), active, label));
-    let press = theme::Press::track(ui, &resp);
-    let well = rect.shrink2(vec2(2.0, 9.0));
-    if active {
-        if press.down > 0.01 {
-            ui.painter().rect_filled(well, CornerRadius::same(6), t.pressed.gamma_multiply(press.down));
-        }
-    } else {
-        press.wash(ui, well, 6, false);
-    }
-    let body = rect.translate(press.offset());
-    ui.painter().text(body.center(), Align2::CENTER_CENTER, label, font, if active { t.text } else { t.text_muted });
-    if active {
-        let r = Rect::from_min_max(rect.left_bottom() + vec2(10.0, -2.0), rect.right_bottom() - vec2(10.0, 0.0));
-        ui.painter().rect_filled(r, CornerRadius { nw: 1, ne: 1, sw: 0, se: 0 }, t.accent);
-    }
-    theme::hand(resp)
-}
-
 /// Icon + label, transparent until hovered.
 pub fn ghost_button(ui: &mut egui::Ui, icon: &str, label: &str) -> Response {
     ghost_button_sized(ui, icon, label, 30.0)
@@ -140,6 +112,11 @@ fn toggle<'a>(widget: impl egui::Widget + 'a, radius: Option<u8>) -> impl egui::
         })
         .inner
     }
+}
+
+/// A single-line field tall enough to read and to click, with room around its text.
+pub fn line(text: &mut dyn egui::TextBuffer) -> egui::TextEdit<'_> {
+    egui::TextEdit::singleline(text).margin(egui::Margin::symmetric(10, 6)).min_size(vec2(0.0, 30.0))
 }
 
 /// A small upper-case section heading inside a pane.

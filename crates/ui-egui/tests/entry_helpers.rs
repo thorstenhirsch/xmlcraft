@@ -353,7 +353,8 @@ fn a_schema_that_cannot_be_read_says_why() {
         h.run_steps(1);
         std::thread::sleep(Duration::from_millis(10));
     }
-    assert!(h.query_by_label_contains("order.xsd").is_some(), "it says which schema could not be loaded");
+    // The header chip names the schema too; the pane says that it could not be loaded.
+    assert!(h.query_all_by_label_contains("order.xsd").count() >= 1, "it says which schema could not be loaded");
 }
 
 #[test]

@@ -106,7 +106,7 @@ fn several_open_documents_can_be_learned_from_together() {
     open(&mut h, &file(dir.path(), "b.xml", "<r><a/><b/></r>"));
     assert!(h.state_mut().execute("xml.generate_schema"));
     h.run_steps(3);
-    assert!(h.query_by_label("Learn from").is_some(), "with more than one document, they are listed");
+    assert!(h.query_by_label("LEARN FROM").is_some(), "with more than one document, they are listed");
     // The one that is shown is checked; add the other (its name is also on a tab, so ask for the check box).
     h.get_by_role_and_label(egui::Role::CheckBox, "a.xml").click();
     h.run_steps(2);
@@ -177,7 +177,7 @@ fn the_options_of_generate_sample_shape_the_document() {
     open(&mut h, &file(dir.path(), "order.xsd", SCHEMA));
     assert!(h.state_mut().execute("xml.generate_sample"));
     wait_until_read(&mut h, "the schema to be read");
-    h.get_by_label("the name of its element").click();
+    h.get_by_label("Element name").click();
     h.run_steps(2);
     h.get_by_label("Say where the schema is (xsi:schemaLocation)").click();
     h.run_steps(2);

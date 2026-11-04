@@ -12,6 +12,7 @@ use xmlcraft_editor::find::{Direction, MAX_MATCHES, Matcher, Query, QueryError, 
 use crate::XmlCraftApp;
 use crate::editor_view::Matches;
 use crate::i18n::{fmt, tl};
+use crate::kit;
 use crate::theme::{self, Tokens};
 use crate::{icons, widgets};
 
@@ -207,30 +208,20 @@ impl XmlCraftApp {
             return;
         }
         let t = Tokens::get(ui.ctx());
-        // The field takes what the controls beside it leave (they must all stay in view in a narrow window), up to a comfortable width.
-        let field_width = (ui.available_width() - 360.0).clamp(90.0, 260.0);
+        // The two fields are the same width, so that they line up; they give way in a narrow window.
+        let field_width = (ui.available_width() - 420.0).clamp(120.0, 340.0);
         let before = self.find.current_query();
         let stats = self.find_summary();
         let error = self.find.error();
         let mut action: Option<Action> = None;
-        egui::Frame::NONE.fill(t.panel).stroke(egui::Stroke::new(1.0, t.divider)).inner_margin(egui::Margin::symmetric(10, 6)).show(ui, |ui| {
+        egui::Frame::NONE.fill(t.panel).stroke(egui::Stroke::new(1.0, t.divider)).inner_margin(egui::Margin::symmetric(14, 8)).show(ui, |ui| {
             ui.set_min_width(ui.available_width());
-            // Wraps in a narrow window rather than losing the controls at the right.
-            ui.horizontal_wrapped(|ui| {
-                let toggle = |ui: &mut egui::Ui, on: &mut bool, text: &str, name: &str| {
-                    let response =
-                        ui.add(egui::Button::new(egui::RichText::new(text).font(theme::mono(12.0))).selected(*on).min_size(vec2(26.0, 24.0)));
-                    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, *on, name));
-                    let response = response.on_hover_text(name);
-                    if response.clicked() {
-                        *on = !*on;
-                    }
-                };
+            ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
+            ui.horizontal(|ui| {
+                icons::paint(ui, egui::Rect::from_min_size(ui.cursor().min + vec2(0.0, 7.0), vec2(16.0, 16.0)), "search", 15.0, t.text_muted);
+                ui.add_space(20.0);
                 let field = ui.add(
-                    egui::TextEdit::singleline(&mut self.find.query)
-                        .id(egui::Id::unique("xmlcraft-find-query"))
-                        .hint_text(tl!("Find"))
-                        .desired_width(field_width),
+                    widgets::line(&mut self.find.query).id(egui::Id::unique("xmlcraft-find-query")).hint_text(tl!("Find")).desired_width(field_width),
                 );
                 widgets::name_for_assistive_technology(ui, &field, tl!("Find"));
                 if std::mem::take(&mut self.find.focus) {
@@ -245,9 +236,9 @@ impl XmlCraftApp {
                         action = Some(Action::Step(if shift { Direction::PREVIOUS } else { Direction::NEXT }));
                     }
                 }
-                toggle(ui, &mut self.find.case_sensitive, "Aa", tl!("Match case"));
-                toggle(ui, &mut self.find.whole_word, "W", tl!("Whole word"));
-                toggle(ui, &mut self.find.regex, ".*", tl!("Regular expression"));
+                kit::mark_toggle(ui, &mut self.find.case_sensitive, "Aa", tl!("Match case"));
+                kit::mark_toggle(ui, &mut self.find.whole_word, "W", tl!("Whole word"));
+                kit::mark_toggle(ui, &mut self.find.regex, ".*", tl!("Regular expression"));
                 let summary = match (&error, stats, self.find.query.is_empty()) {
                     (_, _, true) => String::new(),
                     (Some(message), _, _) => message.clone(),
@@ -263,28 +254,36 @@ impl XmlCraftApp {
                     }
                     (None, None, _) => String::new(),
                 };
-                let color = if error.is_some() { crate::editor_view::SyntaxTokens::for_kind(t.kind).error } else { t.text_muted };
-                ui.label(egui::RichText::new(summary).font(theme::regular(12.0)).color(color));
+                let color = if error.is_some() {
+                    crate::editor_view::SyntaxTokens::for_kind(t.kind).error
+                } else if summary == tl!("No results") {
+                    crate::editor_view::SyntaxTokens::for_kind(t.kind).warning
+                } else {
+                    t.text_muted
+                };
+                // The count has room of its own, so that the controls after it do not move as the numbers change.
+                ui.add_sized(vec2(84.0, 26.0), egui::Label::new(egui::RichText::new(summary).font(theme::medium(12.0)).color(color)).truncate());
                 for (icon, name, step) in
                     [("chevron-up", tl!("Previous match"), Direction::PREVIOUS), ("chevron-down", tl!("Next match"), Direction::NEXT)]
                 {
-                    if icons::button(ui, icon, 24.0, false, name).clicked() {
+                    if icons::button(ui, icon, 26.0, false, name).clicked() {
                         action = Some(Action::Step(step));
                     }
                 }
-                let (swap_icon, swap) =
-                    if self.find.show_replace { ("chevron-down", tl!("Hide replace")) } else { ("chevron-right", tl!("Show replace")) };
-                if icons::button(ui, swap_icon, 24.0, self.find.show_replace, swap).clicked() {
+                let (swap_icon, swap) = if self.find.show_replace { ("chevron-up", tl!("Hide replace")) } else { ("replace", tl!("Show replace")) };
+                if icons::button(ui, swap_icon, 26.0, self.find.show_replace, swap).clicked() {
                     self.find.show_replace = !self.find.show_replace;
                 }
-                if icons::button(ui, "x", 24.0, false, tl!("Close")).clicked() {
+                if icons::button(ui, "x", 26.0, false, tl!("Close")).clicked() {
                     action = Some(Action::Close);
                 }
             });
             if self.find.show_replace {
-                ui.horizontal_wrapped(|ui| {
+                ui.horizontal(|ui| {
+                    icons::paint(ui, egui::Rect::from_min_size(ui.cursor().min + vec2(0.0, 7.0), vec2(16.0, 16.0)), "replace", 15.0, t.text_muted);
+                    ui.add_space(20.0);
                     let field = ui.add(
-                        egui::TextEdit::singleline(&mut self.find.replacement)
+                        widgets::line(&mut self.find.replacement)
                             .id(egui::Id::unique("xmlcraft-find-replacement"))
                             .hint_text(tl!("Replace with"))
                             .desired_width(field_width),
@@ -297,10 +296,10 @@ impl XmlCraftApp {
                         action = Some(Action::Replace);
                         self.find.focus_replacement = true; // Enter replaces and stays in the box, as Enter in the find box stays there
                     }
-                    if ui.button(tl!("Replace")).clicked() {
+                    if kit::pill_sized(ui, kit::PillKind::Secondary, None, tl!("Replace"), 28.0).clicked() {
                         action = Some(Action::Replace);
                     }
-                    if ui.button(tl!("Replace All")).clicked() {
+                    if kit::pill_sized(ui, kit::PillKind::Secondary, None, tl!("Replace All"), 28.0).clicked() {
                         action = Some(Action::ReplaceAll);
                     }
                 });

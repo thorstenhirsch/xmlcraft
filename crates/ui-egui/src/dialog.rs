@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use crate::XmlCraftApp;
 use crate::documents::AfterClose;
 use crate::i18n::{fmt, tl};
-use crate::theme::{self, Tokens};
+use crate::kit::{self, PillKind, Tone};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Dialog {
@@ -56,6 +56,18 @@ pub(crate) enum Dialog {
         title: String,
         text: String,
     },
+}
+
+/// The icon of a question, and how serious it is.
+fn icon_of(dialog: &Dialog) -> (&'static str, Tone) {
+    match dialog {
+        Dialog::Unsaved { .. } => ("save", Tone::Warn),
+        Dialog::OverwriteChanged { .. } | Dialog::Unmappable { .. } | Dialog::Lossy { .. } => ("triangle-alert", Tone::Warn),
+        Dialog::ConfirmRevert { .. } => ("undo-2", Tone::Warn),
+        Dialog::GoToLine => ("text-cursor-input", Tone::Accent),
+        Dialog::Reload { .. } | Dialog::Message { .. } => ("info", Tone::Accent),
+        _ => ("info", Tone::Neutral),
+    }
 }
 
 impl Dialog {
@@ -189,19 +201,15 @@ impl XmlCraftApp {
             return;
         }
         let Some(dialog) = self.dialog.clone() else { return };
-        let t = Tokens::get(ctx);
         let described = self.describe(&dialog);
+        let (icon, tone) = icon_of(&dialog);
         let mut chosen = None;
-        let response = egui::Modal::new(egui::Id::unique("xmlcraft-dialog")).show(ctx, |ui| {
-            ui.set_width(400.0);
-            ui.label(egui::RichText::new(&described.title).font(theme::semibold(15.0)).color(t.text));
-            ui.add_space(6.0);
-            ui.label(egui::RichText::new(&described.text).font(theme::regular(13.0)).color(t.text_muted));
+        let (_, escaped) = kit::question(ctx, "xmlcraft-dialog", 440.0, icon, tone, &described.title, &described.text, |ui| {
             if described.input {
-                ui.add_space(8.0);
+                ui.add_space(kit::GAP_GROUP);
                 let id = egui::Id::unique("xmlcraft-dialog-input");
-                let edit = ui
-                    .add(egui::TextEdit::singleline(&mut self.goto_input).id(id).hint_text(tl!("Line or line:column")).desired_width(f32::INFINITY));
+                let edit =
+                    ui.add(crate::widgets::line(&mut self.goto_input).id(id).hint_text(tl!("Line or line:column")).desired_width(f32::INFINITY));
                 crate::widgets::name_for_assistive_technology(ui, &edit, tl!("Line or line:column"));
                 // Given the keyboard once, when the dialog opens: asking every frame would take it back from Go and Cancel after a Tab.
                 if std::mem::take(&mut self.goto_focus) {
@@ -211,25 +219,26 @@ impl XmlCraftApp {
                     chosen = Some(Choice::Go);
                 }
             }
-            ui.add_space(14.0);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                // Right to left: the last in the list is drawn first, at the right.
-                for (index, (label, choice)) in described.buttons.iter().enumerate().rev() {
-                    let primary = index == 0;
-                    let button = if primary {
-                        egui::Button::new(egui::RichText::new(*label).color(egui::Color32::WHITE)).fill(t.accent)
-                    } else {
-                        egui::Button::new(*label)
+            let answers: Vec<(&str, PillKind)> = described
+                .buttons
+                .iter()
+                .enumerate()
+                .map(|(index, (label, choice))| {
+                    let kind = match choice {
+                        _ if index == 0 => PillKind::Primary,
+                        Choice::Discard | Choice::Overwrite | Choice::Revert | Choice::Reload => PillKind::Danger,
+                        _ => PillKind::Secondary,
                     };
-                    if ui.add(button).clicked() {
-                        chosen = Some(*choice);
-                    }
-                }
-            });
+                    (*label, kind)
+                })
+                .collect();
+            if let Some(index) = kit::actions(ui, &answers) {
+                chosen = described.buttons.get(index).map(|(_, choice)| *choice);
+            }
         });
         // Escape or a click outside is the safe answer: never one that decides something (not "Keep my version", which would let the next
         // save replace what another program wrote without asking again).
-        if chosen.is_none() && response.should_close() {
+        if chosen.is_none() && escaped {
             chosen = described.buttons.iter().map(|(_, c)| *c).find(|c| matches!(c, Choice::Cancel | Choice::Ok));
         }
         if let Some(choice) = chosen {

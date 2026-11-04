@@ -12,7 +12,22 @@ use std::time::Duration;
 
 use egui_kittest::Harness;
 use xmlcraft_ui_egui::theme::ThemePreference;
-use xmlcraft_ui_egui::{TabInfo, XmlCraftApp};
+use xmlcraft_ui_egui::{Network, TabInfo, XmlCraftApp};
+
+/// A web that is never asked: the pictures show the app online, as a person normally has it, and the documents they are made from name
+/// schemas that are files.
+struct NoWeb;
+
+impl xmlcraft_resolve::Fetcher for NoWeb {
+    fn fetch(
+        &self,
+        _: &str,
+        _: &xmlcraft_resolve::Conditions,
+        _: &xmlcraft_resolve::FetchLimits,
+    ) -> Result<xmlcraft_resolve::FetchOutcome, xmlcraft_resolve::FetchError> {
+        Err(xmlcraft_resolve::FetchError::Network("this picture is made without the web".to_owned()))
+    }
+}
 
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
@@ -73,7 +88,8 @@ fn main() -> Result<(), String> {
         return Err("--find, --goto and --command need --open FILE: they work on that file".into());
     }
     let mut harness = Harness::builder().with_size(size).with_pixels_per_point(scale).build_eframe(move |cc| {
-        let mut app = XmlCraftApp::new(cc);
+        let network = Network::new(Some(std::sync::Arc::new(NoWeb)), None, std::sync::Arc::new(xmlcraft_resolve::FixedClock(0)));
+        let mut app = XmlCraftApp::with_network(cc, network);
         if let Some(theme) = theme {
             app.theme_preference = theme;
         }

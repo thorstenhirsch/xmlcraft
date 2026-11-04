@@ -533,10 +533,10 @@ area = "B"
 tier = "P0"
 milestone = "M1"
 status = "partial"
-commands = ["view.messages"]
+commands = ["view.messages", "xml.next_problem", "xml.previous_problem"]
 tools = []
-evidence = ["crates/ui-egui/tests/analysis.rs::problems_are_listed_and_a_click_goes_to_them", "crates/ui-egui/tests/analysis.rs::a_well_formed_document_says_so"]
-notes = "Well-formedness errors and warnings of the document being shown, with line and column, a click selects the problem; counts in the pane header. Still missing: validity messages, several files, the Def link, the Fix button, next and previous error, the resolution trail."
+evidence = ["crates/ui-egui/tests/analysis.rs::problems_are_listed_and_a_click_goes_to_them", "crates/ui-egui/tests/analysis.rs::a_well_formed_document_says_so", "crates/ui-egui/tests/problems.rs::the_panel_lists_the_problems_and_a_filter_narrows_them", "crates/ui-egui/tests/problems.rs::the_keys_step_from_one_problem_to_the_next_and_round"]
+notes = "The Problems panel (M4.12): what is wrong with the document as XML and, once validated, as a document of its grammar, with line and column; filters by severity with counts (All, Errors, Warnings), grouped by where a problem comes from (well-formedness, validity, other files) when there is more than one group; a click selects the problem; the rail's button counts them and the header's pill says where the document stands. Still missing: the Def link, the Fix button, the resolution trail, a problem in another file cannot be opened from the panel."
 
 [[feature]]
 id = "view.tabs"
@@ -1088,10 +1088,10 @@ area = "E"
 tier = "P0"
 milestone = "M2"
 status = "partial"
-commands = ["xml.check", "xml.validate"]
+commands = ["xml.check", "xml.validate", "xml.next_problem", "xml.previous_problem"]
 tools = ["xml_wellformed", "xml_validate"]
-evidence = ["crates/ui-egui/tests/analysis.rs::problems_are_listed_and_a_click_goes_to_them", "crates/ui-egui/tests/validation.rs::validity_problems_are_listed_after_the_others_and_a_click_goes_to_them", "crates/ui-egui/tests/validation.rs::what_is_wrong_with_the_document_is_underlined_while_the_validation_is_current"]
-notes = "Problems of the well-formedness check and of the validation are underlined in the editor (validity ones while the validation is about the text as it is), listed in Messages with their line and column (a problem in an external text of the DTD names the file), and a click in Messages selects the place in the document. Missing: next and previous error commands, hover text on the underline, and opening the external text a problem is in."
+evidence = ["crates/ui-egui/tests/analysis.rs::problems_are_listed_and_a_click_goes_to_them", "crates/ui-egui/tests/validation.rs::validity_problems_are_listed_after_the_others_and_a_click_goes_to_them", "crates/ui-egui/tests/validation.rs::what_is_wrong_with_the_document_is_underlined_while_the_validation_is_current", "crates/ui-egui/tests/problems.rs::the_keys_step_from_one_problem_to_the_next_and_round"]
+notes = "Problems of the well-formedness check and of the validation are underlined in the editor (validity ones while the validation is about the text as it is), listed in the Problems panel with their line and column (a problem in an external text of the DTD names the file), and a click there selects the place in the document. Next Problem (F4) and Previous Problem (Shift+F4) go from one to the next in the text and round (a status line says which of how many); the pill of the header and the button of the rail show how many there are. Missing: hover text on the underline, and opening the external text a problem is in."
 
 [[feature]]
 id = "validate.def-links"
@@ -1720,8 +1720,8 @@ milestone = "M0"
 status = "shipped"
 commands = []
 tools = []
-evidence = ["crates/ui-egui/tests/shell.rs::the_shell_shows_its_chrome_and_panes", "crates/ui-egui/tests/snapshots.rs::the_home_shell"]
-notes = "Tab strip with the integrated macOS title bar, mode bar, Outline, Entry Helpers and Messages panes (empty until their milestones), status bar and a home card, in PdfCraft's theme. Not yet: scrolling or draggable tabs, app-drawn window buttons on GNOME/Wayland, Preferences."
+evidence = ["crates/ui-egui/tests/shell.rs::the_shell_shows_its_chrome_and_the_home_view_has_the_whole_window", "crates/ui-egui/tests/shell.rs::a_document_has_its_panes_a_rail_to_toggle_them_and_the_actions_that_matter", "crates/ui-egui/tests/snapshots.rs::the_home_shell"]
+notes = "Tab strip with the integrated macOS title bar (tabs with the icon of what the file is), the command bar (Validate as the primary action, Check, Format, Assign Schema…, Generate… with its choices), an activity rail that toggles the Outline, Entry Helpers and Problems panes (with the count of problems), a document header (the elements around the caret as a breadcrumb, the grammar the document follows, whether it is valid, whether schemas may be downloaded), a status bar, and a home view with the ways to begin, the recent files and the keys that matter, in PdfCraft's theme (M4.12). Not yet: scrolling or draggable tabs, app-drawn window buttons on GNOME/Wayland, Preferences."
 
 [[feature]]
 id = "app.settings"

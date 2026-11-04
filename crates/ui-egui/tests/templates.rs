@@ -92,7 +92,7 @@ fn the_command_is_in_the_file_menu_with_its_shortcut() {
 #[test]
 fn the_home_view_has_the_ways_to_begin() {
     let mut h = shell();
-    for label in ["New", "New from Template…", "Open…"] {
+    for label in ["New document", "New from Template…", "Open file…"] {
         assert!(h.query_all_by_label(label).count() >= 1, "{label} is on the home view");
     }
     // The button of the home view, not the one of the tab strip: the card's.
@@ -103,7 +103,7 @@ fn the_home_view_has_the_ways_to_begin() {
     assert!(h.query_by_label("New from Template").is_some(), "it opens the dialog");
     h.get_by_label("Cancel").click();
     h.run_steps(3);
-    h.query_all_by_label("New").last().expect("a button").click();
+    h.query_all_by_label("New document").last().expect("a button").click();
     h.run_steps(4);
     assert_eq!(documents(&h).len(), 1, "New makes an untitled document");
     assert!(documents(&h)[0].0.starts_with("Untitled"));
@@ -116,7 +116,7 @@ fn the_open_button_of_the_home_view_asks_for_a_file() {
     std::fs::write(&path, "<a/>").expect("writes");
     let mut h = shell();
     h.state_mut().pick_override = Some(vec![path]);
-    h.query_all_by_label("Open…").last().expect("a button").click();
+    h.query_all_by_label("Open file…").last().expect("a button").click();
     h.run_steps(8);
     assert_eq!(documents(&h), [("a.xml".to_owned(), "<a/>".to_owned())]);
 }

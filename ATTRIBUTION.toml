@@ -1874,7 +1874,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "docs/screenshots/LICENSE.txt"
 kind = "image"
 usage = "README and docs: the editor, its outline and Entry Helpers from an XML Schema"
-sha256 = "b0571c6d5db0ae1470cc5481dee8539a090dd64a0d29010a119e9aa918c3a233"
+sha256 = "edd37264ada0afa6993464d378a868e95345b9ea227deecb22976009c08fafbf"
 
 [[asset]]
 path = "docs/screenshots/validation.png"
@@ -1885,7 +1885,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "docs/screenshots/LICENSE.txt"
 kind = "image"
 usage = "README and docs: the problems of a document that does not follow its schema"
-sha256 = "2ed7683c83b01f3048a01e65704539a02e602cb21fc29af9e8e4b51aeb0bed0b"
+sha256 = "a961f66f564c55eba6343832dcaa6ff9f2ccf5e0556cfd4dca7039baeba6d41b"
 
 [[asset]]
 path = "docs/screenshots/generate-schema.png"
@@ -1896,7 +1896,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "docs/screenshots/LICENSE.txt"
 kind = "image"
 usage = "README and docs: XML ▸ Generate Schema…"
-sha256 = "16dbfad26cb806222feff01fbb93bbfff92aad61c102a6fede738ba1a1e390e0"
+sha256 = "d578936ab4401deef13341389250c34aeef707774d32f7a7b6bda5a19cb17a1a"
 
 [[asset]]
 path = "docs/screenshots/new-from-template.png"
@@ -1907,4 +1907,84 @@ licence = "MIT OR Apache-2.0"
 licence_file = "docs/screenshots/LICENSE.txt"
 kind = "image"
 usage = "README and docs: File ▸ New from Template…"
-sha256 = "66aaeadff750c5f23f8ca98f93421fb3b1ec188169851b268de4e80eaf2cc87a"
+sha256 = "0d30ccc2c9276c9c53d8bab18b9733c750b5f053848cdaa01ab834980bf4ca69"
+
+[[asset]]
+path = "assets/icons/clock.svg"
+title = "Lucide icon \"clock\""
+author = "Lucide Contributors (portions Cole Bemis, Feather)"
+source = "https://github.com/lucide-icons/lucide (icons/clock.svg, as shipped with PdfCraft)"
+licence = "ISC"
+licence_file = "assets/icons/LICENSE-lucide.txt"
+kind = "icon"
+usage = "UI icon, embedded via crates/ui-egui/src/icon_data.rs"
+sha256 = "e9d3e3acf4d1c280fcf8092293439dc0a4756a908ceb859de144b12451cd1cb9"
+
+[[asset]]
+path = "assets/icons/cloud.svg"
+title = "Lucide icon \"cloud\""
+author = "Lucide Contributors (portions Cole Bemis, Feather)"
+source = "https://github.com/lucide-icons/lucide (icons/cloud.svg, as shipped with PdfCraft)"
+licence = "ISC"
+licence_file = "assets/icons/LICENSE-lucide.txt"
+kind = "icon"
+usage = "UI icon, embedded via crates/ui-egui/src/icon_data.rs"
+sha256 = "8f19866847075907fdc862e13354d5c81da2f7ba23c9df354514789f6db4c855"
+
+
+
+[[asset]]
+path = "assets/icons/layout-grid.svg"
+title = "Lucide icon \"layout-grid\""
+author = "Lucide Contributors (portions Cole Bemis, Feather)"
+source = "https://github.com/lucide-icons/lucide (icons/layout-grid.svg, as shipped with PdfCraft)"
+licence = "ISC"
+licence_file = "assets/icons/LICENSE-lucide.txt"
+kind = "icon"
+usage = "UI icon, embedded via crates/ui-egui/src/icon_data.rs"
+sha256 = "c4dee78bfdc06e9abf18e7655f75489c891aa028188b6260116f491558e187ea"
+
+[[asset]]
+path = "assets/icons/globe.svg"
+title = "Lucide icon \"globe\""
+author = "Lucide Contributors (portions Cole Bemis, Feather)"
+source = "https://github.com/lucide-icons/lucide (icons/globe.svg, as shipped with PdfCraft)"
+licence = "ISC"
+licence_file = "assets/icons/LICENSE-lucide.txt"
+kind = "icon"
+usage = "UI icon, embedded via crates/ui-egui/src/icon_data.rs"
+sha256 = "af069c0f6a5d3f9c9eb2ce61d2601ab02976400d85f9d941e8c6c08d8b2ec910"
+
+[[asset]]
+path = "assets/icons/files.svg"
+title = "Lucide icon \"files\""
+author = "Lucide Contributors (portions Cole Bemis, Feather)"
+source = "https://github.com/lucide-icons/lucide (icons/files.svg, as shipped with PdfCraft)"
+licence = "ISC"
+licence_file = "assets/icons/LICENSE-lucide.txt"
+kind = "icon"
+usage = "UI icon, embedded via crates/ui-egui/src/icon_data.rs"
+sha256 = "8d8fa5955c5e9c86a1104936b1288958f77c6c9b68288d4404299e7817e47b66"
+
+[[asset]]
+path = "assets/icons/text-cursor-input.svg"
+title = "Lucide icon \"text-cursor-input\""
+author = "Lucide Contributors (portions Cole Bemis, Feather)"
+source = "https://github.com/lucide-icons/lucide (icons/text-cursor-input.svg, as shipped with PdfCraft)"
+licence = "ISC"
+licence_file = "assets/icons/LICENSE-lucide.txt"
+kind = "icon"
+usage = "UI icon, embedded via crates/ui-egui/src/icon_data.rs"
+sha256 = "40c83d2e570512e61ea71547a0176a50d20691296dc1e07b59570838d898e6aa"
+
+
+[[asset]]
+path = "assets/icons/list.svg"
+title = "Lucide icon \"list\""
+author = "Lucide Contributors (portions Cole Bemis, Feather)"
+source = "https://github.com/lucide-icons/lucide (icons/list.svg, as shipped with PdfCraft)"
+licence = "ISC"
+licence_file = "assets/icons/LICENSE-lucide.txt"
+kind = "icon"
+usage = "UI icon, embedded via crates/ui-egui/src/icon_data.rs"
+sha256 = "4866bb4c3a207f3f924f0034de0bb4f57774e059d53b2cb90488128b334f5e90"

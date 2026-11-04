@@ -15,14 +15,17 @@ pub mod editor_view;
 mod entry_helpers;
 mod find_bar;
 mod generate;
+mod header;
 mod home;
 mod i18n;
 mod icon_data;
 mod icons;
+mod kit;
 mod motion;
 mod new_from_template;
 mod palette;
 mod pickers;
+mod problems;
 mod side_panels;
 pub mod theme;
 pub use control::{ControlClient, Reply as ControlReply};
@@ -146,6 +149,9 @@ pub struct XmlCraftApp {
     validate_delay: std::time::Duration,
     /// The text typed into the Outline's filter box.
     outline_filter: String,
+    /// Which problems the Problems panel lists, and the one last gone to (where it starts in the text).
+    problem_filter: problems::Filter,
+    problem_selected: Option<usize>,
     /// The Outline's rows for the filter and analysis they were worked out for, so a frame does not filter 50,000 names again.
     outline_rows: Option<side_panels::OutlineRows>,
     /// The find and replace bar.
@@ -263,6 +269,8 @@ impl XmlCraftApp {
             sample_generator: xmlcraft_engine::generate::SampleGenerator::new(resolvers()),
             generate_serial: 0,
             outline_filter: String::new(),
+            problem_filter: problems::Filter::All,
+            problem_selected: None,
             outline_rows: None,
             find: find_bar::FindBar::default(),
             goto_input: String::new(),
@@ -308,6 +316,11 @@ impl XmlCraftApp {
             validate_typing: self.validate_typing,
             work_offline: self.work_offline,
         }
+    }
+
+    /// Whether nothing is downloaded now: the person works offline, `XMLCRAFT_OFFLINE` is on, or this build has no client.
+    pub(crate) fn network_is_offline(&self) -> bool {
+        self.work_offline || self.network.is_offline()
     }
 
     /// Attach the opt-in control channel (`--control`): the returned client sends requests that the app answers at the start of
@@ -390,10 +403,15 @@ impl eframe::App for XmlCraftApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let t = theme::Tokens::get(ui.ctx());
         chrome::tab_strip(self, ui);
-        chrome::mode_bar(self, ui);
-        // The status bar is outermost at the bottom, the messages panel sits above it.
+        chrome::command_bar(self, ui);
+        // The status bar is outermost at the bottom, the problems panel sits above it; the rail is outermost on the left.
         chrome::status_bar(self, ui);
-        side_panels::show(self, ui);
+        // The panes, the rail and the header are about a document: the home view has the whole window.
+        if self.session.active().is_some() {
+            chrome::activity_rail(self, ui);
+            side_panels::show(self, ui);
+            header::show(self, ui);
+        }
         palette::show(self, ui.ctx());
         let fill = if self.session.has_document() { editor_view::editor_colors(&t).background } else { t.pasteboard };
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| self.central(ui));

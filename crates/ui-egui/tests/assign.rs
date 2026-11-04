@@ -120,7 +120,7 @@ fn what_cannot_be_assigned_is_said_in_the_form_and_nothing_changes() {
     assert!(h.query_by_label("Assign Schema").is_some(), "the form stays, for another try");
     assert_eq!(text(&h), "<!DOCTYPE a>\n<a/>");
     // Saying that it is a DTD makes it a DTD.
-    h.get_by_label("a DTD").click();
+    h.get_by_label("DTD").click();
     h.run_steps(2);
     h.get_by_label("Assign").click();
     h.run_steps(3);
@@ -167,7 +167,7 @@ fn the_kind_overrules_what_the_name_looks_like() {
     h.run_steps(1);
     h.get_by_label(FIELD).type_text("rules.dtd");
     h.run_steps(2);
-    h.get_by_label("an XML Schema").click();
+    h.get_by_label("XML Schema").click();
     h.run_steps(2);
     h.get_by_label("Assign").click();
     h.run_steps(3);
@@ -180,7 +180,7 @@ fn the_kind_overrules_what_the_name_looks_like() {
     h.run_steps(1);
     h.get_by_label(FIELD).type_text("rules.xsd");
     h.run_steps(2);
-    h.get_by_label("a DTD").click();
+    h.get_by_label("DTD").click();
     h.run_steps(2);
     h.get_by_label("Assign").click();
     h.run_steps(3);

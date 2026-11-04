@@ -173,6 +173,8 @@ impl XmlCraftApp {
             "xml.pretty_print" => self.reformat(false),
             "xml.minify" => self.reformat(true),
             "xml.assign_schema" => self.open_assign_schema(),
+            "xml.next_problem" => self.step_problem(1),
+            "xml.previous_problem" => self.step_problem(-1),
             "xml.validate_typing" => self.validate_typing = !self.validate_typing,
             "xml.work_offline" => self.set_work_offline(!self.work_offline),
             "app.about" => self.open_about(),
