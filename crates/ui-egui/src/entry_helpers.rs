@@ -415,9 +415,14 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
         return;
     };
     let id = doc.id();
+    // A request for the keyboard is for this frame only: when the lists cannot be shown yet it is dropped, not kept for later.
+    let focus_filter = std::mem::take(&mut app.entry_focus);
     if waiting(ui, app, id) {
         return;
     }
+    egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 6)).show(ui, |ui| {
+        ui.add(widgets::checkbox(&mut app.entry_mandatory, tl!("Insert required content")));
+    });
     let Some(choices) = app.helper_choices() else {
         widgets::empty_state(ui, 12.0, tl!("Nothing to show"), tl!("The document is too large for Entry Helpers."));
         return;
@@ -445,13 +450,11 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
         }
     }
     let mut insert = None;
-    egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 6)).show(ui, |ui| {
-        ui.add(widgets::checkbox(&mut app.entry_mandatory, tl!("Insert required content")));
-        ui.add_space(4.0);
+    egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 0)).show(ui, |ui| {
         let before = app.entry_filter.clone();
         let field = ui.add(widgets::line(&mut app.entry_filter).id(field_id).hint_text(tl!("Filter")).desired_width(f32::INFINITY));
         widgets::name_for_assistive_technology(ui, &field, tl!("Filter Entry Helpers"));
-        if std::mem::take(&mut app.entry_focus) {
+        if focus_filter {
             field.request_focus();
         }
         if app.entry_filter != before {
@@ -461,7 +464,9 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
         escape = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape));
         if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             insert = order.get(app.entry_selected).and_then(|(g, i)| groups.get(*g)?.entries.get(*i)?.insert.clone());
-            app.entry_filter.clear();
+            if insert.is_some() {
+                app.entry_filter.clear();
+            }
         }
     });
     if escape {
@@ -469,6 +474,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
         app.focus_editor = true;
     }
     let selected = order.get(app.entry_selected).copied();
+    let mut clear_filter = false;
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for (g, group) in groups.iter().enumerate() {
             if !filter.is_empty() && group.entries.is_empty() {
@@ -482,13 +488,17 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
                     && let Some(what) = &entry.insert
                 {
                     insert = Some(what.clone());
+                    clear_filter = true;
                 }
             }
         }
-        if !filter.is_empty() && order.is_empty() {
+        if !filter.is_empty() && groups.iter().all(|g| g.entries.is_empty()) {
             widgets::empty_state(ui, 12.0, tl!("No match"), tl!("Nothing offered here contains that."));
         }
     });
+    if clear_filter {
+        app.entry_filter.clear();
+    }
     match insert {
         Some(Insert::Element(choice)) => app.insert_element(&choice, &choices.scope),
         Some(Insert::Attribute { name, at, first_value, declare }) => app.insert_attribute(&name, at, first_value.as_deref(), declare.as_ref()),

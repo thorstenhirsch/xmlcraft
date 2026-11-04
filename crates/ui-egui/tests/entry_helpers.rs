@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use egui::Modifiers;
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use xmlcraft_ui_egui::XmlCraftApp;
 
 fn shell() -> Harness<'static, XmlCraftApp> {
@@ -524,7 +524,47 @@ fn what_was_typed_in_the_filter_is_gone_after_the_insert() {
     h.key_press(egui::Key::Enter);
     h.run_steps(4);
     assert!(text(&h).contains("<a id='1'/><s>"), "{}", text(&h));
-    // Everything the grammar offers is shown again (the caret is now inside s, which may hold b).
-    assert!(h.query_by_label("Filter Entry Helpers").is_some());
+    // Everything the grammar offers is shown again: the caret is now inside s, which may hold b (a filter left over would hide that
+    // section, and say that nothing matches).
+    assert!(h.query_by_label("ELEMENTS IN S").is_some(), "the lists are shown unfiltered");
     assert!(h.query_by_label("No match").is_none());
+}
+
+#[test]
+fn a_filter_that_matches_only_a_used_attribute_does_not_say_there_is_no_match() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    // The caret is in the start tag of a, whose attribute id is there already: it is listed (greyed) and cannot be chosen.
+    open_at(&mut h, dir.path(), &format!("{DTD}<r><a id='1' ¦/></r>"));
+    h.get_by_label("Filter Entry Helpers").click();
+    h.get_by_label("Filter Entry Helpers").type_text("id");
+    h.run_steps(3);
+    assert!(h.query_by_label("id (required)").is_some(), "the used attribute is still shown");
+    assert!(h.query_by_label("No match").is_none());
+}
+
+#[test]
+fn enter_with_nothing_to_choose_leaves_the_filter_alone() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open_at(&mut h, dir.path(), &format!("{DTD}<r><a id='1'/>¦</r>"));
+    h.get_by_label("Filter Entry Helpers").click();
+    h.get_by_label("Filter Entry Helpers").type_text("zz");
+    h.run_steps(3);
+    h.key_press(egui::Key::Enter);
+    h.run_steps(3);
+    assert_eq!(h.get_by_label("Filter Entry Helpers").accesskit_node().value().as_deref(), Some("zz"), "what was typed is still there");
+}
+
+#[test]
+fn a_double_click_clears_the_filter_too() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open_at(&mut h, dir.path(), &format!("{DTD}<r><a id='1'/>¦</r>"));
+    h.get_by_label("Filter Entry Helpers").click();
+    h.get_by_label("Filter Entry Helpers").type_text("s");
+    h.run_steps(3);
+    double_click(&mut h, "s");
+    assert!(text(&h).contains("<a id='1'/><s>"), "{}", text(&h));
+    assert!(h.query_by_label("ELEMENTS IN S").is_some(), "the filter is gone");
 }
