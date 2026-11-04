@@ -120,3 +120,11 @@ fn a_catalog_is_added_listed_kept_once_and_removed() {
     h.state_mut().remove_user_catalog(5);
     assert!(h.query_by_label("Add Catalog…").is_some());
 }
+
+#[test]
+fn a_catalog_path_is_trimmed_once_so_that_it_is_not_listed_twice() {
+    let mut h = shell(&Arc::new(Web::default()));
+    h.state_mut().add_user_catalog("  /x/c.xml ");
+    h.state_mut().add_user_catalog("/x/c.xml");
+    assert_eq!(h.state().user_catalogs(), ["/x/c.xml"]);
+}

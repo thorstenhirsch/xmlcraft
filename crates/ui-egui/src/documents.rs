@@ -237,7 +237,7 @@ impl XmlCraftApp {
     }
 
     /// What was asked for a schema or a DTD is asked for again (what the answer depends on, such as the catalogs or the downloads, changed
-    /// without the text having).
+    /// without the text having changed).
     pub(crate) fn forget_schema_requests(&mut self) {
         for view in self.views.values_mut() {
             view.helpers.forget_requests();

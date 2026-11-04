@@ -104,7 +104,12 @@ impl Network {
             .into_iter()
             .map(|path| {
                 // A relative path means the folder the program was started in, now: not the root of the file system.
-                let absolute = std::path::absolute(&path).ok().and_then(|p| p.to_str().map(str::to_owned)).unwrap_or_else(|| path.clone());
+                // (A location that has a scheme, such as a `file:` URI, stays as it is.)
+                let absolute = if crate::file_uri::uri_of(&path) == path {
+                    path.clone()
+                } else {
+                    std::path::absolute(&path).ok().and_then(|p| p.to_str().map(str::to_owned)).unwrap_or_else(|| path.clone())
+                };
                 let uri = crate::file_uri::uri_of(&absolute);
                 (path, uri)
             })
@@ -250,6 +255,9 @@ mod tests {
         // A relative path is the file in the folder the program runs in.
         let relative = std::path::Path::new("Cargo.toml").exists();
         assert!(relative, "the tests run in the crate's folder");
+        network.set_user_catalogs(vec!["Cargo.toml".to_owned()]);
+        network.set_user_catalogs(vec!["file:///x/catalog.xml".to_owned()]);
+        assert_eq!(network.user_catalog_uris(), ["file:///x/catalog.xml"], "a URI is not taken for a relative path");
         network.set_user_catalogs(vec!["Cargo.toml".to_owned()]);
         let uris = network.user_catalog_uris();
         assert!(uris[0].starts_with("file:///") && uris[0].ends_with("/Cargo.toml") && uris[0].len() > "file:///Cargo.toml".len(), "{uris:?}");

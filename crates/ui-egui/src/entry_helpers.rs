@@ -55,7 +55,7 @@ struct Cached {
 
 impl HelperState {
     /// Forget what was asked for, so that the grammar and the schema are asked for again (what they are made from may have changed
-    /// without the text having).
+    /// without the text having changed).
     pub(crate) fn forget_requests(&mut self) {
         self.requested_key = None;
         self.requested_xsd_key = None;

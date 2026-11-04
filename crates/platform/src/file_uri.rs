@@ -41,8 +41,8 @@ pub fn path_of(uri: &str) -> Option<String> {
 }
 
 /// The `file:` URI of the file at `path` (a path with a scheme, such as an `http:` URI, is returned as it is). Characters a URI cannot
-/// hold as they are, such as spaces and non-ASCII letters, are percent-escaped; backslashes become slashes and a Windows drive path
-/// gets its leading slash (`C:\x` is `file:///C:/x`).
+/// hold as they are, such as spaces and non-ASCII letters, are percent-escaped; on Windows backslashes become slashes and a drive path
+/// gets its leading slash (`C:\x` is `file:///C:/x`), elsewhere a backslash is a character of the name and is escaped.
 pub fn uri_of(path: &str) -> String {
     let has_scheme =
         path.split_once(':').is_some_and(|(scheme, _)| scheme.len() > 1 && scheme.chars().all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c)));
