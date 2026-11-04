@@ -34,7 +34,10 @@ pub enum EditKind {
     Typing,
     /// Characters deleted one by one (Backspace, Delete).
     Delete,
-    /// Anything that should be its own undo step: a paste, a format, a replace, a command.
+    /// Text pasted: its own undo step, and (unlike other commands) written into the other name of a pair of tags when it is pasted into
+    /// one of them.
+    Paste,
+    /// Anything else that should be its own undo step: a format, a replace, a command.
     Other,
 }
 

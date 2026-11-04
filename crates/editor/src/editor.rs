@@ -494,7 +494,7 @@ impl Editor {
             if distribute { lines.iter().map(|l| (*l).to_owned()).collect() } else { vec![normalized.clone(); self.carets.len()] };
         let planned: Vec<Edit> = self.carets.iter().zip(pieces).map(|(c, piece)| Edit::replace(c.start()..c.end(), piece)).collect();
         let carets = planned.iter().map(|e| Caret::at(map_offset(&planned, e.range.start, Bias::Before) + e.text.len())).collect();
-        self.commit(planned, carets, EditKind::Other)
+        self.commit(planned, carets, EditKind::Paste)
     }
 
     /// Enter: a line break (the document's) followed by the indentation of the line the caret is on, up to the caret. With
@@ -808,7 +808,9 @@ impl Editor {
         match result {
             Ok(Some(applied)) => {
                 self.version += 1;
-                self.linked = None;
+                // The names of a pair of tags stay linked through an undo or a redo that changed them alike.
+                let linked = self.linked.take();
+                self.linked = linked.and_then(|names| self.linked_after_history(&names, &applied.edits));
                 // Which lines an undo touched is not known here: everything counts as changed.
                 self.log_change(0);
                 self.remap_folds(&applied.edits);

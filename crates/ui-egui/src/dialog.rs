@@ -52,6 +52,8 @@ pub(crate) enum Dialog {
     GenerateSchema(Box<crate::generate::SchemaForm>),
     /// The options of Generate Sample XML (drawn by `generate.rs`).
     GenerateSample(Box<crate::generate::SampleForm>),
+    /// The new name of an element (drawn by `structure.rs`).
+    RenameElement(Box<crate::structure::RenameForm>),
     Message {
         title: String,
         text: String,
@@ -87,7 +89,8 @@ impl Dialog {
             | Dialog::About(_)
             | Dialog::NewFromTemplate(_)
             | Dialog::GenerateSchema(_)
-            | Dialog::GenerateSample(_) => false,
+            | Dialog::GenerateSample(_)
+            | Dialog::RenameElement(_) => false,
         }
     }
 }
@@ -178,7 +181,12 @@ impl XmlCraftApp {
                 Describe { title: title.clone(), text: text.clone(), buttons: vec![(tl!("OK"), Choice::Ok)], input: false }
             }
             // These are forms, drawn by `assign.rs`, `about.rs` and `generate.rs`; this is only here to be total.
-            Dialog::AssignSchema(_) | Dialog::About(_) | Dialog::NewFromTemplate(_) | Dialog::GenerateSchema(_) | Dialog::GenerateSample(_) => {
+            Dialog::AssignSchema(_)
+            | Dialog::About(_)
+            | Dialog::NewFromTemplate(_)
+            | Dialog::GenerateSchema(_)
+            | Dialog::GenerateSample(_)
+            | Dialog::RenameElement(_) => {
                 Describe { title: String::new(), text: String::new(), buttons: vec![(tl!("Cancel"), Choice::Cancel)], input: false }
             }
         }
@@ -200,6 +208,10 @@ impl XmlCraftApp {
         }
         if matches!(self.dialog, Some(Dialog::GenerateSchema(_) | Dialog::GenerateSample(_))) {
             self.show_generate(ctx);
+            return;
+        }
+        if matches!(self.dialog, Some(Dialog::RenameElement(_))) {
+            self.show_rename_element(ctx);
             return;
         }
         let Some(dialog) = self.dialog.clone() else { return };
