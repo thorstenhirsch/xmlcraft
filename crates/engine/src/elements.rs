@@ -76,18 +76,27 @@ pub fn xpath(outline: &[OutlineItem], index: usize) -> Option<String> {
     while let Some(i) = at {
         let item = outline.get(i)?;
         let up = parent(outline, i);
-        let brothers: Vec<usize> = (0..outline.len())
-            .filter(|&j| {
-                outline.get(j).is_some_and(|b| {
-                    b.depth == item.depth
-                        && b.name == item.name
-                        && up.is_none_or(|p| outline.get(p).is_some_and(|parent| parent.range.contains(&b.range.start)))
-                })
-            })
-            .collect();
-        match brothers.iter().position(|&j| j == i) {
-            Some(position) if brothers.len() > 1 => steps.push(format!("{}[{}]", item.name, position + 1)),
-            _ => steps.push(item.name.clone()),
+        // The brothers are the elements of the parent's range one level down (the whole outline, for the root): one pass over them.
+        let (from, bound) = match up {
+            Some(p) => (p + 1, outline.get(p)?.range.end),
+            None => (0, usize::MAX),
+        };
+        let (mut total, mut position) = (0usize, 0usize);
+        for (j, b) in outline.get(from..)?.iter().enumerate() {
+            if b.range.start >= bound {
+                break;
+            }
+            if b.depth == item.depth && b.name == item.name {
+                total += 1;
+                if from + j <= i {
+                    position += 1;
+                }
+            }
+        }
+        if total > 1 {
+            steps.push(format!("{}[{}]", item.name, position));
+        } else {
+            steps.push(item.name.clone());
         }
         at = up;
     }

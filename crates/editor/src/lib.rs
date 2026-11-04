@@ -32,4 +32,5 @@ pub use caret::Caret;
 pub use columns::MAX_COLUMN_LINES;
 pub use editor::{Editor, Motion, Settings};
 pub use folds::{Fold, FoldMap};
+pub use linked::MAX_LINKED_NAME;
 pub use structure::CommentRefused;

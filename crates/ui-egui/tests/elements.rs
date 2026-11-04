@@ -89,6 +89,12 @@ fn wrap_in_tag_wraps_the_selection_and_links_the_names() {
     assert!(h.state_mut().execute("xml.wrap_in_tag"));
     h.run_steps(2);
     assert_eq!(text(&h), "<a><b><element>x</element></b><c/></a>");
+    assert_eq!(selection(&h), (7, 14), "the new name is selected");
+    // After a frame has been drawn the link is still there: typing the name renames both tags.
+    h.run_steps(3);
+    h.state_mut().session.active_document_mut().expect("shown").editor_mut().type_input("item");
+    assert_eq!(text(&h), "<a><b><item>x</item></b><c/></a>");
+    assert!(h.state_mut().execute("edit.undo"));
     assert!(h.state_mut().execute("edit.undo"));
     assert_eq!(text(&h), DOC);
 }
@@ -139,4 +145,17 @@ fn the_commands_say_so_when_the_caret_is_in_no_element() {
     h.run_steps(2);
     assert_eq!(text(&h), "<?xml version=\"1.0\"?>\n<a/>\n");
     assert!(h.state().status.contains("not in an element"), "{}", h.state().status);
+}
+
+#[test]
+fn rename_element_does_not_replace_a_question_that_is_being_asked() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, dir.path(), DOC);
+    put_caret(&mut h, 6);
+    assert!(h.state_mut().execute("edit.go_to_line"));
+    h.run_steps(3);
+    assert!(h.state_mut().execute("xml.rename_element"));
+    h.run_steps(3);
+    assert!(h.query_by_label("The new name of the element").is_none(), "the question that was asked is still the one on the screen");
 }

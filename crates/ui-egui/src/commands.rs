@@ -173,7 +173,12 @@ impl XmlCraftApp {
             "xml.pretty_print" => self.reformat(false),
             "xml.minify" => self.reformat(true),
             "xml.assign_schema" => self.open_assign_schema(),
-            "xml.rename_element" => self.open_rename_element(),
+            "xml.rename_element" => {
+                // Not over a question that is being asked: its answer would be lost.
+                if self.dialog.is_none() {
+                    self.open_rename_element();
+                }
+            }
             "xml.wrap_in_tag" => self.wrap_in_tag(),
             "xml.unwrap_element" => self.unwrap_element(),
             "xml.select_element" => self.select_element(),

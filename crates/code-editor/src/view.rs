@@ -295,7 +295,13 @@ impl<'a> CodeEditor<'a> {
             hover = ui
                 .input(|i| (i.pointer.hover_pos(), i.pointer.any_down()))
                 .0
-                .filter(|pos| response.hovered() && !ui.input(|i| i.pointer.any_down()) && pos.x >= rect.min.x + gutter_w)
+                // Not in the gutter, and not in the blank rows below the last line (`offset_at` would put those on the last line).
+                .filter(|pos| {
+                    response.hovered()
+                        && !ui.input(|i| i.pointer.any_down())
+                        && pos.x >= rect.min.x + gutter_w
+                        && pos.y < rect.min.y + editor.visible_rows() as f32 * row_h
+                })
                 .map(|pos| offset_at(view, editor, &frame, rect.min, gutter_w, row_h, pos));
 
             // Current line.

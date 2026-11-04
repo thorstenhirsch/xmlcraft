@@ -200,6 +200,29 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             handler: doc_key,
         },
         ToolDef {
+            name: "doc_element",
+            title: "Work with an element",
+            description: "Act on the element the caret is in (or the one at `line` and `column`, from 1) in an open document, as one undoable edit. `action` is `rename` \
+                          (both its tags, to `name`), `wrap` (the selection, or the caret, in a new element called `name`, default `element`; the selection is \
+                          `line`/`column` to `end_line`/`end_column`), `unwrap` (takes its two tags away and keeps what is inside), `select` (selects it) or \
+                          `xpath` (returns its path, such as /library/book[2]/title, and changes nothing). Returns where the caret is.",
+            input_schema: object(
+                json!({
+                    "id": id.clone(),
+                    "action": { "type": "string", "enum": ["rename", "wrap", "unwrap", "select", "xpath"] },
+                    "name": { "type": "string", "minLength": 1 },
+                    "line": { "type": "integer", "minimum": 1 },
+                    "column": { "type": "integer", "minimum": 1 },
+                    "end_line": { "type": "integer", "minimum": 1 },
+                    "end_column": { "type": "integer", "minimum": 1 },
+                }),
+                &["id", "action"],
+            ),
+            read_only: false,
+            destructive: false,
+            handler: doc_element,
+        },
+        ToolDef {
             name: "doc_fold",
             title: "Fold or unfold",
             description: "Fold or unfold stretches of lines of an open document (see xml_folds for what can be folded). `fold` folds the innermost range at the caret (or at \
@@ -816,6 +839,68 @@ fn doc_key(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
             "Shift+Tab" => drop(editor.outdent()),
             other => return fail(format!("{other}: no such key (Backspace, Delete, Enter, Tab, Shift+Tab)")),
         }
+    }
+    json_result(json!({ "carets": carets_json(doc), "document": describe(doc) }))
+}
+
+fn doc_element(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    use xmlcraft_engine::elements;
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    let action = text_arg(args, "action").unwrap_or_default();
+    if action == "wrap" {
+        // The name first: a call that is refused leaves the selection where it was.
+        let name = text_arg(args, "name").unwrap_or("element");
+        if !elements::is_element_name(name) {
+            return fail(format!("{name}: not an element name"));
+        }
+        if name.len() > xmlcraft_editor::MAX_LINKED_NAME {
+            return fail(format!("the name is too long (at most {} bytes)", xmlcraft_editor::MAX_LINKED_NAME));
+        }
+        place_selection(doc, args)?;
+        if !doc.editor_mut().wrap_selection_in_tag(name) {
+            return fail("wrapping needs one caret or one selection");
+        }
+        return json_result(json!({ "carets": carets_json(doc), "document": describe(doc) }));
+    }
+    place_caret(doc, args)?;
+    let text = doc.editor().text();
+    let analysis = analyze(&text, 0);
+    if analysis.skipped.is_some() {
+        return fail("the text is too large to analyse, or the analysis failed: nothing was changed");
+    }
+    if analysis.outline_truncated {
+        return fail("the document has too many elements for this tool");
+    }
+    let caret = doc.editor().primary().start();
+    let Some((position, item)) = elements::innermost(&analysis.outline, caret).and_then(|i| analysis.outline.get(i).map(|item| (i, item))) else {
+        return fail("the caret is not in an element");
+    };
+    match action {
+        "rename" => {
+            let Some(name) = text_arg(args, "name") else { return Err(ToolError::InvalidArgs("rename needs a name".into())) };
+            let edits = elements::rename_edits(&text, item, name).map_err(|e| match e {
+                elements::RenameError::NotAName => ToolError::Failed(format!("{name}: not an element name")),
+                elements::RenameError::Unchanged => ToolError::Failed(format!("{name}: the element has that name already")),
+            })?;
+            if !doc.editor_mut().apply_edits(&edits) {
+                return fail("the text could not be changed");
+            }
+        }
+        "unwrap" => {
+            if !doc.editor_mut().apply_edits(&elements::unwrap_edits(item)) {
+                return fail("the text could not be changed");
+            }
+        }
+        "select" => {
+            let range = elements::element_range(item);
+            doc.editor_mut().set_selection(range.start, range.end);
+        }
+        "xpath" => {
+            let Some(path) = elements::xpath(&analysis.outline, position) else { return fail("no path for that element") };
+            return json_result(json!({ "xpath": path, "element": item.name, "carets": carets_json(doc), "document": describe(doc) }));
+        }
+        other => return fail(format!("{other}: no such action (rename, wrap, unwrap, select, xpath)")),
     }
     json_result(json!({ "carets": carets_json(doc), "document": describe(doc) }))
 }
