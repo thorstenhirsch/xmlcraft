@@ -208,6 +208,11 @@ impl XmlCraftApp {
                 self.palette_query.clear();
             }
             "view.outline" => self.left_open = !self.left_open,
+            "view.focus_entry_helpers" => {
+                // Open the pane when it is closed, and give the keyboard to its filter: type, arrows to choose, Enter to insert.
+                self.right = Some(RightPanel::EntryHelpers);
+                self.entry_focus = true;
+            }
             "view.entry_helpers" => self.right = if self.right.is_some() { None } else { Some(RightPanel::EntryHelpers) },
             "view.messages" => self.bottom_open = !self.bottom_open,
             "view.theme.system" => self.theme_preference = ThemePreference::System,

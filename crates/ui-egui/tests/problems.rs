@@ -138,3 +138,43 @@ fn the_count_on_the_rail_includes_what_the_validation_found() {
     assert!(h.query_by_label(&format!("Toggle Problems, {errors} problems")).is_some(), "the rail counts the validity errors");
     assert!(h.query_all_by_label_contains(&format!("{errors} validity errors")).next().is_some(), "and so does the pill of the header");
 }
+
+#[test]
+fn what_is_wrong_at_a_place_is_what_the_hover_tip_says() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "broken.xml", BROKEN));
+    // `</b>` on line 2 does not close `<a>`; `<c/>` on line 3 is fine.
+    let end_tag = BROKEN.find("</b>").expect("in the text");
+    let messages = h.state().problem_messages_at(end_tag + 2);
+    assert!(!messages.is_empty(), "a mistake has a message");
+    assert!(messages.len() <= 4);
+    let fine = BROKEN.find("<c/>").expect("in the text");
+    assert!(h.state().problem_messages_at(fine + 1).is_empty(), "nothing is wrong there");
+    // Text that was edited since the analysis has other places: no tip rather than a wrong one.
+    // (At the end, so that the old places are still where they were: only the version says the analysis is old.)
+    let editor = h.state_mut().session.active_document_mut().expect("shown").editor_mut();
+    editor.place_caret(BROKEN.len(), false);
+    editor.type_input("x");
+    assert!(h.state().problem_messages_at(end_tag + 2).is_empty(), "the analysis is about older text");
+}
+
+#[test]
+fn the_pointer_resting_on_a_mistake_shows_its_message() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "broken.xml", BROKEN));
+    let expected = h.state().problem_messages_at(BROKEN.find("</b>").expect("in the text") + 2);
+    assert!(!expected.is_empty());
+    let geometry = h.state().editor_geometry().expect("the editor was drawn");
+    // Line 2 is `<a></b>`: the pointer goes to the `/` of the end tag.
+    let at = egui::pos2(geometry.text_x + geometry.column_width * 4.5, geometry.origin.y + geometry.row_height * 1.5);
+    h.hover_at(at);
+    let started = Instant::now();
+    // The Problems panel lists the same message with its place after it; the tip is the message alone.
+    while h.query_all_by_label(&expected[0]).count() == 0 {
+        assert!(started.elapsed() < Duration::from_secs(5), "waiting for the tip: {:?}", expected[0]);
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
