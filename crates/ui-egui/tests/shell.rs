@@ -34,7 +34,7 @@ fn the_shell_shows_its_chrome_and_the_home_view_has_the_whole_window() {
 #[test]
 fn a_document_has_its_panes_a_rail_to_toggle_them_and_the_actions_that_matter() {
     let h = shell_with_document();
-    for label in ["Validate", "Check", "Format", "Assign Schema…", "Generate…", "Toggle Outline", "Toggle Entry Helpers", "Toggle Problems"] {
+    for label in ["Validate", "Check", "Format", "Assign Schema…", "Schema…", "Toggle Outline", "Toggle Entry Helpers", "Toggle Problems"] {
         assert!(h.query_by_label(label).is_some(), "missing {label:?}");
     }
     // Each pane has a header; some also appear elsewhere.

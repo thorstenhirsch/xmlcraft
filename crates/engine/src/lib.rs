@@ -6,12 +6,15 @@
 pub mod analysis;
 pub mod assign;
 pub mod commands;
+pub mod doc_kind;
 mod document;
 pub mod elements;
 pub mod folding;
 pub mod generate;
 pub mod recent;
 pub mod schema;
+pub mod schema_fetch;
+pub mod schema_link;
 pub mod selfcheck;
 pub mod templates;
 pub mod validation;

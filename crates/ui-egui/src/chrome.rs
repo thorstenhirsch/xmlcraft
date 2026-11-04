@@ -222,7 +222,7 @@ pub fn command_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                         app.execute("xml.assign_schema");
                     }
                     ui.add_space(2.0);
-                    generate_button(app, ui, compact);
+                    kind_button(app, ui, compact);
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
@@ -237,34 +237,45 @@ pub fn command_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
         });
 }
 
-/// Generate…: a schema from the document (the main part), or a sample document from it (the choices behind the arrow).
-fn generate_button(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool) {
-    if compact {
-        // Two buttons, so that the schema is one click away and the sample is reachable too.
-        for (id, icon) in [("xml.generate_schema", "file-code"), ("xml.generate_sample", "sparkles")] {
-            let Some(spec) = xmlcraft_engine::commands::command(id) else { continue };
-            let enabled = app.command_enabled(spec);
-            if ui.add_enabled_ui(enabled, |ui| icons::button(ui, icon, 32.0, false, tl!(spec.label))).inner.clicked() {
-                app.execute(id);
-            }
+/// What the document can be turned into or checked against. An XML document gets Schema… (generate a schema from it, or open the one it
+/// names); a schema or a DTD gets XML… (generate a sample document from it).
+fn kind_button(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool) {
+    use xmlcraft_engine::doc_kind::DocKind;
+    match app.active_doc_kind() {
+        Some(DocKind::Xml) => schema_button(app, ui, compact),
+        Some(DocKind::Xsd | DocKind::Dtd) if action(app, ui, "xml.generate_sample", tl!("XML…"), PillKind::Secondary, compact) => {
+            app.execute("xml.generate_sample");
         }
-        return;
+        Some(DocKind::Xsd | DocKind::Dtd) => {}
+        None => {}
     }
-    let (main, more) = kit::split_pill(ui, Some("sparkles"), tl!("Generate…"), tl!("More generators"));
-    if main.clicked() {
-        app.execute("xml.generate_schema");
-    }
-    egui::Popup::menu(&more).show(|ui| {
-        ui.set_min_width(220.0);
-        for id in ["xml.generate_schema", "xml.generate_sample"] {
-            if let Some(spec) = xmlcraft_engine::commands::command(id)
-                && ui.add_enabled(app.command_enabled(spec), egui::Button::new(spec.label)).clicked()
-            {
-                app.execute(id);
-                ui.close();
+}
+
+/// Schema…: the actions on the schema of an XML document, in a menu.
+fn schema_button(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool) {
+    let (main, arrow) = if compact {
+        let button = icons::button(ui, "file-code", 32.0, false, tl!("Schema…"));
+        (button.clone(), button)
+    } else {
+        kit::split_pill(ui, Some("file-code"), tl!("Schema…"), tl!("More schema actions"))
+    };
+    for anchor in [main, arrow] {
+        egui::Popup::menu(&anchor).show(|ui| {
+            ui.set_min_width(220.0);
+            for id in ["xml.generate_schema", "xml.load_schema"] {
+                let Some(spec) = xmlcraft_engine::commands::command(id) else { continue };
+                let enabled = app.command_enabled(spec);
+                let mut item = ui.add_enabled(enabled, egui::Button::new(spec.label));
+                if id == "xml.load_schema" && !enabled {
+                    item = item.on_disabled_hover_text(tl!("This document names no schema."));
+                }
+                if item.clicked() {
+                    app.execute(id);
+                    ui.close();
+                }
             }
-        }
-    });
+        });
+    }
 }
 
 fn main_menu(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool) {

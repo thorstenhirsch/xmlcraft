@@ -233,6 +233,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("xml.select_element", "Select Element", XML, Some(Shortcut::cmd_alt("E")), Needs::Document, "text-cursor-input"),
     c("xml.copy_xpath", "Copy XPath", XML, None, Needs::Document, "copy"),
     c("xml.generate_schema", "Generate Schema…", XML, None, Needs::Document, "file-code").sep(),
+    c("xml.load_schema", "Load Schema", XML, None, Needs::Document, "external-link"),
     c("xml.generate_sample", "Generate Sample XML…", XML, None, Needs::Document, "sparkles"),
     c("view.palette", "Find tools and commands…", VIEW, Some(Shortcut::cmd("K")), Nothing, "search"),
     c("view.outline", "Outline", VIEW, None, Nothing, "list-tree").toggle().sep(),
@@ -376,6 +377,7 @@ mod tests {
                 "xml.select_element",
                 "xml.copy_xpath",
                 "xml.generate_schema",
+                "xml.load_schema",
                 "xml.generate_sample"
             ]
         );

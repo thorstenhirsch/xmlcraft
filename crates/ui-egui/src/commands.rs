@@ -51,7 +51,14 @@ pub(crate) fn egui_shortcut(s: Shortcut) -> Option<egui::KeyboardShortcut> {
 impl XmlCraftApp {
     /// Whether a registered command can run now. The engine judges the documents; state it cannot see is checked here.
     pub fn command_enabled(&self, spec: &CommandSpec) -> bool {
-        commands::is_enabled(spec, &self.session)
+        let enabled = commands::is_enabled(spec, &self.session);
+        match spec.id {
+            // Only an XML document can name a schema, and only one that does.
+            "xml.load_schema" => {
+                enabled && self.active_doc_kind() == Some(xmlcraft_engine::doc_kind::DocKind::Xml) && self.active_schema_link().is_some()
+            }
+            _ => enabled,
+        }
     }
 
     /// The checked state of a toggle or choice command, `None` for a plain action.
@@ -190,6 +197,7 @@ impl XmlCraftApp {
             "app.about" => self.open_about(),
             "xml.generate_schema" => self.open_generate_schema(),
             "xml.generate_sample" => self.open_generate_sample(),
+            "xml.load_schema" => self.load_schema(),
             "edit.select_all" => {
                 if let Some(doc) = self.session.active_document_mut() {
                     doc.editor_mut().select_all();
