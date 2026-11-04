@@ -78,6 +78,8 @@ impl Shortcut {
             "CloseBracket" => "]",
             "Backslash" => "\\",
             "Slash" => "/",
+            "Equals" => "=",
+            "Minus" => "-",
             "ArrowRight" => "→",
             "ArrowLeft" => "←",
             other => other,
@@ -240,6 +242,9 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("view.entry_helpers", "Entry Helpers", VIEW, None, Nothing, "braces").toggle(),
     c("view.focus_entry_helpers", "Go to Entry Helpers", VIEW, Some(Shortcut::cmd_shift("E")), Needs::Document, "braces"),
     c("view.messages", "Problems", VIEW, None, Nothing, "panel-bottom").toggle(),
+    c("view.zoom_in", "Zoom In", VIEW, Some(Shortcut::cmd("Equals")), Nothing, "plus").sep(),
+    c("view.zoom_out", "Zoom Out", VIEW, Some(Shortcut::cmd("Minus")), Nothing, "minus"),
+    c("view.zoom_reset", "Actual Size", VIEW, Some(Shortcut::cmd("0")), Nothing, "search"),
     c("view.theme.system", "Use system theme", VIEW, None, Nothing, "monitor").choice().sep(),
     c("view.theme.light", "Light theme", VIEW, None, Nothing, "sun").choice(),
     c("view.theme.dark", "Dark theme", VIEW, None, Nothing, "moon").choice(),
@@ -399,6 +404,9 @@ mod tests {
         assert_eq!(Shortcut::cmd_alt("OpenBracket").modifier_count(), 2);
         assert_eq!(Shortcut::cmd_alt("CloseBracket").label(true), "⌥⌘]");
         assert_eq!(Shortcut::cmd("Slash").label(true), "⌘/");
+        assert_eq!(Shortcut::cmd("Equals").label(true), "⌘=");
+        assert_eq!(Shortcut::cmd("Minus").label(false), "Ctrl+-");
+        assert_eq!(Shortcut::cmd("0").label(false), "Ctrl+0");
         assert_eq!(Shortcut::cmd_alt("ArrowRight").label(false), "Ctrl+Alt+→");
         assert_eq!(Shortcut::cmd_shift("Backslash").label(true), "⇧⌘\\");
         assert_eq!(Shortcut::cmd_shift("Backslash").label(false), "Ctrl+Shift+\\");

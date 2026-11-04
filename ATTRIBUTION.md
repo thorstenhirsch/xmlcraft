@@ -4,7 +4,7 @@
 
 Every asset XmlCraft includes, bundles or uses to build its published material, with its author, source and licence. The policy is in [AGENTS.md](AGENTS.md) §1. The machine-readable list, with the SHA-256 of every asset but the translation catalogs, is [ATTRIBUTION.toml](ATTRIBUTION.toml). Licence texts are kept beside the assets and summarised in [NOTICE](NOTICE).
 
-## In this repository (178)
+## In this repository (179)
 
 | Asset | Title | Author | Licence | Source | Used for |
 |---|---|---|---|---|---|
@@ -22,6 +22,7 @@ Every asset XmlCraft includes, bundles or uses to build its published material, 
 | `assets/icons/moon.svg` | Lucide icon "moon" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/moon.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 | `assets/icons/circle-help.svg` | Lucide icon "circle-help" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/circle-help.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 | `assets/icons/plus.svg` | Lucide icon "plus" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/plus.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
+| `assets/icons/minus.svg` | Lucide icon "minus" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/minus.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 | `assets/icons/x.svg` | Lucide icon "x" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/x.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 | `assets/icons/chevron-down.svg` | Lucide icon "chevron-down" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/chevron-down.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 | `assets/icons/chevron-right.svg` | Lucide icon "chevron-right" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/chevron-right.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |

@@ -613,6 +613,7 @@ impl XmlCraftApp {
         }
         let tokens = Tokens::get(ui.ctx());
         let colors = editor_colors(&tokens);
+        let zoom = self.editor_zoom;
         // The find bar is above the editor; what it looks for is shown in the text.
         self.find_bar(ui);
         let Some(doc) = self.session.document_mut(index) else { return };
@@ -630,7 +631,7 @@ impl XmlCraftApp {
             let widget = ui.make_persistent_id(salt);
             ui.memory_mut(|m| m.request_focus(widget));
         }
-        let output = CodeEditor::new(salt, doc.editor_mut(), &mut view.view, colors).font(theme::mono(13.0)).styler(&mut view.styler).show(ui);
+        let output = CodeEditor::new(salt, doc.editor_mut(), &mut view.view, colors).font(theme::mono(13.0 * zoom)).styler(&mut view.styler).show(ui);
         // The mark of something that can be folded was clicked: fold it, knowing how far it goes from the analysis of the text as it is.
         if let Some(line) = output.fold_clicked {
             self.when_analysed(Then::FoldLine(line));

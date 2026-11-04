@@ -165,6 +165,17 @@ usage = "UI icon, embedded via crates/ui-egui/src/icon_data.rs"
 sha256 = "7f6af73bf1ff6c4bca3f18351c8d1bdec6749c0c2530c4de5da85d520c21df17"
 
 [[asset]]
+path = "assets/icons/minus.svg"
+title = "Lucide icon \"minus\""
+author = "Lucide Contributors (portions Cole Bemis, Feather)"
+source = "https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/minus.svg)"
+licence = "ISC"
+licence_file = "assets/icons/LICENSE-lucide.txt"
+kind = "icon"
+usage = "UI icon, embedded via crates/ui-egui/src/icon_data.rs"
+sha256 = "70801b3c3104e559fc1b5124a742050419df77bd3142d92e8ead69776fdd9640"
+
+[[asset]]
 path = "assets/icons/x.svg"
 title = "Lucide icon \"x\""
 author = "Lucide Contributors (portions Cole Bemis, Feather)"
