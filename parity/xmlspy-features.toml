@@ -192,10 +192,10 @@ area = "A"
 tier = "P1"
 milestone = "M1"
 status = "partial"
-commands = ["xml.rename_element", "xml.wrap_in_tag", "xml.unwrap_element", "xml.select_element", "xml.copy_xpath"]
-tools = ["doc_type", "doc_key"]
-evidence = ["crates/editor/src/linked.rs::a_paste_into_a_name_is_written_into_the_other_name_in_one_undo_step", "crates/editor/src/linked.rs::the_names_stay_linked_through_undo_and_redo", "crates/editor/src/linked.rs::wrapping_a_selection_in_a_tag_leaves_the_name_selected_and_linked_so_that_typing_names_the_element", "crates/ui-egui/tests/elements.rs::rename_element_renames_both_tags_in_one_undoable_step", "crates/ui-egui/tests/elements.rs::wrap_in_tag_wraps_the_selection_and_links_the_names", "crates/editor/src/linked.rs::typing_in_a_name_is_written_into_the_other_name_as_one_undo_step", "crates/editor/src/linked.rs::linked_names_never_drift_apart", "crates/editor/src/linked.rs::stepping_over_the_bracket_leaves_the_name_and_a_torn_tag_is_not_followed", "crates/engine/src/analysis.rs::the_names_to_link_are_those_of_the_tag_the_caret_is_in_the_name_of", "crates/automation/tests/documents.rs::typing_in_the_name_of_a_tag_renames_the_other_tag_of_the_element_too", "crates/ui-egui/tests/tags.rs::typing_in_a_tag_name_renames_the_other_tag_of_the_element"]
-notes = "With the single caret in or at the end of a tag name that has a partner, typing or deleting there is written into the other tag of the element as part of the same undo step, with the real keyboard path (the window links the pair from the analysis of the current text; the tools doc_type and doc_key analyse the text first). A paste into a name is mirrored too, and the link survives undo and redo as long as the names still match (M4.13). Rename Element (F2) renames both tags of the element the caret is in even when they already differ, Wrap in Tag leaves the new name selected and linked, and Unwrap, Select Element and Copy XPath work on the same element. The link ends on a character that is not part of a name, a word deletion, a selection reaching out of the name, several carets, or when the names stop being tags. Missing: several carets, word deletion inside a name, a preference to switch it off (Settings::sync_tag_names exists), and a link made while the caret rests in a name before the analysis of the text has arrived."
+commands = ["xml.rename_element"]
+tools = ["doc_type", "doc_key", "doc_element"]
+evidence = ["crates/editor/src/linked.rs::a_paste_into_a_name_is_written_into_the_other_name_in_one_undo_step", "crates/editor/src/linked.rs::the_names_stay_linked_through_undo_and_redo", "crates/editor/src/linked.rs::a_typing_run_merged_into_one_step_is_undone_with_the_link_kept", "crates/ui-egui/tests/elements.rs::rename_element_renames_both_tags_in_one_undoable_step", "crates/automation/tests/documents.rs::doc_element_renames_wraps_unwraps_selects_and_gives_the_path", "crates/editor/src/linked.rs::typing_in_a_name_is_written_into_the_other_name_as_one_undo_step", "crates/editor/src/linked.rs::linked_names_never_drift_apart", "crates/editor/src/linked.rs::stepping_over_the_bracket_leaves_the_name_and_a_torn_tag_is_not_followed", "crates/engine/src/analysis.rs::the_names_to_link_are_those_of_the_tag_the_caret_is_in_the_name_of", "crates/automation/tests/documents.rs::typing_in_the_name_of_a_tag_renames_the_other_tag_of_the_element_too", "crates/ui-egui/tests/tags.rs::typing_in_a_tag_name_renames_the_other_tag_of_the_element"]
+notes = "With the single caret in or at the end of a tag name that has a partner, typing or deleting there is written into the other tag of the element as part of the same undo step, with the real keyboard path (the window links the pair from the analysis of the current text; the tools doc_type and doc_key analyse the text first). A paste into a name is mirrored too, and the link survives undo and redo as long as the names still match (M4.13). Rename Element (F2) renames both tags of the element the caret is in even when they already differ (the tool `doc_element` does the same headlessly). The link ends on a character that is not part of a name, a word deletion, a selection reaching out of the name, several carets, or when the names stop being tags. Missing: several carets, word deletion inside a name, a preference to switch it off (Settings::sync_tag_names exists), and a link made while the caret rests in a name before the analysis of the text has arrived."
 
 [[feature]]
 id = "editor.comment-toggle"
@@ -1461,12 +1461,12 @@ id = "query.xpath-copy"
 title = "Copy the XPath of a node"
 area = "H"
 tier = "P2"
-milestone = "M6"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+milestone = "M4"
+status = "partial"
+commands = ["xml.copy_xpath"]
+tools = ["doc_element"]
+evidence = ["crates/ui-egui/tests/elements.rs::copy_xpath_says_which_path_was_copied", "crates/automation/tests/documents.rs::doc_element_renames_wraps_unwraps_selects_and_gives_the_path"]
+notes = "XML ▸ Copy XPath puts the path of the element the caret is in on the clipboard, such as /library/book[2]/title (a step has a position only when the element has brothers of the same name); the tool `doc_element` with action `xpath` returns it. Missing: paths of attributes, text and comments, namespaces (the path uses the names as written), and the XPath of a node chosen in the Outline."
 
 [[feature]]
 id = "query.xpath-completion"

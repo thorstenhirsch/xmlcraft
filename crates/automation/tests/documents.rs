@@ -470,6 +470,33 @@ fn typing_in_the_name_of_a_tag_renames_the_other_tag_of_the_element_too() {
 }
 
 #[test]
+fn doc_element_renames_wraps_unwraps_selects_and_gives_the_path() {
+    let mut a = Automation::new();
+    let id = ok(&mut a, "doc_new", json!({ "text": "<a>\n  <b>x</b>\n  <b>y</b>\n</a>" }))["id"].as_u64().expect("id");
+    let text = |a: &mut Automation| ok(a, "doc_text", json!({ "id": id }))["text"].as_str().expect("text").to_owned();
+    // The path: the second of two brothers has a position.
+    let path = ok(&mut a, "doc_element", json!({ "id": id, "action": "xpath", "line": 3, "column": 8 }));
+    assert_eq!(path["xpath"], "/a/b[2]");
+    // Both tags are renamed, as one undo step.
+    ok(&mut a, "doc_element", json!({ "id": id, "action": "rename", "name": "item", "line": 2, "column": 7 }));
+    assert_eq!(text(&mut a), "<a>\n  <item>x</item>\n  <b>y</b>\n</a>");
+    ok(&mut a, "doc_undo", json!({ "id": id }));
+    assert_eq!(text(&mut a), "<a>\n  <b>x</b>\n  <b>y</b>\n</a>");
+    // Wrap the text of the second, then take the new tags away again.
+    ok(&mut a, "doc_element", json!({ "id": id, "action": "wrap", "name": "w", "line": 3, "column": 6, "end_line": 3, "end_column": 7 }));
+    assert_eq!(text(&mut a), "<a>\n  <b>x</b>\n  <b><w>y</w></b>\n</a>");
+    ok(&mut a, "doc_element", json!({ "id": id, "action": "unwrap", "line": 3, "column": 10 }));
+    assert_eq!(text(&mut a), "<a>\n  <b>x</b>\n  <b>y</b>\n</a>");
+    // Select: the carets then span the element.
+    let selected = ok(&mut a, "doc_element", json!({ "id": id, "action": "select", "line": 2, "column": 7 }));
+    assert_eq!(selected["carets"][0]["line"], 2);
+    // A name that is not one is refused and changes nothing.
+    let refused = err(&mut a, "doc_element", json!({ "id": id, "action": "rename", "name": "1 x", "line": 2, "column": 7 }));
+    assert!(refused.contains("not an element name"), "{refused}");
+    assert_eq!(text(&mut a), "<a>\n  <b>x</b>\n  <b>y</b>\n</a>");
+}
+
+#[test]
 fn typing_and_keys_work_as_the_keyboard_does() {
     let mut a = Automation::new();
     let id = ok(&mut a, "doc_new", json!({ "text": "<a b=/>" }))["id"].as_u64().expect("id");

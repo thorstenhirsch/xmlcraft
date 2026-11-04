@@ -100,10 +100,11 @@ impl Editor {
         self.linked.as_ref()
     }
 
-    /// Whether the editor has a single caret (no selection) in or next to one of the linked names.
+    /// Whether the editor has a single caret, or a selection that is part of one name, in or next to one of the linked names (typing over a
+    /// selected name is the same as typing in it).
     pub fn caret_in_linked_names(&self) -> bool {
         let [caret] = self.carets.as_slice() else { return false };
-        caret.is_empty() && self.linked.as_ref().is_some_and(|names| names.iter().any(|name| name.start <= caret.head() && caret.head() <= name.end))
+        self.linked.as_ref().is_some_and(|names| names.iter().any(|name| name.start <= caret.start() && caret.end() <= name.end))
     }
 
     /// What linked names make of `edits` (ascending, in the coordinates of the text as it is now) that are about to be made as `kind`
@@ -135,10 +136,12 @@ impl Editor {
     /// The linked names after an undo or a redo that made `edits` (in the order they were made, each in the coordinates of the text just
     /// before it): kept when the change touched both names alike (or neither) and they are still the same name where a tag's name stands.
     pub(crate) fn linked_after_history(&self, names: &[Range<usize>; 2], edits: &[Edit]) -> Option<[Range<usize>; 2]> {
-        // The edits were made last first, so each is in the coordinates of the text before all of them: ascending order.
-        let mut ascending = edits.to_vec();
-        ascending.sort_by_key(|edit| (edit.range.start, edit.range.end));
-        let mapped = remap(names, &ascending, true)?;
+        // One edit at a time, in the order they were made: a typing run that was merged into one step holds several, and each is in the
+        // coordinates the ones before it left (a step with several carets was made last caret first, so the same holds for it).
+        let mut mapped = names.clone();
+        for edit in edits {
+            mapped = remap(&mapped, std::slice::from_ref(edit), true)?;
+        }
         let same = self.buffer.slice(mapped[0].clone()).ok()? == self.buffer.slice(mapped[1].clone()).ok()?;
         (same && mapped[0].len() <= MAX_LINKED_NAME && mapped.iter().all(|name| self.names_a_tag(name))).then_some(mapped)
     }
@@ -431,16 +434,34 @@ mod tests {
     }
 
     #[test]
-    fn a_link_does_not_survive_an_undo_that_makes_the_names_differ() {
+    fn a_typing_run_merged_into_one_step_is_undone_with_the_link_kept() {
         let mut e = linked("<a>x</a>", 1..2, 6..7, 2);
         e.type_input("b");
-        // The end tag is changed by something that does not mirror, so the two differ; undoing the typing then cannot put them right.
+        e.type_input("c");
+        assert_eq!(e.text(), "<abc>x</abc>");
+        assert!(e.undo());
+        assert_eq!(e.text(), "<a>x</a>", "the run was one step");
+        assert_eq!(e.linked_names(), Some(&[1..2, 6..7]));
+        assert!(e.redo());
+        assert_eq!(e.linked_names(), Some(&[1..4, 8..11]));
+    }
+
+    #[test]
+    fn names_that_differ_are_not_linked_and_an_undo_does_not_link_them_again() {
+        let mut e = linked("<a>x</a>", 1..2, 6..7, 2);
+        e.type_input("b");
+        // The end tag is changed by something that does not mirror, so the two differ.
         e.unlink_names();
         assert!(e.apply_edits(&[Edit::replace(7..9, "yy")]));
         e.link_names(1..3, 7..9);
         assert_eq!(e.linked_names(), None, "they differ now");
         assert!(e.undo());
-        assert_eq!(e.linked_names(), None);
+        assert_eq!(e.text(), "<ab>x</ab>");
+        assert_eq!(e.linked_names(), None, "an undo does not make a link");
+        // Typing in a name then changes that name alone.
+        e.set_selection(3, 3);
+        e.type_input("q");
+        assert_eq!(e.text(), "<abq>x</ab>");
     }
 
     #[test]

@@ -26,18 +26,24 @@ pub(crate) struct RenameForm {
 }
 
 impl XmlCraftApp {
-    /// The element the caret is in, from the analysis of the text as it is. The index, the item and the text.
-    fn element_at_caret(&mut self) -> Option<(usize, OutlineItem, String)> {
+    /// The element the caret is in (where a selection starts, so that a selected element is the element), from the analysis of the text as
+    /// it is. The index and the item.
+    fn element_at_caret(&mut self) -> Option<(usize, OutlineItem)> {
         let doc = self.session.active_document()?;
-        let (caret, version, text) = (doc.editor().primary().start(), doc.editor().version(), doc.editor().text());
+        let (caret, version) = (doc.editor().primary().start(), doc.editor().version());
         let analysis = self.active_analysis().filter(|a| a.version == version && a.skipped.is_none());
         let Some(analysis) = analysis else {
             self.status = tl!("The document is still being read. Try again in a moment.").to_owned();
             return None;
         };
+        if analysis.outline_truncated {
+            // An element that is not listed would be taken for the one around it.
+            self.status = tl!("The document has too many elements for this command.").to_owned();
+            return None;
+        }
         let found = elements::innermost(&analysis.outline, caret).and_then(|i| analysis.outline.get(i).cloned().map(|item| (i, item)));
         match found {
-            Some((i, item)) => Some((i, item, text)),
+            Some(found) => Some(found),
             None => {
                 self.status = tl!("The caret is not in an element.").to_owned();
                 None
@@ -47,7 +53,7 @@ impl XmlCraftApp {
 
     /// Ask for the new name of the element the caret is in (Rename Element…).
     pub(crate) fn open_rename_element(&mut self) {
-        let Some((_, item, _)) = self.element_at_caret() else { return };
+        let Some((_, item)) = self.element_at_caret() else { return };
         self.dialog = Some(Dialog::RenameElement(Box::new(RenameForm {
             target: item.name_range.start,
             old: item.name.clone(),
@@ -128,8 +134,12 @@ impl XmlCraftApp {
                 .active_analysis()
                 .filter(|a| a.version == version)
                 .ok_or_else(|| tl!("The document is still being read. Try again in a moment.").to_owned())?;
-            let item =
-                analysis.outline.iter().find(|i| i.name_range.start == form.target).cloned().ok_or_else(|| tl!("The element is gone.").to_owned())?;
+            let item = analysis
+                .outline
+                .iter()
+                .find(|i| i.name_range.start == form.target && i.name == form.old)
+                .cloned()
+                .ok_or_else(|| tl!("The element is gone.").to_owned())?;
             (item, text)
         };
         let edits = elements::rename_edits(&text, &item, &new).map_err(|e| match e {
@@ -158,7 +168,7 @@ impl XmlCraftApp {
 
     /// Take the tags of the element the caret is in away, keeping what is inside it.
     pub(crate) fn unwrap_element(&mut self) {
-        let Some((_, item, _)) = self.element_at_caret() else { return };
+        let Some((_, item)) = self.element_at_caret() else { return };
         let edits = elements::unwrap_edits(&item);
         let Some(doc) = self.session.active_document_mut() else { return };
         if doc.editor_mut().apply_edits(&edits) {
@@ -169,14 +179,15 @@ impl XmlCraftApp {
 
     /// Select the element the caret is in; when it is selected already, the one around it.
     pub(crate) fn select_element(&mut self) {
-        let Some((index, item, _)) = self.element_at_caret() else { return };
+        let Some((index, item)) = self.element_at_caret() else { return };
         let Some(doc) = self.session.active_document() else { return };
         let current = doc.editor().primary();
         let range = elements::element_range(&item);
         let target = if (current.start(), current.end()) == (range.start, range.end) {
             // Already selected: the element around it, when there is one.
-            let outline = self.active_analysis().map(|a| a.outline.clone()).unwrap_or_default();
-            elements::parent(&outline, index).and_then(|p| outline.get(p)).map_or(range, elements::element_range)
+            self.active_analysis()
+                .and_then(|a| elements::parent(&a.outline, index).and_then(|p| a.outline.get(p)))
+                .map_or(range, elements::element_range)
         } else {
             range
         };
@@ -185,7 +196,7 @@ impl XmlCraftApp {
 
     /// Copy the path of the element the caret is in.
     pub(crate) fn copy_xpath(&mut self) {
-        let Some((index, _, _)) = self.element_at_caret() else { return };
+        let Some((index, _)) = self.element_at_caret() else { return };
         let path = self.active_analysis().and_then(|a| elements::xpath(&a.outline, index));
         let (Some(path), Some(ctx)) = (path, self.ctx.clone()) else { return };
         ctx.copy_text(path.clone());
