@@ -55,6 +55,8 @@ pub(crate) struct Problem {
     pub place: String,
     /// What a click selects in the document; none for a problem in another file.
     pub jump: Option<Range<usize>>,
+    /// The code of the diagnostic (what, with where it starts, tells it from another problem at the same place).
+    pub code: &'static str,
 }
 
 impl Filter {
@@ -95,6 +97,7 @@ pub(crate) fn collect(app: &XmlCraftApp) -> Vec<Problem> {
             message: d.message(),
             place: at(d.span.start),
             jump: Some(d.span.clone()),
+            code: d.code.key(),
         })
         .collect();
     rows.extend(app.active_validation().into_iter().flat_map(|v| v.problems.iter()).map(|p| Problem {
@@ -106,6 +109,7 @@ pub(crate) fn collect(app: &XmlCraftApp) -> Vec<Problem> {
             Some(file) => std::path::Path::new(file).file_name().map_or_else(|| file.clone(), |n| n.to_string_lossy().into_owned()),
         },
         jump: jump_for(p.file.as_deref(), &p.diagnostic.span),
+        code: p.diagnostic.code.key(),
     }));
     rows
 }
@@ -279,12 +283,14 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
             });
         });
     });
+    app.ensure_fixes();
     let lines = lines(&problems, app.problem_filter);
     if lines.is_empty() {
         widgets::empty_state(ui, 12.0, tl!("Nothing in this list"), tl!("Choose All to see every problem."));
     }
     let syntax = SyntaxTokens::for_kind(t.kind);
     let mut clicked = None;
+    let mut fix_clicked: Option<xmlcraft_engine::quickfix::QuickFix> = None;
     let selected = app.selected_problem();
     egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, ROW, lines.len(), |ui, range| {
         for line in lines.get(range).unwrap_or_default() {
@@ -323,7 +329,24 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
                         place_galley.clone(),
                         t.text_faint,
                     );
-                    let text_area = Rect::from_min_max(rect.min, egui::pos2(right - place_galley.size().x - 12.0, rect.max.y));
+                    // A problem that can be put right has a Fix button before its place.
+                    let fix = problem.jump.as_ref().and_then(|j| app.fixes_of_problem(j.start, problem.code).first());
+                    let mut text_right = right - place_galley.size().x - 12.0;
+                    if let Some(fix) = fix {
+                        let pill = Rect::from_min_size(egui::pos2(text_right - 40.0, rect.center().y - 9.0), vec2(40.0, 18.0));
+                        let button = ui.interact(pill, response.id.with("fix"), Sense::click());
+                        let label = fmt(tl!("Fix: {what}"), &[("what", &fix.title)]);
+                        button.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label.clone()));
+                        let wash = if button.hovered() { t.accent } else { t.accent_soft };
+                        let ink = if button.hovered() { egui::Color32::WHITE } else { t.accent_text };
+                        ui.painter().rect_filled(pill, 9.0, wash);
+                        ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, tl!("Fix"), theme::semibold(11.0), ink);
+                        if theme::hand(button).on_hover_text(&fix.title).clicked() {
+                            fix_clicked = Some(fix.clone());
+                        }
+                        text_right = pill.left() - 8.0;
+                    }
+                    let text_area = Rect::from_min_max(rect.min, egui::pos2(text_right, rect.max.y));
                     ui.painter().with_clip_rect(text_area).text(
                         rect.left_center() + vec2(38.0, 0.0),
                         egui::Align2::LEFT_CENTER,
@@ -342,6 +365,10 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     });
     if step != 0 {
         app.step_problem(step);
+    }
+    if let Some(fix) = fix_clicked {
+        app.apply_quick_fix(&fix);
+        return;
     }
     if let Some((Some(span), _)) = clicked {
         app.select_problem(span.start);
@@ -362,7 +389,7 @@ mod tests {
     use super::*;
 
     fn problem(severity: Severity, group: Group, start: usize) -> Problem {
-        Problem { severity, group, message: format!("m{start}"), place: String::new(), jump: Some(start..start + 1) }
+        Problem { severity, group, message: format!("m{start}"), place: String::new(), jump: Some(start..start + 1), code: "test" }
     }
 
     #[test]

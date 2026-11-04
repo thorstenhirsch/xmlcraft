@@ -42,6 +42,8 @@ pub(crate) struct DocView {
     pub(crate) helpers: crate::entry_helpers::HelperState,
     /// Validating while the text is typed in.
     auto: AutoValidation,
+    /// What can be done about the problems of the text, worked out when it is asked for (see `quick_fix.rs`).
+    pub(crate) fixes: Option<crate::quick_fix::FixCache>,
 }
 
 /// What is known of validating a document while it is typed in.
@@ -65,6 +67,7 @@ impl DocView {
             requested: None,
             helpers: Default::default(),
             auto: AutoValidation::default(),
+            fixes: None,
         }
     }
 

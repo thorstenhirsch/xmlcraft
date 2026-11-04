@@ -28,6 +28,7 @@ mod palette;
 mod pickers;
 mod preferences;
 mod problems;
+mod quick_fix;
 mod side_panels;
 mod status_pickers;
 mod structure;

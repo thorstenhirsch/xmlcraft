@@ -548,7 +548,7 @@ status = "partial"
 commands = ["view.messages", "xml.next_problem", "xml.previous_problem"]
 tools = []
 evidence = ["crates/ui-egui/tests/analysis.rs::problems_are_listed_and_a_click_goes_to_them", "crates/ui-egui/tests/analysis.rs::a_well_formed_document_says_so", "crates/ui-egui/tests/problems.rs::the_panel_lists_the_problems_and_a_filter_narrows_them", "crates/ui-egui/tests/problems.rs::the_keys_step_from_one_problem_to_the_next_and_round", "crates/ui-egui/src/problems.rs::a_problem_in_another_file_is_grouped_so_and_cannot_be_jumped_to"]
-notes = "The Problems panel (M4.12): what is wrong with the document as XML and, once validated, as a document of its grammar, with line and column; filters by severity with counts (All, Errors, Warnings), grouped by where a problem comes from (well-formedness, validity, other files) when there is more than one group; a click selects the problem; the rail's button counts them and the header's pill says where the document stands. Still missing: the Def link, the Fix button, the resolution trail, a problem in another file cannot be opened from the panel."
+notes = "The Problems panel (M4.12): what is wrong with the document as XML and, once validated, as a document of its grammar, with line and column; filters by severity with counts (All, Errors, Warnings), grouped by where a problem comes from (well-formedness, validity, other files) when there is more than one group; a click selects the problem; the rail's button counts them and the header's pill says where the document stands. A problem that has a quick fix has a Fix button (see `validate.quick-fixes`). Still missing: the Def link, the resolution trail, a problem in another file cannot be opened from the panel."
 
 [[feature]]
 id = "view.tabs"
@@ -1135,11 +1135,11 @@ title = "Quick fixes for common validation errors"
 area = "E"
 tier = "P1"
 milestone = "M3"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["edit.quick_fix"]
+tools = ["doc_quick_fix"]
+evidence = ["crates/engine/src/quickfix.rs::a_mismatched_end_tag_is_renamed_and_a_stray_one_removed", "crates/engine/src/quickfix.rs::unclosed_elements_are_closed_innermost_first_at_the_end", "crates/engine/src/quickfix.rs::attributes_are_quoted_given_a_value_or_deduplicated", "crates/engine/src/quickfix.rs::characters_that_cannot_be_text_are_written_as_references", "crates/engine/src/quickfix.rs::a_required_attribute_is_added_before_the_end_of_the_start_tag", "crates/ui-egui/tests/problems.rs::a_problem_that_can_be_fixed_has_a_fix_button_that_puts_it_right_in_one_undoable_step", "crates/ui-egui/tests/problems.rs::quick_fix_at_the_caret_fixes_what_is_wrong_there_and_says_so_when_nothing_is", "crates/automation/tests/documents.rs::quick_fixes_are_listed_and_one_is_applied_as_a_single_undoable_edit"]
+notes = "A problem that has an obvious fix gets a Fix button in the Problems panel and Edit ▸ Quick Fix (⌘. / Ctrl+.) puts right the one at the caret; each is one undoable edit that changes only what the fix says (`xmlcraft_engine::quickfix`; the tool `doc_quick_fix` lists and applies the well-formedness ones). Fixes: rename a mismatched end tag, remove a stray end tag, close unclosed elements (innermost first, at the end), put an attribute value in quotes, give a value-less attribute an empty value, remove a duplicate attribute, write &amp; &lt; and ]]&gt; for characters that cannot be text, and add a required attribute (DTD or schema validity problems, after F8). Missing: a choice when there is more than one fix, fixes for an undeclared element or attribute (rename to a declared one), a wrong value (pick from the enumeration), missing content, undeclared entities and an unclosed tag or value, the same fixes in the XSD and DTD editors, and a lightbulb in the text."
 
 [[feature]]
 id = "validate.entity-limits"

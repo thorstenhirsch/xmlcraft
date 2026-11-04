@@ -11,6 +11,7 @@ mod document;
 pub mod elements;
 pub mod folding;
 pub mod generate;
+pub mod quickfix;
 pub mod recent;
 pub mod schema;
 pub mod schema_fetch;

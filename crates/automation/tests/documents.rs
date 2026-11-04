@@ -700,3 +700,26 @@ fn line_endings_and_indentation_are_set_without_touching_anything_else() {
     assert!(text(&mut a).starts_with("<a>\n\t\n"), "a tab: {:?}", text(&mut a));
     assert!(err(&mut a, "doc_set_indent", json!({ "id": id, "style": "tabs", "size": 99 })).contains("size"));
 }
+
+#[test]
+fn quick_fixes_are_listed_and_one_is_applied_as_a_single_undoable_edit() {
+    let mut a = Automation::new();
+    let id = ok(&mut a, "doc_new", json!({ "text": "<a>\n<b></c>\n<d x=1/>\n</a>" }))["id"].as_u64().expect("id");
+    let text = |a: &mut Automation| ok(a, "doc_text", json!({ "id": id }))["text"].as_str().expect("text").to_owned();
+    let all = ok(&mut a, "doc_quick_fix", json!({ "id": id }));
+    assert_eq!(all["count"], 2, "{all}");
+    assert_eq!(all["fixes"][0]["title"], "Rename the end tag to </b>");
+    assert_eq!((all["fixes"][0]["line"].as_u64(), all["fixes"][0]["column"].as_u64()), (Some(2), Some(4)));
+    // Only the problems at a place.
+    let at = ok(&mut a, "doc_quick_fix", json!({ "id": id, "line": 3, "column": 6 }));
+    assert_eq!(at["count"], 1);
+    assert_eq!(at["fixes"][0]["title"], "Put the value in quotes");
+    assert_eq!(text(&mut a), "<a>\n<b></c>\n<d x=1/>\n</a>", "listing changes nothing");
+    let done = ok(&mut a, "doc_quick_fix", json!({ "id": id, "apply": 0 }));
+    assert_eq!(done["applied"], "Rename the end tag to </b>");
+    assert_eq!(text(&mut a), "<a>\n<b></b>\n<d x=1/>\n</a>");
+    ok(&mut a, "doc_undo", json!({ "id": id }));
+    assert_eq!(text(&mut a), "<a>\n<b></c>\n<d x=1/>\n</a>", "one step");
+    assert!(err(&mut a, "doc_quick_fix", json!({ "id": id, "apply": 9 })).contains("no fix number 9"));
+    assert!(err(&mut a, "doc_quick_fix", json!({ "id": id, "line": 1 })).contains("line and column go together"));
+}
