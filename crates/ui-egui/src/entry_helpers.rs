@@ -466,11 +466,13 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
             insert = order.get(app.entry_selected).and_then(|(g, i)| groups.get(*g)?.entries.get(*i)?.insert.clone());
             if insert.is_some() {
                 app.entry_filter.clear();
+                app.entry_selected = 0;
             }
         }
     });
     if escape {
         app.entry_filter.clear();
+        app.entry_selected = 0;
         app.focus_editor = true;
     }
     let selected = order.get(app.entry_selected).copied();
@@ -498,6 +500,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     });
     if clear_filter {
         app.entry_filter.clear();
+        app.entry_selected = 0;
     }
     match insert {
         Some(Insert::Element(choice)) => app.insert_element(&choice, &choices.scope),

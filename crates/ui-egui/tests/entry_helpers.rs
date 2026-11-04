@@ -568,3 +568,21 @@ fn a_double_click_clears_the_filter_too() {
     assert!(text(&h).contains("<a id='1'/><s>"), "{}", text(&h));
     assert!(h.query_by_label("ELEMENTS IN S").is_some(), "the filter is gone");
 }
+
+#[test]
+fn after_the_filter_is_cleared_the_first_row_is_the_chosen_one_again() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open_at(&mut h, dir.path(), &format!("{DTD}<r><a id='1'/>¦</r>"));
+    h.get_by_label("Filter Entry Helpers").click();
+    h.run_steps(2);
+    h.key_press(egui::Key::ArrowDown); // s is chosen
+    h.run_steps(2);
+    h.key_press(egui::Key::Escape); // the filter is cleared and the keyboard goes back to the text
+    h.run_steps(3);
+    h.get_by_label("Filter Entry Helpers").click();
+    h.run_steps(2);
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    assert!(text(&h).contains("<a id='1'/><b>"), "b, the first offered, is inserted: {}", text(&h));
+}
