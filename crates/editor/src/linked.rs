@@ -14,7 +14,7 @@ use crate::caret::Caret;
 use crate::editor::{Bias, Editor, map_offset};
 
 /// The longest name kept in step: the two names are compared before every change, so their length is bounded.
-const MAX_LINKED_NAME: usize = 1024;
+pub const MAX_LINKED_NAME: usize = 1024;
 
 /// What a change does to the linked names: the edits to make (the typed one, and the one that mirrors it), the carets after them and
 /// the names as they will be, if they stay linked.

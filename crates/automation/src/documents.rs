@@ -843,9 +843,6 @@ fn doc_key(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     json_result(json!({ "carets": carets_json(doc), "document": describe(doc) }))
 }
 
-/// The longest name `wrap` makes an element of (the editor links names of up to this many bytes).
-const MAX_WRAP_NAME_BYTES: usize = 1024;
-
 fn doc_element(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     use xmlcraft_engine::elements;
     let index = index_of(a, id_arg(args)?)?;
@@ -857,8 +854,8 @@ fn doc_element(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         if !elements::is_element_name(name) {
             return fail(format!("{name}: not an element name"));
         }
-        if name.len() > MAX_WRAP_NAME_BYTES {
-            return fail(format!("the name is too long (at most {MAX_WRAP_NAME_BYTES} bytes)"));
+        if name.len() > xmlcraft_editor::MAX_LINKED_NAME {
+            return fail(format!("the name is too long (at most {} bytes)", xmlcraft_editor::MAX_LINKED_NAME));
         }
         place_selection(doc, args)?;
         if !doc.editor_mut().wrap_selection_in_tag(name) {
