@@ -130,22 +130,34 @@ impl HelperState {
 
 impl XmlCraftApp {
     /// What the DTD (or the schema) allows at the caret of the document being shown, if one was read.
-    fn helper_choices(&mut self) -> Option<Choices> {
+    pub(crate) fn helper_choices(&mut self) -> Option<Choices> {
+        let caret = self.session.active_document()?.editor().primary().head();
+        self.helper_choices_at(caret)
+    }
+
+    /// What the grammar allows at `offset` of the document being shown (not only at the caret: completion asks about the place of the `<`
+    /// that was typed, which is where the element goes, while the caret is inside what is not yet a tag).
+    pub(crate) fn helper_choices_at(&mut self, offset: usize) -> Option<Choices> {
         let doc = self.session.active_document()?;
-        let (id, version, caret) = (doc.id(), doc.editor().version(), doc.editor().primary().head());
+        let (id, version) = (doc.id(), doc.editor().version());
         let view = self.views.get_mut(&id)?;
-        view.helpers.choices(version, caret, || doc.editor().text()).cloned()
+        view.helpers.choices(version, offset, || doc.editor().text()).cloned()
     }
 
     /// Put an element at the caret, with what its declaration requires when the option is on. `scope` are the namespace declarations at
     /// the caret (from the choices), for the names an XML Schema element is written with.
     pub(crate) fn insert_element(&mut self, choice: &ElementChoice, scope: &[Declaration]) {
-        let snippet = match (self.active_grammar(), self.active_xsd()) {
-            (Some(grammar), _) => element_snippet(&grammar, &choice.name, self.entry_mandatory),
-            (None, Some(schema)) => xsd_element_snippet(&schema, scope, choice, self.entry_mandatory),
-            (None, None) => return,
-        };
+        let Some(snippet) = self.element_snippet_for(choice, scope) else { return };
         self.insert_at_selection(snippet.text, snippet.caret);
+    }
+
+    /// What is written for `choice` at the caret: the element with what its declaration requires when the option is on.
+    pub(crate) fn element_snippet_for(&self, choice: &ElementChoice, scope: &[Declaration]) -> Option<xmlcraft_complete::Snippet> {
+        match (self.active_grammar(), self.active_xsd()) {
+            (Some(grammar), _) => Some(element_snippet(&grammar, &choice.name, self.entry_mandatory)),
+            (None, Some(schema)) => Some(xsd_element_snippet(&schema, scope, choice, self.entry_mandatory)),
+            (None, None) => None,
+        }
     }
 
     /// Put an entity reference at the caret.

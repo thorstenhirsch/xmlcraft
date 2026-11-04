@@ -625,6 +625,8 @@ impl XmlCraftApp {
         let zoom = self.editor_zoom;
         // The find bar is above the editor; what it looks for is shown in the text.
         self.find_bar(ui);
+        // The keys of a completion popup that is open go to it, not to the editor.
+        self.completion_keys(ui);
         let Some(doc) = self.session.document_mut(index) else { return };
         let (id, version) = (doc.id(), doc.editor().version());
         let matches = self.find.shown_matches(id, version);
@@ -645,6 +647,13 @@ impl XmlCraftApp {
         if let Some(line) = output.fold_clicked {
             self.when_analysed(Then::FoldLine(line));
         }
+        // A completion is offered after typing, and goes when the text or the caret changed in any other way.
+        if output.typed {
+            self.update_completion();
+        } else if output.changed || output.selection_changed {
+            self.completion = None;
+        }
+        self.show_completion(ui.ctx());
         // What is wrong where the pointer rests is said in a tip (once it has rested a moment).
         if let Some(offset) = output.hover {
             let messages = crate::problems::messages_at(self, offset);

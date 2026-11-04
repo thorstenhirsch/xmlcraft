@@ -93,6 +93,8 @@ pub struct ViewState {
     fold_clicked: Option<usize>,
     /// Where a drag with Alt began: while the button is down the drag selects a rectangle of columns from here.
     column_anchor: Option<usize>,
+    /// Text was typed during this frame (not pasted, not a command): what the host decides to offer a completion on.
+    typed: bool,
 }
 
 impl ViewState {
@@ -149,6 +151,8 @@ pub struct CodeEditorOutput {
     /// The byte offset of the text under the pointer, while the pointer rests over the text (not the gutter, not while a button is down):
     /// what a hover tip is about.
     pub hover: Option<usize>,
+    /// Characters were typed during this frame (not pasted, not written by a command or an undo).
+    pub typed: bool,
 }
 
 /// The editor widget. `show` it every frame.
@@ -469,6 +473,7 @@ impl<'a> CodeEditor<'a> {
             selection_changed: editor.selections() != selection_before,
             fold_clicked: view.fold_clicked.take(),
             hover,
+            typed: std::mem::take(&mut view.typed),
         }
     }
 }
@@ -705,6 +710,7 @@ fn handle_events(ui: &mut Ui, editor: &mut Editor, view: &mut ViewState, mac: bo
                     } else {
                         editor.type_input(&text);
                     }
+                    view.typed = true;
                     view.last_input = now;
                 }
             }
