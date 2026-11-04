@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/app-icon/xmlcraft.svg" alt="XmlCraft logo: a cyberpunk fox between angle brackets" width="128"></p>
+
 # XmlCraft
 
 An open-source, clean-room XML editor in the spirit of Altova XMLSpy, written in Rust.

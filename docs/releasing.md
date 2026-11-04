@@ -33,10 +33,13 @@ Signing runs only when its secrets exist; otherwise the artifact ships unsigned 
 - The Windows MSI `UpgradeCode`: `{5CE729A2-80AA-4E57-8DC3-6B3014812640}` (in `packaging/windows/xmlcraft.wxs`, checked by `test-msi.ps1`). Changing it makes an update install beside the old version instead of replacing it.
 - The app id `io.github.thorstenhirsch.xmlcraft` (macOS bundle id, Linux desktop and metainfo names).
 
+## The macOS disk image
+
+The Finder window's artwork and icon positions come from committed files in `packaging/macos/dmg/`: `package.sh` copies the rendered background (`background.tiff`) and the Finder layout (`dmg-layout.DS_Store`) into the image and `verify.sh` checks them there; `background.svg` is the source artwork and is not shipped. How to change them, and why the volume name has no version: `packaging/macos/dmg/README.md`. The two Python helpers there are a packaging-only exception to "Rust only" (approved by the owner, 2026-11-04) and never run in the build.
+
 ## Known gaps
 
 - The Windows installer has no setup dialogs (welcome, licence, folder): it installs per machine with a progress bar. `INSTALLDESKTOPSHORTCUT=0` skips the desktop shortcut.
-- The macOS disk image has no background artwork.
 - No Flatpak, FreeBSD or web builds (not planned for 0.1.0).
 
 ## Revision history
@@ -46,3 +49,4 @@ Signing runs only when its secrets exist; otherwise the artifact ships unsigned 
 - 2026-10-27: first dry run (40425116751): macOS and Linux built; both Windows jobs failed at `wix build` (WIX0367). Second dry run (40454851007), after #4: all six targets built and verified. The Windows ARM64 workflow installed and ran the arm64 MSI; the other artifacts are built and verified but not yet installed on their platforms.
 - 2026-10-29: the credits of the About window (`cargo xtask contributors --write`) are part of the version bump.
 - 2026-11-04: 0.1.0 released from `main` at f5f40ed (run 41894801791): 18 files and `SHA256SUMS.txt` in the draft, all checksums verified, published as v0.1.0. No signing secrets were set, so the Windows builds are unsigned and the macOS app is only ad-hoc signed (not notarised).
+- 2026-11-05: the macOS disk image has a window of its own (background, icon positions), and the app has a new logo (a fox between angle brackets).
