@@ -33,6 +33,7 @@ mod structure;
 pub mod theme;
 pub use control::{ControlClient, Reply as ControlReply};
 mod widgets;
+pub mod zoom;
 
 use std::collections::HashMap;
 
@@ -88,6 +89,8 @@ struct Prefs {
     /// Nothing is downloaded (XML ▸ Work Offline): the schemas and DTDs a document names are taken from what is open, the catalogs, the
     /// bundle, files and the copies downloaded before.
     work_offline: bool,
+    /// How much larger or smaller than normal the editor's text is (View ▸ Zoom In, Zoom Out, Actual Size).
+    editor_zoom: f32,
 }
 
 impl Default for Prefs {
@@ -102,6 +105,7 @@ impl Default for Prefs {
             entry_mandatory: true,
             validate_typing: true,
             work_offline: false,
+            editor_zoom: 1.0,
         }
     }
 }
@@ -111,6 +115,7 @@ impl Prefs {
     fn load(saved: Option<&str>) -> Self {
         let mut prefs: Self = saved.and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default();
         prefs.side_panels = prefs.side_panels.sanitized();
+        prefs.editor_zoom = zoom::sanitized(prefs.editor_zoom);
         prefs
     }
 }
@@ -154,6 +159,8 @@ pub struct XmlCraftApp {
     validate_typing: bool,
     /// The person's switch for downloading (XML ▸ Work Offline); the network says whether anything is downloaded at all.
     work_offline: bool,
+    /// The editor's text size relative to normal (View ▸ Zoom In, Zoom Out, Actual Size; see [`zoom`]).
+    editor_zoom: f32,
     /// What the grammars a document names are downloaded with.
     network: Network,
     /// How long a text is left alone before that.
@@ -303,6 +310,7 @@ impl XmlCraftApp {
             entry_focus: false,
             validate_typing: prefs.validate_typing,
             work_offline: prefs.work_offline,
+            editor_zoom: zoom::sanitized(prefs.editor_zoom),
             network,
             validate_delay: auto_validate::DELAY,
             waiting: None,
@@ -336,6 +344,7 @@ impl XmlCraftApp {
             entry_mandatory: self.entry_mandatory,
             validate_typing: self.validate_typing,
             work_offline: self.work_offline,
+            editor_zoom: self.editor_zoom,
         }
     }
 
@@ -495,6 +504,18 @@ mod tests {
         };
         let json = serde_json::to_string(&p).expect("serialises");
         assert_eq!(Prefs::load(Some(&json)), p);
+    }
+
+    #[test]
+    fn the_zoom_is_remembered_and_one_in_the_file_is_kept_in_range() {
+        assert_eq!(Prefs::default().editor_zoom, 1.0);
+        assert_eq!(Prefs::load(Some(r#"{"left_open": false}"#)).editor_zoom, 1.0, "an old file that does not say");
+        let zoomed = Prefs { editor_zoom: 1.5, ..Prefs::default() };
+        let again = Prefs::load(Some(&serde_json::to_string(&zoomed).expect("serialises")));
+        assert!((again.editor_zoom - 1.5).abs() < 1e-4);
+        assert!((XmlCraftApp::with_prefs(again).prefs().editor_zoom - 1.5).abs() < 1e-4, "it is what the app saves, too");
+        assert_eq!(Prefs::load(Some(r#"{"editor_zoom": 400.0}"#)).editor_zoom, zoom::MAX);
+        assert_eq!(Prefs::load(Some(r#"{"editor_zoom": -1.0}"#)).editor_zoom, zoom::MIN);
     }
 
     #[test]
