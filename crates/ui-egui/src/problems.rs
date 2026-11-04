@@ -110,6 +110,36 @@ pub(crate) fn collect(app: &XmlCraftApp) -> Vec<Problem> {
     rows
 }
 
+/// The most messages one hover tip lists.
+const MAX_TIP: usize = 4;
+
+/// What is wrong at `offset` of the document being shown: the messages of the problems whose span holds it (a span with no width holds
+/// its own offset), the well-formedness ones first. Only for the text the analysis is about: spans of older text would point elsewhere.
+pub(crate) fn messages_at(app: &XmlCraftApp, offset: usize) -> Vec<(Severity, String)> {
+    let (Some(doc), Some(analysis)) = (app.session.active_document(), app.active_analysis()) else { return Vec::new() };
+    if analysis.version != doc.editor().version() {
+        return Vec::new();
+    }
+    let holds = |span: &Range<usize>| span.start <= offset && offset < span.end.max(span.start.saturating_add(1));
+    let own = analysis.diagnostics.iter().filter(|d| holds(&d.span)).map(|d| (d.severity(), d.message()));
+    let validation = app
+        .active_validation()
+        .into_iter()
+        .flat_map(|v| v.problems.iter())
+        .filter(|p| p.file.is_none() && holds(&p.diagnostic.span))
+        .map(|p| (p.diagnostic.severity(), p.diagnostic.message()));
+    let mut found: Vec<(Severity, String)> = Vec::new();
+    for (severity, message) in own.chain(validation) {
+        if !found.iter().any(|(_, m)| *m == message) {
+            found.push((severity, message));
+        }
+        if found.len() == MAX_TIP {
+            break;
+        }
+    }
+    found
+}
+
 /// The start of the problem after `caret` (`delta` > 0) or before it (`delta` < 0) among `starts`, sorted; past the last it is the first
 /// and before the first it is the last. None when there is no problem.
 pub(crate) fn step_from(starts: &[usize], caret: usize, delta: isize) -> Option<usize> {
@@ -124,6 +154,11 @@ pub(crate) fn step_from(starts: &[usize], caret: usize, delta: isize) -> Option<
 }
 
 impl XmlCraftApp {
+    /// The messages of the problems at `offset` of the document being shown: what the hover tip says there.
+    pub fn problem_messages_at(&self, offset: usize) -> Vec<String> {
+        messages_at(self, offset).into_iter().map(|(_, message)| message).collect()
+    }
+
     /// Mark the problem that starts at `start` in the document being shown as the one last gone to.
     fn select_problem(&mut self, start: usize) {
         self.problem_selected = self.session.active_document().map(|d| (d.id(), start));

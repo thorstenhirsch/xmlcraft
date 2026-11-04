@@ -636,6 +636,28 @@ impl XmlCraftApp {
         if let Some(line) = output.fold_clicked {
             self.when_analysed(Then::FoldLine(line));
         }
+        // What is wrong where the pointer rests is said in a tip (once it has rested a moment).
+        if let Some(offset) = output.hover {
+            let messages = crate::problems::messages_at(self, offset);
+            if !messages.is_empty() {
+                let syntax = crate::editor_view::SyntaxTokens::for_kind(tokens.kind);
+                output.response.clone().on_hover_ui_at_pointer(|ui| {
+                    ui.set_max_width(380.0);
+                    for (severity, message) in &messages {
+                        let (icon, colour) = match severity {
+                            xmlcraft_syntax::Severity::Error => ("circle-x", syntax.error),
+                            xmlcraft_syntax::Severity::Warning => ("triangle-alert", syntax.warning),
+                            _ => ("info", syntax.info),
+                        };
+                        ui.horizontal_top(|ui| {
+                            let (rect, _) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+                            crate::icons::paint(ui, rect, icon, 15.0, colour);
+                            ui.label(message);
+                        });
+                    }
+                });
+            }
+        }
     }
 
     /// While files are dragged over the window, say that dropping opens them.
