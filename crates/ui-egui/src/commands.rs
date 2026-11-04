@@ -198,6 +198,7 @@ impl XmlCraftApp {
             "xml.generate_schema" => self.open_generate_schema(),
             "xml.generate_sample" => self.open_generate_sample(),
             "xml.load_schema" => self.load_schema(),
+            "edit.quick_fix" => self.quick_fix_at_caret(),
             "app.preferences" => {
                 // Not over a question that is being asked: its answer would be lost.
                 if self.dialog.is_none() {

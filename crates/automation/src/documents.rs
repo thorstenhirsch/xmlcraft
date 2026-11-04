@@ -332,6 +332,27 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             handler: doc_set_line_endings,
         },
         ToolDef {
+            name: "doc_quick_fix",
+            title: "List or apply the quick fixes of an open document",
+            description: "The fixes for the well-formedness problems of an open document: renaming a mismatched end tag, closing unclosed elements, quoting an \
+                          attribute value, escaping & and <, removing a duplicate attribute or a stray end tag. Without `apply` it lists them (their `title`, `problem`, \
+                          `line` and `column`) and changes nothing. With `apply` (a whole number, from 0, the position in that list) it puts that fix in the text as one \
+                          undoable edit and returns where the caret is. `line` and `column` (from 1) keep only the fixes of the problems at that place. Fixes for \
+                          validity problems (a missing required attribute) are the app's, after a validation.",
+            input_schema: object(
+                json!({
+                    "id": id.clone(),
+                    "apply": { "type": "integer", "minimum": 0 },
+                    "line": { "type": "integer", "minimum": 1 },
+                    "column": { "type": "integer", "minimum": 1 },
+                }),
+                &["id"],
+            ),
+            read_only: false,
+            destructive: false,
+            handler: doc_quick_fix,
+        },
+        ToolDef {
             name: "doc_set_indent",
             title: "Set how a document indents",
             description: "Indent the new lines of an open document (what Enter writes, Tab, and pretty-printing) with `spaces` (of `size`, 1 to 16; default: the size the document has now) or \
@@ -938,6 +959,56 @@ fn doc_set_line_endings(a: &mut Automation, args: &Value) -> Result<Vec<Content>
     };
     let changed = doc.editor_mut().convert_line_endings(eol);
     json_result(json!({ "changed": changed, "document": describe(doc) }))
+}
+
+fn doc_quick_fix(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    let text = doc.editor().text();
+    let analysis = analyze(&text, 0);
+    if analysis.skipped.is_some() {
+        return fail("the text is too large to analyse, or the analysis failed: nothing was changed");
+    }
+    let at = match (args.get("line"), args.get("column")) {
+        (None, None) => None,
+        (Some(_), Some(_)) => Some(offset_from(
+            doc.editor().buffer(),
+            args.get("line").and_then(Value::as_u64),
+            args.get("column").and_then(Value::as_u64),
+            "position",
+        )?),
+        _ => return Err(ToolError::InvalidArgs("line and column go together: give both, or neither for every problem".into())),
+    };
+    let mut found = Vec::new();
+    for d in &analysis.diagnostics {
+        if at.is_some_and(|offset| !(d.span.start <= offset && offset < d.span.end.max(d.span.start.saturating_add(1)))) {
+            continue;
+        }
+        for fix in xmlcraft_engine::quickfix::quick_fixes(&text, d, &analysis.diagnostics) {
+            found.push((d, fix));
+        }
+    }
+    if let Some(n) = args.get("apply") {
+        let n = n.as_u64().and_then(|n| usize::try_from(n).ok()).ok_or_else(|| ToolError::InvalidArgs("apply is a whole number from 0".into()))?;
+        let Some((_, fix)) = found.get(n) else { return fail(format!("there is no fix number {n}: there are {}", found.len())) };
+        if !doc.editor_mut().apply_edits(&fix.edits) {
+            return fail("the text could not be changed");
+        }
+        if let Some(caret) = fix.caret.filter(|c| *c <= doc.editor().buffer().len()) {
+            doc.editor_mut().set_selection(caret, caret);
+        }
+        return json_result(json!({ "applied": fix.title, "carets": carets_json(doc), "document": describe(doc) }));
+    }
+    let buffer = doc.editor().buffer();
+    let list: Vec<Value> = found
+        .iter()
+        .enumerate()
+        .map(|(i, (d, fix))| {
+            let position = buffer.position(d.span.start.min(buffer.len()));
+            json!({ "index": i, "title": fix.title, "problem": d.message(), "line": position.line + 1, "column": position.col + 1 })
+        })
+        .collect();
+    json_result(json!({ "fixes": list, "count": list.len() }))
 }
 
 fn doc_set_indent(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {

@@ -279,12 +279,14 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
             });
         });
     });
+    app.ensure_fixes();
     let lines = lines(&problems, app.problem_filter);
     if lines.is_empty() {
         widgets::empty_state(ui, 12.0, tl!("Nothing in this list"), tl!("Choose All to see every problem."));
     }
     let syntax = SyntaxTokens::for_kind(t.kind);
     let mut clicked = None;
+    let mut fix_clicked: Option<xmlcraft_engine::quickfix::QuickFix> = None;
     let selected = app.selected_problem();
     egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, ROW, lines.len(), |ui, range| {
         for line in lines.get(range).unwrap_or_default() {
@@ -323,7 +325,24 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
                         place_galley.clone(),
                         t.text_faint,
                     );
-                    let text_area = Rect::from_min_max(rect.min, egui::pos2(right - place_galley.size().x - 12.0, rect.max.y));
+                    // A problem that can be put right has a Fix button before its place.
+                    let fix = problem.jump.as_ref().and_then(|j| app.fixes_starting_at(j.start).first());
+                    let mut text_right = right - place_galley.size().x - 12.0;
+                    if let Some(fix) = fix {
+                        let pill = Rect::from_min_size(egui::pos2(text_right - 40.0, rect.center().y - 9.0), vec2(40.0, 18.0));
+                        let button = ui.interact(pill, response.id.with("fix"), Sense::click());
+                        let label = fmt(tl!("Fix: {what}"), &[("what", &fix.title)]);
+                        button.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label.clone()));
+                        let wash = if button.hovered() { t.accent } else { t.accent_soft };
+                        let ink = if button.hovered() { egui::Color32::WHITE } else { t.accent_text };
+                        ui.painter().rect_filled(pill, 9.0, wash);
+                        ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, tl!("Fix"), theme::semibold(11.0), ink);
+                        if theme::hand(button).on_hover_text(&fix.title).clicked() {
+                            fix_clicked = Some(fix.clone());
+                        }
+                        text_right = pill.left() - 8.0;
+                    }
+                    let text_area = Rect::from_min_max(rect.min, egui::pos2(text_right, rect.max.y));
                     ui.painter().with_clip_rect(text_area).text(
                         rect.left_center() + vec2(38.0, 0.0),
                         egui::Align2::LEFT_CENTER,
@@ -342,6 +361,10 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     });
     if step != 0 {
         app.step_problem(step);
+    }
+    if let Some(fix) = fix_clicked {
+        app.apply_quick_fix(&fix);
+        return;
     }
     if let Some((Some(span), _)) = clicked {
         app.select_problem(span.start);
