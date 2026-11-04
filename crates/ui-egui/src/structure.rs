@@ -134,12 +134,15 @@ impl XmlCraftApp {
                 .active_analysis()
                 .filter(|a| a.version == version)
                 .ok_or_else(|| tl!("The document is still being read. Try again in a moment.").to_owned())?;
+            if analysis.outline_truncated {
+                return Err(tl!("The document has too many elements for this command.").to_owned());
+            }
             let item = analysis
                 .outline
                 .iter()
                 .find(|i| i.name_range.start == form.target && i.name == form.old)
                 .cloned()
-                .ok_or_else(|| tl!("The element is gone.").to_owned())?;
+                .ok_or_else(|| tl!("The element changed while this was open. Try again.").to_owned())?;
             (item, text)
         };
         let edits = elements::rename_edits(&text, &item, &new).map_err(|e| match e {

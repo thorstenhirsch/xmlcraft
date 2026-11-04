@@ -76,17 +76,16 @@ pub fn xpath(outline: &[OutlineItem], index: usize) -> Option<String> {
     while let Some(i) = at {
         let item = outline.get(i)?;
         let up = parent(outline, i);
-        // The brothers are the elements of the parent's subtree one level down (the whole outline, for the root): one pass over them.
-        let (from, to) = match up {
-            Some(p) => {
-                let depth = outline.get(p)?.depth;
-                let after = outline.get(p + 1..)?;
-                (p + 1, p + 1 + after.iter().position(|b| b.depth <= depth).unwrap_or(after.len()))
-            }
-            None => (0, outline.len()),
+        // The brothers are the elements of the parent's range one level down (the whole outline, for the root): one pass over them.
+        let (from, bound) = match up {
+            Some(p) => (p + 1, outline.get(p)?.range.end),
+            None => (0, usize::MAX),
         };
         let (mut total, mut position) = (0usize, 0usize);
-        for (j, b) in outline.get(from..to)?.iter().enumerate() {
+        for (j, b) in outline.get(from..)?.iter().enumerate() {
+            if b.range.start >= bound {
+                break;
+            }
             if b.depth == item.depth && b.name == item.name {
                 total += 1;
                 if from + j <= i {

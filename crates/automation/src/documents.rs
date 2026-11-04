@@ -843,17 +843,24 @@ fn doc_key(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     json_result(json!({ "carets": carets_json(doc), "document": describe(doc) }))
 }
 
+/// The longest name `wrap` makes an element of (the editor links names of up to this many bytes).
+const MAX_WRAP_NAME_BYTES: usize = 1024;
+
 fn doc_element(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     use xmlcraft_engine::elements;
     let index = index_of(a, id_arg(args)?)?;
     let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
     let action = text_arg(args, "action").unwrap_or_default();
     if action == "wrap" {
-        place_selection(doc, args)?;
+        // The name first: a call that is refused leaves the selection where it was.
         let name = text_arg(args, "name").unwrap_or("element");
         if !elements::is_element_name(name) {
             return fail(format!("{name}: not an element name"));
         }
+        if name.len() > MAX_WRAP_NAME_BYTES {
+            return fail(format!("the name is too long (at most {MAX_WRAP_NAME_BYTES} bytes)"));
+        }
+        place_selection(doc, args)?;
         if !doc.editor_mut().wrap_selection_in_tag(name) {
             return fail("wrapping needs one caret or one selection");
         }
@@ -869,14 +876,13 @@ fn doc_element(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         return fail("the document has too many elements for this tool");
     }
     let caret = doc.editor().primary().start();
-    let Some((position, item)) = elements::innermost(&analysis.outline, caret).and_then(|i| analysis.outline.get(i).map(|item| (i, item.clone())))
-    else {
+    let Some((position, item)) = elements::innermost(&analysis.outline, caret).and_then(|i| analysis.outline.get(i).map(|item| (i, item))) else {
         return fail("the caret is not in an element");
     };
     match action {
         "rename" => {
             let Some(name) = text_arg(args, "name") else { return Err(ToolError::InvalidArgs("rename needs a name".into())) };
-            let edits = elements::rename_edits(&text, &item, name).map_err(|e| match e {
+            let edits = elements::rename_edits(&text, item, name).map_err(|e| match e {
                 elements::RenameError::NotAName => ToolError::Failed(format!("{name}: not an element name")),
                 elements::RenameError::Unchanged => ToolError::Failed(format!("{name}: the element has that name already")),
             })?;
@@ -885,17 +891,17 @@ fn doc_element(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
             }
         }
         "unwrap" => {
-            if !doc.editor_mut().apply_edits(&elements::unwrap_edits(&item)) {
+            if !doc.editor_mut().apply_edits(&elements::unwrap_edits(item)) {
                 return fail("the text could not be changed");
             }
         }
         "select" => {
-            let range = elements::element_range(&item);
+            let range = elements::element_range(item);
             doc.editor_mut().set_selection(range.start, range.end);
         }
         "xpath" => {
             let Some(path) = elements::xpath(&analysis.outline, position) else { return fail("no path for that element") };
-            return json_result(json!({ "xpath": path, "element": item.name }));
+            return json_result(json!({ "xpath": path, "element": item.name, "carets": carets_json(doc), "document": describe(doc) }));
         }
         other => return fail(format!("{other}: no such action (rename, wrap, unwrap, select, xpath)")),
     }

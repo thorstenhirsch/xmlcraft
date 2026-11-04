@@ -210,6 +210,18 @@ evidence = ["crates/editor/src/structure.rs::lines_are_commented_out_and_back_in
 notes = "⌘/ (Ctrl+/) wraps the lines the carets touch in `<!-- -->` (one comment for a selection over lines, from its first character that is not blank to the end of its last line) or, when they are exactly one comment, takes the markers off; the caret stays in its text and it is one undo step. A text with `--` in it cannot go into a comment: that is refused and nothing changes. Not yet: toggling a part of a line, and commenting out with CDATA."
 
 [[feature]]
+id = "editor.element-structure"
+title = "Wrap in tag, unwrap and select an element"
+area = "A"
+tier = "P2"
+milestone = "M4"
+status = "partial"
+commands = ["xml.wrap_in_tag", "xml.unwrap_element", "xml.select_element"]
+tools = ["doc_element"]
+evidence = ["crates/ui-egui/tests/elements.rs::wrap_in_tag_wraps_the_selection_and_links_the_names", "crates/ui-egui/tests/elements.rs::unwrap_element_keeps_what_is_inside", "crates/ui-egui/tests/elements.rs::select_element_selects_it_and_again_the_one_around_it", "crates/editor/src/linked.rs::wrapping_a_selection_in_a_tag_leaves_the_name_selected_and_linked_so_that_typing_names_the_element", "crates/engine/src/elements.rs::the_innermost_element_is_the_one_the_caret_is_in_and_its_parent_is_the_one_around", "crates/automation/tests/documents.rs::doc_element_renames_wraps_unwraps_selects_and_gives_the_path"]
+notes = "XML ▸ Wrap in Tag (⌘/Ctrl+Alt+W) wraps the selection, or the caret, in `<element>…</element>` as one undo step with the new name selected and the two names linked, so typing the real name renames both; Unwrap Element takes the two tags of the element the caret is in away and keeps what is inside; Select Element selects the element and, pressed again, the one around it. The same through `doc_element`. Missing: wrapping several selections, wrapping the lines in an element with indentation, and unwrapping with the content re-indented."
+
+[[feature]]
 id = "editor.expand-selection"
 title = "Expand and shrink selection by syntax node"
 area = "A"

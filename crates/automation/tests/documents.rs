@@ -489,7 +489,17 @@ fn doc_element_renames_wraps_unwraps_selects_and_gives_the_path() {
     assert_eq!(text(&mut a), "<a>\n  <b>x</b>\n  <b>y</b>\n</a>");
     // Select: the carets then span the element.
     let selected = ok(&mut a, "doc_element", json!({ "id": id, "action": "select", "line": 2, "column": 7 }));
-    assert_eq!(selected["carets"][0]["line"], 2);
+    assert_eq!(
+        (selected["carets"][0]["line"].as_u64(), selected["carets"][0]["column"].as_u64(), selected["carets"][0]["end_column"].as_u64()),
+        (Some(2), Some(3), Some(11)),
+        "<b>x</b>"
+    );
+    // A refused wrap leaves the selection where it was.
+    let refused =
+        err(&mut a, "doc_element", json!({ "id": id, "action": "wrap", "name": "1 x", "line": 3, "column": 3, "end_line": 3, "end_column": 5 }));
+    assert!(refused.contains("not an element name"), "{refused}");
+    let carets = ok(&mut a, "doc_element", json!({ "id": id, "action": "xpath", "line": 2, "column": 7 }));
+    assert_eq!(carets["carets"][0]["line"], 2, "xpath too says where the caret is");
     // A name that is not one is refused and changes nothing.
     let refused = err(&mut a, "doc_element", json!({ "id": id, "action": "rename", "name": "1 x", "line": 2, "column": 7 }));
     assert!(refused.contains("not an element name"), "{refused}");
