@@ -4,7 +4,7 @@
 
 Every asset XmlCraft includes, bundles or uses to build its published material, with its author, source and licence. The policy is in [AGENTS.md](AGENTS.md) §1. The machine-readable list, with the SHA-256 of every asset but the translation catalogs, is [ATTRIBUTION.toml](ATTRIBUTION.toml). Licence texts are kept beside the assets and summarised in [NOTICE](NOTICE).
 
-## In this repository (167)
+## In this repository (175)
 
 | Asset | Title | Author | Licence | Source | Used for |
 |---|---|---|---|---|---|
@@ -175,6 +175,14 @@ Every asset XmlCraft includes, bundles or uses to build its published material, 
 | `docs/screenshots/validation.png` | XmlCraft screenshot: validation errors (dark theme) | XmlCraft contributors | MIT OR Apache-2.0 | Contributor-original (see docs/screenshots/README.md): rendered by packaging/screenshots.sh from synthetic documents | README and docs: the problems of a document that does not follow its schema |
 | `docs/screenshots/generate-schema.png` | XmlCraft screenshot: the Generate Schema dialog | XmlCraft contributors | MIT OR Apache-2.0 | Contributor-original (see docs/screenshots/README.md): rendered by packaging/screenshots.sh from synthetic documents | README and docs: XML ▸ Generate Schema… |
 | `docs/screenshots/new-from-template.png` | XmlCraft screenshot: the New from Template dialog | XmlCraft contributors | MIT OR Apache-2.0 | Contributor-original (see docs/screenshots/README.md): rendered by packaging/screenshots.sh from synthetic documents | README and docs: File ▸ New from Template… |
+| `assets/icons/clock.svg` | Lucide icon "clock" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/clock.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
+| `assets/icons/cloud.svg` | Lucide icon "cloud" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/cloud.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
+| `assets/icons/cloud-off.svg` | Lucide icon "cloud-off" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/cloud-off.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
+| `assets/icons/layout-grid.svg` | Lucide icon "layout-grid" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/layout-grid.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
+| `assets/icons/globe.svg` | Lucide icon "globe" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/globe.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
+| `assets/icons/files.svg` | Lucide icon "files" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/files.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
+| `assets/icons/text-cursor-input.svg` | Lucide icon "text-cursor-input" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/text-cursor-input.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
+| `assets/icons/list.svg` | Lucide icon "list" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/list.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 
 ## Compiled in through dependencies (5)
 

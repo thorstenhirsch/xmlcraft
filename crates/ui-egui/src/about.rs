@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::dialog::Dialog;
 use crate::i18n::{fmt, tl};
+use crate::kit;
 use crate::theme::{self, Tokens};
 use crate::{XmlCraftApp, widgets};
 
@@ -83,6 +84,14 @@ pub(crate) fn shown_name(contributor: &Contributor, real_names: bool) -> String 
 pub(crate) struct AboutForm {
     credits: Credits,
     real_names: bool,
+    tab: Tab,
+}
+
+/// What the window shows under the description.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Tab {
+    Credits,
+    ThirdParty,
 }
 
 impl XmlCraftApp {
@@ -94,94 +103,95 @@ impl XmlCraftApp {
     /// Show the About window with the credits in `json` (what `cargo xtask contributors` writes) instead of the ones compiled in. For
     /// tests: the credits of a build are the history of the repository.
     pub fn open_about_with_credits(&mut self, json: &str) {
-        self.dialog = Some(Dialog::About(Box::new(AboutForm { credits: credits_from(json), real_names: false })));
+        self.dialog = Some(Dialog::About(Box::new(AboutForm { credits: credits_from(json), real_names: false, tab: Tab::Credits })));
     }
 
     /// Draw the window; it closes with the button, Escape or a click outside.
     pub(crate) fn show_about(&mut self, ctx: &egui::Context) {
         let Some(mut dialog) = self.dialog.take() else { return };
-        let t = Tokens::get(ctx);
-        let mut close = false;
-        let response = egui::Modal::new(egui::Id::unique("xmlcraft-about")).show(ctx, |ui| {
-            ui.set_width(520.0);
-            if let Dialog::About(form) = &mut dialog {
-                close = form_ui(ui, &t, form);
-            }
+        let version = fmt(tl!("Version {version}"), &[("version", crate::VERSION)]);
+        let (close, closed) = kit::dialog(ctx, "xmlcraft-about", 560.0, "info", tl!("About XmlCraft"), &version, |ui| match &mut dialog {
+            Dialog::About(form) => form_ui(ui, form),
+            _ => false,
         });
-        if !close && !response.should_close() {
+        if !close && !closed {
             self.dialog = Some(dialog);
         }
     }
 }
 
-fn form_ui(ui: &mut egui::Ui, t: &Tokens, form: &mut AboutForm) -> bool {
-    let mut close = false;
-    ui.vertical_centered(|ui| {
-        ui.add(egui::Image::new(egui::include_image!("../../../assets/app-icon/xmlcraft.svg")).fit_to_exact_size(vec2(64.0, 64.0)));
-        ui.add_space(6.0);
-        ui.label(egui::RichText::new(crate::APP_NAME).font(theme::semibold(22.0)).color(t.text));
-        ui.label(egui::RichText::new(fmt(tl!("Version {version}"), &[("version", crate::VERSION)])).font(theme::regular(13.0)).color(t.text_muted));
-        ui.add_space(4.0);
-        ui.label(egui::RichText::new(tl!("An open-source, clean-room XML editor")).font(theme::regular(13.0)).color(t.text));
-        ui.label(egui::RichText::new(tl!("MIT or Apache-2.0, at your option")).font(theme::regular(12.0)).color(t.text_muted));
-        ui.label(egui::RichText::new("© 2026 Thorsten Hirsch and the XmlCraft contributors").font(theme::regular(12.0)).color(t.text_muted));
-        ui.add_space(4.0);
-        ui.label(
+fn form_ui(ui: &mut egui::Ui, form: &mut AboutForm) -> bool {
+    let t = Tokens::get(ui.ctx());
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = kit::GAP_GROUP;
+        ui.add(egui::Image::new(egui::include_image!("../../../assets/app-icon/xmlcraft.svg")).fit_to_exact_size(vec2(56.0, 56.0)));
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            ui.label(egui::RichText::new(tl!("An open-source, clean-room XML editor")).font(theme::medium(13.5)).color(t.text));
+            ui.label(egui::RichText::new(tl!("MIT or Apache-2.0, at your option")).font(theme::regular(12.0)).color(t.text_muted));
+            ui.label(egui::RichText::new("© 2026 Thorsten Hirsch and the XmlCraft contributors").font(theme::regular(12.0)).color(t.text_muted));
+        });
+    });
+    ui.add_space(kit::GAP);
+    ui.add(
+        egui::Label::new(
             egui::RichText::new(tl!(
                 "Independent of Altova GmbH. XMLSpy is a trademark of Altova GmbH, named only to say what kind of editor this is."
             ))
             .font(theme::regular(11.5))
             .color(t.text_faint),
-        );
-    });
-    ui.add_space(10.0);
+        )
+        .wrap(),
+    );
+    ui.add_space(kit::GAP_GROUP);
+    kit::segmented(ui, &mut form.tab, &[(Tab::Credits, tl!("Credits")), (Tab::ThirdParty, tl!("Third-party material"))]);
+    ui.add_space(8.0);
     // A fixed height: the window does not change size while its text is laid out, so what is under the pointer stays there.
-    egui::ScrollArea::vertical().min_scrolled_height(300.0).max_height(300.0).auto_shrink([false, false]).show(ui, |ui| {
-        widgets::section_title(ui, tl!("Contributors"));
-        if form.credits.contributors.is_empty() {
-            ui.label(egui::RichText::new(tl!("No contributors are listed in this build.")).font(theme::regular(12.5)).color(t.text_muted));
+    egui::ScrollArea::vertical().min_scrolled_height(280.0).max_height(280.0).auto_shrink([false, false]).show(ui, |ui| match form.tab {
+        Tab::Credits => credits(ui, &t, form),
+        Tab::ThirdParty => {
+            widgets::section_title(ui, tl!("Third-party material"));
+            ui.label(egui::RichText::new(NOTICE).font(theme::mono(10.5)).color(t.text_muted));
         }
-        if form.credits.contributors.iter().any(|c| c.real_name.is_some()) {
-            ui.add(widgets::checkbox(&mut form.real_names, tl!("Show the real names people gave")));
-        }
-        for c in &form.credits.contributors {
-            ui.horizontal_wrapped(|ui| {
-                ui.label(egui::RichText::new(shown_name(c, form.real_names)).font(theme::medium(12.5)).color(t.text));
-                let detail = fmt(
-                    tl!("{prs} pull requests, {commits} commits, +{added} −{deleted} lines"),
-                    &[
-                        ("prs", &c.prs.to_string()),
-                        ("commits", &c.commits.to_string()),
-                        ("added", &c.lines_added.to_string()),
-                        ("deleted", &c.lines_deleted.to_string()),
-                    ],
-                );
-                ui.label(egui::RichText::new(detail).font(theme::regular(11.5)).color(t.text_faint));
-            });
-        }
-        if !form.credits.models.is_empty() {
-            ui.add_space(8.0);
-            widgets::section_title(ui, tl!("AI models"));
-            ui.label(egui::RichText::new(tl!("Named as co-authors of commits.")).font(theme::regular(11.5)).color(t.text_muted));
-            for m in &form.credits.models {
-                ui.label(
-                    egui::RichText::new(fmt(tl!("{name}: {commits} commits"), &[("name", &m.name), ("commits", &m.commits.to_string())]))
-                        .font(theme::regular(12.5))
-                        .color(t.text),
-                );
-            }
-        }
+    });
+    kit::close_footer(ui, tl!("OK"))
+}
+
+fn credits(ui: &mut egui::Ui, t: &Tokens, form: &mut AboutForm) {
+    widgets::section_title(ui, tl!("Contributors"));
+    if form.credits.contributors.is_empty() {
+        ui.label(egui::RichText::new(tl!("No contributors are listed in this build.")).font(theme::regular(12.5)).color(t.text_muted));
+    }
+    if form.credits.contributors.iter().any(|c| c.real_name.is_some()) {
+        ui.add(widgets::checkbox(&mut form.real_names, tl!("Show the real names people gave")));
+    }
+    for c in &form.credits.contributors {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(shown_name(c, form.real_names)).font(theme::medium(12.5)).color(t.text));
+            let detail = fmt(
+                tl!("{prs} pull requests, {commits} commits, +{added} −{deleted} lines"),
+                &[
+                    ("prs", &c.prs.to_string()),
+                    ("commits", &c.commits.to_string()),
+                    ("added", &c.lines_added.to_string()),
+                    ("deleted", &c.lines_deleted.to_string()),
+                ],
+            );
+            ui.label(egui::RichText::new(detail).font(theme::regular(11.5)).color(t.text_faint));
+        });
+    }
+    if !form.credits.models.is_empty() {
         ui.add_space(8.0);
-        widgets::section_title(ui, tl!("Third-party material"));
-        ui.label(egui::RichText::new(NOTICE).font(theme::mono(10.5)).color(t.text_muted));
-    });
-    ui.add_space(10.0);
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        if ui.button(tl!("OK")).clicked() {
-            close = true;
+        widgets::section_title(ui, tl!("AI models"));
+        ui.label(egui::RichText::new(tl!("Named as co-authors of commits.")).font(theme::regular(11.5)).color(t.text_muted));
+        for m in &form.credits.models {
+            ui.label(
+                egui::RichText::new(fmt(tl!("{name}: {commits} commits"), &[("name", &m.name), ("commits", &m.commits.to_string())]))
+                    .font(theme::regular(12.5))
+                    .color(t.text),
+            );
         }
-    });
-    close
+    }
 }
 
 #[cfg(test)]

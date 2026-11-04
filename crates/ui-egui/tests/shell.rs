@@ -11,18 +11,39 @@ fn shell() -> Harness<'static, XmlCraftApp> {
     h
 }
 
+/// A shell with a document open: the panes, the rail and the header are about a document, and the home view has none of them.
+fn shell_with_document() -> Harness<'static, XmlCraftApp> {
+    let mut h = shell();
+    h.state_mut().session.open(Some("/x/library.xml".into()), b"<library><book/></library>", None).expect("opens");
+    h.run_steps(6);
+    h
+}
+
 #[test]
-fn the_shell_shows_its_chrome_and_panes() {
+fn the_shell_shows_its_chrome_and_the_home_view_has_the_whole_window() {
     let h = shell();
-    for label in ["Home", "Menu", "Find tools and commands", "Text", "No document open", "No messages"] {
+    for label in ["Home", "Menu", "Find tools and commands", "XmlCraft", "New document", "New from Template…", "Open file…"] {
         assert!(h.query_by_label(label).is_some(), "missing {label:?}");
     }
-    // Each pane has a header; some also appear elsewhere (the status bar offers Messages, the rail names Entry Helpers).
-    for pane in ["Outline", "Messages", "Entry Helpers"] {
+    // The panes, the rail and the header are about a document.
+    for label in ["Outline", "Problems", "Entry Helpers", "Toggle Outline", "Validate"] {
+        assert!(h.query_by_label(label).is_none(), "{label:?} is for a document");
+    }
+}
+
+#[test]
+fn a_document_has_its_panes_a_rail_to_toggle_them_and_the_actions_that_matter() {
+    let h = shell_with_document();
+    for label in ["Validate", "Check", "Format", "Assign Schema…", "Generate…", "Toggle Outline", "Toggle Entry Helpers", "Toggle Problems"] {
+        assert!(h.query_by_label(label).is_some(), "missing {label:?}");
+    }
+    // Each pane has a header; some also appear elsewhere.
+    for pane in ["Outline", "Problems", "Entry Helpers"] {
         assert!(h.query_all_by_label(pane).count() >= 1, "missing the {pane} pane");
     }
-    assert!(h.query_by_label("What the DTD or the schema allows at the cursor appears here.").is_some(), "Entry Helpers says what it is for");
-    assert!(h.query_by_label("XmlCraft").is_some(), "the home card names the app");
+    assert!(h.query_by_label("No DTD or schema").is_some(), "Entry Helpers says what it is for");
+    // The header says what the document is: its element path, and where it stands.
+    assert!(h.query_by_label("Select element library").is_some(), "the path of the caret");
 }
 
 #[test]
@@ -42,7 +63,7 @@ fn the_theme_button_cycles_system_light_dark() {
 
 #[test]
 fn each_pane_closes_with_its_close_button() {
-    let mut h = shell();
+    let mut h = shell_with_document();
     assert!(h.state().left_open && h.state().bottom_open && h.state().right.is_some());
     // Three panes, three Close buttons; each click removes one.
     for expected in (1..=3).rev() {
@@ -51,21 +72,30 @@ fn each_pane_closes_with_its_close_button() {
         h.run_steps(3);
     }
     assert!(!h.state().left_open && !h.state().bottom_open && h.state().right.is_none());
-    assert!(h.query_by_label("No document open").is_none());
-    assert!(h.query_by_label("No messages").is_none());
+    assert!(h.query_by_label("No DTD or schema").is_none());
 }
 
 #[test]
-fn the_rail_reopens_entry_helpers() {
-    let mut h = shell();
+fn the_rail_toggles_the_panes() {
+    let mut h = shell_with_document();
     h.state_mut().right = None;
     h.run_steps(3);
-    assert!(h.query_by_label("What the DTD or the schema allows at the cursor appears here.").is_none());
-    // The rail is always there; its one button is named after the pane.
-    h.get_by_label("Entry Helpers").click();
+    assert!(h.query_by_label("No DTD or schema").is_none());
+    // A rail button toggles the pane it is named after.
+    h.get_by_label("Toggle Entry Helpers").click();
     h.run_steps(3);
     assert!(h.state().right.is_some());
-    assert!(h.query_by_label("What the DTD or the schema allows at the cursor appears here.").is_some());
+    assert!(h.query_by_label("No DTD or schema").is_some());
+    h.get_by_label("Toggle Entry Helpers").click();
+    h.run_steps(3);
+    assert!(h.state().right.is_none(), "and again closes it");
+    h.get_by_label("Toggle Problems").click();
+    h.run_steps(3);
+    assert!(!h.state().bottom_open);
+    let outline = h.state().left_open;
+    h.get_by_label("Toggle Outline").click();
+    h.run_steps(3);
+    assert_eq!(h.state().left_open, !outline, "the Outline toggles too");
 }
 
 #[test]

@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use egui::{Align, Layout, Sense, Stroke, vec2};
+use egui::{Align, Layout, Rect, Sense, Stroke, vec2};
 
 use crate::i18n::tl;
 use crate::theme::{self, Tokens};
@@ -19,73 +19,127 @@ pub enum Choice {
     Command(&'static str),
 }
 
-/// The welcome card, with the ways to begin: a new document, one from a template, a file. It says what exists today; the list of what
-/// arrives is the roadmap's. Below it, the files opened lately. The thing chosen is returned.
+/// The widest the content of the home view grows.
+const MAX_WIDTH: f32 = 860.0;
+
+/// The home view: a welcome, three ways to begin (a new document, one from a template, a file), the files opened lately, and the keys that
+/// matter. The thing chosen is returned.
 pub fn show(ui: &mut egui::Ui, recent: &[PathBuf]) -> Option<Choice> {
     let mut chosen = None;
     let t = Tokens::get(ui.ctx());
-    let avail = ui.available_size();
-    let card_width = 460.0_f32.min(avail.x - 48.0).max(240.0);
-    // At a small window height the card is reached by scrolling, with the whole list.
+    let width = (ui.available_width() - 64.0).clamp(280.0, MAX_WIDTH);
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         ui.with_layout(Layout::top_down(Align::Center), |ui| {
-            // The card is taller with a list under it: the space above is what is left, a third of it.
-            let listed = recent.len().min(SHOWN_RECENT) as f32;
-            let height = 340.0 + if recent.is_empty() { 0.0 } else { 40.0 + listed * 38.0 };
-            ui.add_space(((avail.y - height) / 3.0).max(24.0));
-            egui::Frame::NONE
-                .fill(t.card)
-                .stroke(Stroke::new(1.0, t.border))
-                .corner_radius(egui::CornerRadius::same(12))
-                .inner_margin(egui::Margin::symmetric(28, 24))
-                .shadow(egui::Shadow { offset: [0, 4], blur: 18, spread: 0, color: t.page_shadow })
-                .show(ui, |ui| {
-                    ui.set_width(card_width - 56.0);
-                    ui.vertical_centered(|ui| {
-                        ui.add(egui::Image::new(egui::include_image!("../../../assets/app-icon/xmlcraft.svg")).fit_to_exact_size(vec2(72.0, 72.0)));
-                        ui.add_space(10.0);
-                        ui.label(egui::RichText::new(crate::APP_NAME).font(theme::semibold(24.0)).color(t.text));
-                        ui.label(egui::RichText::new(tl!("An open-source, clean-room XML editor")).font(theme::regular(13.0)).color(t.text_muted));
-                        ui.add_space(16.0);
-                        ui.label(egui::RichText::new(tl!("Pre-alpha")).font(theme::semibold(11.0)).color(t.accent_text).extra_letter_spacing(0.6));
-                        ui.add_space(4.0);
-                        ui.label(
-                            egui::RichText::new(tl!(
-                                "Editing, validation against DTDs and XML Schemas, and schema and sample generation are in place. The rest arrives milestone by milestone."
-                            ))
-                            .font(theme::regular(12.5))
-                            .color(t.text_muted),
-                        );
-                        ui.add_space(14.0);
-                        // The buttons wrap when the window is narrow; with room to spare they are centred.
-                        ui.horizontal_wrapped(|ui| {
-                            ui.add_space(((ui.available_width() - 330.0) / 2.0).max(0.0));
-                            for (label, command) in
-                                [(tl!("New"), "file.new"), (tl!("New from Template…"), "file.new_from_template"), (tl!("Open…"), "file.open")]
-                            {
-                                if ui.button(label).clicked() {
-                                    chosen = Some(Choice::Command(command));
-                                }
+            ui.add_space(40.0);
+            ui.allocate_ui_with_layout(vec2(width, 0.0), Layout::top_down(Align::Min), |ui| {
+                ui.set_width(width);
+                hero(ui, &t);
+                ui.add_space(26.0);
+                let cards = [
+                    ("file-plus", tl!("New document"), tl!("Start with an empty XML document."), "file.new"),
+                    ("layout-grid", tl!("New from Template…"), tl!("XML, a schema, a DTD, XHTML, XSLT or a catalog."), "file.new_from_template"),
+                    ("folder-open", tl!("Open file…"), tl!("Open XML, a schema or a DTD. Or drop a file here."), "file.open"),
+                ];
+                let columns = if width >= 640.0 { 3 } else { 1 };
+                let gap = 14.0;
+                let card_w = (width - gap * (columns as f32 - 1.0)) / columns as f32;
+                for row in cards.chunks(columns) {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = gap;
+                        for (icon, title, text, command) in row {
+                            if action_card(ui, &t, card_w, icon, title, text) {
+                                chosen = Some(Choice::Command(command));
                             }
-                        });
+                        }
                     });
-                    if !recent.is_empty() {
-                        ui.add_space(18.0);
-                        // The rows start at the left edge of the card, and so does what they are under.
-                        ui.with_layout(Layout::top_down(Align::Min), |ui| {
-                            ui.label(egui::RichText::new(tl!("Recent")).font(theme::semibold(11.0)).color(t.text_muted).extra_letter_spacing(0.6));
-                            ui.add_space(4.0);
-                            for path in recent.iter().take(SHOWN_RECENT) {
-                                if recent_row(ui, &t, path) {
-                                    chosen = Some(Choice::Open(path.clone()));
-                                }
-                            }
-                        });
-                    }
-                });
+                    ui.add_space(gap);
+                }
+                ui.add_space(12.0);
+                recent_files(ui, &t, recent, &mut chosen);
+                ui.add_space(24.0);
+                tips(ui);
+                ui.add_space(32.0);
+            });
         });
     });
     chosen
+}
+
+fn hero(ui: &mut egui::Ui, t: &Tokens) {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 16.0;
+        ui.add(egui::Image::new(egui::include_image!("../../../assets/app-icon/xmlcraft.svg")).fit_to_exact_size(vec2(64.0, 64.0)));
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            ui.label(egui::RichText::new(crate::APP_NAME).font(theme::semibold(28.0)).color(t.text));
+            ui.label(
+                egui::RichText::new(tl!("Edit and validate XML against DTDs and XML Schemas, and generate schemas and samples."))
+                    .font(theme::regular(13.5))
+                    .color(t.text_muted),
+            );
+        });
+    });
+}
+
+/// A way to begin: an icon tile, a title and one line under it. Lifts when the pointer is on it. True when clicked.
+fn action_card(ui: &mut egui::Ui, t: &Tokens, width: f32, icon: &str, title: &str, text: &str) -> bool {
+    let (rect, response) = ui.allocate_exact_size(vec2(width, 132.0), Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, title));
+    let hover =
+        ui.ctx().animate_bool_with_time(response.id.with("lift"), response.hovered(), if crate::motion::animated(ui.ctx()) { 0.12 } else { 0.0 });
+    let card = rect.translate(vec2(0.0, -2.0 * hover));
+    if hover > 0.0 {
+        ui.painter().add(egui::Shadow { offset: [0, 6], blur: 18, spread: 0, color: t.page_shadow.gamma_multiply(hover) }.as_shape(card, 12.0));
+    }
+    let edge = t.border.lerp_to_gamma(t.accent, hover * 0.8);
+    ui.painter().rect(card, 12.0, t.card, Stroke::new(1.0, edge), egui::StrokeKind::Inside);
+    let tile = Rect::from_min_size(card.min + vec2(16.0, 16.0), vec2(40.0, 40.0));
+    ui.painter().rect_filled(tile, 10.0, t.accent_soft);
+    crate::icons::paint(ui, tile, icon, 20.0, t.accent_text);
+    ui.painter().text(card.min + vec2(16.0, 66.0), egui::Align2::LEFT_TOP, title, theme::semibold(14.0), t.text);
+    let galley = ui.painter().layout(text.to_owned(), theme::regular(12.0), t.text_muted, card.width() - 32.0);
+    ui.painter().galley(card.min + vec2(16.0, 88.0), galley, t.text_muted);
+    theme::hand(response).clicked()
+}
+
+fn recent_files(ui: &mut egui::Ui, t: &Tokens, recent: &[PathBuf], chosen: &mut Option<Choice>) {
+    ui.label(egui::RichText::new(tl!("Recent files").to_uppercase()).font(theme::semibold(10.5)).color(t.text_faint).extra_letter_spacing(0.6));
+    ui.add_space(8.0);
+    if recent.is_empty() {
+        crate::kit::card(ui, false, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new(tl!("Files you open appear here")).font(theme::medium(13.0)).color(t.text_muted));
+                ui.label(egui::RichText::new(tl!("Drop a file anywhere in the window to open it.")).font(theme::regular(12.0)).color(t.text_faint));
+                ui.add_space(8.0);
+            });
+        });
+        return;
+    }
+    egui::Frame::NONE.fill(t.card).stroke(Stroke::new(1.0, t.border)).corner_radius(10).inner_margin(egui::Margin::symmetric(6, 6)).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        for path in recent.iter().take(SHOWN_RECENT) {
+            if recent_row(ui, t, path) {
+                *chosen = Some(Choice::Open(path.clone()));
+            }
+        }
+    });
+}
+
+/// The keys that matter, one line: what a person new to the app would otherwise not find. The keys are the registry's, so they are right
+/// for the platform.
+fn tips(ui: &mut egui::Ui) {
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = vec2(8.0, 6.0);
+        for (command, what) in
+            [("xml.validate", tl!("validates")), ("xml.next_problem", tl!("goes to the next problem")), ("view.palette", tl!("finds any command"))]
+        {
+            let keys = crate::commands::command_shortcut_label(ui.ctx(), command);
+            if !keys.is_empty() {
+                let _ = crate::kit::chip(ui, crate::kit::Tone::Neutral, None, &format!("{keys}  {what}"), false);
+            }
+        }
+    });
 }
 
 /// The folder a file is in, as its last two components (the whole path is in the tooltip): what tells two files of one name apart.
@@ -106,19 +160,27 @@ fn short_folder(path: &Path) -> String {
     }
 }
 
-/// One recent file: its name, and the folder it is in, small and muted. Returns whether it was clicked.
+/// One recent file: an icon for its kind, its name, and the folder it is in, small and muted. Returns whether it was clicked.
 fn recent_row(ui: &mut egui::Ui, t: &Tokens, path: &Path) -> bool {
     let name = path.file_name().map_or_else(|| path.display().to_string(), |name| name.to_string_lossy().into_owned());
     let folder = short_folder(path);
     let width = ui.available_width();
-    let (rect, response) = ui.allocate_exact_size(vec2(width, 38.0), Sense::click());
-    if response.hovered() {
-        ui.painter().rect_filled(rect, egui::CornerRadius::same(6), t.accent.gamma_multiply(0.10));
-    }
-    let text_left = rect.left() + 10.0;
+    let (rect, response) = ui.allocate_exact_size(vec2(width, 48.0), Sense::click());
+    let press = theme::Press::track(ui, &response);
+    press.wash(ui, rect, 8, false);
+    let tile = Rect::from_min_size(rect.min + vec2(10.0, 8.0), vec2(32.0, 32.0));
+    ui.painter().rect_filled(tile, 8.0, t.hover);
+    crate::icons::paint(ui, tile, crate::chrome::file_icon(&name), 16.0, t.icon);
     let clip = ui.painter().with_clip_rect(rect.shrink2(vec2(6.0, 0.0)));
-    clip.text(egui::pos2(text_left, rect.top() + 6.0), egui::Align2::LEFT_TOP, &name, theme::regular(13.0), t.text);
-    clip.text(egui::pos2(text_left, rect.top() + 22.0), egui::Align2::LEFT_TOP, &folder, theme::regular(11.0), t.text_muted);
+    clip.text(egui::pos2(rect.left() + 54.0, rect.top() + 9.0), egui::Align2::LEFT_TOP, &name, theme::medium(13.0), t.text);
+    clip.text(egui::pos2(rect.left() + 54.0, rect.top() + 27.0), egui::Align2::LEFT_TOP, &folder, theme::regular(11.5), t.text_muted);
+    crate::icons::paint(
+        ui,
+        Rect::from_center_size(egui::pos2(rect.right() - 20.0, rect.center().y), vec2(16.0, 16.0)),
+        "chevron-right",
+        14.0,
+        t.text_faint.gamma_multiply(0.4 + 0.6 * press.hover),
+    );
     // What a screen reader says: the name and where the file is, so that two files of one name can be told apart.
     let label = format!("{name}, {}", path.display());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));

@@ -12,6 +12,8 @@ workspace = true
 
 [dependencies]
 xmlcraft-text = { workspace = true }
+# The input-method composer for a canvas that takes text (shared with PdfCraft).
+craft-ui = { workspace = true }
 xmlcraft-editor = { workspace = true }
 egui = { workspace = true }
 log = { workspace = true }

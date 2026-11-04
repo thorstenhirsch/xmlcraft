@@ -23,7 +23,7 @@ Not there yet: JSON and YAML (validated with JSON Schema) are planned right afte
 
 ![Validation: the problems of a document that does not follow its schema, underlined and listed](docs/screenshots/validation.png)
 
-*F8 checks the document against the schema it names; the problems are underlined in the text and listed in Messages.*
+*F8 checks the document against the schema it names; the problems are underlined in the text and listed in Problems (F4 goes to the next).*
 
 ![The Generate Schema dialog](docs/screenshots/generate-schema.png)
 

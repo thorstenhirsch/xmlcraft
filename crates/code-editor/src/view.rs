@@ -5,8 +5,9 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::sync::Arc;
 
+use craft_ui::ime::{Composer, Edit as ImeEdit, Preedit};
 use egui::{
-    Align2, Color32, CursorIcon, Event, EventFilter, FontId, Id, ImeEvent, Key, Modifiers, Pos2, Rect, Response, Role, ScrollArea, Sense, Stroke, Ui,
+    Align2, Color32, CursorIcon, Event, EventFilter, FontId, Id, Key, Modifiers, Pos2, Rect, Response, Role, ScrollArea, Sense, Stroke, Ui,
     WidgetInfo, pos2, vec2,
 };
 use xmlcraft_editor::Editor;
@@ -25,14 +26,6 @@ const TEXT_MARGIN: f32 = 8.0;
 const BOTTOM_LINES: f32 = 3.0;
 /// The width of the strip at the right of the gutter that holds the fold marks, in points.
 const FOLD_STRIP: f32 = 16.0;
-
-/// Text being composed through an input method: shown at the caret, not yet part of the document.
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct Preedit {
-    text: String,
-    /// The part of it the input method highlights, in characters.
-    active: Option<Range<usize>>,
-}
 
 #[derive(Clone, Copy, PartialEq)]
 struct CacheKey {
@@ -81,7 +74,8 @@ pub struct ViewState {
     /// The widest line seen, in columns: sets the horizontal scroll range. It only grows until [`Self::reset`].
     max_columns: usize,
     max_columns_known_for: Option<u64>,
-    preedit: Option<Preedit>,
+    /// Composes text through an input method: the marked text is shown at the caret and is not yet part of the document.
+    composer: Composer,
     /// When the last key or click happened, so the caret does not blink while it is being used.
     last_input: f64,
     /// A line to scroll to the top next time the editor is drawn.
@@ -113,7 +107,7 @@ impl ViewState {
         self.cache.clear();
         self.max_columns = 0;
         self.max_columns_known_for = None;
-        self.preedit = None;
+        self.composer = Composer::new();
         self.column_anchor = None;
     }
 
@@ -139,7 +133,7 @@ impl ViewState {
 
     /// Whether an input method is composing text at the caret.
     pub fn is_composing(&self) -> bool {
-        self.preedit.is_some()
+        self.composer.is_composing()
     }
 }
 
@@ -226,9 +220,10 @@ impl<'a> CodeEditor<'a> {
             ui.memory_mut(|m| {
                 m.set_focus_lock_filter(id, EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true });
             });
-            let page = view.page_lines;
-            handle_events(ui, editor, view, mac, read_only, page, now);
         }
+        // Every frame, focused or not: the composer turns the input method off when the editor stops taking text.
+        let page = view.page_lines;
+        handle_events(ui, editor, view, mac, read_only, page, now, focused);
 
         // The styler hears about edits before anything is drawn, so no frame shows colours of the text as it was.
         // `styled_version` moves only when there is a styler to tell: one attached again after some frames without hears of every edit.
@@ -381,12 +376,12 @@ impl<'a> CodeEditor<'a> {
                 if is_primary {
                     primary_rect = Some(caret_rect);
                 }
-                if has_focus && blink_on && view.preedit.is_none() {
+                if has_focus && blink_on && !view.composer.is_composing() {
                     text_painter.rect_filled(caret_rect, 0.0, colors.caret);
                 }
             }
-            if let (Some(preedit), Some(caret_rect)) = (&view.preedit, primary_rect) {
-                draw_preedit(&text_painter, preedit, caret_rect, &font, &colors, row_h, column_w);
+            if let (Some(preedit), Some(caret_rect)) = (view.composer.preedit(), primary_rect) {
+                draw_preedit(&text_painter, &preedit, caret_rect, &font, &colors, row_h, column_w);
             }
 
             // A click on the mark of a fold opens it.
@@ -435,14 +430,8 @@ impl<'a> CodeEditor<'a> {
                     ui.scroll_to_rect(Rect::from_min_max(caret_rect.min - margin, caret_rect.max + margin), None);
                 }
                 if has_focus {
-                    ui.output_mut(|o| {
-                        o.ime = Some(egui::output::IMEOutput {
-                            purpose: egui::IMEPurpose::Normal,
-                            rect: screen_view,
-                            cursor_rect: caret_rect,
-                            should_interrupt_composition: false,
-                        });
-                    });
+                    // Where the input method puts its candidate window (and, through the composer, that the editor takes text).
+                    view.composer.set_caret(ui.ctx(), caret_rect);
                 }
             } else if reveal {
                 // The caret's line is not laid out (it is off screen): scroll to its line, then it will be drawn and revealed.
@@ -656,77 +645,91 @@ fn handle_pointer(
     }
 }
 
-fn handle_events(ui: &mut Ui, editor: &mut Editor, view: &mut ViewState, mac: bool, read_only: bool, page: usize, now: f64) {
-    let events = ui.input(|i| i.events.clone());
-    for event in events {
+/// The editor's input for one frame. The composer sorts the keyboard, the clipboard and the input method into edits in the order the
+/// platform sent them (and takes what the input method used out of the input, so the Enter that confirmed a word does not also break
+/// the line); a read-only view takes only keys that move and copy.
+#[allow(clippy::too_many_arguments)]
+fn handle_events(ui: &mut Ui, editor: &mut Editor, view: &mut ViewState, mac: bool, read_only: bool, page: usize, now: f64, focused: bool) {
+    // Text that arrives with or after marked text, or as an input method's commit, is the input method's: typing aids (a quote in a tag
+    // is paired) are for the keyboard. (The composer hands a commit with nothing composing over as plain text, so it is looked for here.)
+    // Per text: an insertion that is one of this frame's commits is the input method's; a key pressed in the same frame is not.
+    let mut commits: Vec<String> = ui.input(|i| {
+        i.events
+            .iter()
+            .filter_map(|e| match e {
+                Event::Ime(egui::ImeEvent::Commit(text)) => Some(text.clone()),
+                _ => None,
+            })
+            .collect()
+    });
+    let mut from_input_method = view.composer.is_composing();
+    let edits = view.composer.update(ui.ctx(), focused && !read_only);
+    for edit in edits {
         // The kind only: what was typed or pasted is the user's document, and a debug log gets shared.
-        let kind = match &event {
-            Event::Text(_) => Some("text"),
-            Event::Paste(_) => Some("paste"),
-            Event::Cut => Some("cut"),
-            Event::Ime(_) => Some("input method"),
-            Event::Key { pressed: true, .. } => Some("key"),
-            _ => None,
-        };
-        if let Some(kind) = kind {
-            log::debug!("editor input: {kind}");
-        }
-        match event {
-            Event::Text(text) if !read_only => {
+        log::debug!(
+            "editor input: {}",
+            match &edit {
+                ImeEdit::Preedit { .. } => "input method",
+                ImeEdit::Insert(_) => "text",
+                ImeEdit::Key { .. } | ImeEdit::LineBreak { .. } => "key",
+                ImeEdit::Paste(_) => "paste",
+                ImeEdit::Copy => "copy",
+                ImeEdit::Cut => "cut",
+                ImeEdit::DeleteSurrounding { .. } | ImeEdit::DeleteSurroundingBytes { .. } => "delete",
+            }
+        );
+        match edit {
+            ImeEdit::Preedit { .. } => from_input_method = true,
+            ImeEdit::Insert(text) => {
+                let committed = commits.iter().position(|c| *c == text).map(|i| commits.remove(i)).is_some();
                 let text: String = text.chars().filter(|c| !c.is_control()).collect();
-                if !text.is_empty() && view.preedit.is_none() {
-                    // The keyboard: typing aids apply (a quote in a tag is paired).
-                    editor.type_input(&text);
+                if !text.is_empty() {
+                    if from_input_method || committed {
+                        editor.type_text(&text);
+                    } else {
+                        editor.type_input(&text);
+                    }
                     view.last_input = now;
                 }
             }
-            Event::Paste(text) if !read_only => {
+            ImeEdit::Key { key, modifiers, .. } => key_command(editor, key, modifiers, mac, page, read_only, view, now),
+            ImeEdit::LineBreak { modifiers } => key_command(editor, Key::Enter, modifiers, mac, page, read_only, view, now),
+            ImeEdit::Paste(text) => {
                 editor.paste(&text);
                 view.last_input = now;
             }
-            Event::Copy => {
-                let text = editor.copy_text();
+            ImeEdit::Copy => ui.ctx().copy_text(editor.copy_text()),
+            ImeEdit::Cut => {
+                let text = editor.cut();
                 ui.ctx().copy_text(text);
+                view.last_input = now;
             }
-            Event::Cut => {
-                if read_only {
-                    let text = editor.copy_text();
-                    ui.ctx().copy_text(text);
-                } else {
-                    let text = editor.cut();
-                    ui.ctx().copy_text(text);
-                    view.last_input = now;
-                }
+            ImeEdit::DeleteSurrounding { before_chars, after_chars } => {
+                editor.delete_surrounding(before_chars, after_chars);
             }
-            Event::Key { key, pressed: true, modifiers, .. } => {
-                if view.preedit.is_some() && matches!(key, Key::Enter | Key::Tab | Key::Backspace | Key::Delete) {
-                    continue; // the input method owns these while composing
-                }
-                if let Some(command) = command_for(key, modifiers, mac, page) {
-                    run_command(editor, command, read_only, modifiers);
-                    view.last_input = now;
-                }
+            ImeEdit::DeleteSurroundingBytes { before_bytes, after_bytes } => {
+                editor.delete_surrounding_bytes(before_bytes, after_bytes);
             }
-            Event::Ime(ime) if !read_only => match ime {
-                ImeEvent::Preedit { text, active_range_chars } => {
-                    view.preedit = (!text.is_empty()).then_some(Preedit { text, active: active_range_chars });
-                }
-                ImeEvent::Commit(text) => {
-                    view.preedit = None;
-                    let text: String = text.chars().filter(|c| !c.is_control()).collect();
-                    if !text.is_empty() {
-                        editor.type_text(&text);
-                        view.last_input = now;
-                    }
-                }
-                ImeEvent::DeleteSurrounding { before_chars, after_chars } => {
-                    editor.delete_surrounding(before_chars, after_chars);
-                }
-                #[allow(deprecated)]
-                ImeEvent::Enabled | ImeEvent::Disabled => {}
-            },
-            _ => {}
         }
+    }
+    if focused && read_only {
+        // Not editing, so the composer sends nothing: the keys that move and select, and copying, from the input itself.
+        let events = ui.input(|i| i.events.clone());
+        for event in events {
+            match event {
+                Event::Copy | Event::Cut => ui.ctx().copy_text(editor.copy_text()),
+                Event::Key { key, pressed: true, modifiers, .. } => key_command(editor, key, modifiers, mac, page, true, view, now),
+                _ => {}
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn key_command(editor: &mut Editor, key: Key, modifiers: Modifiers, mac: bool, page: usize, read_only: bool, view: &mut ViewState, now: f64) {
+    if let Some(command) = command_for(key, modifiers, mac, page) {
+        run_command(editor, command, read_only, modifiers);
+        view.last_input = now;
     }
 }
 
@@ -750,8 +753,8 @@ fn run_command(editor: &mut Editor, command: Command, read_only: bool, _modifier
     }
 }
 
-fn draw_preedit(painter: &egui::Painter, preedit: &Preedit, caret: Rect, font: &FontId, colors: &EditorColors, row_h: f32, column_w: f32) {
-    let galley = painter.layout_no_wrap(preedit.text.clone(), font.clone(), colors.text);
+fn draw_preedit(painter: &egui::Painter, preedit: &Preedit<'_>, caret: Rect, font: &FontId, colors: &EditorColors, row_h: f32, column_w: f32) {
+    let galley = painter.layout_no_wrap(preedit.text.to_owned(), font.clone(), colors.text);
     let rect = Rect::from_min_size(pos2(caret.min.x, caret.min.y - 1.0), vec2(galley.size().x.max(column_w), row_h));
     painter.rect_filled(rect, 2.0, colors.preedit_background);
     painter.galley(pos2(rect.min.x, rect.min.y + ((row_h - galley.size().y) / 2.0).max(0.0)), galley.clone(), colors.text);
@@ -763,7 +766,7 @@ fn draw_preedit(painter: &egui::Painter, preedit: &Preedit, caret: Rect, font: &
     };
     let total = preedit.text.chars().count();
     underline(0, total, 1.0);
-    if let Some(active) = &preedit.active {
+    if let Some(active) = preedit.active {
         underline(active.start.min(total), active.end.min(total), 2.0);
     }
 }

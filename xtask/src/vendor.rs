@@ -1,6 +1,7 @@
-//! Keeps the vendored, patched crates (vendor/README.md) in the build: an eframe upgrade that asked for a newer winit or egui-wgpu
-//! than the vendored copy would make cargo resolve it from crates.io again, silently dropping the patches. The checks are tests,
-//! so `cargo xtask test` and the CI gate run them.
+//! Keeps the patched window stack in the build: winit and the egui crates are the storytold forks at immutable revisions (the ones
+//! PdfCraft builds against; see vendor/README.md). An eframe upgrade that asked for another winit or egui than the pinned fork would
+//! make cargo resolve it from crates.io again, silently dropping the patches. The vendored copies of winit and egui-wgpu are
+//! provenance for the patches XmlCraft carried before the forks. The checks are tests, so `cargo xtask test` and the CI gate run them.
 
 /// The vendored crates and their directory names under `vendor/`.
 #[cfg(test)]
@@ -36,29 +37,47 @@ mod tests {
         }
     }
 
+    /// The crates `[patch.crates-io]` takes from the storytold forks, and the repository and revision each is pinned to.
+    const FORKED: &[(&str, &str, &str)] = &[
+        ("egui", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("egui-winit", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("egui-wgpu", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("eframe", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("ecolor", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("emath", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("epaint", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("epaint_default_fonts", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("egui_glow", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("egui_extras", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("egui_kittest", "https://github.com/storytold/egui.git", "6d518fc799681571963842f95b55a6b68431b15a"),
+        ("winit", "https://github.com/storytold/winit.git", "a517b3846ee8457d84ee4975110bfda6797c44dc"),
+    ];
+
     #[test]
-    fn vendored_crates_are_patched_in() {
+    fn the_window_stack_is_patched_in_from_the_pinned_forks() {
         let manifest = read("Cargo.toml");
         let patch = manifest.split("[patch.crates-io]").nth(1).expect("the root manifest has a [patch.crates-io] table");
-        for name in VENDORED {
-            assert!(patch.contains(&format!("{name} = {{ path = \"vendor/{name}\" }}")), "{name} is not patched in from vendor/{name}");
+        for (name, repository, revision) in FORKED {
+            let line = format!("{name} = {{ git = \"{repository}\", rev = \"{revision}\" }}");
+            assert!(patch.contains(&line), "{name} is not patched in from {repository} at {revision}");
         }
-        // The README documents every vendored crate.
+        // The README documents every retained vendored copy.
         let readme = read("vendor/README.md");
         for name in VENDORED {
             assert!(readme.contains(&format!("| {name} |")), "vendor/README.md has no row for {name}");
         }
     }
 
-    /// A path dependency has no `source` in Cargo.lock; a crates.io one does. This is what fails when an upgrade makes cargo
-    /// resolve a vendored crate from the registry again.
+    /// What `Cargo.lock` resolved: the fork at the pinned revision, never the registry. This is what fails when an upgrade makes cargo
+    /// resolve one of them from crates.io again.
     #[test]
-    fn the_build_resolves_the_vendored_copies_not_crates_io() {
+    fn the_build_resolves_the_forks_not_crates_io() {
         let lock = read("Cargo.lock");
-        for name in VENDORED {
+        for (name, repository, revision) in FORKED {
             let stanza =
                 lock_stanza(&lock, name).unwrap_or_else(|| panic!("{name} is not in Cargo.lock: nothing depends on it, so its patch is unused"));
-            assert!(!stanza.contains("source ="), "{name} is resolved from a registry, not vendor/{name}:\n{stanza}");
+            let source = format!("source = \"git+{repository}?rev={revision}#{revision}\"");
+            assert!(stanza.contains(&source), "{name} is not resolved from {repository} at {revision}:\n{stanza}");
         }
     }
 
