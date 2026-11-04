@@ -590,7 +590,7 @@ pub(crate) fn source(a: &Automation, args: &Value) -> Result<Source> {
     }
 }
 
-fn analysis_of(source: &Source) -> Result<Analysis> {
+pub(crate) fn analysis_of(source: &Source) -> Result<Analysis> {
     let analysis = analyze(&source.text, 0);
     match analysis.skipped {
         Some(Skipped::TooLarge) => fail("the text is too large to analyse"),

@@ -49,6 +49,13 @@ pub struct TagMatch {
     pub partner_name: Range<usize>,
 }
 
+/// The external identifier of a DOCTYPE, as written.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DoctypeIds {
+    pub public: Option<String>,
+    pub system: Option<String>,
+}
+
 /// The result of analysing one version of a document.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Analysis {
@@ -63,6 +70,8 @@ pub struct Analysis {
     pub folds_truncated: bool,
     /// The DOCTYPE declaration, if the text has one: a byte range of the text.
     pub doctype: Option<Range<usize>>,
+    /// The public and the system identifier of the DOCTYPE, as written (what names the DTD a document follows).
+    pub doctype_ids: Option<DoctypeIds>,
     /// The schemas the root element names with `xsi:schemaLocation` and `xsi:noNamespaceSchemaLocation` (a DOCTYPE, when there is
     /// one, is what the document is checked against, and these are not looked at).
     pub schema_hints: Vec<SchemaHint>,
@@ -132,6 +141,7 @@ impl Analysis {
             folds: Vec::new(),
             folds_truncated: false,
             doctype: None,
+            doctype_ids: None,
             schema_hints: Vec::new(),
             root_namespace: None,
             skipped: Some(why),
@@ -189,10 +199,24 @@ pub fn analyze(text: &str, version: u64) -> Analysis {
     diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
     let (outline, outline_truncated) = outline_of(&parsed.syntax(), text);
     let (folds, folds_truncated) = fold_ranges(&parsed.syntax(), text);
-    let doctype = xmlcraft_dtd::doctype_parts(&parsed.syntax()).map(|p| p.range);
+    let parts = xmlcraft_dtd::doctype_parts(&parsed.syntax());
+    let doctype = parts.as_ref().map(|p| p.range.clone());
+    let doctype_ids = parts.map(|p| DoctypeIds { public: p.public, system: p.system });
     let schema_hints = xmlcraft_validate::schema_hints(&parsed.syntax());
     let root_namespace = xmlcraft_validate::root_namespace(&parsed.syntax());
-    Analysis { version, diagnostics, outline, outline_truncated, folds, folds_truncated, doctype, schema_hints, root_namespace, skipped: None }
+    Analysis {
+        version,
+        diagnostics,
+        outline,
+        outline_truncated,
+        folds,
+        folds_truncated,
+        doctype,
+        doctype_ids,
+        schema_hints,
+        root_namespace,
+        skipped: None,
+    }
 }
 
 fn outline_of(root: &xmlcraft_syntax::SyntaxNode, text: &str) -> (Vec<OutlineItem>, bool) {

@@ -21,6 +21,7 @@ mod i18n;
 mod icon_data;
 mod icons;
 mod kit;
+mod load_schema;
 mod motion;
 mod new_from_template;
 mod palette;
@@ -134,6 +135,9 @@ pub struct XmlCraftApp {
     sample_generator: xmlcraft_engine::generate::SampleGenerator,
     /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
     generate_serial: u64,
+    /// Fetches the schema a document names (Load Schema), and the request being waited for.
+    schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher,
+    loading_schema: Option<u64>,
     /// Reads each document's DOCTYPE into a grammar in the background (what Entry Helpers offer comes from it).
     schemas: Schemas,
     /// Loads the XML Schema a document names, for Entry Helpers.
@@ -229,6 +233,10 @@ impl XmlCraftApp {
             let repaint = repaint.clone();
             move || repaint.request_repaint()
         });
+        app.schema_fetcher.on_done({
+            let repaint = repaint.clone();
+            move || repaint.request_repaint()
+        });
         app.schemas.on_done({
             let repaint = repaint.clone();
             move || repaint.request_repaint()
@@ -270,6 +278,8 @@ impl XmlCraftApp {
             schema_generator: xmlcraft_engine::generate::SchemaGenerator::new(),
             sample_generator: xmlcraft_engine::generate::SampleGenerator::new(resolvers()),
             generate_serial: 0,
+            schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
+            loading_schema: None,
             outline_filter: String::new(),
             problem_filter: problems::Filter::All,
             problem_selected: None,
@@ -386,6 +396,7 @@ impl eframe::App for XmlCraftApp {
         // After everything above that can change a text, so that this frame asks for the analysis of the text it will draw.
         self.pump_analysis();
         self.pump_generate();
+        self.pump_schema_fetch();
         for command in self.viewport_commands.drain(..) {
             ctx.send_viewport_cmd(command);
         }

@@ -1082,6 +1082,18 @@ evidence = ["crates/automation/tests/validate.rs::a_document_that_names_its_sche
 notes = "Reading an association: the `xsi:schemaLocation` pairs and `xsi:noNamespaceSchemaLocation` of the root element are followed (relative to the document, or found by namespace in the catalogs and the bundle), and `xml_validate` takes an explicit `schema`. Writing one: XML ▸ Assign Schema… (and `xml_assign_schema`) writes a DOCTYPE for a DTD (an existing DOCTYPE keeps its name and internal subset) or the `xsi:` attributes for an XML Schema (the prefix the document already has is reused, a pair is added to or changed in `xsi:schemaLocation` word by word, the namespace is read from the schema file), always as minimal edits in one undoable step, in the line endings of the document; assigning what is there already writes nothing. A document that is not well-formed, or that has a DOCTYPE when a schema is assigned, is refused. Missing: choosing from the schemas the app knows (bundled, catalogs) in the dialog, the namespace of a schema that is not a file (a URL: `namespace` can be told to the tool, the dialog writes `xsi:noNamespaceSchemaLocation`), and assigning to several documents at once."
 
 [[feature]]
+id = "validate.load-schema"
+title = "Open the schema or DTD a document names"
+area = "E"
+tier = "P2"
+milestone = "M4"
+status = "partial"
+commands = ["xml.load_schema"]
+tools = ["xml_load_schema"]
+evidence = ["crates/ui-egui/tests/schema_button.rs::load_schema_opens_a_linked_file_in_a_new_tab_and_a_second_time_reuses_it", "crates/ui-egui/tests/schema_button.rs::load_schema_downloads_a_remote_schema_into_an_unsaved_tab", "crates/ui-egui/tests/schema_button.rs::load_schema_is_greyed_out_without_a_link_and_there_is_no_action", "crates/automation/tests/load_schema.rs::a_schema_location_next_to_the_document_is_found_and_can_be_opened", "crates/engine/src/schema_link.rs::a_doctype_with_an_identifier_names_a_dtd"]
+notes = "XML ▸ Load Schema, and the Load Schema item of the Schema… menu in the command bar (an XML document; a schema or a DTD has XML… for Generate Sample instead), opens what the document names: the DTD of its DOCTYPE (a SYSTEM or PUBLIC identifier) or the first location of its root element's xsi:schemaLocation or xsi:noNamespaceSchemaLocation. The menu item is greyed out when the document names nothing (an internal subset alone, or a namespace alone, names nothing); the Schema… button itself stays, since Generate Schema is always there. It is found as any schema is: open documents, catalogs, the bundle, files, and the web through the cache when allowed (not when working offline). A file is opened as a file (an open one is shown, not opened twice); a download, a cached copy or a bundled schema becomes an unsaved tab named after the file. `xml_load_schema` does the same headlessly (with `open`). Missing: a tab made from a download has no path, so relative includes and imports in it are not resolved until it is saved; a namespace alone is not followed to a schema the app knows; several locations of one root element (only the first is loaded)."
+
+[[feature]]
 id = "validate.on-edit"
 title = "Validate while typing"
 area = "E"
