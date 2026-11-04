@@ -122,9 +122,11 @@ fn a_catalog_is_added_listed_kept_once_and_removed() {
 }
 
 #[test]
-fn a_catalog_path_is_trimmed_once_so_that_it_is_not_listed_twice() {
+fn a_catalog_path_is_kept_exactly_as_it_was_chosen() {
     let mut h = shell(&Arc::new(Web::default()));
-    h.state_mut().add_user_catalog("  /x/c.xml ");
+    h.state_mut().add_user_catalog(" /x/c.xml ");
     h.state_mut().add_user_catalog("/x/c.xml");
-    assert_eq!(h.state().user_catalogs(), ["/x/c.xml"]);
+    assert_eq!(h.state().user_catalogs(), [" /x/c.xml ", "/x/c.xml"], "a file name may begin or end with a space");
+    h.state_mut().add_user_catalog("   ");
+    assert_eq!(h.state().user_catalogs().len(), 2, "but nothing is not a path");
 }

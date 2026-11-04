@@ -11,8 +11,8 @@ use crate::widgets;
 impl XmlCraftApp {
     /// Use the catalog at `path`, before the schemas that ship with the app (a path that is listed already is not added twice).
     pub fn add_user_catalog(&mut self, path: &str) {
-        let path = path.trim();
-        if path.is_empty() || self.user_catalogs.iter().any(|p| p == path) {
+        // The path is kept exactly as it was chosen (a file name may begin or end with a space); only nothing at all is refused.
+        if path.trim().is_empty() || self.user_catalogs.iter().any(|p| p == path) {
             return;
         }
         self.user_catalogs.push(path.to_owned());
