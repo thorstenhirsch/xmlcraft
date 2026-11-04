@@ -146,6 +146,9 @@ pub struct CodeEditorOutput {
     pub selection_changed: bool,
     /// The mark of something that can be folded was clicked, on this line (0-based): the host folds it. (A mark of a fold is opened here.)
     pub fold_clicked: Option<usize>,
+    /// The byte offset of the text under the pointer, while the pointer rests over the text (not the gutter, not while a button is down):
+    /// what a hover tip is about.
+    pub hover: Option<usize>,
 }
 
 /// The editor widget. `show` it every frame.
@@ -251,6 +254,7 @@ impl<'a> CodeEditor<'a> {
         }
         let reveal = editor.take_reveal();
         let mut response_slot: Option<Response> = None;
+        let mut hover: Option<usize> = None;
         // The scroll area's edge fade would smear over the text; the host's setting comes back afterwards.
         let fade = ui.spacing().scroll.fade;
         ui.spacing_mut().scroll.fade.strength = 0.0;
@@ -288,6 +292,11 @@ impl<'a> CodeEditor<'a> {
 
             // Pointer.
             handle_pointer(ui, &response, editor, view, &frame, rect.min, gutter_w, row_h, screen_view, read_only);
+            hover = ui
+                .input(|i| (i.pointer.hover_pos(), i.pointer.any_down()))
+                .0
+                .filter(|pos| response.hovered() && !ui.input(|i| i.pointer.any_down()) && pos.x >= rect.min.x + gutter_w)
+                .map(|pos| offset_at(view, editor, &frame, rect.min, gutter_w, row_h, pos));
 
             // Current line.
             let carets: Vec<_> = editor.carets().to_vec();
@@ -453,6 +462,7 @@ impl<'a> CodeEditor<'a> {
             changed: editor.version() != version_before,
             selection_changed: editor.selections() != selection_before,
             fold_clicked: view.fold_clicked.take(),
+            hover,
         }
     }
 }

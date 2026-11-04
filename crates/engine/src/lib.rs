@@ -7,6 +7,7 @@ pub mod analysis;
 pub mod assign;
 pub mod commands;
 mod document;
+pub mod elements;
 pub mod folding;
 pub mod generate;
 pub mod recent;

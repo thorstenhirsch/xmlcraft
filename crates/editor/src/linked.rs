@@ -2,7 +2,8 @@
 //!
 //! The view (or a tool) tells the editor which two names belong together ([`Editor::link_names`]); from then on typing or deleting in one
 //! of them writes the same change into the other, as part of the same undo step. The link is kept through other edits and dropped as soon
-//! as something else happens to a name (a character that cannot be in a name, a paste, a selection that reaches out of it, an undo).
+//! as something else happens to a name (a character that cannot be in a name, a selection that reaches out of it). A paste of what a name can have is mirrored
+//! like typing, and an undo or a redo that changed both names alike keeps the link.
 
 use std::ops::Range;
 
@@ -60,6 +61,35 @@ impl Editor {
         matches!(self.lexer.mode_at(&self.buffer, caret.head()), xmlcraft_syntax::Mode::Tag)
     }
 
+    /// Wrap the selection (or, with none, the place of the caret) in a new element called `name`: `<name>…</name>`, as one undoable step.
+    /// The name in the start tag is left selected and the two names are linked, so that typing the element's real name renames both. Only
+    /// with a single caret, and for a name that is one. Returns whether it was done.
+    pub fn wrap_selection_in_tag(&mut self, name: &str) -> bool {
+        let valid =
+            name.chars().next().is_some_and(xmlcraft_syntax::is_name_start_char) && name.chars().all(is_name_char) && name.len() <= MAX_LINKED_NAME;
+        let [caret] = self.carets.as_slice() else { return false };
+        if !valid {
+            return false;
+        }
+        let (start, end) = (caret.start(), caret.end());
+        let open = format!("<{name}>");
+        let close = format!("</{name}>");
+        let edits = if start == end {
+            vec![Edit::insert(start, format!("{open}{close}"))]
+        } else {
+            vec![Edit::insert(start, open.clone()), Edit::insert(end, close.clone())]
+        };
+        let first = start + 1..start + 1 + name.len();
+        let second_start = end + open.len() + 2;
+        let second = second_start..second_start + name.len();
+        if !self.commit(edits, vec![Caret::at(first.end)], EditKind::Other) {
+            return false;
+        }
+        self.set_selection(first.start, first.end);
+        self.link_names(first, second);
+        true
+    }
+
     /// Stop keeping names in step.
     pub fn unlink_names(&mut self) {
         self.linked = None;
@@ -81,7 +111,7 @@ impl Editor {
     pub(crate) fn step_linked(&self, mut edits: Vec<Edit>, mut carets: Vec<Caret>, kind: EditKind) -> LinkedStep {
         let Some(names) = &self.linked else { return LinkedStep { edits, carets, names: None } };
         let mirror = match edits.as_slice() {
-            [edit] if self.carets.len() == 1 && matches!(kind, EditKind::Typing | EditKind::Delete) => self.mirror_of(names, edit),
+            [edit] if self.carets.len() == 1 && matches!(kind, EditKind::Typing | EditKind::Delete | EditKind::Paste) => self.mirror_of(names, edit),
             _ => None,
         };
         let mirrored = mirror.is_some();
@@ -100,6 +130,17 @@ impl Editor {
         }
         let names = remap(names, &edits, mirrored);
         LinkedStep { edits, carets, names }
+    }
+
+    /// The linked names after an undo or a redo that made `edits` (in the order they were made, each in the coordinates of the text just
+    /// before it): kept when the change touched both names alike (or neither) and they are still the same name where a tag's name stands.
+    pub(crate) fn linked_after_history(&self, names: &[Range<usize>; 2], edits: &[Edit]) -> Option<[Range<usize>; 2]> {
+        // The edits were made last first, so each is in the coordinates of the text before all of them: ascending order.
+        let mut ascending = edits.to_vec();
+        ascending.sort_by_key(|edit| (edit.range.start, edit.range.end));
+        let mapped = remap(names, &ascending, true)?;
+        let same = self.buffer.slice(mapped[0].clone()).ok()? == self.buffer.slice(mapped[1].clone()).ok()?;
+        (same && mapped[0].len() <= MAX_LINKED_NAME && mapped.iter().all(|name| self.names_a_tag(name))).then_some(mapped)
     }
 
     /// The change to the other name that goes with `edit`, when `edit` is a change of one name, made of characters a name can have, and
@@ -282,20 +323,124 @@ mod tests {
     }
 
     #[test]
-    fn several_carets_or_a_change_that_is_not_typing_end_the_link() {
+    fn several_carets_or_a_change_that_cannot_be_mirrored_end_the_link() {
         let mut e = linked("<a>x</a>", 1..2, 6..7, 2);
         e.set_selections(&[Selection::caret(2), Selection::caret(3)]);
         e.type_input("b");
         assert_eq!(e.text(), "<ab>bx</a>");
         assert_eq!(e.linked_names(), None);
+        // What is pasted that a name cannot have is written once, and ends the link.
         let mut e = linked("<a>x</a>", 1..2, 6..7, 2);
-        e.paste("bc");
-        assert_eq!(e.text(), "<abc>x</a>", "a paste is not mirrored");
+        e.paste("b c");
+        assert_eq!(e.text(), "<ab c>x</a>");
         assert_eq!(e.linked_names(), None);
+        // A command that is not typing, deleting or pasting (here a replace by something else) is written where it is.
+        let mut e = linked("<a>x</a>", 1..2, 6..7, 2);
+        assert!(e.apply_edits(&[Edit::replace(1..2, "zz")]));
+        assert_eq!(e.text(), "<zz>x</a>");
+        assert_eq!(e.linked_names(), None);
+    }
+
+    #[test]
+    fn a_paste_into_a_name_is_written_into_the_other_name_in_one_undo_step() {
+        let mut e = linked("<a>x</a>", 1..2, 6..7, 2);
+        assert!(e.paste("bc"));
+        assert_eq!((e.text().as_str(), e.primary().head()), ("<abc>x</abc>", 4));
+        assert_eq!(e.linked_names(), Some(&[1..4, 8..11]));
+        // A selected name replaced by a paste, from the end tag.
+        let mut e = linked("<abc>x</abc>", 1..4, 8..11, 11);
+        e.set_selection(8, 11);
+        assert!(e.paste("q"));
+        assert_eq!(e.text(), "<q>x</q>");
+        assert_eq!(e.linked_names(), Some(&[1..2, 6..7]));
+        assert!(e.undo());
+        assert_eq!(e.text(), "<abc>x</abc>", "one step brings both names back");
+    }
+
+    #[test]
+    fn wrapping_a_selection_in_a_tag_leaves_the_name_selected_and_linked_so_that_typing_names_the_element() {
+        let mut e = Editor::new("<r>one two</r>");
+        e.set_selection(3, 6);
+        assert!(e.wrap_selection_in_tag("element"));
+        assert_eq!(e.text(), "<r><element>one</element> two</r>");
+        let selected = e.primary();
+        assert_eq!((selected.start(), selected.end()), (4, 11), "the name is selected");
+        assert_eq!(e.linked_names(), Some(&[4..11, 17..24]));
+        e.type_input("p");
+        assert_eq!(e.text(), "<r><p>one</p> two</r>", "typing renames both tags");
+        // The name typed is one undo step (both names), the wrapping another.
+        assert!(e.undo());
+        assert_eq!(e.text(), "<r><element>one</element> two</r>");
+        assert!(e.undo());
+        assert_eq!(e.text(), "<r>one two</r>");
+        assert!(!e.undo());
+    }
+
+    #[test]
+    fn wrapping_at_a_caret_makes_an_empty_element_and_a_bad_name_or_several_carets_make_nothing() {
+        let mut e = Editor::new("<r></r>");
+        e.set_selection(3, 3);
+        assert!(e.wrap_selection_in_tag("x"));
+        assert_eq!(e.text(), "<r><x></x></r>");
+        assert_eq!(e.linked_names(), Some(&[4..5, 8..9]));
+        let mut e = Editor::new("ab");
+        e.set_selection(0, 2);
+        for bad in ["", "1a", "a b", "a<b", "-x", "é<"] {
+            assert!(!e.wrap_selection_in_tag(bad), "{bad:?}");
+        }
+        assert_eq!(e.text(), "ab");
+        assert!(e.wrap_selection_in_tag("é"), "a name may be any letter");
+        assert_eq!(e.text(), "<é>ab</é>");
+        let mut e = Editor::new("ab");
+        e.set_selections(&[Selection::caret(0), Selection::caret(1)]);
+        assert!(!e.wrap_selection_in_tag("x"), "several carets");
+        assert_eq!(e.text(), "ab");
+        // With the setting off the tags are written, and not linked.
+        let mut e = Editor::with_settings("ab", Settings { sync_tag_names: false, ..Settings::default() });
+        e.set_selection(0, 2);
+        assert!(e.wrap_selection_in_tag("x"));
+        assert_eq!((e.text().as_str(), e.linked_names()), ("<x>ab</x>", None));
+    }
+
+    #[test]
+    fn the_names_stay_linked_through_undo_and_redo() {
         let mut e = linked("<a>x</a>", 1..2, 6..7, 2);
         e.type_input("b");
-        e.undo();
-        assert_eq!(e.linked_names(), None, "an undo is not typing");
+        assert_eq!(e.text(), "<ab>x</ab>");
+        assert!(e.undo());
+        assert_eq!(e.text(), "<a>x</a>");
+        assert_eq!(e.linked_names(), Some(&[1..2, 6..7]), "kept: both names were changed back alike");
+        // So typing straight after an undo still renames both.
+        e.set_selection(2, 2);
+        e.type_input("z");
+        assert_eq!(e.text(), "<az>x</az>");
+        assert!(e.undo());
+        assert!(e.redo());
+        assert_eq!(e.text(), "<az>x</az>");
+        assert_eq!(e.linked_names(), Some(&[1..3, 7..9]));
+        // Undoing what happened elsewhere moves the names with it.
+        e.set_selection(0, 0);
+        e.type_input("--");
+        assert!(e.undo());
+        assert_eq!(e.linked_names(), Some(&[1..3, 7..9]));
+        // A change of the text between the tags leaves the names alone.
+        e.set_selection(4, 5);
+        e.type_input("yy");
+        assert!(e.undo());
+        assert_eq!(e.linked_names(), Some(&[1..3, 7..9]));
+    }
+
+    #[test]
+    fn a_link_does_not_survive_an_undo_that_makes_the_names_differ() {
+        let mut e = linked("<a>x</a>", 1..2, 6..7, 2);
+        e.type_input("b");
+        // The end tag is changed by something that does not mirror, so the two differ; undoing the typing then cannot put them right.
+        e.unlink_names();
+        assert!(e.apply_edits(&[Edit::replace(7..9, "yy")]));
+        e.link_names(1..3, 7..9);
+        assert_eq!(e.linked_names(), None, "they differ now");
+        assert!(e.undo());
+        assert_eq!(e.linked_names(), None);
     }
 
     #[test]

@@ -227,6 +227,11 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("xml.assign_schema", "Assign Schema…", XML, None, Needs::Document, "book-open"),
     c("xml.pretty_print", "Pretty-print", XML, None, Needs::Document, "wand-sparkles").sep(),
     c("xml.minify", "Strip White Space", XML, None, Needs::Document, "align-left"),
+    c("xml.rename_element", "Rename Element…", XML, Some(Shortcut::key("F2")), Needs::Document, "text-cursor-input").sep(),
+    c("xml.wrap_in_tag", "Wrap in Tag", XML, Some(Shortcut::cmd_alt("W")), Needs::Document, "code-xml"),
+    c("xml.unwrap_element", "Unwrap Element", XML, None, Needs::Document, "scissors"),
+    c("xml.select_element", "Select Element", XML, Some(Shortcut::cmd_alt("E")), Needs::Document, "text-cursor-input"),
+    c("xml.copy_xpath", "Copy XPath", XML, None, Needs::Document, "copy"),
     c("xml.generate_schema", "Generate Schema…", XML, None, Needs::Document, "file-code").sep(),
     c("xml.generate_sample", "Generate Sample XML…", XML, None, Needs::Document, "sparkles"),
     c("view.palette", "Find tools and commands…", VIEW, Some(Shortcut::cmd("K")), Nothing, "search"),
@@ -365,6 +370,11 @@ mod tests {
                 "xml.assign_schema",
                 "xml.pretty_print",
                 "xml.minify",
+                "xml.rename_element",
+                "xml.wrap_in_tag",
+                "xml.unwrap_element",
+                "xml.select_element",
+                "xml.copy_xpath",
                 "xml.generate_schema",
                 "xml.generate_sample"
             ]
