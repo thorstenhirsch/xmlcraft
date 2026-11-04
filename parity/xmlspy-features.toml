@@ -1376,8 +1376,8 @@ milestone = "M2"
 status = "partial"
 commands = []
 tools = []
-evidence = ["crates/platform/src/disk_cache.rs::a_copy_comes_back_as_it_was_stored_after_a_restart", "crates/platform/src/disk_cache.rs::what_is_in_the_folder_is_never_trusted", "crates/platform/src/disk_cache.rs::the_oldest_copies_go_when_the_folder_grows_too_large", "crates/platform/tests/download.rs::the_resolver_downloads_once_keeps_the_copy_on_disk_and_asks_the_server_whether_it_is_still_current"]
-notes = "M2.4: `xmlcraft_platform::disk_cache::DiskCache` keeps one file per URL (named by the SHA-256 of the URL) in the system's cache folder (`~/Library/Caches/XmlCraft/schemas`, `%LOCALAPPDATA%\\XmlCraft\\Cache\\schemas`, `$XDG_CACHE_HOME/xmlcraft/schemas`; `XMLCRAFT_CACHE_DIR` names another): where the copy came from, its ETag and Last-Modified, and the body, written atomically; a file that is too large, cut short, malformed or for another URL is a miss, never an error; up to 256 MiB, the copies fetched longest ago go first. The rules of `xmlcraft-resolve` apply: current for 30 days, then asked about with the ETag / Last-Modified, renewed on *not modified*, replaced on a new body, kept and marked stale when the server cannot be reached (tested over loopback against the real client). Missing: no way to clear it or to set its size in the app (`DiskCache::clear` exists; Preferences ▸ Schemas is M2.12), nothing is kept for a resource that was refused, and the cache holds the text, not the parsed schema (every validation reads it again)."
+evidence = ["crates/platform/src/network.rs::the_cache_says_what_it_holds_and_can_be_cleared", "crates/ui-egui/tests/preferences.rs::the_downloads_are_counted_and_can_be_deleted", "crates/platform/src/disk_cache.rs::a_copy_comes_back_as_it_was_stored_after_a_restart", "crates/platform/src/disk_cache.rs::what_is_in_the_folder_is_never_trusted", "crates/platform/src/disk_cache.rs::the_oldest_copies_go_when_the_folder_grows_too_large", "crates/platform/tests/download.rs::the_resolver_downloads_once_keeps_the_copy_on_disk_and_asks_the_server_whether_it_is_still_current"]
+notes = "M2.4: `xmlcraft_platform::disk_cache::DiskCache` keeps one file per URL (named by the SHA-256 of the URL) in the system's cache folder (`~/Library/Caches/XmlCraft/schemas`, `%LOCALAPPDATA%\\XmlCraft\\Cache\\schemas`, `$XDG_CACHE_HOME/xmlcraft/schemas`; `XMLCRAFT_CACHE_DIR` names another): where the copy came from, its ETag and Last-Modified, and the body, written atomically; a file that is too large, cut short, malformed or for another URL is a miss, never an error; up to 256 MiB, the copies fetched longest ago go first. The rules of `xmlcraft-resolve` apply: current for 30 days, then asked about with the ETag / Last-Modified, renewed on *not modified*, replaced on a new body, kept and marked stale when the server cannot be reached (tested over loopback against the real client). Missing: a setting for its size (Edit ▸ Preferences… can clear it), nothing is kept for a resource that was refused, and the cache holds the text, not the parsed schema (every validation reads it again). Edit ▸ Preferences… says how many files and how much the cache holds and has Clear Cache (the documents ask again for what they need)."
 
 [[feature]]
 id = "catalog.auto-download"
@@ -1401,7 +1401,7 @@ status = "partial"
 commands = ["xml.work_offline"]
 tools = []
 evidence = ["crates/platform/src/network.rs::the_switch_is_shared_and_decides_whether_the_web_is_asked", "crates/platform/src/network.rs::the_environment_can_keep_a_network_offline_whatever_the_switch_says", "crates/platform/tests/download.rs::the_resolver_downloads_once_keeps_the_copy_on_disk_and_asks_the_server_whether_it_is_still_current", "crates/ui-egui/tests/network.rs::working_offline_downloads_nothing_and_going_online_again_does_with_no_further_ado", "crates/ui-egui/src/lib.rs::working_offline_is_saved_with_the_preferences_and_is_off_unless_it_was_turned_on", "crates/automation/tests/network.rs::a_session_without_one_downloads_nothing_and_says_why"]
-notes = "M2.4: XML ▸ Work Offline (saved with the preferences) stops downloading at once for every background worker and asks for what was missing again when it is turned off; `XMLCRAFT_OFFLINE=1` keeps it off whatever the menu says (and is not remembered), `--offline` does the same for `xmlcraft-cli`. Offline, nothing is asked of the network and a copy past its time is still served (marked stale); a resource that is not in the cache says so (\"is not in the cache and offline\"). Missing: the switch in Preferences ▸ Schemas (M2.12), and a status bar sign that the app is offline."
+notes = "M2.4: XML ▸ Work Offline (saved with the preferences) stops downloading at once for every background worker and asks for what was missing again when it is turned off; `XMLCRAFT_OFFLINE=1` keeps it off whatever the menu says (and is not remembered), `--offline` does the same for `xmlcraft-cli`. Offline, nothing is asked of the network and a copy past its time is still served (marked stale); a resource that is not in the cache says so (\"is not in the cache and offline\"). The same switch is in Edit ▸ Preferences… (M2.12). Missing: a status bar sign that the app is offline."
 
 [[feature]]
 id = "catalog.user-catalogs"
@@ -1409,11 +1409,11 @@ title = "User catalogs"
 area = "G"
 tier = "P1"
 milestone = "M2"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["app.preferences"]
 tools = []
-evidence = []
-notes = "`xmlcraft-resolve` (M2.3) reads the catalogs it is given before the bundled ones and notes those that cannot be used; nothing lets the user name catalogs yet (Preferences ▸ Schemas, M2.12)."
+evidence = ["crates/ui-egui/tests/preferences.rs::a_catalog_is_added_listed_kept_once_and_removed", "crates/platform/src/network.rs::a_catalog_the_person_named_finds_what_the_bundle_and_the_web_do_not", "crates/ui-egui/src/lib.rs::the_catalogs_the_person_named_are_remembered_and_given_to_the_network"]
+notes = "`xmlcraft-resolve` (M2.3) reads the catalogs it is given before the bundled ones and notes those that cannot be used; Edit ▸ Preferences… lists the catalogs the person named, adds one with a file panel (or `add_user_catalog`) and removes one; they are kept with the preferences, given to every resolver made after the change (the open documents ask again for what no catalog knew) and consulted before the bundled ones. A catalog's relative locations are found next to it. Missing: showing why a catalog could not be used (the resolver notes it), catalog order, and a headless way to name catalogs (`xmlcraft-cli --catalog`)."
 
 [[feature]]
 id = "catalog.resolution-trail"
@@ -1754,10 +1754,10 @@ area = "K"
 tier = "P0"
 milestone = "M0"
 status = "partial"
-commands = []
+commands = ["app.preferences"]
 tools = []
-evidence = ["crates/ui-egui/src/lib.rs::preferences_round_trip", "crates/ui-egui/src/lib.rs::hostile_preference_values_are_repaired"]
-notes = "Theme, pane visibility and pane sizes persist between runs, and damaged or hostile values are repaired on load. No Preferences window yet, and no editor or schema settings."
+evidence = ["crates/ui-egui/tests/preferences.rs::the_theme_the_size_and_the_switches_change_at_once", "crates/ui-egui/tests/preferences.rs::the_window_opens_from_the_edit_menu_command_and_done_closes_it", "crates/ui-egui/src/lib.rs::preferences_round_trip", "crates/ui-egui/src/lib.rs::hostile_preference_values_are_repaired"]
+notes = "Theme, pane visibility and pane sizes persist between runs, and damaged or hostile values are repaired on load. Edit ▸ Preferences… (⌘, / Ctrl+,) is one window for the theme, the size of the editor's text, validating while typing, Entry Helpers' required content, working offline, the download cache and the catalogs; each change takes effect at once and is kept. Missing: settings for the editor itself (tab width, indentation default, line ending of new documents, auto-pairing and auto-closing, wrapping), the validation delay, a switch for the local network (`XMLCRAFT_ALLOW_PRIVATE_HOSTS`), and a headless tool."
 
 [[feature]]
 id = "app.single-instance"

@@ -193,6 +193,15 @@ fn decode(bytes: &[u8], url: &str) -> Option<CacheEntry> {
 }
 
 impl ResourceCache for DiskCache {
+    fn stats(&self) -> xmlcraft_resolve::CacheStats {
+        let files = self.files();
+        xmlcraft_resolve::CacheStats { entries: files.len(), bytes: files.iter().map(|(.., len)| *len).fold(0, u64::saturating_add) }
+    }
+
+    fn clear(&self) -> usize {
+        DiskCache::clear(self)
+    }
+
     fn get(&self, url: &str) -> Option<CacheEntry> {
         let file = fs::File::open(self.path_of(url)).ok()?;
         if !file.metadata().ok()?.is_file() {

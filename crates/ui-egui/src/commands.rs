@@ -198,6 +198,12 @@ impl XmlCraftApp {
             "xml.generate_schema" => self.open_generate_schema(),
             "xml.generate_sample" => self.open_generate_sample(),
             "xml.load_schema" => self.load_schema(),
+            "app.preferences" => {
+                // Not over a question that is being asked: its answer would be lost.
+                if self.dialog.is_none() {
+                    self.dialog = Some(crate::dialog::Dialog::Preferences);
+                }
+            }
             "view.zoom_in" => self.zoom_editor(Some(1)),
             "view.zoom_out" => self.zoom_editor(Some(-1)),
             "view.zoom_reset" => self.zoom_editor(None),

@@ -46,6 +46,8 @@ pub(crate) enum Dialog {
     AssignSchema(Box<crate::assign::AssignForm>),
     /// The About window (drawn by `about.rs`).
     About(Box<crate::about::AboutForm>),
+    /// Preferences (drawn by `preferences.rs`; what it edits is the app's own state).
+    Preferences,
     /// The kinds of document to start from (drawn by `new_from_template.rs`).
     NewFromTemplate(Box<crate::new_from_template::TemplateForm>),
     /// The options of Generate Schema (drawn by `generate.rs`).
@@ -87,6 +89,7 @@ impl Dialog {
             | Dialog::GoToLine
             | Dialog::AssignSchema(_)
             | Dialog::About(_)
+            | Dialog::Preferences
             | Dialog::NewFromTemplate(_)
             | Dialog::GenerateSchema(_)
             | Dialog::GenerateSample(_)
@@ -183,6 +186,7 @@ impl XmlCraftApp {
             // These are forms, drawn by `assign.rs`, `about.rs` and `generate.rs`; this is only here to be total.
             Dialog::AssignSchema(_)
             | Dialog::About(_)
+            | Dialog::Preferences
             | Dialog::NewFromTemplate(_)
             | Dialog::GenerateSchema(_)
             | Dialog::GenerateSample(_)
@@ -200,6 +204,10 @@ impl XmlCraftApp {
         }
         if matches!(self.dialog, Some(Dialog::About(_))) {
             self.show_about(ctx);
+            return;
+        }
+        if matches!(self.dialog, Some(Dialog::Preferences)) {
+            self.show_preferences(ctx);
             return;
         }
         if matches!(self.dialog, Some(Dialog::NewFromTemplate(_))) {

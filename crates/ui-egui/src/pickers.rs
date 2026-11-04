@@ -18,6 +18,8 @@ pub(crate) enum PickFor {
     Open,
     /// A schema or a DTD for the Assign Schema dialog.
     SchemaFile,
+    /// An OASIS catalog for Preferences ▸ Schemas.
+    Catalog,
     /// Save the document with this id under the chosen name; afterwards do `then`.
     SaveAs {
         id: u64,
@@ -86,6 +88,13 @@ impl XmlCraftApp {
             .set_title(crate::i18n::tl!("Choose a schema or a DTD"))
             .add_filter(crate::i18n::tl!("Schemas and DTDs"), &["xsd", "dtd", "ent", "mod", "xml"]);
         self.ask(ctx, PickFor::SchemaFile, Ask::Open(dialog))
+    }
+
+    /// Show the panel that chooses a catalog for Preferences ▸ Schemas.
+    pub(crate) fn pick_catalog(&mut self, ctx: &egui::Context) -> bool {
+        // No extension filter: a catalog is often called just `catalog`.
+        let dialog = rfd::AsyncFileDialog::new().set_title(crate::i18n::tl!("Choose a catalog"));
+        self.ask(ctx, PickFor::Catalog, Ask::Open(dialog))
     }
 
     /// Show the Save As panel for the document with this id.
@@ -162,6 +171,11 @@ impl XmlCraftApp {
         false
     }
 
+    pub(crate) fn pick_catalog(&mut self, _ctx: &egui::Context) -> bool {
+        self.status = crate::i18n::tl!("Opening files is not available in the browser yet").to_owned();
+        false
+    }
+
     pub(crate) fn pick_save_as(&mut self, _ctx: &egui::Context, _id: u64, _then: Option<AfterClose>) -> bool {
         self.status = crate::i18n::tl!("Saving files is not available in the browser yet").to_owned();
         false
@@ -181,6 +195,17 @@ impl XmlCraftApp {
                         self.picked_schema_file(path);
                     }
                 }
+                (PickFor::Catalog, false) => {
+                    if let Some(path) = paths.first() {
+                        match path.to_str() {
+                            Some(text) => self.add_user_catalog(text),
+                            None => {
+                                self.status =
+                                    crate::i18n::tl!("That file's name is not text this app can keep, so it cannot be used as a catalog.").to_owned()
+                            }
+                        }
+                    }
+                }
                 (PickFor::SaveAs { id, then }, false) => {
                     if let Some(path) = paths.into_iter().next() {
                         self.save_document_as(ctx, id, path, then);
@@ -188,7 +213,7 @@ impl XmlCraftApp {
                 }
                 // Cancelled: a quit that was waiting for this answer is off.
                 (PickFor::SaveAs { .. }, true) => self.quitting = false,
-                (PickFor::Open | PickFor::SchemaFile, true) => {}
+                (PickFor::Open | PickFor::SchemaFile | PickFor::Catalog, true) => {}
             }
         }
     }

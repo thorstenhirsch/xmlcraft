@@ -26,6 +26,7 @@ mod motion;
 mod new_from_template;
 mod palette;
 mod pickers;
+mod preferences;
 mod problems;
 mod side_panels;
 mod status_pickers;
@@ -91,6 +92,8 @@ struct Prefs {
     work_offline: bool,
     /// How much larger or smaller than normal the editor's text is (View ▸ Zoom In, Zoom Out, Actual Size).
     editor_zoom: f32,
+    /// OASIS catalogs the person named (paths), consulted before the schemas that ship with the app.
+    user_catalogs: Vec<String>,
 }
 
 impl Default for Prefs {
@@ -106,6 +109,7 @@ impl Default for Prefs {
             validate_typing: true,
             work_offline: false,
             editor_zoom: 1.0,
+            user_catalogs: Vec::new(),
         }
     }
 }
@@ -161,6 +165,8 @@ pub struct XmlCraftApp {
     work_offline: bool,
     /// The editor's text size relative to normal (View ▸ Zoom In, Zoom Out, Actual Size; see [`zoom`]).
     editor_zoom: f32,
+    /// The catalogs the person named, as paths (Preferences ▸ Schemas).
+    user_catalogs: Vec<String>,
     /// What the grammars a document names are downloaded with.
     network: Network,
     /// How long a text is left alone before that.
@@ -265,6 +271,7 @@ impl XmlCraftApp {
 
     fn with_prefs_and_network(prefs: Prefs, network: Network) -> Self {
         network.set_offline(prefs.work_offline);
+        network.set_user_catalogs(prefs.user_catalogs.clone());
         // The resolvers of the background workers are made when a request is: they see the switch as it is then.
         let resolvers = || -> ResolverFactory {
             let network = network.clone();
@@ -311,6 +318,7 @@ impl XmlCraftApp {
             validate_typing: prefs.validate_typing,
             work_offline: prefs.work_offline,
             editor_zoom: zoom::sanitized(prefs.editor_zoom),
+            user_catalogs: prefs.user_catalogs.clone(),
             network,
             validate_delay: auto_validate::DELAY,
             waiting: None,
@@ -345,6 +353,7 @@ impl XmlCraftApp {
             validate_typing: self.validate_typing,
             work_offline: self.work_offline,
             editor_zoom: self.editor_zoom,
+            user_catalogs: self.user_catalogs.clone(),
         }
     }
 
@@ -504,6 +513,23 @@ mod tests {
         };
         let json = serde_json::to_string(&p).expect("serialises");
         assert_eq!(Prefs::load(Some(&json)), p);
+    }
+
+    #[test]
+    fn the_catalogs_the_person_named_are_remembered_and_given_to_the_network() {
+        assert!(Prefs::default().user_catalogs.is_empty());
+        assert!(Prefs::load(Some(r#"{"left_open": false}"#)).user_catalogs.is_empty(), "an old file that does not say has none");
+        let named = Prefs { user_catalogs: vec!["/x/a.xml".into(), "/x/b.xml".into()], ..Prefs::default() };
+        let again = Prefs::load(Some(&serde_json::to_string(&named).expect("serialises")));
+        assert_eq!(again.user_catalogs, ["/x/a.xml", "/x/b.xml"]);
+        let app = XmlCraftApp::with_prefs(again);
+        assert_eq!(app.prefs().user_catalogs, ["/x/a.xml", "/x/b.xml"], "it is what the app saves, too");
+        assert_eq!(app.network.user_catalogs().len(), 2, "and what its resolvers use");
+        let mut app = app;
+        app.add_user_catalog("/x/c.xml");
+        assert_eq!(app.network.user_catalogs().len(), 3, "a catalog added later is used at once");
+        app.remove_user_catalog(0);
+        assert_eq!(app.network.user_catalogs().len(), 2, "and one removed is not");
     }
 
     #[test]

@@ -55,11 +55,13 @@ struct Cached {
 
 impl HelperState {
     /// Forget what was asked for, so that the grammar and the schema are asked for again (what they are made from may have changed
-    /// without the text having).
+    /// without the text having changed).
     pub(crate) fn forget_requests(&mut self) {
         self.requested_key = None;
         self.requested_xsd_key = None;
         self.checked_version = None;
+        // The same key may now answer with other content (a catalog was added, the downloads were deleted).
+        self.cache = None;
     }
 
     /// Take the answer to a request for a grammar, if it is the answer to the last one asked: a DOCTYPE that was edited meanwhile has been
@@ -538,6 +540,15 @@ mod tests {
         }
         // The cut is made before the check: a symbol past the 24th character is not looked at.
         assert_eq!(shown_value(&format!("{}\u{2118}", "x".repeat(24))).map(|s| s.len()), Some(24));
+    }
+
+    #[test]
+    fn asking_again_for_a_schema_forgets_the_choices_worked_out_from_the_old_one() {
+        let mut state = HelperState::default();
+        let _ = state.choices(1, 0, String::new);
+        assert!(state.cache.is_some(), "the choices at this place are kept");
+        state.forget_requests();
+        assert!(state.cache.is_none(), "the same key may now stand for other content: they are worked out again");
     }
 
     #[test]

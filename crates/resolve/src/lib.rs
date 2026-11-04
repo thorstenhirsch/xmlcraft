@@ -18,7 +18,7 @@ mod resolver;
 mod trail;
 
 pub use budget::{Budget, MAX_DOWNLOAD_BYTES, MAX_RESOURCES, MAX_TOTAL_BYTES};
-pub use cache::{CacheEntry, MemoryCache, ResourceCache};
+pub use cache::{CacheEntry, CacheStats, MemoryCache, ResourceCache};
 pub use env::{Buffers, Clock, Conditions, FetchError, FetchLimits, FetchOutcome, Fetched, Fetcher, FileAccess, FixedClock, NoBuffers, NoFiles};
 pub use location::{file_path, is_path, join, normalized, scheme_of};
 pub use resolver::{Environment, Failure, Kind, Origin, Policy, Request, Resolved, Resolver};
