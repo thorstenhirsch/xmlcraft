@@ -199,12 +199,17 @@ impl XmlCraftApp {
 }
 
 /// One row of a list: the name, with a mark for what is required, greyed when it is used already. A double click is what the row is for.
-fn row(ui: &mut egui::Ui, name: &str, detail: Option<&str>, mandatory: bool, used: bool) -> egui::Response {
+fn row(ui: &mut egui::Ui, name: &str, detail: Option<&str>, mandatory: bool, used: bool, selected: bool, scroll: bool) -> egui::Response {
     let t = Tokens::get(ui.ctx());
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), Sense::click());
     let label = if mandatory { format!("{name} (required)") } else { name.to_owned() };
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, !used, label.clone()));
-    if response.hovered() && !used {
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, !used, selected, label.clone()));
+    if selected {
+        ui.painter().rect_filled(rect, 0.0, t.accent_soft);
+        if scroll {
+            response.scroll_to_me(None);
+        }
+    } else if response.hovered() && !used {
         ui.painter().rect_filled(rect, 0.0, t.hover);
     }
     let color = if used { t.text_faint } else { t.text };
@@ -247,6 +252,7 @@ fn shown_value(value: &str) -> Option<String> {
 }
 
 /// What a click on a row asks for.
+#[derive(Clone)]
 enum Insert {
     Element(ElementChoice),
     Attribute { name: String, at: usize, first_value: Option<String>, declare: Option<Declaration> },
@@ -293,6 +299,116 @@ fn waiting(ui: &mut egui::Ui, app: &XmlCraftApp, id: u64) -> bool {
     true
 }
 
+/// One thing the panel offers.
+struct Entry {
+    name: String,
+    detail: Option<String>,
+    mandatory: bool,
+    used: bool,
+    /// What choosing it does; none for what cannot be chosen (an attribute that is there already).
+    insert: Option<Insert>,
+}
+
+/// A section of the panel.
+struct Group {
+    title: String,
+    /// The grammar offers nothing here (whatever the filter says).
+    empty: bool,
+    entries: Vec<Entry>,
+}
+
+/// What the grammar offers at the caret, as sections of rows.
+fn groups_of(choices: &Choices) -> Vec<Group> {
+    let mut groups = vec![Group {
+        title: crate::i18n::fmt(tl!("Elements in {name}"), &[("name", choices.parent.as_deref().unwrap_or("…"))]),
+        empty: choices.elements.is_empty(),
+        entries: choices
+            .elements
+            .iter()
+            .map(|c| Entry {
+                name: c.name.clone(),
+                detail: c.empty.then(|| "EMPTY".to_owned()),
+                mandatory: c.mandatory,
+                used: false,
+                insert: Some(Insert::Element(c.clone())),
+            })
+            .collect(),
+    }];
+    if let Some(element) = &choices.element {
+        groups.push(Group {
+            title: crate::i18n::fmt(tl!("Attributes of {name}"), &[("name", element)]),
+            empty: choices.attributes.is_empty(),
+            entries: choices
+                .attributes
+                .iter()
+                .map(|AttributeChoice { name, mandatory, used, values, declare }| Entry {
+                    name: name.clone(),
+                    detail: (!values.is_empty()).then(|| values.join(" | ")),
+                    mandatory: *mandatory,
+                    used: *used,
+                    insert: match (used, choices.attribute_at) {
+                        (false, Some(at)) => {
+                            Some(Insert::Attribute { name: name.clone(), at, first_value: values.first().cloned(), declare: declare.clone() })
+                        }
+                        _ => None,
+                    },
+                })
+                .collect(),
+        });
+    }
+    if !choices.values.is_empty()
+        && let Some(element) = &choices.parent
+    {
+        groups.push(Group {
+            title: crate::i18n::fmt(tl!("Values of {name}"), &[("name", element)]),
+            empty: false,
+            entries: choices
+                .values
+                .iter()
+                .map(|v| Entry { name: v.clone(), detail: None, mandatory: false, used: false, insert: Some(Insert::Value(v.clone())) })
+                .collect(),
+        });
+    }
+    if !choices.entities.is_empty() {
+        groups.push(Group {
+            title: tl!("Entities").to_owned(),
+            empty: false,
+            entries: choices
+                .entities
+                .iter()
+                .map(|EntityChoice { name, value }| Entry {
+                    name: format!("&{name};"),
+                    detail: value.as_deref().and_then(shown_value),
+                    mandatory: false,
+                    used: false,
+                    insert: Some(Insert::Entity(name.clone())),
+                })
+                .collect(),
+        });
+    }
+    groups
+}
+
+/// Keep what contains `filter` (which is lower case); with no filter, everything.
+fn filter_groups(groups: &mut [Group], filter: &str) {
+    if !filter.is_empty() {
+        for group in groups {
+            group.entries.retain(|e| e.name.to_lowercase().contains(filter));
+        }
+    }
+}
+
+/// Where in `groups` the entries that can be chosen are, in the order they are shown.
+fn choosable(groups: &[Group]) -> Vec<(usize, usize)> {
+    groups
+        .iter()
+        .enumerate()
+        .flat_map(|(g, group)| group.entries.iter().enumerate().filter(|(_, e)| e.insert.is_some() && !e.used).map(move |(i, _)| (g, i)))
+        .collect()
+}
+
+pub(crate) const FILTER_ID: &str = "xmlcraft-entry-filter";
+
 pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     let Some(doc) = app.session.active_document() else {
         hint(ui, tl!("What the DTD or the schema allows at the cursor appears here."));
@@ -302,52 +418,75 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     if waiting(ui, app, id) {
         return;
     }
-    egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 6)).show(ui, |ui| {
-        ui.add(widgets::checkbox(&mut app.entry_mandatory, tl!("Insert required content")));
-    });
     let Some(choices) = app.helper_choices() else {
         widgets::empty_state(ui, 12.0, tl!("Nothing to show"), tl!("The document is too large for Entry Helpers."));
         return;
     };
+    let filter = app.entry_filter.trim().to_lowercase();
+    let mut groups = groups_of(&choices);
+    filter_groups(&mut groups, &filter);
+    let order = choosable(&groups);
+    app.entry_selected = app.entry_selected.min(order.len().saturating_sub(1));
+    // The keys of the filter field: up and down choose, Enter inserts the one chosen, Escape clears the filter and goes back to the text.
+    let field_id = egui::Id::unique(FILTER_ID);
+    let had_focus = ui.memory(|m| m.has_focus(field_id));
+    let mut moved = false;
+    let mut escape = false;
+    if had_focus {
+        let (down, up) =
+            ui.input_mut(|i| (i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown), i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)));
+        if down && !order.is_empty() {
+            app.entry_selected = (app.entry_selected + 1) % order.len();
+            moved = true;
+        }
+        if up && !order.is_empty() {
+            app.entry_selected = (app.entry_selected + order.len() - 1) % order.len();
+            moved = true;
+        }
+    }
     let mut insert = None;
+    egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 6)).show(ui, |ui| {
+        ui.add(widgets::checkbox(&mut app.entry_mandatory, tl!("Insert required content")));
+        ui.add_space(4.0);
+        let before = app.entry_filter.clone();
+        let field = ui.add(widgets::line(&mut app.entry_filter).id(field_id).hint_text(tl!("Filter")).desired_width(f32::INFINITY));
+        widgets::name_for_assistive_technology(ui, &field, tl!("Filter Entry Helpers"));
+        if std::mem::take(&mut app.entry_focus) {
+            field.request_focus();
+        }
+        if app.entry_filter != before {
+            app.entry_selected = 0;
+        }
+        // A single-line field gives up the keyboard at Escape, in the frame of the key.
+        escape = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape));
+        if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            insert = order.get(app.entry_selected).and_then(|(g, i)| groups.get(*g)?.entries.get(*i)?.insert.clone());
+            app.entry_filter.clear();
+        }
+    });
+    if escape {
+        app.entry_filter.clear();
+        app.focus_editor = true;
+    }
+    let selected = order.get(app.entry_selected).copied();
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-        section(ui, &crate::i18n::fmt(tl!("Elements in {name}"), &[("name", choices.parent.as_deref().unwrap_or("…"))]), choices.elements.is_empty());
-        for choice in &choices.elements {
-            let detail = choice.empty.then_some("EMPTY");
-            if row(ui, &choice.name, detail, choice.mandatory, false).double_clicked() {
-                insert = Some(Insert::Element(choice.clone()));
+        for (g, group) in groups.iter().enumerate() {
+            if !filter.is_empty() && group.entries.is_empty() {
+                continue;
             }
-        }
-        if let Some(element) = &choices.element {
-            section(ui, &crate::i18n::fmt(tl!("Attributes of {name}"), &[("name", element)]), choices.attributes.is_empty());
-            for AttributeChoice { name, mandatory, used, values, declare } in &choices.attributes {
-                let detail = (!values.is_empty()).then(|| values.join(" | "));
-                if row(ui, name, detail.as_deref(), *mandatory, *used).double_clicked()
-                    && !used
-                    && let Some(at) = choices.attribute_at
+            section(ui, &group.title, group.empty);
+            for (i, entry) in group.entries.iter().enumerate() {
+                let chosen = selected == Some((g, i)) && had_focus;
+                let response = row(ui, &entry.name, entry.detail.as_deref(), entry.mandatory, entry.used, chosen, moved);
+                if response.double_clicked()
+                    && let Some(what) = &entry.insert
                 {
-                    insert = Some(Insert::Attribute { name: name.clone(), at, first_value: values.first().cloned(), declare: declare.clone() });
+                    insert = Some(what.clone());
                 }
             }
         }
-        if !choices.values.is_empty()
-            && let Some(element) = &choices.parent
-        {
-            section(ui, &crate::i18n::fmt(tl!("Values of {name}"), &[("name", element)]), false);
-            for value in &choices.values {
-                if row(ui, value, None, false, false).double_clicked() {
-                    insert = Some(Insert::Value(value.clone()));
-                }
-            }
-        }
-        if !choices.entities.is_empty() {
-            section(ui, tl!("Entities"), false);
-            for EntityChoice { name, value } in &choices.entities {
-                let shown = value.as_deref().and_then(shown_value);
-                if row(ui, &format!("&{name};"), shown.as_deref(), false, false).double_clicked() {
-                    insert = Some(Insert::Entity(name.clone()));
-                }
-            }
+        if !filter.is_empty() && order.is_empty() {
+            widgets::empty_state(ui, 12.0, tl!("No match"), tl!("Nothing offered here contains that."));
         }
     });
     match insert {
