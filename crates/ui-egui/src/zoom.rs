@@ -8,8 +8,8 @@ pub const MIN: f32 = 0.5;
 pub const MAX: f32 = 3.0;
 pub const STEP: f32 = 0.1;
 
-/// A factor that can be used: whole steps of [`STEP`] from [`MIN`] to [`MAX`]; anything else (a hand-edited preferences file) is
-/// normal size.
+/// A factor that can be used: rounded to a whole step of [`STEP`] and kept from [`MIN`] to [`MAX`]; what is not a number (a hand-edited
+/// preferences file) is normal size.
 pub fn sanitized(factor: f32) -> f32 {
     if factor.is_finite() { (factor.clamp(MIN, MAX) / STEP).round() * STEP } else { 1.0 }
 }

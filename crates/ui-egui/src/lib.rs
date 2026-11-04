@@ -498,7 +498,7 @@ mod tests {
     }
 
     #[test]
-    fn the_zoom_is_remembered_and_a_bad_one_in_the_file_is_normal_size() {
+    fn the_zoom_is_remembered_and_one_in_the_file_is_kept_in_range() {
         assert_eq!(Prefs::default().editor_zoom, 1.0);
         assert_eq!(Prefs::load(Some(r#"{"left_open": false}"#)).editor_zoom, 1.0, "an old file that does not say");
         let zoomed = Prefs { editor_zoom: 1.5, ..Prefs::default() };

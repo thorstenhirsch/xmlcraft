@@ -78,6 +78,8 @@ impl Shortcut {
             "CloseBracket" => "]",
             "Backslash" => "\\",
             "Slash" => "/",
+            "Equals" => "=",
+            "Minus" => "-",
             "ArrowRight" => "→",
             "ArrowLeft" => "←",
             other => other,
@@ -401,6 +403,9 @@ mod tests {
         assert_eq!(Shortcut::cmd_alt("OpenBracket").modifier_count(), 2);
         assert_eq!(Shortcut::cmd_alt("CloseBracket").label(true), "⌥⌘]");
         assert_eq!(Shortcut::cmd("Slash").label(true), "⌘/");
+        assert_eq!(Shortcut::cmd("Equals").label(true), "⌘=");
+        assert_eq!(Shortcut::cmd("Minus").label(false), "Ctrl+-");
+        assert_eq!(Shortcut::cmd("0").label(false), "Ctrl+0");
         assert_eq!(Shortcut::cmd_alt("ArrowRight").label(false), "Ctrl+Alt+→");
         assert_eq!(Shortcut::cmd_shift("Backslash").label(true), "⇧⌘\\");
         assert_eq!(Shortcut::cmd_shift("Backslash").label(false), "Ctrl+Shift+\\");
