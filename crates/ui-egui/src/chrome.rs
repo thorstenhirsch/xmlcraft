@@ -259,7 +259,9 @@ fn schema_button(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool) {
     } else {
         kit::split_pill(ui, Some("file-code"), tl!("Schema…"), tl!("More schema actions"))
     };
-    for anchor in [main, arrow] {
+    // One popup for a single button; the split pill has two parts that open the same menu.
+    let anchors = if compact { vec![main] } else { vec![main, arrow] };
+    for anchor in anchors {
         egui::Popup::menu(&anchor).show(|ui| {
             ui.set_min_width(220.0);
             for id in ["xml.generate_schema", "xml.load_schema"] {

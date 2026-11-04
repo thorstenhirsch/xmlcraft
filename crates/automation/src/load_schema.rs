@@ -16,7 +16,7 @@ use crate::{Automation, Content, Result};
 pub(crate) fn tools() -> Vec<ToolDef> {
     let mut properties = source_properties();
     if let Some(map) = properties.as_object_mut() {
-        map.insert("open".into(), json!({ "type": "boolean", "description": "Add the grammar as a document (an unsaved one, unless it is a file that is open already or can be opened) and return its id" }));
+        map.insert("open".into(), json!({ "type": "boolean", "description": "Add the grammar as a document: a file is opened as a file (an open one is reused, `already_open`), a download or a bundled schema becomes an unsaved document; returns its description" }));
     }
     vec![ToolDef {
         name: "xml_load_schema",
@@ -56,11 +56,25 @@ fn xml_load_schema(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         "lossy": found.lossy,
     });
     if args.get("open").and_then(Value::as_bool) == Some(true) {
-        let index = a.session.new_document();
-        if let Some(doc) = a.session.document_mut(index) {
-            doc.name_untitled(&link.label());
-            doc.editor_mut().load(&found.text);
-            value["document"] = crate::documents::describe(doc);
+        // A file is opened as a file (an open one is reused); a download or a bundled schema becomes an unsaved document.
+        let on_disk = found.path.as_deref().filter(|p| std::path::Path::new(p).is_file());
+        if let Some(path) = on_disk {
+            let path = a.confinement.resolve_read(path)?;
+            let loaded = xmlcraft_platform::files::read_file(&path).map_err(|e| crate::ToolError::Failed(format!("{}: {e}", path.display())))?;
+            let before = a.session.documents().len();
+            let index = a.session.open(Some(path), &loaded.bytes, Some(loaded.stamp)).map_err(|e| crate::ToolError::Failed(e.to_string()))?;
+            let opened_now = a.session.documents().len() > before;
+            if let Some(doc) = a.session.document(index) {
+                value["document"] = crate::documents::describe(doc);
+                value["already_open"] = json!(!opened_now);
+            }
+        } else {
+            let index = a.session.new_document();
+            if let Some(doc) = a.session.document_mut(index) {
+                doc.name_untitled(&link.label());
+                doc.editor_mut().load(&found.text);
+                value["document"] = crate::documents::describe(doc);
+            }
         }
     }
     json_result(value)

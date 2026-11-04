@@ -23,7 +23,8 @@ pub fn doc_kind(name: &str, analysis: Option<&Analysis>) -> DocKind {
         _ => {}
     }
     let is_schema = analysis.is_some_and(|a| {
-        a.root_namespace.as_deref() == Some(XSD_NAMESPACE) && a.outline.first().is_some_and(|root| root.name.rsplit(':').next() == Some("schema"))
+        a.root_namespace.as_deref() == Some(XSD_NAMESPACE)
+            && a.outline.first().is_some_and(|root| xmlcraft_syntax::split_qname(&root.name).is_some_and(|(_, local)| local == "schema"))
     });
     if is_schema { DocKind::Xsd } else { DocKind::Xml }
 }
@@ -56,6 +57,7 @@ mod tests {
         assert_eq!(doc_kind("x.xml", Some(&analyze("<schema xmlns=\"http://www.w3.org/2001/XMLSchema\"/>", 0))), DocKind::Xsd, "default namespace");
         // The same name in another namespace, or no namespace, is not a schema; nor is a schema that is not the root.
         assert_eq!(doc_kind("x.xml", Some(&analyze("<schema/>", 0))), DocKind::Xml);
+        assert_eq!(doc_kind("x.xml", Some(&analyze("<a:b:schema xmlns:a=\"http://www.w3.org/2001/XMLSchema\"/>", 0))), DocKind::Xml, "not a QName");
         assert_eq!(doc_kind("x.xml", Some(&analyze("<schema xmlns=\"urn:other\"/>", 0))), DocKind::Xml);
         assert_eq!(
             doc_kind("x.xml", Some(&analyze("<wrapper xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:schema/></wrapper>", 0))),

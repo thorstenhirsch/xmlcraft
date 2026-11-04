@@ -34,6 +34,10 @@ fn a_schema_location_next_to_the_document_is_found_and_can_be_opened() {
     assert!(found.get("document").is_none(), "nothing is opened unless asked");
     let opened = call(&mut a, json!({ "path": doc, "open": true })).expect("found");
     assert_eq!(opened["document"]["name"], "r.xsd");
+    assert!(opened["document"]["path"].as_str().is_some_and(|p| p.ends_with("r.xsd")), "a file keeps its path: {opened}");
+    assert_eq!(opened["already_open"], false);
+    let again = call(&mut a, json!({ "path": doc, "open": true })).expect("found");
+    assert_eq!(again["already_open"], true, "the open document is reused");
 }
 
 #[test]

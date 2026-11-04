@@ -1874,7 +1874,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "docs/screenshots/LICENSE.txt"
 kind = "image"
 usage = "README and docs: the editor, its outline and Entry Helpers from an XML Schema"
-sha256 = "edd37264ada0afa6993464d378a868e95345b9ea227deecb22976009c08fafbf"
+sha256 = "6bea15588c062e682e6348a49d7ff59952bc8074d8b8e211f1db45fd20ede4ac"
 
 [[asset]]
 path = "docs/screenshots/validation.png"
@@ -1885,7 +1885,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "docs/screenshots/LICENSE.txt"
 kind = "image"
 usage = "README and docs: the problems of a document that does not follow its schema"
-sha256 = "a961f66f564c55eba6343832dcaa6ff9f2ccf5e0556cfd4dca7039baeba6d41b"
+sha256 = "89ed557d851bdd58ff5744ea7a5f07dce66600916abb8dfa3535bbb0f1c212aa"
 
 [[asset]]
 path = "docs/screenshots/generate-schema.png"
@@ -1896,7 +1896,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "docs/screenshots/LICENSE.txt"
 kind = "image"
 usage = "README and docs: XML ▸ Generate Schema…"
-sha256 = "d578936ab4401deef13341389250c34aeef707774d32f7a7b6bda5a19cb17a1a"
+sha256 = "ef2fdac719c379f80582c1619a8c917d6d86a5237c00f47f54da42d5e6c96ec4"
 
 [[asset]]
 path = "docs/screenshots/new-from-template.png"
@@ -1907,7 +1907,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "docs/screenshots/LICENSE.txt"
 kind = "image"
 usage = "README and docs: File ▸ New from Template…"
-sha256 = "0d30ccc2c9276c9c53d8bab18b9733c750b5f053848cdaa01ab834980bf4ca69"
+sha256 = "b042acbdcbbf22d5a47d958bdc0bdda3c465c13b600974365642329e134a0de5"
 
 [[asset]]
 path = "assets/icons/clock.svg"

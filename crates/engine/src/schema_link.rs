@@ -1,6 +1,6 @@
 //! The schema or DTD a document names: what Load Schema opens.
 
-use crate::analysis::Analysis;
+use crate::analysis::{Analysis, DoctypeIds};
 
 /// What a document names as its grammar.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -16,10 +16,11 @@ impl SchemaLink {
     /// What to call it: the file name of its location, else its public identifier, else its namespace.
     pub fn label(&self) -> String {
         let file = |s: &str| s.rsplit(['/', '\\']).next().filter(|f| !f.is_empty()).map(str::to_owned);
-        match self {
-            SchemaLink::ExternalId { public, system } => system.as_deref().and_then(file).or_else(|| public.clone()).unwrap_or_default(),
-            SchemaLink::Uri { location, namespace } => file(location).or_else(|| namespace.clone()).unwrap_or_default(),
-        }
+        let label = match self {
+            SchemaLink::ExternalId { public, system } => system.as_deref().and_then(file).or_else(|| public.clone()),
+            SchemaLink::Uri { location, namespace } => file(location).or_else(|| namespace.clone()),
+        };
+        label.filter(|l| !l.is_empty()).unwrap_or_else(|| "schema".to_owned())
     }
 }
 
@@ -28,7 +29,7 @@ impl SchemaLink {
 /// schema for it, but the document does not name one.
 pub fn schema_link(analysis: &Analysis) -> Option<SchemaLink> {
     let nonempty = |s: &Option<String>| s.as_deref().is_some_and(|s| !s.trim().is_empty());
-    if let Some((public, system)) = &analysis.doctype_ids
+    if let Some(DoctypeIds { public, system }) = &analysis.doctype_ids
         && (nonempty(public) || nonempty(system))
     {
         return Some(SchemaLink::ExternalId {
@@ -96,6 +97,7 @@ mod tests {
     fn a_link_is_labelled_by_its_file() {
         assert_eq!(SchemaLink::Uri { location: "http://x/s/r.xsd".into(), namespace: None }.label(), "r.xsd");
         assert_eq!(SchemaLink::Uri { location: "".into(), namespace: Some("urn:r".into()) }.label(), "urn:r");
+        assert_eq!(SchemaLink::Uri { location: "http://x/s/".into(), namespace: None }.label(), "schema", "a name is made up when there is none");
         assert_eq!(SchemaLink::ExternalId { public: None, system: Some("a\\b\\r.dtd".into()) }.label(), "r.dtd");
     }
 }
