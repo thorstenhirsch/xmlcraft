@@ -335,7 +335,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             name: "doc_quick_fix",
             title: "List or apply the quick fixes of an open document",
             description: "The fixes for the well-formedness problems of an open document: renaming a mismatched end tag, closing unclosed elements, quoting an \
-                          attribute value, escaping & and <, removing a duplicate attribute or a stray end tag. Without `apply` it lists them (their `title`, `problem`, \
+                          attribute value, giving a value-less attribute `=\"\"`, escaping & and < and writing `]]&gt;`, removing a duplicate attribute or a stray end tag. Without `apply` it lists them (their `title`, `problem`, \
                           `line` and `column`) and changes nothing. With `apply` (a whole number, from 0, the position in that list) it puts that fix in the text as one \
                           undoable edit and returns where the caret is. `line` and `column` (from 1) keep only the fixes of the problems at that place. Fixes for \
                           validity problems (a missing required attribute) are the app's, after a validation.",

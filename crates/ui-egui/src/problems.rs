@@ -55,6 +55,8 @@ pub(crate) struct Problem {
     pub place: String,
     /// What a click selects in the document; none for a problem in another file.
     pub jump: Option<Range<usize>>,
+    /// The code of the diagnostic (what, with where it starts, tells it from another problem at the same place).
+    pub code: &'static str,
 }
 
 impl Filter {
@@ -95,6 +97,7 @@ pub(crate) fn collect(app: &XmlCraftApp) -> Vec<Problem> {
             message: d.message(),
             place: at(d.span.start),
             jump: Some(d.span.clone()),
+            code: d.code.key(),
         })
         .collect();
     rows.extend(app.active_validation().into_iter().flat_map(|v| v.problems.iter()).map(|p| Problem {
@@ -106,6 +109,7 @@ pub(crate) fn collect(app: &XmlCraftApp) -> Vec<Problem> {
             Some(file) => std::path::Path::new(file).file_name().map_or_else(|| file.clone(), |n| n.to_string_lossy().into_owned()),
         },
         jump: jump_for(p.file.as_deref(), &p.diagnostic.span),
+        code: p.diagnostic.code.key(),
     }));
     rows
 }
@@ -326,7 +330,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
                         t.text_faint,
                     );
                     // A problem that can be put right has a Fix button before its place.
-                    let fix = problem.jump.as_ref().and_then(|j| app.fixes_starting_at(j.start).first());
+                    let fix = problem.jump.as_ref().and_then(|j| app.fixes_of_problem(j.start, problem.code).first());
                     let mut text_right = right - place_galley.size().x - 12.0;
                     if let Some(fix) = fix {
                         let pill = Rect::from_min_size(egui::pos2(text_right - 40.0, rect.center().y - 9.0), vec2(40.0, 18.0));
@@ -385,7 +389,7 @@ mod tests {
     use super::*;
 
     fn problem(severity: Severity, group: Group, start: usize) -> Problem {
-        Problem { severity, group, message: format!("m{start}"), place: String::new(), jump: Some(start..start + 1) }
+        Problem { severity, group, message: format!("m{start}"), place: String::new(), jump: Some(start..start + 1), code: "test" }
     }
 
     #[test]

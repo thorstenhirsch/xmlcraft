@@ -83,7 +83,8 @@ pub fn quick_fixes(text: &str, diagnostic: &Diagnostic, all: &[Diagnostic]) -> V
         Code::BareLessThan => fixes.push(replacement(span, "&lt;", "Write &lt; for the less-than sign")),
         Code::CdataEndInContent => fixes.push(replacement(span, "]]&gt;", "Write ]]&gt; for the three characters")),
         Code::VcRequiredAttribute | Code::CvcAttributeRequired | Code::XsdMissingAttribute => {
-            if let (Some(attribute), Some(at)) = (arg(1), start_tag_insert_point(text, span.end)) {
+            // (A schema also reports "public or system" for a notation: that is not an attribute name.)
+            if let (Some(attribute), Some(at)) = (arg(1).filter(|a| crate::elements::is_element_name(a)), start_tag_insert_point(text, span.end)) {
                 let written = format!(" {attribute}=\"\"");
                 fixes.push(QuickFix {
                     title: format!("Add the attribute {attribute}"),
@@ -110,26 +111,36 @@ fn end_tag_range(text: &str, span: &Range<usize>) -> Option<Range<usize>> {
     Some(span.start..span.end + close + 1)
 }
 
-/// The attribute whose name is at `name`, with the white space before it: `x="2"` in `<a x="1" x="2"/>`.
+/// The attribute whose name is at `name`, with the white space before it: `x="2"` in `<a x="1" x="2"/>`, or just ` x` in `<a x="1" x/>`.
+/// Never reaches past the next `<` (a value cannot hold one), so an unterminated value does not take other markup with it.
 fn attribute_range(text: &str, name: &Range<usize>) -> Option<Range<usize>> {
     let before = text.get(..name.start)?;
     let start = before.trim_end_matches(char::is_whitespace).len();
-    let mut chars = text.get(name.end..)?.char_indices().peekable();
+    let rest = text.get(name.end..)?;
+    let mut chars = rest.char_indices().peekable();
     let skip_space = |chars: &mut std::iter::Peekable<std::str::CharIndices<'_>>| {
         while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
     };
     skip_space(&mut chars);
-    let (_, eq) = chars.next()?;
-    if eq != '=' {
-        return None;
+    if chars.peek().map(|(_, c)| *c) != Some('=') {
+        // A duplicate with no value: just the name.
+        return Some(start..name.end);
     }
+    chars.next();
     skip_space(&mut chars);
     let (_, quote) = chars.next()?;
     if quote != '"' && quote != '\'' {
         return None;
     }
-    let (end, _) = chars.find(|(_, c)| *c == quote)?;
-    Some(start..name.end + end + 1)
+    for (i, c) in chars {
+        if c == quote {
+            return Some(start..name.end + i + 1);
+        }
+        if c == '<' {
+            return None;
+        }
+    }
+    None
 }
 
 /// Where a new attribute goes in the start tag whose name ends at `name_end`: before the `>` or the `/>`, after the attributes (a `>` in
@@ -206,6 +217,15 @@ mod tests {
         assert_eq!(fixed("<a x/>").as_deref(), Some("<a x=\"\"/>"));
         assert_eq!(fixed("<a x=\"1\" x=\"2\"/>").as_deref(), Some("<a x=\"1\"/>"));
         assert_eq!(fixed("<a x='1'  y='2' y = '3'/>").as_deref(), Some("<a x='1'  y='2'/>"));
+        // A duplicate with no value: the fix for the duplicate (the problem of having no value has its own) takes just the name.
+        let text = "<a x=\"1\" x/>";
+        let remove = &fixes_for_code(text, Code::DuplicateAttribute)[0];
+        assert_eq!((remove.edits[0].range.clone(), remove.edits[0].text.as_str()), (8..10, ""), "the space and the name");
+        // An unterminated value does not take the next tag with it.
+        let text = "<a x=\"1\" x=\"2><b c=\"3\"/>";
+        let analysis = analyze(text, 0);
+        let dup = analysis.diagnostics.iter().find(|d| d.code == Code::DuplicateAttribute).expect("a duplicate");
+        assert!(quick_fixes(text, dup, &analysis.diagnostics).is_empty(), "it would cross into <b c=...>");
     }
 
     #[test]
@@ -231,6 +251,12 @@ mod tests {
             }
         }
         assert!(fixes_for_code("<a\n", Code::UnterminatedTag).is_empty());
+    }
+
+    #[test]
+    fn an_attribute_name_that_is_a_placeholder_is_not_added() {
+        let diag = Diagnostic::new(Code::XsdMissingAttribute, 1..2, vec!["notation".to_owned(), "public or system".to_owned()]);
+        assert!(quick_fixes("<a/>", &diag, std::slice::from_ref(&diag)).is_empty());
     }
 
     #[test]

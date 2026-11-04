@@ -11,7 +11,8 @@ use crate::i18n::{fmt, tl};
 /// The fixes of the problems of one version of a text (and of one validation of it), by where the problem starts.
 pub(crate) struct FixCache {
     key: (u64, Option<u64>),
-    by_start: BTreeMap<usize, Vec<QuickFix>>,
+    /// Keyed by where the problem starts and its code: two problems can start at the same place.
+    by_problem: BTreeMap<(usize, &'static str), Vec<QuickFix>>,
 }
 
 /// The most problems that get their fixes worked out (a text with thousands of them is not helped by thousands of buttons).
@@ -31,48 +32,65 @@ impl XmlCraftApp {
             return;
         }
         let text = doc.editor().text();
-        let mut by_start: BTreeMap<usize, Vec<QuickFix>> = BTreeMap::new();
+        let mut by_problem: BTreeMap<(usize, &'static str), Vec<QuickFix>> = BTreeMap::new();
         let own = analysis.diagnostics.iter().take(MAX_PROBLEMS).map(|d| (d, analysis.diagnostics.as_slice()));
         let validity = validation.into_iter().flat_map(|v| v.problems.iter()).filter(|p| p.file.is_none()).map(|p| (&p.diagnostic, &[][..]));
         for (diagnostic, all) in own.chain(validity.take(MAX_PROBLEMS)) {
             let fixes = quick_fixes(&text, diagnostic, all);
             if !fixes.is_empty() {
-                by_start.entry(diagnostic.span.start).or_default().extend(fixes);
+                by_problem.entry((diagnostic.span.start, diagnostic.code.key())).or_default().extend(fixes);
             }
         }
         if let Some(view) = self.views.get_mut(&id) {
-            view.fixes = Some(FixCache { key, by_start });
+            view.fixes = Some(FixCache { key, by_problem });
         }
     }
 
-    /// The fixes of the problems that start at `start` in the document being shown.
-    pub(crate) fn fixes_starting_at(&self, start: usize) -> &[QuickFix] {
-        let Some(id) = self.session.active_document().map(|d| d.id()) else { return &[] };
-        self.views.get(&id).and_then(|v| v.fixes.as_ref()).and_then(|c| c.by_start.get(&start)).map_or(&[], Vec::as_slice)
+    /// The fixes worked out for the text as it is now: none when the problems are those of older text (a fix made for that would change
+    /// the wrong place).
+    fn current_fixes(&self) -> Option<&FixCache> {
+        let doc = self.session.active_document()?;
+        let view = self.views.get(&doc.id())?;
+        let analysis = view.analysis.as_ref().filter(|a| a.version == doc.editor().version())?;
+        let cache = view.fixes.as_ref()?;
+        (cache.key == (analysis.version, view.current_validation().map(|v| v.version))).then_some(cache)
     }
 
-    /// The fixes for what is wrong where the caret is (a problem whose span holds it, or the one on the caret's line when there is none
-    /// there), the first problem's first.
+    /// The fixes of the problem with this code that starts at `start` in the document being shown.
+    pub(crate) fn fixes_of_problem(&self, start: usize, code: &'static str) -> &[QuickFix] {
+        self.current_fixes().and_then(|c| c.by_problem.get(&(start, code))).map_or(&[], Vec::as_slice)
+    }
+
+    /// The fixes for what is wrong where the caret is: the problems whose span holds it; when there is none there, those that start on
+    /// the caret's line. The first problem's first.
     pub fn quick_fixes_at_caret(&mut self) -> Vec<QuickFix> {
         self.ensure_fixes();
         let Some(doc) = self.session.active_document() else { return Vec::new() };
-        let caret = doc.editor().primary().head();
-        let Some(cache) = self.views.get(&doc.id()).and_then(|v| v.fixes.as_ref()) else { return Vec::new() };
-        let holds = |start: usize| self.problem_spans_at(caret).contains(&start);
-        cache.by_start.iter().filter(|(start, _)| holds(**start)).flat_map(|(_, f)| f.iter().cloned()).collect()
+        let editor = doc.editor();
+        let caret = editor.primary().head();
+        let Some(cache) = self.current_fixes() else { return Vec::new() };
+        let here = self.problems_at(caret);
+        let chosen: Vec<(usize, &'static str)> = if here.is_empty() {
+            let buffer = editor.buffer();
+            let line = buffer.line_of(caret.min(buffer.len()));
+            cache.by_problem.keys().filter(|(start, _)| buffer.line_of((*start).min(buffer.len())) == line).copied().collect()
+        } else {
+            here
+        };
+        chosen.iter().filter_map(|key| cache.by_problem.get(key)).flatten().cloned().collect()
     }
 
-    /// Where the problems whose span holds `offset` start.
-    fn problem_spans_at(&self, offset: usize) -> Vec<usize> {
+    /// The problems whose span holds `offset`, as where they start and their codes.
+    fn problems_at(&self, offset: usize) -> Vec<(usize, &'static str)> {
         let Some(analysis) = self.active_analysis() else { return Vec::new() };
         let holds = |span: &std::ops::Range<usize>| span.start <= offset && offset < span.end.max(span.start.saturating_add(1));
-        let own = analysis.diagnostics.iter().filter(|d| holds(&d.span)).map(|d| d.span.start);
+        let own = analysis.diagnostics.iter().filter(|d| holds(&d.span)).map(|d| (d.span.start, d.code.key()));
         let validity = self
             .active_validation()
             .into_iter()
             .flat_map(|v| v.problems.iter())
             .filter(|p| p.file.is_none() && holds(&p.diagnostic.span))
-            .map(|p| p.diagnostic.span.start);
+            .map(|p| (p.diagnostic.span.start, p.diagnostic.code.key()));
         own.chain(validity).collect()
     }
 

@@ -209,3 +209,29 @@ fn quick_fix_at_the_caret_fixes_what_is_wrong_there_and_says_so_when_nothing_is(
     let caret = h.state().session.active_document().expect("shown").editor().primary().head();
     assert_eq!(caret, at + 3, "the caret is after the closing quote");
 }
+
+#[test]
+fn a_fix_made_for_older_text_is_not_offered_and_one_on_the_same_line_is() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "q2.xml", "<a>\n  <b x=1/>\n</a>\n"));
+    // The caret is on the line of the mistake, not on it: the fix of the problem on this line is the one offered.
+    h.state_mut().session.active_document_mut().expect("shown").editor_mut().place_caret(6, false);
+    h.run_steps(2);
+    assert!(!h.state_mut().quick_fixes_at_caret().is_empty(), "same line");
+    // Edited since the analysis: nothing is offered (the places would be those of the older text).
+    h.state_mut().session.active_document_mut().expect("shown").editor_mut().type_input("z");
+    assert!(h.state_mut().quick_fixes_at_caret().is_empty(), "the problems are those of older text");
+    assert!(h.state_mut().execute("edit.quick_fix"));
+    assert!(h.state().status.contains("nothing to fix"), "{}", h.state().status);
+}
+
+#[test]
+fn two_problems_that_start_at_the_same_place_each_have_their_own_fix() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    // `<a` is both an unterminated tag and an unclosed element, both at the name: only the second has a fix.
+    open(&mut h, &file(dir.path(), "q3.xml", "<a"));
+    h.run_steps(3);
+    assert!(h.query_by_label_contains("Fix: Close <a>").is_some(), "the unclosed element has its fix");
+}
