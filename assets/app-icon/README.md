@@ -1,14 +1,14 @@
 # XmlCraft app icon
 
-<img src="xmlcraft.svg" alt="XmlCraft app icon: white angle brackets around a three-node tree on blue" width="128">
+<img src="xmlcraft.svg" alt="XmlCraft app icon: a low-poly cyberpunk fox between a cyan less-than and a magenta greater-than sign on a dark tile" width="128">
 
-**Idea:** the angle brackets of a tag around a small tree, because an XML document is a tree of elements.
+**Idea:** the angle brackets of a tag, as neon tubes, with a fox between them: sharp, quick and hard to fool, like a good validator. The ears of the fox touch the brackets, so the animal and the markup are one mark.
 
-**Palette:** the app's accent colours, a top-to-bottom gradient from `#4B8BF5` to `#1B63E0`, with white line work.
+**Palette:** a dark indigo tile (`#1B0F45` to `#060514`), neon cyan to blue (`#4AF2FF` to `#1F7BFF`) and magenta to violet (`#FF5CE1` to `#A23BFF`) for the brackets, fox orange (`#FFB347` to `#E85D12`), cream (`#FFF0E2`) and a cyan visor for the eyes.
 
-**Tile:** `viewBox="0 0 512 512"`, a rounded square with `rx=112`. Windows and Linux icons use the full-bleed tile. macOS icons put it on Apple's grid (an 824 px body centred on a transparent 1024 px canvas).
+**Tile:** `viewBox="0 0 512 512"`, a rounded square with `rx=112`. Windows and Linux icons use the full-bleed tile. macOS icons put it on Apple's grid (an 824 px body centred on a transparent 1024 px canvas). The shapes are flat polygons, strokes and gradients only (no filters), so the same file is drawn by the app (About, Home) and reads down to 16 px.
 
-**Provenance:** an original geometric mark composed with AI assistance at the project owner's direction; no third-party artwork, nothing from any Altova product. It is a placeholder the owner may replace with hand-drawn artwork. Licence: [LICENSE.txt](LICENSE.txt) (`MIT OR Apache-2.0`, like the repo).
+**Provenance:** an original mark composed with AI assistance at the project owner's direction; no third-party artwork, nothing from any Altova product. Licence: [LICENSE.txt](LICENSE.txt) (`MIT OR Apache-2.0`, like the repo).
 
 ## Files
 

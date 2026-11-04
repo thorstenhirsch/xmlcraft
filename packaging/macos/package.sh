@@ -132,6 +132,10 @@ STAGE="$WORK/dmg"
 mkdir -p "$STAGE"
 ditto "$APP" "$STAGE/XmlCraft.app"
 ln -s /Applications "$STAGE/Applications"
+# The window Finder shows: the artwork behind the two icons and where they stand. Committed, not made here (packaging/macos/dmg/README.md).
+mkdir -p "$STAGE/.background"
+cp "$ROOT/packaging/macos/dmg/background.tiff" "$STAGE/.background/background.tiff"
+cp "$ROOT/packaging/macos/dmg/dmg-layout.DS_Store" "$STAGE/.DS_Store"
 rm -f "$DMG"
 # `hdiutil create -srcfolder` writes the files as they are. `makehybrid -hfs` would give every file a com.apple.FinderInfo, which
 # `codesign --verify --strict` rejects as "Finder information, or similar detritus" on the app in the image. `create` attaches a
