@@ -144,6 +144,11 @@ pub struct XmlCraftApp {
     xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas,
     /// Entry Helpers write the content an element requires with it.
     entry_mandatory: bool,
+    /// What the Entry Helpers filter field holds, the row chosen with the arrow keys (among those that can be chosen), and whether the
+    /// keyboard is to go to the field at the next frame.
+    entry_filter: String,
+    entry_selected: usize,
+    entry_focus: bool,
     /// Validate a document that names a grammar when it has been left alone for a moment (View: XML ▸ Validate While Typing).
     validate_typing: bool,
     /// The person's switch for downloading (XML ▸ Work Offline); the network says whether anything is downloaded at all.
@@ -292,6 +297,9 @@ impl XmlCraftApp {
             schemas: Schemas::new(resolvers()),
             xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas::new(resolvers()),
             entry_mandatory: prefs.entry_mandatory,
+            entry_filter: String::new(),
+            entry_selected: 0,
+            entry_focus: false,
             validate_typing: prefs.validate_typing,
             work_offline: prefs.work_offline,
             network,
