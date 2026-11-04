@@ -419,11 +419,11 @@ title = "Zoom the editor font"
 area = "A"
 tier = "P2"
 milestone = "M1"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["view.zoom_in", "view.zoom_out", "view.zoom_reset"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/tests/zoom.rs::zooming_in_and_out_changes_the_size_of_the_text_and_actual_size_brings_it_back", "crates/ui-egui/tests/zoom.rs::zooming_stops_at_the_ends", "crates/ui-egui/src/lib.rs::the_zoom_is_remembered_and_a_bad_one_in_the_file_is_normal_size"]
+notes = "View ▸ Zoom In (⌘=), Zoom Out (⌘-) and Actual Size (⌘0) change the size of the editor's text in steps of 10% from 50% to 300%; the status bar says the new size and it is kept with the preferences. The gutter and the rows follow the text. Missing: zooming with Ctrl and the mouse wheel or a pinch, a zoom per document, and the size of the interface around the editor."
 
 [[feature]]
 id = "editor.recent-files"

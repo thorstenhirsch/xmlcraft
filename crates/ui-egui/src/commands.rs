@@ -198,6 +198,9 @@ impl XmlCraftApp {
             "xml.generate_schema" => self.open_generate_schema(),
             "xml.generate_sample" => self.open_generate_sample(),
             "xml.load_schema" => self.load_schema(),
+            "view.zoom_in" => self.zoom_editor(Some(1)),
+            "view.zoom_out" => self.zoom_editor(Some(-1)),
+            "view.zoom_reset" => self.zoom_editor(None),
             "edit.select_all" => {
                 if let Some(doc) = self.session.active_document_mut() {
                     doc.editor_mut().select_all();
