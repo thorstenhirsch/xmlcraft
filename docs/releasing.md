@@ -1,6 +1,6 @@
 # Releasing XmlCraft
 
-> **Last reviewed:** 2026-11-04 · **Last updated:** 2026-11-04 · **Change:** the credits are refreshed before a release; initial; the pipeline is planned, nothing is built yet (arrives with M0.10 and M0.11)
+> **Last reviewed:** 2026-11-04 · **Last updated:** 2026-11-04 · **Change:** 0.1.0 is released (v0.1.0, unsigned on Windows, ad-hoc signed on macOS), the credits are refreshed before a release, the pipeline is built and verified (M0.10, M0.11)
 
 ## Targets
 
@@ -45,4 +45,4 @@ Signing runs only when its secrets exist; otherwise the artifact ships unsigned 
 - 2026-10-27: workflows and scripts written (M0.11).
 - 2026-10-27: first dry run (40425116751): macOS and Linux built; both Windows jobs failed at `wix build` (WIX0367). Second dry run (40454851007), after #4: all six targets built and verified. The Windows ARM64 workflow installed and ran the arm64 MSI; the other artifacts are built and verified but not yet installed on their platforms.
 - 2026-10-29: the credits of the About window (`cargo xtask contributors --write`) are part of the version bump.
-- 2026-11-04: 0.1.0 released from `main` at f5f40ed (run 41894801791): 18 files and `SHA256SUMS.txt` in the draft, all checksums verified, published as v0.1.0. No signing secrets were set, so the macOS and Windows builds are unsigned.
+- 2026-11-04: 0.1.0 released from `main` at f5f40ed (run 41894801791): 18 files and `SHA256SUMS.txt` in the draft, all checksums verified, published as v0.1.0. No signing secrets were set, so the Windows builds are unsigned and the macOS app is only ad-hoc signed (not notarised).

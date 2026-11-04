@@ -27,7 +27,7 @@ Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is 
 - Own clean-room XSD 1.0 and DTD engine (no third-party validator at runtime): one grammar model feeds validation, completion, Entry Helpers and sample generation.
 - Standard schemas are bundled (about 150 files, hard cap 250) *and* downloaded and cached on demand.
 - JSON and YAML follow the MVP; YAML is validated with JSON Schema because YAML has no schema language of its own.
-- The first release ships unsigned unless signing secrets are configured.
+- The first release (0.1.0) shipped with the Windows builds unsigned and the macOS app only ad-hoc signed (no certificate, no notarisation); signing arrives when the owner provides the secrets (docs/releasing.md ▸ Signing).
 
 ## Revision history
 
