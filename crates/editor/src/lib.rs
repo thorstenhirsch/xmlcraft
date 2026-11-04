@@ -23,6 +23,7 @@ mod columns;
 mod editor;
 pub mod find;
 mod folds;
+mod line_endings;
 mod linked;
 pub mod motion;
 mod structure;

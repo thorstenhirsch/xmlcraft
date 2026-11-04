@@ -322,6 +322,29 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             handler: doc_undo,
         },
         ToolDef {
+            name: "doc_set_line_endings",
+            title: "Convert a document's line endings",
+            description: "Write every line break of an open document as `lf` or `crlf` (a lone CR counts as a break), as one undoable edit that changes only \
+                          the breaks that differ; new line breaks are written that way from now on. Returns how many breaks were changed.",
+            input_schema: object(json!({ "id": id.clone(), "eol": { "type": "string", "enum": ["lf", "crlf"] } }), &["id", "eol"]),
+            read_only: false,
+            destructive: false,
+            handler: doc_set_line_endings,
+        },
+        ToolDef {
+            name: "doc_set_indent",
+            title: "Set how a document indents",
+            description: "Indent the new lines of an open document (what Enter writes, Tab, and pretty-printing) with `spaces` (of `size`, 1 to 16; default: the size the document has now) or \
+                          with `tabs`. The text is not changed.",
+            input_schema: object(
+                json!({ "id": id.clone(), "style": { "type": "string", "enum": ["spaces", "tabs"] }, "size": { "type": "integer", "minimum": 1, "maximum": 16 } }),
+                &["id", "style"],
+            ),
+            read_only: false,
+            destructive: false,
+            handler: doc_set_indent,
+        },
+        ToolDef {
             name: "doc_set_encoding",
             title: "Change a document's encoding",
             description: "Write the document in another encoding from now on (its XML declaration is brought in line). A byte-order mark is only possible for \
@@ -903,6 +926,41 @@ fn doc_element(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         other => return fail(format!("{other}: no such action (rename, wrap, unwrap, select, xpath)")),
     }
     json_result(json!({ "carets": carets_json(doc), "document": describe(doc) }))
+}
+
+fn doc_set_line_endings(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    let eol = match text_arg(args, "eol") {
+        Some("lf") => xmlcraft_text::eol::Eol::Lf,
+        Some("crlf") => xmlcraft_text::eol::Eol::CrLf,
+        other => return Err(ToolError::InvalidArgs(format!("eol is lf or crlf, not {other:?}"))),
+    };
+    let changed = doc.editor_mut().convert_line_endings(eol);
+    json_result(json!({ "changed": changed, "document": describe(doc) }))
+}
+
+fn doc_set_indent(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let index = index_of(a, id_arg(args)?)?;
+    let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
+    let tabs = match text_arg(args, "style") {
+        Some("spaces") => false,
+        Some("tabs") => true,
+        other => return Err(ToolError::InvalidArgs(format!("style is spaces or tabs, not {other:?}"))),
+    };
+    let size = match args.get("size") {
+        None => doc.editor().settings().indent_size,
+        Some(v) => v
+            .as_u64()
+            .filter(|n| (1..=16).contains(n))
+            .and_then(|n| usize::try_from(n).ok())
+            .ok_or_else(|| ToolError::InvalidArgs("size is a whole number from 1 to 16".into()))?,
+    };
+    let mut settings = doc.editor().settings().clone();
+    settings.use_tabs = tabs;
+    settings.indent_size = size;
+    doc.editor_mut().set_settings(settings);
+    json_result(json!({ "style": if tabs { "tabs" } else { "spaces" }, "size": size, "document": describe(doc) }))
 }
 
 fn fold_json(range: &FoldRange) -> Value {
