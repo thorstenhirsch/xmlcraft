@@ -14,9 +14,9 @@ Button "More schema actions"
 Button "Find tools and commands"
 Label value="Ready"
 Label value="XmlCraft {version}"
-Label value="Spaces: 2"
-Label value="LF"
-Label value="UTF-8"
+Button "Spaces: 2"
+Button "LF"
+Button "UTF-8"
 Label value="Ln 1, Col 2"
 Button "Toggle Outline" [toggled=true]
 Button "Toggle Entry Helpers" [toggled=true]

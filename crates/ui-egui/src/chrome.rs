@@ -373,6 +373,7 @@ fn rail_button(ui: &mut egui::Ui, icon: &str, pane: &str, open: bool, count: usi
 
 pub fn status_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
+    let mut picked = None;
     egui::Panel::bottom("status_bar")
         .exact_size(STATUS_BAR)
         .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(12, 0)).stroke(Stroke::new(1.0, t.divider)))
@@ -386,14 +387,102 @@ pub fn status_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                     ui.label(egui::RichText::new(format!("{} {}", crate::APP_NAME, crate::VERSION)).font(theme::regular(11.5)).color(t.text_faint));
                     // About the document being shown: where the caret is, and how the file is written.
                     if let Some(doc) = app.session.active_document() {
-                        ui.spacing_mut().item_spacing.x = 14.0;
-                        for part in document_summary(doc).into_iter().rev() {
-                            ui.label(egui::RichText::new(part).font(theme::regular(11.5)).color(t.text_muted));
-                        }
+                        ui.spacing_mut().item_spacing.x = 10.0;
+                        picked = status_parts(ui, doc);
                     }
                 });
             });
         });
+    if let Some(choice) = picked {
+        app.apply_status_choice(choice);
+    }
+}
+
+/// What a click in the status bar chose.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StatusChoice {
+    LineEnding(xmlcraft_text::eol::Eol),
+    Indent { tabs: bool, size: usize },
+    Encoding(xmlcraft_text::encoding::Encoding, bool),
+}
+
+/// A piece of the status bar that can be clicked: its text, with a menu.
+fn status_chip(ui: &mut egui::Ui, text: &str, tip: &str) -> egui::Response {
+    let t = Tokens::get(ui.ctx());
+    let response = ui.add(egui::Button::new(egui::RichText::new(text).font(theme::regular(11.5)).color(t.text_muted)).frame(false));
+    theme::hand(response).on_hover_text(tip)
+}
+
+/// The summary of the document at the right of the status bar: the caret, then the encoding, line ending and indentation, each a menu.
+/// Returns what was chosen in one of them.
+fn status_parts(ui: &mut egui::Ui, doc: &xmlcraft_engine::Document) -> Option<StatusChoice> {
+    use xmlcraft_text::encoding::Encoding;
+    use xmlcraft_text::eol::Eol;
+    let t = Tokens::get(ui.ctx());
+    let parts = document_summary(doc);
+    let settings = doc.editor().settings();
+    let (encoding, bom) = (doc.encoding().encoding, doc.encoding().bom);
+    let mixed = doc.line_endings().is_mixed();
+    let mut chosen = None;
+    // Right to left: the indentation, the line ending, the encoding, the caret.
+    for (i, part) in parts.iter().enumerate().rev() {
+        match i {
+            1 => {
+                let response = status_chip(ui, part, tl!("Encoding the file is written in"));
+                egui::Popup::menu(&response).show(|ui| {
+                    ui.set_min_width(180.0);
+                    let items = [
+                        ("UTF-8", Encoding::UTF_8, false),
+                        ("UTF-8 BOM", Encoding::UTF_8, true),
+                        ("UTF-16 LE BOM", Encoding::UTF_16LE, true),
+                        ("UTF-16 BE BOM", Encoding::UTF_16BE, true),
+                        ("Windows-1252", Encoding::WINDOWS_1252, false),
+                    ];
+                    for (label, enc, with_bom) in items {
+                        let on = encoding == enc && bom == with_bom;
+                        if ui.add(egui::Button::new(label).selected(on)).clicked() {
+                            chosen = Some(StatusChoice::Encoding(enc, with_bom));
+                            ui.close();
+                        }
+                    }
+                });
+            }
+            2 => {
+                let response = status_chip(ui, part, tl!("Line endings: click to convert the file"));
+                egui::Popup::menu(&response).show(|ui| {
+                    ui.set_min_width(180.0);
+                    for (label, eol) in [("LF", Eol::Lf), ("CRLF", Eol::CrLf)] {
+                        let on = !mixed && settings.eol == eol;
+                        if ui.add(egui::Button::new(crate::i18n::fmt(tl!("Convert to {eol}"), &[("eol", label)])).selected(on)).clicked() {
+                            chosen = Some(StatusChoice::LineEnding(eol));
+                            ui.close();
+                        }
+                    }
+                });
+            }
+            3 => {
+                let response = status_chip(ui, part, tl!("Indentation of new lines"));
+                egui::Popup::menu(&response).show(|ui| {
+                    ui.set_min_width(180.0);
+                    for size in [2usize, 4, 8] {
+                        let on = !settings.use_tabs && settings.indent_size == size;
+                        if ui.add(egui::Button::new(crate::i18n::fmt(tl!("Spaces: {n}"), &[("n", &size.to_string())])).selected(on)).clicked() {
+                            chosen = Some(StatusChoice::Indent { tabs: false, size });
+                            ui.close();
+                        }
+                    }
+                    if ui.add(egui::Button::new(tl!("Tabs")).selected(settings.use_tabs)).clicked() {
+                        chosen = Some(StatusChoice::Indent { tabs: true, size: settings.indent_size });
+                        ui.close();
+                    }
+                });
+            }
+            _ => {
+                ui.label(egui::RichText::new(part.as_str()).font(theme::regular(11.5)).color(t.text_muted));
+            }
+        }
+    }
+    chosen
 }
 
 /// What the status bar says about a document, left to right: the caret, the encoding, the line ending and the indentation.

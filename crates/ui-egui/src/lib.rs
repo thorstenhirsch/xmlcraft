@@ -29,6 +29,7 @@ mod pickers;
 mod preferences;
 mod problems;
 mod side_panels;
+mod status_pickers;
 mod structure;
 pub mod theme;
 pub use control::{ControlClient, Reply as ControlReply};
