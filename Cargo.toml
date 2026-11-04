@@ -15,12 +15,12 @@ repository = "https://github.com/thorstenhirsch/xmlcraft"
 # Shared frontend and platform libraries from the public storytold/craft-libs repository. Every
 # craft-* dependency is pinned to the SAME immutable revision (the one PdfCraft builds against), so
 # the shared code is audited once. Move them all together.
-craft-ui = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "edc41f68fa24c46651c3b5117d10f0ead75ec9cb", features = ["serde"] }
-craft-quit = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "edc41f68fa24c46651c3b5117d10f0ead75ec9cb" }
-craft-menu = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "edc41f68fa24c46651c3b5117d10f0ead75ec9cb" }
-craft-atomic = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "edc41f68fa24c46651c3b5117d10f0ead75ec9cb" }
-craft-settings = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "edc41f68fa24c46651c3b5117d10f0ead75ec9cb" }
-craft-window = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "edc41f68fa24c46651c3b5117d10f0ead75ec9cb" }
+craft-ui = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "787a7a0f972fd1d7a7618fdbeca3a5267a0407ff", features = ["serde"] }
+craft-quit = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "787a7a0f972fd1d7a7618fdbeca3a5267a0407ff" }
+craft-menu = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "787a7a0f972fd1d7a7618fdbeca3a5267a0407ff" }
+craft-atomic = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "787a7a0f972fd1d7a7618fdbeca3a5267a0407ff" }
+craft-settings = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "787a7a0f972fd1d7a7618fdbeca3a5267a0407ff" }
+craft-window = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "787a7a0f972fd1d7a7618fdbeca3a5267a0407ff" }
 
 # internal
 xmlcraft-text = { path = "crates/text", version = "0.1.0" }
@@ -104,7 +104,20 @@ incremental = false
 lto = "thin"
 codegen-units = 1
 
-# Vendored, patched third-party crates (see vendor/README.md). Each patch is meant to go upstream.
+# The egui and winit crates are pinned to immutable storytold git revisions, the same ones PdfCraft builds against (egui
+# 6d518fc799681571963842f95b55a6b68431b15a, winit a517b3846ee8457d84ee4975110bfda6797c44dc): the forks carry the input-method,
+# DPI and surface fixes PdfCraft needs and the newer craft-ui uses their IME and right-to-left APIs. `vendor/winit` and
+# `vendor/egui-wgpu` are kept as provenance for the patches XmlCraft carried before (see vendor/README.md); they are not path patches.
 [patch.crates-io]
-winit = { path = "vendor/winit" }
-egui-wgpu = { path = "vendor/egui-wgpu" }
+ecolor = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+emath = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+epaint = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+epaint_default_fonts = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui-winit = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui_glow = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui_extras = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui_kittest = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }

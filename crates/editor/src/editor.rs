@@ -632,6 +632,37 @@ impl Editor {
         })
     }
 
+    /// Delete the text an input method replaces, counted in UTF-8 bytes before and after each caret or selection: only whole characters
+    /// inside the counts go (a character cut by a count stays).
+    pub fn delete_surrounding_bytes(&mut self, before_bytes: usize, after_bytes: usize) -> bool {
+        self.replace_at_carets(EditKind::Other, |this, c| {
+            let buf = &this.buffer;
+            let mut from = c.start();
+            loop {
+                if from == 0 {
+                    break;
+                }
+                let previous = buf.prev_char(from);
+                if previous >= from || c.start().saturating_sub(previous) > before_bytes {
+                    break;
+                }
+                from = previous;
+            }
+            let mut to = c.end();
+            loop {
+                if to >= buf.len() {
+                    break;
+                }
+                let next = buf.next_char(to);
+                if next <= to || next.saturating_sub(c.end()) > after_bytes {
+                    break;
+                }
+                to = next;
+            }
+            (from < to).then(|| Edit::delete(from..to))
+        })
+    }
+
     // --- indentation ---------------------------------------------------------------------------------------------------------
 
     fn indent_unit(&self) -> String {
@@ -996,6 +1027,33 @@ mod tests {
         assert_eq!(e.text(), "", "past the ends: stops at them");
         let mut e = ed("ab", 1);
         assert!(!e.delete_surrounding(0, 0));
+    }
+
+    #[test]
+    fn deleting_around_the_caret_counts_bytes_and_leaves_a_cut_character() {
+        // `é` is two bytes, `日` three.
+        let mut e = ed("aé日b", 6);
+        assert_eq!(e.text().len(), 7);
+        // Before the caret (after `日`, at 6): 3 bytes reach `日` exactly; 2 would cut it, so it stays.
+        e.delete_surrounding_bytes(2, 0);
+        assert_eq!(e.text(), "aé日b", "a character cut by the count stays");
+        e.delete_surrounding_bytes(3, 0);
+        assert_eq!(at(&e), ("aéb".to_owned(), vec![(3, 3)]));
+        // After the caret: `b` is one byte.
+        e.delete_surrounding_bytes(0, 1);
+        assert_eq!(e.text(), "aé");
+        // Both sides, and past the ends: stops at them.
+        let mut e = ed("日本語", 3);
+        e.delete_surrounding_bytes(99, 99);
+        assert_eq!(e.text(), "");
+        // Nothing asked, nothing deleted.
+        let mut e = ed("ab", 1);
+        assert!(!e.delete_surrounding_bytes(0, 0));
+        // A selection counts from its edges, and goes with what is around it (as the input method replaces them together).
+        let mut e = ed("abcdef", 2);
+        e.set_selection(2, 4);
+        e.delete_surrounding_bytes(1, 1);
+        assert_eq!(e.text(), "af");
     }
 
     #[test]

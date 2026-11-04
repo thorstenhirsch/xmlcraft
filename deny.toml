@@ -33,7 +33,12 @@ allow-wildcard-paths = true
 unknown-registry = "deny"
 unknown-git = "deny"
 # Shared UI components; Cargo.toml pins the immutable revision.
-allow-git = ["https://github.com/storytold/craft-libs"]
+allow-git = [
+    "https://github.com/storytold/craft-libs",
+    # The reviewed egui 0.37 and winit 0.30.13 fork revisions (immutable pins in Cargo.toml), the ones PdfCraft builds against.
+    "https://github.com/storytold/egui",
+    "https://github.com/storytold/winit",
+]
 
 [advisories]
 yanked = "warn"

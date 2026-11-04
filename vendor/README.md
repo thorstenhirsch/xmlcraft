@@ -1,5 +1,14 @@
 # Vendored crates
 
+## The window stack is the storytold forks
+
+`winit` and the egui crates (`egui`, `egui-winit`, `egui-wgpu`, `eframe`, `egui_glow`, `egui_extras`, `egui_kittest` and the crates
+under them) come from the storytold forks, pinned in the root `[patch.crates-io]` to immutable revisions: egui
+`6d518fc799681571963842f95b55a6b68431b15a` and winit `a517b3846ee8457d84ee4975110bfda6797c44dc`, the same ones PdfCraft builds against
+(the newer craft-ui uses their IME and right-to-left APIs). The forks carry the patches listed below and more. `vendor/winit` and
+`vendor/egui-wgpu` are no longer path patches; they stay as provenance for what XmlCraft carried before, and the xtask tests
+`the_window_stack_is_patched_in_from_the_pinned_forks` and `the_build_resolves_the_forks_not_crates_io` keep the forks in the build.
+
 Permissively licensed crates we carry small patches for. Each directory keeps the upstream licence files unchanged. The patches
 are the ones PdfCraft carries (each is marked `PdfCraft patch:` or `Port of` in the source) and are copied here unchanged, because
 XmlCraft is a text editor and depends on them: input-method fixes on macOS, Windows, X11 and Wayland, Windows 11 DPI changes, the
@@ -7,8 +16,7 @@ macOS title-bar drag that the tab strip needs, and GPU-surface error handling at
 the vendored copy removed once upstream releases the fix. Vendoring copyleft code is never allowed (AGENTS.md §2).
 
 Keep PdfCraft's copies and these in step: when a patch changes there, bring the change here in its own PR, and say so in the PR.
-The workspace excludes `vendor/` and routes the crates in through `[patch.crates-io]` in the root `Cargo.toml`; the xtask test
-`vendored_crates_are_patched_in` fails if a dependency upgrade makes cargo resolve one of them from crates.io again.
+The workspace excludes `vendor/`.
 
 | Crate | Version | Licence | Patches | Test |
 |---|---|---|---|---|
