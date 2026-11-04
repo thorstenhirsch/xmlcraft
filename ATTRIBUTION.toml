@@ -1935,7 +1935,7 @@ sha256 = "8f19866847075907fdc862e13354d5c81da2f7ba23c9df354514789f6db4c855"
 
 [[asset]]
 path = "assets/icons/cloud-off.svg"
-title = "Lucide icon \"cloud\""
+title = "Lucide icon \"cloud-off\""
 author = "Lucide Contributors (portions Cole Bemis, Feather)"
 source = "https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/cloud-off.svg)"
 licence = "ISC"
