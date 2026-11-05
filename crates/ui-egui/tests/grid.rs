@@ -136,7 +136,9 @@ fn a_row_is_removed_with_delete_and_a_name_is_changed_with_f2() {
     assert_eq!(text(&h), JSON.replace("\"name\"", "\"title\""));
     choose(&mut h, "qty: 2");
     h.key_press(egui::Key::Delete);
-    h.run_steps(3);
+    // The grid is read again from the new text one frame after the edit, and the accessibility tree a frame after that: on a slow runner
+    // three steps were not always enough.
+    h.run_steps(8);
     assert_eq!(text(&h), "{\n  \"title\": \"Tea\",\n  \"tags\": [\"a\", \"b\"]\n}");
     assert!(h.query_by_label_contains("qty").is_none());
 }
