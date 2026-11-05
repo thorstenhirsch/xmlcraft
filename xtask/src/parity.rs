@@ -379,10 +379,10 @@ mod tests {
 
     #[test]
     fn milestones_are_bounded_by_the_roadmap() {
-        for ok in ["M0", "M9", "none"] {
+        for ok in ["M0", "M9", "M10", "none"] {
             assert!(valid_milestone(ok), "{ok}");
         }
-        for bad in ["M10", "m1", "9", "", "M-1", "Mx"] {
+        for bad in ["M11", "m1", "9", "", "M-1", "Mx"] {
             assert!(!valid_milestone(bad), "{bad}");
         }
     }
