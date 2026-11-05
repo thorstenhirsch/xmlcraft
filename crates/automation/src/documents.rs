@@ -666,6 +666,12 @@ pub(crate) fn source(a: &Automation, args: &Value) -> Result<Source> {
                     xmlcraft_bson::to_text(&documents, true).map_err(|e| ToolError::Failed(format!("{}: {}", path.display(), e.message)))?;
                 return Ok(Source { text, language, id: None, lossy: false, path: Some(path) });
             }
+            // A PDF is read as the XML embedded in it, the text it is edited as in the window.
+            if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf")) {
+                let doc = xmlcraft_engine::Document::from_bytes(0, Some(path.clone()), &loaded.bytes, None)
+                    .map_err(|e| ToolError::Failed(format!("{}: {e}", path.display())))?;
+                return Ok(Source { text: doc.editor().text(), language: Language::Xml, id: None, lossy: doc.is_lossy(), path: Some(path) });
+            }
             let decoded = decode(&loaded.bytes, &sniff(&loaded.bytes));
             Ok(Source { text: decoded.text, language, id: None, lossy: decoded.lossy, path: Some(path) })
         }
