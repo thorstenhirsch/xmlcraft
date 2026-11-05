@@ -26,6 +26,7 @@ mod schema;
 mod script;
 mod tools;
 mod validate;
+mod xpath;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod control;
