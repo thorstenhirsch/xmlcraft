@@ -654,7 +654,7 @@ impl XmlCraftApp {
         let matches = self.find.shown_matches(id, version);
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
         if view.styler.set_syntax(match doc.language() {
-            l if l.is_json() => crate::editor_view::Colouring::Json,
+            l if l.is_json_like() => crate::editor_view::Colouring::Json,
             l if l.is_yaml() => crate::editor_view::Colouring::Yaml,
             _ => crate::editor_view::Colouring::Xml,
         }) {
@@ -798,7 +798,7 @@ impl XmlCraftApp {
         }
         let Some(doc) = self.session.document_mut(index) else { return };
         let prep = doc.prepare_save_as(&path);
-        let bytes = match doc.to_bytes() {
+        let bytes = match doc.to_bytes_for(&path) {
             Ok(bytes) => bytes,
             Err(SaveError::Unmappable(error)) => {
                 doc.undo_save_as(prep);
@@ -808,6 +808,12 @@ impl XmlCraftApp {
             Err(SaveError::Lossy) => {
                 doc.undo_save_as(prep);
                 self.dialog = Some(Dialog::Lossy { id, then });
+                return;
+            }
+            Err(SaveError::Invalid(why)) => {
+                doc.undo_save_as(prep);
+                self.quitting = false;
+                self.message(tl!("Couldn't save the file"), why);
                 return;
             }
         };
@@ -864,7 +870,7 @@ impl XmlCraftApp {
             Err(error) => {
                 let (character, line) = match &error {
                     SaveError::Unmappable(e) => (e.ch, doc.editor().buffer().line_of(e.offset) + 1),
-                    SaveError::Lossy => ('\u{FFFD}', 0),
+                    SaveError::Lossy | SaveError::Invalid(_) => ('\u{FFFD}', 0),
                 };
                 self.quitting = false;
                 self.message(
