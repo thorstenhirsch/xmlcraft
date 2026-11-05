@@ -49,6 +49,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("json", Class::Layer(3)),
     // L4 features
     ("validate", Class::Layer(4)),
+    ("diff", Class::Layer(4)),
     ("infer", Class::Layer(4)),
     ("sample", Class::Layer(4)),
     ("format", Class::Layer(4)),

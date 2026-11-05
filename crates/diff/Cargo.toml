@@ -1,0 +1,20 @@
+[package]
+name = "xmlcraft-diff"
+description = "XmlCraft's comparison and merging of XML, JSON and YAML: lines, words, trees, and three-way merges"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-syntax = { workspace = true }
+xmlcraft-json-syntax = { workspace = true }
+xmlcraft-yaml-syntax = { workspace = true }
+rowan = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

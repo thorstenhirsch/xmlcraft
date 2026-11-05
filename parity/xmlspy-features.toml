@@ -1688,11 +1688,11 @@ title = "Compare two files (XML, JSON, YAML; text and tree)"
 area = "J"
 tier = "P1"
 milestone = "M6"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["diff_compare"]
+evidence = ["crates/diff/tests/diff.rs::xml_differences_are_found_by_element_attribute_and_text", "crates/diff/tests/diff.rs::json_and_yaml_differences_are_json_pointers", "crates/diff/tests/diff.rs::lines_are_split_on_all_three_breaks_and_compared", "crates/diff/tests/diff.rs::a_unified_diff_has_hunks_with_context", "crates/diff/src/seq.rs::matches_are_a_longest_common_subsequence", "crates/automation/tests/diff.rs::files_and_open_documents_are_compared_inside_the_root_only"]
+notes = "The `xmlcraft-diff` crate and the `diff_compare` tool compare two documents (open, files inside the root, or text) line by line (with the words that differ in a changed line and a unified diff) or as trees: XML by element, attribute, text, comment and processing instruction, JSON and YAML by object, array and value, each difference with an XPath-like path or a JSON Pointer and its place in both texts. A JSON file can be compared with a YAML file. A text that cannot be read as a tree falls back to lines. Missing: the Compare window with the two texts side by side, moves are shown as a removal and an addition, and detection of a changed key attribute."
 
 [[feature]]
 id = "project.diff-directories"
@@ -2069,11 +2069,11 @@ title = "Three-way compare and merge of XML, JSON and YAML"
 area = "J"
 tier = "P1"
 milestone = "M6"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "The DiffDog feature: base, left, right, keep one side per difference."
+tools = ["diff_merge"]
+evidence = ["crates/diff/tests/diff.rs::three_way_merges_keep_both_sets_of_changes", "crates/diff/tests/diff.rs::the_regions_of_a_merge_say_who_changed_what", "crates/diff/tests/diff.rs::a_merge_with_an_unchanged_side_is_the_other_side", "crates/automation/tests/diff.rs::a_merge_takes_both_changes_and_writes_conflicts_as_asked"]
+notes = "`merge3` and `diff_merge` merge a base and two versions line by line: a change of one version is taken, the same change of both once, different changes to the same lines are conflicts that are written as markers or settled for ours, theirs, both or the base (each conflict can be settled on its own through the regions). Missing: the merge window with keep-left/keep-right per difference, and a merge by tree for XML, JSON and YAML (so that two edits to the same line of different elements do not conflict)."
 
 [[feature]]
 id = "project.diff-ignore-options"
@@ -2081,11 +2081,11 @@ title = "Diff ignore options (whitespace, prefixes, attribute and child order, c
 area = "J"
 tier = "P2"
 milestone = "M6"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["diff_compare"]
+evidence = ["crates/diff/tests/diff.rs::white_space_case_and_blank_lines_can_be_ignored", "crates/diff/tests/diff.rs::white_space_comments_order_and_prefixes_are_options_in_xml", "crates/diff/tests/diff.rs::equal_elements_are_found_wherever_they_are_when_the_order_does_not_matter"]
+notes = "Options for lines (white space exact, at the ends, collapsed or none; case; blank lines) and for trees (the same white space and case for text, comments, processing instructions, the order of the children of an element, numbers by value, namespace prefixes with the namespaces still compared). The order of the members of an object never matters. Missing: ignoring chosen attributes or elements by name, and XML declarations and DOCTYPEs (not part of the tree)."
 
 [[feature]]
 id = "query.xquery-update"
