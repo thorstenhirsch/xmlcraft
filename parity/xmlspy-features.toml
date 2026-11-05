@@ -1510,11 +1510,11 @@ title = "XSLT 1.0, 2.0 and 3.0 transformations"
 area = "H"
 tier = "P1"
 milestone = "M7"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.transform"]
+tools = ["xslt_transform"]
+evidence = ["crates/query/tests/xslt.rs::for_each_and_value_of_make_a_result_tree", "crates/query/tests/xslt.rs::templates_are_applied_to_what_matches", "crates/query/tests/xslt.rs::what_the_engine_does_not_implement_is_an_error_that_says_so_and_a_bad_stylesheet_or_document_is_refused", "crates/automation/tests/xslt.rs::the_stylesheet_a_document_names_is_read_from_beside_it_and_only_inside_the_root", "crates/engine/src/xslt.rs::the_first_xslt_stylesheet_before_the_root_is_the_one_named", "crates/ui-egui/tests/xslt.rs::the_stylesheet_a_document_names_is_applied_and_the_result_opens_as_a_new_document", "crates/ui-egui/tests/xslt.rs::a_stylesheet_that_is_not_one_is_said_in_the_window_which_stays", "crates/engine/src/xslt.rs::a_stylesheet_is_applied_on_a_worker_and_the_outcome_says_which_request_it_is_for"]
+notes = "`xmlcraft_query::transform` applies an XSLT stylesheet to a document on the `xee` engine's XSLT compiler (the published crate, 0.1.6): templates and apply-templates, for-each, value-of and literal result elements work; what the engine does not implement (xsl:variable and much else, as of this version) is an error that says so, and a panic inside it is an error too. The tool `xslt_transform` takes the stylesheet by id, path or text, or the one the document names with `<?xml-stylesheet?>` (read from beside it, inside the root). XML ▸ Transform with XSLT… (F10) applies the stylesheet the document names (`<?xml-stylesheet?>`) or another open document, on a worker thread, and opens the result as a new document (named for what it looks like: -result.html, .xml, .json or .txt); a stylesheet the engine cannot use is said in the window. Missing: most of XSLT 1.0, 2.0 and 3.0 (the engine is vendored and extended for this, see the roadmap), xsl:output serialization, parameters, the XSLT editor, the debugger and the profiler."
 
 [[feature]]
 id = "query.xslt-debugger"

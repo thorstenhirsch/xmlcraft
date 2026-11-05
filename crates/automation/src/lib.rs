@@ -31,6 +31,7 @@ mod tools;
 mod validate;
 mod wsdl;
 mod xpath;
+mod xslt;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod control;

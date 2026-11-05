@@ -62,6 +62,8 @@ pub(crate) enum Dialog {
     Compare(Box<crate::compare_dialog::CompareForm>),
     /// The XPath window (drawn by `xpath_dialog.rs`).
     XPath(Box<crate::xpath_dialog::XPathForm>),
+    /// The Transform window (drawn by `xslt_dialog.rs`).
+    Transform(Box<crate::xslt_dialog::XsltForm>),
     Message {
         title: String,
         text: String,
@@ -102,6 +104,7 @@ impl Dialog {
             | Dialog::Convert(_)
             | Dialog::Compare(_)
             | Dialog::XPath(_)
+            | Dialog::Transform(_)
             | Dialog::RenameElement(_) => false,
         }
     }
@@ -202,6 +205,7 @@ impl XmlCraftApp {
             | Dialog::Convert(_)
             | Dialog::Compare(_)
             | Dialog::XPath(_)
+            | Dialog::Transform(_)
             | Dialog::RenameElement(_) => {
                 Describe { title: String::new(), text: String::new(), buttons: vec![(tl!("Cancel"), Choice::Cancel)], input: false }
             }
@@ -240,6 +244,10 @@ impl XmlCraftApp {
         }
         if matches!(self.dialog, Some(Dialog::XPath(_))) {
             self.show_xpath(ctx);
+            return;
+        }
+        if matches!(self.dialog, Some(Dialog::Transform(_))) {
+            self.show_transform(ctx);
             return;
         }
         if matches!(self.dialog, Some(Dialog::RenameElement(_))) {

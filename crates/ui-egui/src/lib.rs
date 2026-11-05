@@ -39,6 +39,7 @@ pub mod theme;
 pub use control::{ControlClient, Reply as ControlReply};
 mod widgets;
 mod xpath_dialog;
+mod xslt_dialog;
 pub mod zoom;
 
 use std::collections::HashMap;
@@ -152,6 +153,8 @@ pub struct XmlCraftApp {
     comparer: xmlcraft_engine::compare::Comparer,
     /// Evaluates the expressions of the XPath window.
     xpath: xmlcraft_engine::xpath::XPathRunner,
+    /// Applies the stylesheets of the Transform window.
+    xslt: xmlcraft_engine::xslt::XsltRunner,
     /// The expression last typed in the XPath window, put back when it is opened again.
     xpath_last: String,
     /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
@@ -275,6 +278,10 @@ impl XmlCraftApp {
             let repaint = repaint.clone();
             move || repaint.request_repaint()
         });
+        app.xslt.on_done({
+            let repaint = repaint.clone();
+            move || repaint.request_repaint()
+        });
         app.schema_fetcher.on_done({
             let repaint = repaint.clone();
             move || repaint.request_repaint()
@@ -322,6 +329,7 @@ impl XmlCraftApp {
             sample_generator: xmlcraft_engine::generate::SampleGenerator::new(resolvers()),
             comparer: xmlcraft_engine::compare::Comparer::new(),
             xpath: xmlcraft_engine::xpath::XPathRunner::new(),
+            xslt: xmlcraft_engine::xslt::XsltRunner::new(),
             xpath_last: String::new(),
             generate_serial: 0,
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
@@ -453,6 +461,7 @@ impl eframe::App for XmlCraftApp {
         self.pump_generate();
         self.pump_compare();
         self.pump_xpath();
+        self.pump_transform();
         self.pump_schema_fetch();
         for command in self.viewport_commands.drain(..) {
             ctx.send_viewport_cmd(command);
