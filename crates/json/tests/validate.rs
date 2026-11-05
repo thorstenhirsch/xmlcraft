@@ -48,6 +48,48 @@ fn numbers_are_compared_exactly() {
 }
 
 #[test]
+fn equal_numbers_are_equal_however_far_they_are_spelled_out() {
+    let long = "100000000000000000000000000000000000000000"; // 42 digits: not held exactly
+    assert_eq!(check(&format!(r#"{{"enum":[{long}]}}"#), "1e41"), []);
+    assert_eq!(check(&format!(r#"{{"const":{long}}}"#), "1.0E41"), []);
+    assert_eq!(check(r#"{"uniqueItems":true}"#, &format!("[1e41, {long}]")), [("uniqueItems", String::new())]);
+    assert_eq!(check(r#"{"uniqueItems":true}"#, &format!("[1e41, 1e42, {long}0]")), [("uniqueItems", String::new())], "the third is the second");
+    assert_eq!(check(r#"{"uniqueItems":true}"#, "[0, -0, 0.0]"), [("uniqueItems", String::new())]);
+    assert_eq!(check(r#"{"uniqueItems":true}"#, "[0, -0e99999999999]"), [("uniqueItems", String::new())], "minus zero out of range is still zero");
+    assert_eq!(check(r#"{"uniqueItems":true}"#, "[1, 2, 3]"), []);
+}
+
+#[test]
+fn a_false_schema_is_reported_at_the_schema_and_the_cap_does_not_rewrite_what_was_kept() {
+    let many = format!("[{}]", "1,".repeat(2000).trim_end_matches(','));
+    let outcome = SchemaSet::new(read(r#"{"items":false}"#), "", Draft::D2020_12, &NoLoader).validate(&read(&many));
+    assert_eq!(outcome.violations.len(), xmlcraft_json::MAX_VIOLATIONS);
+    assert!(outcome.truncated);
+    assert!(outcome.violations.iter().all(|v| v.keyword == "false" && v.schema == "/items"), "{:?}", outcome.violations.last());
+    // When the cap is reached by one keyword and a false schema comes after, the last kept violation is not touched.
+    let ones = format!("[{}]", "1,".repeat(1500).trim_end_matches(','));
+    let outcome = SchemaSet::new(read(r#"{"items":{"type":"string"},"contains":false}"#), "", Draft::D2020_12, &NoLoader).validate(&read(&ones));
+    assert_eq!(outcome.violations.len(), xmlcraft_json::MAX_VIOLATIONS);
+    assert_eq!(outcome.violations.last().map(|v| (v.keyword, v.schema.as_str())), Some(("type", "/items/type")));
+}
+
+#[test]
+fn a_dynamic_reference_that_lands_in_another_resource_reads_its_relative_references_from_there() {
+    let files = |uri: &str| match uri {
+        "http://b.test/lib" => {
+            Some(r##"{"$id":"http://b.test/lib","$dynamicAnchor":"node","type":"object","properties":{"child":{"$dynamicRef":"#node"}}}"##.to_owned())
+        }
+        "http://a.test/num.json" => Some(r#"{"type":"integer"}"#.to_owned()),
+        "http://b.test/num.json" => Some(r#"{"type":"string"}"#.to_owned()),
+        _ => None,
+    };
+    let root = r##"{"$id":"http://a.test/root","$defs":{"n":{"$dynamicAnchor":"node","properties":{"num":{"$ref":"num.json"}}}},"$ref":"http://b.test/lib"}"##;
+    // The child is checked as the outermost `node` (in a.test/root), so its `num` is an integer from a.test, not a string from b.test.
+    assert!(check_with(root, Draft::D2020_12, r#"{"child":{"num":5}}"#, &files).is_empty());
+    assert_eq!(check_with(root, Draft::D2020_12, r#"{"child":{"num":"x"}}"#, &files).len(), 1);
+}
+
+#[test]
 fn strings_count_characters_not_bytes_and_patterns_search() {
     assert_eq!(check(r#"{"maxLength":2}"#, r#""日本""#), []);
     assert_eq!(check(r#"{"maxLength":2}"#, r#""😀😀😀""#), [("maxLength", String::new())]);
@@ -161,7 +203,7 @@ fn violations_stop_at_the_cap_and_cycles_and_deep_schemas_end() {
     // A deeply nested instance against a recursive schema ends.
     let deep = format!("{}1{}", "[".repeat(2000), "]".repeat(2000));
     let outcome = SchemaSet::new(read(r##"{"items":{"$ref":"#"}}"##), "", Draft::D2020_12, &NoLoader).validate(&read(&deep));
-    let _ = outcome;
+    assert!(outcome.truncated, "the instance is deeper than the schema is followed: the result says it was cut off");
 }
 
 #[test]

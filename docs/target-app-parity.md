@@ -50,7 +50,7 @@ Fetched by `cargo xtask conformance jsonschema --fetch` (MIT licence, never comm
 | 2020-12 | 1298 of 1301 |
 | **All** | **4938 of 4950 (99.76%)** |
 
-The 12 that fail are in `xtask/baselines/jsonschema.txt`: ten refer to the drafts' meta-schemas (not bundled yet) and two need a custom vocabulary. The optional tests (`format`, ECMAScript regular expressions, big numbers) are not run yet.
+The 12 that fail are in `xtask/baselines/jsonschema.txt`: five validate a schema against the meta-schema of its draft and five refer to that meta-schema as a remote document (it is not bundled yet), and two need a custom vocabulary. The optional tests (`format`, ECMAScript regular expressions, big numbers) are not run yet.
 
 ## W3C XML conformance (xmlconf, 23 September 2013)
 

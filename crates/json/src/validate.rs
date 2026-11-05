@@ -142,31 +142,69 @@ fn is_type(value: &Value, wanted: &str, draft: Draft) -> bool {
     }
 }
 
-/// A text that is the same for values that are equal in JSON Schema (numbers by value, objects by sorted members). `false` when the
-/// value is larger than the budget allows: nothing is then said about it.
-fn canonical(value: &Value, out: &mut String, budget: &mut usize) -> bool {
-    if *budget == 0 {
+/// The members of an object once each (the first of a repeated name), by name.
+fn entries(members: &[Member]) -> Vec<(&str, &Value)> {
+    let mut seen = HashSet::new();
+    let mut list: Vec<(&str, &Value)> = members.iter().filter(|m| seen.insert(m.key.as_str())).map(|m| (m.key.as_str(), &m.value)).collect();
+    list.sort_by_key(|(k, _)| *k);
+    list
+}
+
+/// Whether two values are equal in JSON Schema: numbers by value (`1.0` is `1`), objects by their members whatever the order.
+fn equal(a: &Value, b: &Value) -> bool {
+    match (&a.data, &b.data) {
+        (Data::Null, Data::Null) => true,
+        (Data::Bool(x), Data::Bool(y)) => x == y,
+        (Data::String(x), Data::String(y)) => x == y,
+        (Data::Number(x), Data::Number(y)) => match (Num::parse(x), Num::parse(y)) {
+            (Some(x), Some(y)) => x.compare(y) == Some(std::cmp::Ordering::Equal),
+            _ => x == y,
+        },
+        (Data::Array(x), Data::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(p, q)| equal(p, q)),
+        (Data::Object(x), Data::Object(y)) => {
+            let (x, y) = (entries(x), entries(y));
+            x.len() == y.len() && x.iter().zip(&y).all(|((kx, vx), (ky, vy))| kx == ky && equal(vx, vy))
+        }
+        _ => false,
+    }
+}
+
+/// A text that is the same for values that are equal, or nearly: numbers by the `f64` nearest to them, which two equal numbers share
+/// (two values with the same text may still differ: [`equal`] decides). Written straight into `out`; `false` when the value is larger
+/// than the budget (bytes) allows, and then the text is not to be used.
+fn bucket(value: &Value, out: &mut String, budget: &mut usize) -> bool {
+    let cost = 8 + match &value.data {
+        Data::String(s) => s.len(),
+        Data::Number(n) => n.len(),
+        _ => 0,
+    };
+    if *budget < cost {
         return false;
     }
-    *budget -= 1;
+    *budget -= cost;
     match &value.data {
         Data::Null => out.push('n'),
         Data::Bool(b) => out.push(if *b { 't' } else { 'f' }),
         Data::String(s) => {
             out.push('"');
-            out.push_str(&s.replace('\\', "\\\\").replace('"', "\\\""));
+            for c in s.chars() {
+                if matches!(c, '"' | '\\') {
+                    out.push('\\');
+                }
+                out.push(c);
+            }
             out.push('"');
         }
-        Data::Number(n) => match Num::parse(n) {
-            Some(Num::Decimal { mantissa, exponent }) => out.push_str(&format!("#{mantissa}e{exponent}")),
-            Some(Num::Float(f)) if f.is_finite() && f.fract() == 0.0 && f.abs() < 1e15 => out.push_str(&format!("#{}e0", f as i64)),
-            Some(Num::Float(f)) => out.push_str(&format!("#f{}", f.to_bits())),
-            None => out.push_str(&format!("#?{n}")),
-        },
+        Data::Number(n) => {
+            let f = Num::parse(n).map_or(f64::NAN, Num::to_f64);
+            // (Zero and minus zero are one number.)
+            let bits = if f == 0.0 { 0 } else { f.to_bits() };
+            out.push_str(&format!("#{bits:x}"));
+        }
         Data::Array(items) => {
             out.push('[');
             for item in items {
-                if !canonical(item, out, budget) {
+                if !bucket(item, out, budget) {
                     return false;
                 }
                 out.push(',');
@@ -181,7 +219,7 @@ fn canonical(value: &Value, out: &mut String, budget: &mut usize) -> bool {
             out.push('{');
             for (key, member) in entries {
                 out.push_str(&format!("{key:?}:"));
-                if !canonical(member, out, budget) {
+                if !bucket(member, out, budget) {
                     return false;
                 }
                 out.push(',');
@@ -190,13 +228,6 @@ fn canonical(value: &Value, out: &mut String, budget: &mut usize) -> bool {
         }
     }
     true
-}
-
-/// Whether two values are equal in JSON Schema (false for values too large to compare).
-fn same(a: &Value, b: &Value) -> bool {
-    let (mut x, mut y) = (String::new(), String::new());
-    let (mut bx, mut by) = (1_000_000, 1_000_000);
-    canonical(a, &mut x, &mut bx) && canonical(b, &mut y, &mut by) && x == y
 }
 
 impl Run<'_> {
@@ -227,9 +258,12 @@ impl Run<'_> {
                 if *b {
                     return Ann::valid();
                 }
+                let before = self.violations.len();
                 self.fail(ip, sp.trim_end_matches('/'), "false", "No value is allowed here.".to_owned());
-                // (A false schema is a keyword-less failure: the pointer is the schema itself.)
-                if let Some(last) = self.violations.last_mut() {
+                // (A false schema has no keyword: the pointer is the schema itself.)
+                if self.violations.len() > before
+                    && let Some(last) = self.violations.last_mut()
+                {
                     last.schema = sp.to_owned();
                 }
                 return Ann::default();
@@ -275,7 +309,14 @@ impl Run<'_> {
             ann.valid = false;
             return;
         };
-        let place = self.dynamic_target(keyword, &target, place);
+        let redirected = self.dynamic_target(keyword, &target, place.clone());
+        // A dynamic reference may land in another resource: the base is that resource's.
+        let (place, target_base) = if redirected.doc == place.doc && redirected.pointer == place.pointer {
+            (place, target_base)
+        } else {
+            let base = self.base_of(&redirected);
+            (redirected, base)
+        };
         let Some(value) = self.set.docs.get(place.doc).and_then(|d| d.value.pointer(&place.pointer)) else {
             self.fail(ip, sp, keyword, format!("The reference '{reference}' points at nothing."));
             ann.valid = false;
@@ -313,6 +354,26 @@ impl Run<'_> {
         }
         let anchor = self.set.anchors.get(&format!("{resource}#{decoded}"))?;
         Some((anchor.clone(), resource.to_owned()))
+    }
+
+    /// The base URI in force at `place`: that of the closest resource around it, changed by each `$id` between.
+    fn base_of(&self, place: &Place) -> String {
+        let around = self
+            .set
+            .resources
+            .iter()
+            .filter(|(_, at)| {
+                at.doc == place.doc
+                    && (at.pointer.is_empty() || place.pointer == at.pointer || place.pointer.starts_with(&format!("{}/", at.pointer)))
+            })
+            .max_by_key(|(_, at)| at.pointer.len());
+        match around {
+            Some((resource, at)) => {
+                let rest = place.pointer.get(at.pointer.len()..).unwrap_or_default();
+                self.base_inside(at, rest, resource)
+            }
+            None => String::new(),
+        }
     }
 
     /// The base URI in force at `rest` (a pointer) below the resource `at`, which is known as `resource`: each schema on the way down
@@ -393,14 +454,14 @@ impl Run<'_> {
             }
         }
         if let Some(Data::Array(options)) = find(members, "enum").map(|v| &v.data)
-            && !options.iter().any(|o| same(o, inst))
+            && !options.iter().any(|o| equal(o, inst))
         {
             self.fail(ip, sp, "enum", "The value is not one of the allowed values.".to_owned());
             ann.valid = false;
         }
         if draft >= Draft::D06
             && let Some(expected) = find(members, "const")
-            && !same(expected, inst)
+            && !equal(expected, inst)
         {
             self.fail(ip, sp, "const", "The value is not the required constant.".to_owned());
             ann.valid = false;
@@ -613,18 +674,24 @@ impl Run<'_> {
             ann.valid = false;
         }
         if matches!(find(members, "uniqueItems").map(|v| &v.data), Some(Data::Bool(true))) {
-            let mut seen: HashMap<String, usize> = HashMap::new();
-            for (i, item) in items.iter().enumerate() {
+            // Items are grouped by a text that equal items share; within a group they are compared one by one. (An item too large for
+            // a text goes into the group of the empty text: compared with its peers.)
+            let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+            'items: for (i, item) in items.iter().enumerate() {
                 let mut key = String::new();
-                let mut budget = 1_000_000;
-                if !canonical(item, &mut key, &mut budget) {
-                    continue;
+                let mut budget = 4 * 1024 * 1024;
+                if !bucket(item, &mut key, &mut budget) {
+                    key.clear();
                 }
-                if let Some(first) = seen.insert(key, i) {
-                    self.fail(ip, sp, "uniqueItems", format!("Items {first} and {i} are equal; the items must be unique."));
-                    ann.valid = false;
-                    break;
+                let group = groups.entry(key).or_default();
+                for &earlier in group.iter() {
+                    if items.get(earlier).is_some_and(|e| equal(e, item)) {
+                        self.fail(ip, sp, "uniqueItems", format!("Items {earlier} and {i} are equal; the items must be unique."));
+                        ann.valid = false;
+                        break 'items;
+                    }
                 }
+                group.push(i);
             }
         }
         // Positional and general item schemas.

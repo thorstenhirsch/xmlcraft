@@ -18,73 +18,122 @@ fn scheme(uri: &str) -> Option<&str> {
     (first_ok && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))).then_some(scheme)
 }
 
-/// `reference` resolved against `base`. An opaque base (`urn:x`) only takes a fragment or an absolute reference.
-pub(crate) fn join(base: &str, reference: &str) -> String {
-    if scheme(reference).is_some() {
-        return reference.to_owned();
-    }
-    let base_path = without_fragment(base);
-    if reference.is_empty() {
-        return base_path.to_owned();
-    }
-    if reference.starts_with('#') {
-        return format!("{base_path}{reference}");
-    }
-    let Some(base_scheme) = scheme(base_path) else {
-        // A base with no scheme is a path (or nothing): merge as paths do.
-        return merge_path(base_path, reference);
-    };
-    let after_scheme = base_path.get(base_scheme.len() + 1..).unwrap_or_default();
-    if !after_scheme.starts_with('/') {
-        return reference.to_owned(); // opaque: urn:x + y has no meaning
-    }
-    if let Some(rest) = reference.strip_prefix("//") {
-        return format!("{base_scheme}://{rest}");
-    }
-    let authority_end = after_scheme.strip_prefix("//").map(|rest| rest.find('/').map_or(after_scheme.len(), |at| at + 2));
-    let (origin, path) = match authority_end {
-        Some(end) => (format!("{base_scheme}:{}", after_scheme.get(..end).unwrap_or_default()), after_scheme.get(end..).unwrap_or_default()),
-        None => (format!("{base_scheme}:"), after_scheme),
-    };
-    // (A base with a host and no path has the root as its path.)
-    let path = if path.is_empty() && authority_end.is_some() { "/" } else { path };
-    format!("{origin}{}", merge_path(path, reference))
+/// A URI cut into its parts (RFC 3986, section 3).
+struct Parts<'a> {
+    scheme: Option<&'a str>,
+    authority: Option<&'a str>,
+    path: &'a str,
+    query: Option<&'a str>,
+    fragment: Option<&'a str>,
 }
 
-/// `reference` against the path `base` (a reference that starts with `/` replaces the path).
-fn merge_path(base: &str, reference: &str) -> String {
-    let (reference_path, rest) = match reference.find(['?', '#']) {
-        Some(at) => reference.split_at(at),
-        None => (reference, ""),
+fn split(uri: &str) -> Parts<'_> {
+    let (rest, fragment) = match uri.split_once('#') {
+        Some((before, fragment)) => (before, Some(fragment)),
+        None => (uri, None),
     };
-    let merged = if reference_path.starts_with('/') {
-        reference_path.to_owned()
+    let (rest, query) = match rest.split_once('?') {
+        Some((before, query)) => (before, Some(query)),
+        None => (rest, None),
+    };
+    let scheme = scheme(rest);
+    let rest = scheme.map_or(rest, |s| rest.get(s.len() + 1..).unwrap_or_default());
+    let (authority, path) = match rest.strip_prefix("//") {
+        Some(after) => {
+            let end = after.find('/').unwrap_or(after.len());
+            (Some(after.get(..end).unwrap_or_default()), after.get(end..).unwrap_or_default())
+        }
+        None => (None, rest),
+    };
+    Parts { scheme, authority, path, query, fragment }
+}
+
+fn unsplit(parts: &Parts<'_>, path: &str) -> String {
+    let mut out = String::new();
+    if let Some(scheme) = parts.scheme {
+        out.push_str(scheme);
+        out.push(':');
+    }
+    if let Some(authority) = parts.authority {
+        out.push_str("//");
+        out.push_str(authority);
+    }
+    out.push_str(path);
+    if let Some(query) = parts.query {
+        out.push('?');
+        out.push_str(query);
+    }
+    if let Some(fragment) = parts.fragment {
+        out.push('#');
+        out.push_str(fragment);
+    }
+    out
+}
+
+/// `reference` resolved against `base` (RFC 3986, section 5.2). A base that is opaque (`urn:x`) takes only a query or a fragment or an
+/// absolute reference.
+pub(crate) fn join(base: &str, reference: &str) -> String {
+    let r = split(reference);
+    if r.scheme.is_some() {
+        return reference.to_owned();
+    }
+    let b = split(base);
+    let opaque = b.scheme.is_some() && b.authority.is_none() && !b.path.starts_with('/');
+    if opaque {
+        // Only the same document with another query or fragment makes sense against an opaque base.
+        return if r.authority.is_none() && r.path.is_empty() {
+            let target = Parts { scheme: b.scheme, authority: None, path: b.path, query: r.query.or(b.query), fragment: r.fragment };
+            unsplit(&target, b.path)
+        } else {
+            reference.to_owned()
+        };
+    }
+    let (authority, path, query) = if r.authority.is_some() {
+        (r.authority, remove_dots(r.path), r.query)
+    } else if r.path.is_empty() {
+        (b.authority, b.path.to_owned(), r.query.or(b.query))
+    } else if r.path.starts_with('/') {
+        (b.authority, remove_dots(r.path), r.query)
     } else {
-        let dir = base.rfind('/').map_or("", |at| base.get(..=at).unwrap_or_default());
-        format!("{dir}{reference_path}")
+        // (A base with a host and no path has the root as its path.)
+        let base_path = if b.path.is_empty() && b.authority.is_some() { "/" } else { b.path };
+        let dir = base_path.rfind('/').map_or("", |at| base_path.get(..=at).unwrap_or_default());
+        (b.authority, remove_dots(&format!("{dir}{}", r.path)), r.query)
     };
-    let absolute = merged.starts_with('/');
+    let target = Parts { scheme: b.scheme, authority, path: "", query, fragment: r.fragment };
+    unsplit(&target, &path)
+}
+
+/// `.` and `..` segments taken out of a path. A relative path keeps the `..` that go above where it starts; an absolute one cannot
+/// climb above its root.
+fn remove_dots(path: &str) -> String {
+    let absolute = path.starts_with('/');
+    let segments: Vec<&str> = path.split('/').collect();
     let mut out: Vec<&str> = Vec::new();
-    let segments: Vec<&str> = merged.split('/').collect();
     for (i, segment) in segments.iter().enumerate() {
+        let last = i + 1 == segments.len();
         match *segment {
-            "." => {}
+            "." => {
+                if last {
+                    out.push("");
+                }
+            }
             ".." => {
-                if out.last().is_some_and(|last| !last.is_empty() || out.len() > 1) {
+                let can_pop = out.last().is_some_and(|l| *l != ".." && !(absolute && out.len() == 1 && l.is_empty()));
+                if can_pop {
                     out.pop();
+                } else if !absolute {
+                    out.push("..");
+                }
+                if last {
+                    out.push("");
                 }
             }
             other => out.push(other),
         }
-        if i + 1 == segments.len() && matches!(*segment, "." | "..") {
-            out.push("");
-        }
     }
-    let mut path = out.join("/");
-    if absolute && !path.starts_with('/') {
-        path.insert(0, '/');
-    }
-    format!("{path}{rest}")
+    let joined = out.join("/");
+    if absolute && !joined.starts_with('/') { format!("/{joined}") } else { joined }
 }
 
 /// The bytes of `text` with `%XX` escapes decoded (a bad escape stays as it is); invalid UTF-8 gives none.
@@ -155,6 +204,15 @@ mod tests {
         assert_eq!(j("dir/x.json", "y.json"), "dir/y.json");
         assert_eq!(j("file:///d/x.json", "y/z.json"), "file:///d/y/z.json");
         assert_eq!(j("http://x.test/a/b", "./c/./d/.."), "http://x.test/a/c/");
+        assert_eq!(j("http://x.test/a/b?x=1", "?y=2"), "http://x.test/a/b?y=2", "a query alone keeps the path");
+        assert_eq!(j("http://x.test/a/b?x=1", ""), "http://x.test/a/b?x=1");
+        assert_eq!(j("http://x.test?q=1", "c"), "http://x.test/c", "a query right after the host is not part of the host");
+        assert_eq!(j("http://x.test?q=1#f", "#g"), "http://x.test?q=1#g");
+        assert_eq!(j("http://x.test/a/b?x=1#f", "c?z"), "http://x.test/a/c?z");
+        assert_eq!(j("urn:uuid:1?q", "?r#s"), "urn:uuid:1?r#s");
+        assert_eq!(j("urn:uuid:1?q", "#s"), "urn:uuid:1?q#s", "a fragment keeps the query of an opaque base");
+        assert_eq!(j("a/b/c.json", "../../../d.json"), "../d.json", "a relative base keeps what climbs out of it");
+        assert_eq!(j("", "../d.json"), "../d.json");
     }
 
     #[test]

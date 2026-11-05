@@ -21,8 +21,28 @@ pub(crate) enum Num {
 }
 
 impl Num {
-    /// A number as the reader wrote it (`-1.5e3`, and JSON5's `+1`, `.5`, `0x1F`, `Infinity`, `NaN`).
+    /// A number as the reader wrote it (`-1.5e3`, and JSON5's `+1`, `.5`, `0x1F`, `Infinity`, `NaN`). One that has too many digits, or
+    /// an exponent too far from zero to line up with another, is a float.
     pub(crate) fn parse(text: &str) -> Option<Num> {
+        Self::exact(text).or_else(|| Self::float(text))
+    }
+
+    fn float(text: &str) -> Option<Num> {
+        let (negative, body) = match text.as_bytes().first()? {
+            b'-' => (true, text.get(1..)?),
+            b'+' => (false, text.get(1..)?),
+            _ => (false, text),
+        };
+        if let Some(hex) = body.strip_prefix("0x").or_else(|| body.strip_prefix("0X")) {
+            let digits: Option<Vec<u32>> = hex.chars().map(|c| c.to_digit(16)).collect();
+            let digits = digits.filter(|d| !d.is_empty())?;
+            let value = digits.iter().fold(0f64, |acc, d| acc * 16.0 + f64::from(*d));
+            return Some(Num::Float(if negative { -value } else { value }));
+        }
+        text.parse::<f64>().ok().or_else(|| float_word(text)).map(Num::Float)
+    }
+
+    fn exact(text: &str) -> Option<Num> {
         let (negative, body) = match text.as_bytes().first()? {
             b'-' => (true, text.get(1..)?),
             b'+' => (false, text.get(1..)?),
@@ -30,7 +50,7 @@ impl Num {
         };
         if let Some(hex) = body.strip_prefix("0x").or_else(|| body.strip_prefix("0X")) {
             let value = u128::from_str_radix(hex, 16).ok().and_then(|v| i128::try_from(v).ok())?;
-            return Some(Num::decimal(if negative { -value } else { value }, 0));
+            return Num::decimal(if negative { -value } else { value }, 0);
         }
         let (mantissa_text, exponent_text) = match body.find(['e', 'E']) {
             Some(at) => (body.get(..at)?, body.get(at + 1..)?),
@@ -38,28 +58,29 @@ impl Num {
         };
         let (int, frac) = mantissa_text.split_once('.').unwrap_or((mantissa_text, ""));
         let digits: String = int.chars().chain(frac.chars()).collect();
-        let well_formed = !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit());
-        let exponent = exponent_text.parse::<i32>().ok();
-        let trimmed = digits.trim_start_matches('0');
-        match (well_formed, exponent) {
-            (true, Some(exponent)) if trimmed.len() <= MAX_DIGITS => {
-                let value: i128 = if trimmed.is_empty() { 0 } else { trimmed.parse().ok()? };
-                let scale = i32::try_from(frac.len()).ok()?;
-                Some(Num::decimal(if negative { -value } else { value }, exponent.checked_sub(scale)?))
-            }
-            _ => text.parse::<f64>().ok().or_else(|| float_word(text)).map(Num::Float),
+        if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
         }
+        let exponent = exponent_text.parse::<i32>().ok()?;
+        let trimmed = digits.trim_start_matches('0');
+        if trimmed.len() > MAX_DIGITS {
+            return None;
+        }
+        let value: i128 = if trimmed.is_empty() { 0 } else { trimmed.parse().ok()? };
+        let scale = i32::try_from(frac.len()).ok()?;
+        Num::decimal(if negative { -value } else { value }, exponent.checked_sub(scale)?)
     }
 
-    fn decimal(mut mantissa: i128, mut exponent: i32) -> Num {
+    /// The decimal `mantissa × 10^exponent`, normalised; none when the exponent does not fit once the trailing zeros are counted in.
+    fn decimal(mut mantissa: i128, mut exponent: i32) -> Option<Num> {
         if mantissa == 0 {
-            return Num::Decimal { mantissa: 0, exponent: 0 };
+            return Some(Num::Decimal { mantissa: 0, exponent: 0 });
         }
         while mantissa % 10 == 0 {
             mantissa /= 10;
-            exponent = exponent.saturating_add(1);
+            exponent = exponent.checked_add(1)?;
         }
-        Num::Decimal { mantissa, exponent }
+        Some(Num::Decimal { mantissa, exponent })
     }
 
     pub(crate) fn to_f64(self) -> f64 {
@@ -170,6 +191,26 @@ mod tests {
         assert!(!n("1e308").is_multiple_of(n("0.123456789")), "a quotient out of range is no multiple");
         assert!(!n("1").is_multiple_of(n("0")));
         assert!(n("0").is_multiple_of(n("7")));
+    }
+
+    #[test]
+    fn numbers_that_do_not_line_up_exactly_are_floats_not_nothing() {
+        for text in [
+            "0x1FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+            "-0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+            "1e2147483647",
+            "10e2147483647",
+            "0.5e-2147483648",
+            "1.5e-2147483647",
+        ] {
+            assert!(Num::parse(text).is_some(), "{text}");
+        }
+        assert!(matches!(Num::parse("0x1FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"), Some(Num::Float(f)) if f > 1e48));
+        assert!(
+            matches!(Num::parse("10e2147483647"), Some(Num::Float(_))),
+            "the trailing zero would push the exponent out of range: not an exact number"
+        );
+        assert!(Num::parse("0x").is_none() && Num::parse("0xZ").is_none());
     }
 
     #[test]

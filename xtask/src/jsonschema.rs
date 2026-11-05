@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::path::Path;
+use std::path::{Component, Path};
 
 use anyhow::{Context, Result, bail};
 use xmlcraft_json::{Draft, SchemaSet};
@@ -51,16 +51,16 @@ pub fn run(fetch: bool, write: bool, verbose: bool) -> Result<()> {
     }
     let remotes = suite.join("remotes");
     let loader = |uri: &str| -> Option<String> {
-        let relative = uri.strip_prefix(REMOTE_BASE)?;
-        if relative.contains("..") {
+        let relative = Path::new(uri.strip_prefix(REMOTE_BASE)?);
+        // Only names below the folder: no root, no drive, no `..`.
+        if !relative.components().all(|c| matches!(c, Component::Normal(_))) {
             return None;
         }
         fs::read(remotes.join(relative)).ok().map(|b| String::from_utf8_lossy(&b).into_owned())
     };
 
     // A panic is a failure like any other, listed in the baseline, not a reason to stop (and not noise).
-    let previous_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
+    let _quiet = QuietPanics::new();
     let mut tallies: BTreeMap<&str, Tally> = BTreeMap::new();
     let mut failed: BTreeSet<String> = BTreeSet::new();
     let mut details: BTreeMap<String, String> = BTreeMap::new();
@@ -106,7 +106,6 @@ pub fn run(fetch: bool, write: bool, verbose: bool) -> Result<()> {
             }
         }
     }
-    std::panic::set_hook(previous_hook);
 
     println!("jsonschema (JSON Schema Test Suite 1.039, required tests):");
     for (folder, _) in DRAFTS {
@@ -141,6 +140,27 @@ pub fn run(fetch: bool, write: bool, verbose: bool) -> Result<()> {
     }
     println!("  baseline holds: {} known failures", baseline.len());
     Ok(())
+}
+
+/// Panics are silent while this lives and the hook is back when it ends, however the run ends.
+type Hook = Box<dyn Fn(&std::panic::PanicHookInfo<'_>) + Sync + Send + 'static>;
+
+struct QuietPanics(Option<Hook>);
+
+impl QuietPanics {
+    fn new() -> Self {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        Self(Some(previous))
+    }
+}
+
+impl Drop for QuietPanics {
+    fn drop(&mut self) {
+        if let Some(previous) = self.0.take() {
+            std::panic::set_hook(previous);
+        }
+    }
 }
 
 fn verdict(valid: bool) -> &'static str {
