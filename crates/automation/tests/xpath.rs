@@ -65,3 +65,24 @@ fn files_are_read_inside_the_root_only_and_only_xml() {
     let e = eval(&mut a, json!({ "path": "d.json", "expression": "/" })).expect_err("not xml");
     assert!(e.to_string().contains("not XML"), "{e}");
 }
+
+#[test]
+fn nodes_that_cannot_be_placed_say_so_and_the_listing_has_a_total_budget() {
+    let mut a = Automation::new();
+    let deep = format!("{}{}", (1..=300).map(|d| format!("<e d=\"{d}\">")).collect::<String>(), "</e>".repeat(300));
+    let r = eval(&mut a, json!({ "text": deep, "expression": "//e[@d='290']" })).expect("runs");
+    assert_eq!((r["items"][0]["unmapped"].as_bool(), r["items"][0]["line"].as_u64()), (Some(true), None), "{r}");
+    let shallow = eval(&mut a, json!({ "text": deep, "expression": "//e[@d='2']" })).expect("runs");
+    assert!(shallow["items"][0].get("unmapped").is_none() && shallow["items"][0]["line"].as_u64() == Some(1));
+    // Thousands of long items are listed only up to the budget.
+    let big = format!("<r>{}</r>", "<i>0123456789</i>".repeat(500_000));
+    let r = eval(&mut a, json!({ "text": big, "expression": "/r/i", "max_items": 1000 })).expect("runs");
+    assert_eq!((r["count"].as_u64(), r["items"].as_array().map(Vec::len)), (Some(500_000), Some(1000)), "a thousand short items fit");
+    let long = format!("<r>{}</r>", "<i>0123456789</i>".repeat(1000));
+    let r = eval(&mut a, json!({ "text": long, "expression": "for $i in 1 to 1000 return /r" , "max_items": 1000 })).expect("runs");
+    assert!(
+        r["truncated"].as_bool() == Some(true) && r["items"].as_array().map_or(0, Vec::len) < 1000,
+        "{}",
+        r["items"].as_array().map_or(0, Vec::len)
+    );
+}

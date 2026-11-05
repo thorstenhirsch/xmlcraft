@@ -143,3 +143,58 @@ fn attributes_are_found_by_their_number_and_cdata_at_the_end_of_a_text_is_part_o
     let text = evaluate(only, "/e/text()", &Options::default()).expect("runs").items.remove(0);
     assert_eq!(&only[text.span.expect("a place")], "<![CDATA[z]]>");
 }
+
+#[test]
+fn namespace_declarations_are_not_counted_among_the_attributes() {
+    let doc = "<e xmlns:p=\"urn:p\" xmlns=\"urn:d\" a=\"1\" p:b=\"2\" c=\"3\"/>";
+    let o = Options { namespaces: vec![("p".into(), "urn:p".into()), ("d".into(), "urn:d".into())], ..Options::default() };
+    let attributes = evaluate(doc, "/d:e/@*", &o).expect("runs");
+    let places: Vec<&str> = attributes.items.iter().map(|i| &doc[i.span.clone().expect("a place")]).collect();
+    assert_eq!(places, ["a=\"1\"", "p:b=\"2\"", "c=\"3\""]);
+    let c = evaluate(doc, "/d:e/@c", &o).expect("runs");
+    assert_eq!(&doc[c.items[0].span.clone().expect("a place")], "c=\"3\"");
+}
+
+#[test]
+fn the_document_is_the_whole_text_and_the_namespace_axis_is_refused() {
+    let doc = "<e xmlns:p=\"urn:p\" xmlns=\"urn:d\"/>";
+    let o = Options { namespaces: vec![("d".into(), "urn:d".into())], ..Options::default() };
+    let document = evaluate(doc, "/", &o).expect("runs");
+    assert_eq!(document.items[0].span, Some(0..doc.len()));
+    assert!(!document.items[0].unmapped);
+    // The engine has no namespace axis, so there are no namespace nodes to list.
+    let e = evaluate(doc, "/d:e/namespace::p", &o).expect_err("not supported");
+    assert_eq!((e.phase, e.code.as_str()), (Phase::Compile, "XPST0010"));
+}
+
+#[test]
+fn nodes_too_deep_to_map_say_so_and_the_total_text_is_bounded() {
+    let deep = format!("{}{}", (1..=300).map(|d| format!("<e d=\"{d}\">")).collect::<String>(), "</e>".repeat(300));
+    let shallow = evaluate(&deep, "//e[@d='3']", &Options::default()).expect("runs").items.remove(0);
+    assert!(shallow.span.is_some() && !shallow.unmapped);
+    // The map goes 256 elements down below the root: the 257th element has a place, the 258th has none.
+    let last = evaluate(&deep, "//e[@d='257']", &Options::default()).expect("runs").items.remove(0);
+    assert!(last.span.is_some() && !last.unmapped, "{last:?}");
+    let first_unmapped = evaluate(&deep, "//e[@d='258']", &Options::default()).expect("runs").items.remove(0);
+    assert!(first_unmapped.span.is_none() && first_unmapped.unmapped, "{first_unmapped:?}");
+    let unmapped = evaluate(&deep, "//e[@d='290']", &Options::default()).expect("runs").items.remove(0);
+    assert!(unmapped.span.is_none() && unmapped.unmapped, "{unmapped:?}");
+    let o = Options { max_total_text: 100, ..Options::default() };
+    let r = evaluate(&format!("<r>{}</r>", "<i>0123456789</i>".repeat(100)), "/r/i", &o).expect("runs");
+    assert_eq!(r.count, 100);
+    assert!(r.items.len() < 100 && r.items.iter().map(|i| i.text.chars().count()).sum::<usize>() < 100 + 20, "{} items", r.items.len());
+}
+
+#[test]
+fn errors_say_what_is_wrong_and_functions_are_written_as_xpath() {
+    let e = evaluate(DOC, "//i[", &Options::default()).expect_err("syntax");
+    assert_eq!(e.code, "XPST0003");
+    assert!(e.message != e.code && !e.message.is_empty(), "{e:?}");
+    let e = evaluate(DOC, "1 div 0", &Options::default()).expect_err("run");
+    assert!(e.message != e.code && e.message.to_lowercase().contains("divi"), "{e:?}");
+    let map = run("map{'a': 1}").items.remove(0);
+    assert!(map.text.starts_with("map") && map.text.contains("\"a\": 1") && !map.text.contains("Map("), "{}", map.text);
+    let array = run("[1, 2]").items.remove(0);
+    assert!(array.text.starts_with('[') && !array.text.contains("Array"), "{}", array.text);
+    assert_eq!(run("fn:upper-case#1").items[0].kind, "function");
+}

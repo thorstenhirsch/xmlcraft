@@ -14,7 +14,7 @@ mod source_map;
 
 use std::ops::Range;
 
-use xee_xpath::context::StaticContextBuilder;
+use xee_xpath::context::{DynamicContext, StaticContext, StaticContextBuilder};
 use xee_xpath::{Documents, Item, Queries, Query};
 use xot::{Value as XotValue, Xot};
 
@@ -29,11 +29,13 @@ pub struct Options {
     pub max_items: usize,
     /// The most characters of the text of one item.
     pub max_text: usize,
+    /// The most characters of text in all the items listed: once it is passed no more items are listed (they are still counted).
+    pub max_total_text: usize,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Self { namespaces: Vec::new(), max_items: 10_000, max_text: 100_000 }
+        Self { namespaces: Vec::new(), max_items: 10_000, max_text: 100_000, max_total_text: 4_000_000 }
     }
 }
 
@@ -81,6 +83,9 @@ pub struct ResultItem {
     pub span: Option<Range<usize>>,
     /// The value: for a node its XML (an attribute `n="1"`, text its characters), for a value its XPath representation.
     pub text: String,
+    /// A node whose place in the text is not known (its elements are nested deeper than the map goes, or the text is not
+    /// well-formed enough).
+    pub unmapped: bool,
     /// `text` was cut at `Options::max_text` characters.
     pub cut: bool,
 }
@@ -91,6 +96,12 @@ pub struct Evaluated {
     pub items: Vec<ResultItem>,
     /// How many items the result has (more than `items.len()` when it was cut at `Options::max_items`).
     pub count: usize,
+}
+
+fn error_of(phase: Phase, e: &xee_xpath::error::Error) -> QueryError {
+    let code = e.error.code();
+    let message = e.error.message();
+    QueryError { phase, message: if message.is_empty() { code.clone() } else { message.to_owned() }, code, span: span_of(e.span) }
 }
 
 fn span_of(span: Option<xee_xpath::error::SourceSpan>) -> Option<Range<usize>> {
@@ -113,32 +124,29 @@ pub fn evaluate(xml: &str, expression: &str, options: &Options) -> Result<Evalua
         builder.add_namespace(prefix, uri);
     }
     let queries = Queries::new(builder);
-    let query = queries.sequence(expression).map_err(|e| QueryError {
-        phase: Phase::Compile,
-        code: e.error.to_string(),
-        message: e.error.to_string(),
-        span: span_of(e.span),
-    })?;
-    let sequence = query.execute(&mut documents, document).map_err(|e| QueryError {
-        phase: Phase::Run,
-        code: e.error.to_string(),
-        message: e.error.to_string(),
-        span: span_of(e.span),
-    })?;
+    let query = queries.sequence(expression).map_err(|e| error_of(Phase::Compile, &e))?;
+    let sequence = query.execute(&mut documents, document).map_err(|e| error_of(Phase::Run, &e))?;
     let map = SourceMap::of(xml);
     let xot = documents.xot();
+    // (A context to write maps, arrays and functions with: the engine's writer wants one.)
+    let program = xee_xpath_compiler::parse(StaticContext::default(), "()").ok();
+    let builder = program.as_ref().map(|p| p.dynamic_context_builder());
+    let display = builder.as_ref().map(|b| b.build());
     let mut items = Vec::new();
     let mut count = 0;
+    let mut total = 0usize;
     for item in sequence.iter() {
         count += 1;
-        if items.len() < options.max_items {
-            items.push(describe(&item, xot, &map, options, xml));
+        if items.len() < options.max_items && total < options.max_total_text {
+            let described = describe(&item, xot, &map, options, xml, display.as_ref());
+            total = total.saturating_add(described.text.chars().count());
+            items.push(described);
         }
     }
     Ok(Evaluated { items, count })
 }
 
-fn describe(item: &Item, xot: &Xot, map: &SourceMap, options: &Options, source: &str) -> ResultItem {
+fn describe(item: &Item, xot: &Xot, map: &SourceMap, options: &Options, source: &str, display: Option<&DynamicContext>) -> ResultItem {
     let (kind, name, path, span, text) = match item {
         Item::Node(node) => {
             let (kind, name) = match xot.value(*node) {
@@ -169,11 +177,16 @@ fn describe(item: &Item, xot: &Xot, map: &SourceMap, options: &Options, source: 
                 xee_xpath::function::Function::Array(_) => "array",
                 _ => "function",
             };
-            (kind.to_owned(), String::new(), None, None, format!("{f:?}"))
+            let text = match display {
+                Some(context) => item.display_representation(xot, context).unwrap_or_else(|_| kind.to_owned()),
+                None => kind.to_owned(),
+            };
+            (kind.to_owned(), String::new(), None, None, text)
         }
     };
     let (text, cut) = cut(text, options.max_text);
-    ResultItem { kind, name, path, span, text, cut }
+    let unmapped = path.is_some() && span.is_none();
+    ResultItem { kind, name, path, span, unmapped, text, cut }
 }
 
 /// `xml` with its DOCTYPE declaration (and the internal subset) replaced by spaces of the same length.
@@ -224,6 +237,7 @@ fn path_of(xot: &Xot, node: xot::Node) -> String {
         let step = match xot.value(n) {
             XotValue::Document => break,
             XotValue::Attribute(a) => format!("@{}", qualified(xot, a.name())),
+            // (The engine has no namespace axis, so a namespace node does not occur in a result.)
             XotValue::Namespace(_) => "namespace::*".to_owned(),
             _ => {
                 let sort = sort_of(xot, n);

@@ -88,6 +88,9 @@ fn xpath_eval(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
                     if let Some(path) = &i.path {
                         item.insert("path".into(), json!(path));
                     }
+                    if i.unmapped {
+                        item.insert("unmapped".into(), json!(true));
+                    }
                     if let Some(span) = &i.span {
                         let (line, column) = position_json(&buffer, span.start.min(buffer.len()));
                         item.insert("line".into(), json!(line));

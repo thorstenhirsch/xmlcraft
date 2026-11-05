@@ -22,6 +22,8 @@ impl SourceMap {
         let parsed = parse(text);
         let root = parsed.syntax();
         let mut map = SourceMap::default();
+        // The document node is the whole text.
+        map.places.insert(String::new(), 0..text.len());
         let mut index = 0;
         for child in root.children() {
             if matches!(child.kind(), SyntaxKind::Element | SyntaxKind::Comment | SyntaxKind::ProcessingInstruction) {
@@ -43,12 +45,14 @@ impl SourceMap {
     }
 
     fn element(&mut self, element: &SyntaxNode, key: &str, depth: usize) {
-        self.places.insert(key.to_owned(), range(element));
         if depth > MAX_DEPTH {
             return;
         }
+        self.places.insert(key.to_owned(), range(element));
         if let Some(tag) = element.children().find(|n| n.kind() == SyntaxKind::StartTag) {
-            for (i, attribute) in tag.children().filter(|a| a.kind() == SyntaxKind::Attribute).enumerate() {
+            // (Namespace declarations are not attributes in the data model, so they are not counted.)
+            let attributes = tag.children().filter(|a| a.kind() == SyntaxKind::Attribute).filter(|a| !is_declaration(a));
+            for (i, attribute) in attributes.enumerate() {
                 self.places.insert(format!("{key}/@{i}"), range(&attribute));
             }
         }
@@ -94,6 +98,12 @@ impl SourceMap {
         }
         close(self, &mut in_text, &mut index);
     }
+}
+
+/// Whether an attribute is a namespace declaration (`xmlns` or `xmlns:p`).
+fn is_declaration(attribute: &SyntaxNode) -> bool {
+    let name = attribute.children_with_tokens().filter_map(|c| c.into_token()).find(|t| t.kind() == SyntaxKind::Name);
+    name.is_some_and(|t| t.text() == "xmlns" || t.text().starts_with("xmlns:"))
 }
 
 fn range(n: &SyntaxNode) -> Range<usize> {

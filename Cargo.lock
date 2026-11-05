@@ -6694,6 +6694,7 @@ dependencies = [
  "proptest",
  "rowan",
  "xee-xpath",
+ "xee-xpath-compiler",
  "xmlcraft-syntax",
  "xot",
 ]
