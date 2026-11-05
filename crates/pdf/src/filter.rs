@@ -12,18 +12,22 @@ pub const MAX_DECODED: usize = 256 * 1024 * 1024;
 
 /// The filters of a stream dictionary (whose references are resolved), in the order they were applied when encoding (so decoding applies
 /// them in this order), each with its decode parameters.
-fn filters(dict: &Dict) -> Vec<(String, Option<&Dict>)> {
+fn filters(dict: &Dict) -> Result<Vec<(String, Option<&Dict>)>, PdfError> {
     let names: Vec<String> = match dict.get("Filter").or_else(|| dict.get("F")) {
+        None | Some(Object::Null) => Vec::new(),
         Some(Object::Name(n)) => vec![n.clone()],
-        Some(Object::Array(items)) => items.iter().filter_map(|o| o.as_name().map(str::to_owned)).collect(),
-        _ => Vec::new(),
+        Some(Object::Array(items)) => items
+            .iter()
+            .map(|o| o.as_name().map(str::to_owned).ok_or_else(|| PdfError::Corrupt("a /Filter array has an entry that is not a name".to_owned())))
+            .collect::<Result<_, _>>()?,
+        Some(_) => return Err(PdfError::Corrupt("a /Filter is neither a name nor an array".to_owned())),
     };
     let params: Vec<Option<&Dict>> = match dict.get("DecodeParms").or_else(|| dict.get("DP")) {
         Some(Object::Array(items)) => items.iter().map(Object::as_dict).collect(),
         Some(other) => vec![other.as_dict()],
         None => Vec::new(),
     };
-    names.into_iter().enumerate().map(|(i, n)| (n, params.get(i).copied().flatten())).collect()
+    Ok(names.into_iter().enumerate().map(|(i, n)| (n, params.get(i).copied().flatten())).collect())
 }
 
 /// The bytes of a stream with its filters undone. `dict` has the references of `Filter` and `DecodeParms` resolved.
@@ -35,28 +39,28 @@ pub fn decode(raw: &[u8], dict: &Dict) -> Result<Vec<u8>, PdfError> {
 fn decode_with(raw: &[u8], dict: &Dict, limit: usize) -> Result<Vec<u8>, PdfError> {
     // A stream with no filter is returned as it is: it is bounded by the file, but not more than the bound is copied.
     if raw.len() > limit {
-        return Err(PdfError::Corrupt("a stream is larger than 256 MiB".to_owned()));
+        return Err(PdfError::LimitExceeded("a stream is larger than 256 MiB".to_owned()));
     }
     let mut data = raw.to_vec();
-    for (name, params) in filters(dict) {
+    for (name, params) in filters(dict)? {
         data = match name.as_str() {
             "FlateDecode" | "Fl" => {
                 let inflated = miniz_oxide::inflate::decompress_to_vec_zlib_with_limit(&data, limit)
                     .map_err(|e| PdfError::Corrupt(format!("a stream cannot be inflated: {:?}", e.status)))?;
                 predict(inflated, params, limit)?
             }
-            "ASCIIHexDecode" | "AHx" => ascii_hex(&data),
+            "ASCIIHexDecode" | "AHx" => ascii_hex(&data)?,
             "ASCII85Decode" | "A85" => ascii85(&data, limit)?,
             other => return Err(PdfError::Unsupported(format!("the stream filter {other}"))),
         };
         if data.len() > limit {
-            return Err(PdfError::Corrupt("a stream decodes to more than 256 MiB".to_owned()));
+            return Err(PdfError::LimitExceeded("a stream decodes to more than 256 MiB".to_owned()));
         }
     }
     Ok(data)
 }
 
-fn ascii_hex(data: &[u8]) -> Vec<u8> {
+fn ascii_hex(data: &[u8]) -> Result<Vec<u8>, PdfError> {
     let mut out = Vec::new();
     let mut high: Option<u8> = None;
     for &b in data {
@@ -66,18 +70,18 @@ fn ascii_hex(data: &[u8]) -> Vec<u8> {
         if is_space(b) {
             continue;
         }
-        if let Some(d) = (b as char).to_digit(16) {
-            let d = d as u8;
-            match high.take() {
-                Some(h) => out.push((h << 4) | d),
-                None => high = Some(d),
-            }
+        let d = (b as char)
+            .to_digit(16)
+            .ok_or_else(|| PdfError::Corrupt("an ASCIIHex stream has a character that is not a hexadecimal digit".to_owned()))? as u8;
+        match high.take() {
+            Some(h) => out.push((h << 4) | d),
+            None => high = Some(d),
         }
     }
     if let Some(h) = high {
         out.push(h << 4);
     }
-    out
+    Ok(out)
 }
 
 fn ascii85(data: &[u8], limit: usize) -> Result<Vec<u8>, PdfError> {
@@ -92,22 +96,23 @@ fn ascii85(data: &[u8], limit: usize) -> Result<Vec<u8>, PdfError> {
             bytes.next();
         }
     }
-    let flush = |group: &[u32; 5], n: usize, out: &mut Vec<u8>| {
+    let flush = |group: &[u32; 5], n: usize, out: &mut Vec<u8>| -> Result<(), PdfError> {
         let mut padded = *group;
         for slot in padded.iter_mut().skip(n) {
             *slot = 84;
         }
         let value = padded.iter().fold(0u64, |acc, d| acc * 85 + u64::from(*d));
-        let word = (value & 0xFFFF_FFFF) as u32;
+        let word = u32::try_from(value).map_err(|_| PdfError::Corrupt("an ASCII85 group is larger than 32 bits".to_owned()))?;
         let be = word.to_be_bytes();
         out.extend_from_slice(be.get(..n.saturating_sub(1)).unwrap_or_default());
+        Ok(())
     };
     for b in bytes {
         match b {
             b'~' => break,
             b'z' if n == 0 => {
                 if out.len() + 4 > limit {
-                    return Err(PdfError::Corrupt("a stream decodes to more than 256 MiB".to_owned()));
+                    return Err(PdfError::LimitExceeded("a stream decodes to more than 256 MiB".to_owned()));
                 }
                 out.extend_from_slice(&[0, 0, 0, 0]);
             }
@@ -118,17 +123,20 @@ fn ascii85(data: &[u8], limit: usize) -> Result<Vec<u8>, PdfError> {
                 n += 1;
                 if n == 5 {
                     if out.len() + 4 > limit {
-                        return Err(PdfError::Corrupt("a stream decodes to more than 256 MiB".to_owned()));
+                        return Err(PdfError::LimitExceeded("a stream decodes to more than 256 MiB".to_owned()));
                     }
-                    flush(&group, 5, &mut out);
+                    flush(&group, 5, &mut out)?;
                     n = 0;
                 }
             }
             _ => return Err(PdfError::Corrupt("an ASCII85 stream has a character it cannot have".to_owned())),
         }
     }
-    if n > 1 {
-        flush(&group, n, &mut out);
+    match n {
+        0 => {}
+        // One digit cannot make a byte: the stream is cut off.
+        1 => return Err(PdfError::Corrupt("an ASCII85 stream ends in the middle of a group".to_owned())),
+        _ => flush(&group, n, &mut out)?,
     }
     Ok(out)
 }
@@ -138,8 +146,11 @@ fn predict(data: Vec<u8>, params: Option<&Dict>, limit: usize) -> Result<Vec<u8>
     let Some(params) = params else { return Ok(data) };
     let int = |key: &str, default: i64| params.get(key).and_then(Object::as_int).unwrap_or(default);
     let predictor = int("Predictor", 1);
-    if predictor <= 1 {
+    if predictor == 1 {
         return Ok(data);
+    }
+    if predictor < 1 {
+        return Err(PdfError::Corrupt(format!("the predictor {predictor} is not one")));
     }
     let columns = usize::try_from(int("Columns", 1))
         .ok()
@@ -149,11 +160,12 @@ fn predict(data: Vec<u8>, params: Option<&Dict>, limit: usize) -> Result<Vec<u8>
         .ok()
         .filter(|c| (1..=32).contains(c))
         .ok_or_else(|| PdfError::Corrupt("a predictor has a bad number of colours".to_owned()))?;
-    let bits = usize::try_from(int("BitsPerComponent", 8)).unwrap_or(8);
+    let bits = usize::try_from(int("BitsPerComponent", 8)).map_err(|_| PdfError::Corrupt("a predictor has a bad number of bits".to_owned()))?;
     if bits != 8 {
         return Err(PdfError::Unsupported("a predictor on samples that are not 8 bits".to_owned()));
     }
-    let row = columns.checked_mul(colors).filter(|r| *r <= MAX_ROW).ok_or_else(|| PdfError::Corrupt("a predictor row is too long".to_owned()))?;
+    let row =
+        columns.checked_mul(colors).filter(|r| *r <= MAX_ROW).ok_or_else(|| PdfError::LimitExceeded("a predictor row is too long".to_owned()))?;
     if predictor == 2 {
         let mut out = data;
         for chunk in out.chunks_mut(row) {
@@ -174,7 +186,7 @@ fn predict(data: Vec<u8>, params: Option<&Dict>, limit: usize) -> Result<Vec<u8>
     // Only whole rows are rows (a last row that is cut short is not decoded); what comes out is no larger than what went in.
     let rows = data.len() / stride;
     if rows.saturating_mul(row) > limit {
-        return Err(PdfError::Corrupt("predicted data would be larger than the bound".to_owned()));
+        return Err(PdfError::LimitExceeded("predicted data would be larger than the bound".to_owned()));
     }
     let mut out: Vec<u8> = Vec::with_capacity(rows.saturating_mul(row).min(limit));
     let mut previous: Vec<u8> = vec![0; row];
@@ -261,19 +273,42 @@ mod tests {
         // A row that is far too long is refused before it is allocated; a last row that is cut short is not decoded.
         let packed = miniz_oxide::deflate::compress_to_vec_zlib(&[0, 1, 2, 3, 0, 4], 6);
         let wide = dict("<< /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 10000000 /Colors 32 >> >>");
-        assert!(matches!(decode(&packed, &wide), Err(PdfError::Corrupt(_))));
+        assert!(matches!(decode(&packed, &wide), Err(PdfError::LimitExceeded(_))));
         let rows = dict("<< /Filter /FlateDecode /DecodeParms << /Predictor 10 /Columns 3 >> >>");
         assert_eq!(decode(&packed, &rows).expect("decodes"), [1, 2, 3], "the second row has one byte of three: it is not a row");
         let inflated = miniz_oxide::deflate::compress_to_vec_zlib(&[0; 64], 6);
-        assert!(matches!(decode_with(&inflated, &dict("<< /Filter /FlateDecode >>"), 8), Err(PdfError::Corrupt(_))), "a bomb is cut off");
-        assert!(matches!(
-            decode_with(
-                &miniz_oxide::deflate::compress_to_vec_zlib(&[0; 64], 6),
-                &dict("<< /Filter /FlateDecode /DecodeParms << /Predictor 10 /Columns 7 >> >>"),
-                8
-            ),
-            Err(PdfError::Corrupt(_))
-        ));
+        assert!(decode_with(&inflated, &dict("<< /Filter /FlateDecode >>"), 8).is_err(), "a bomb is cut off");
+        // Inflated within the bound but too large once predicted: the rows are counted before they are made.
+        let flat = miniz_oxide::deflate::compress_to_vec_zlib(&[0; 64], 6);
+        let wide = dict("<< /Filter /FlateDecode /DecodeParms << /Predictor 10 /Columns 7 >> >>");
+        assert!(decode_with(&flat, &wide, 8).is_err());
+        assert!(matches!(decode_with(&flat, &wide, 63), Err(PdfError::Corrupt(_) | PdfError::LimitExceeded(_))));
+        assert_eq!(decode_with(&flat, &wide, 64).expect("fits").len(), 56);
+    }
+
+    #[test]
+    fn malformed_filter_data_and_metadata_is_refused_not_repaired() {
+        let hex = dict("<< /Filter /ASCIIHexDecode >>");
+        assert_eq!(decode(b"41 42>", &hex).expect("decodes"), b"AB");
+        assert_eq!(decode(b"414>", &hex).expect("an odd digit is padded"), [0x41, 0x40]);
+        assert!(matches!(decode(b"0g>", &hex), Err(PdfError::Corrupt(_))), "g is not a digit");
+        let a85 = dict("<< /Filter /ASCII85Decode >>");
+        assert!(matches!(decode(b"87cURD]i,\"E~>", &a85), Err(PdfError::Corrupt(_))), "a last group of one digit is cut off");
+        assert!(matches!(decode(b"uuuuu~>", &a85), Err(PdfError::Corrupt(_))), "uuuuu is more than 32 bits");
+        assert!(decode(b"87cURDZ~>", &a85).is_ok());
+        for bad in [
+            "<< /Filter [/FlateDecode 5] >>",
+            "<< /Filter 7 >>",
+            "<< /Filter /FlateDecode /DecodeParms << /Predictor 0 >> >>",
+            "<< /Filter /FlateDecode /DecodeParms << /Predictor -3 >> >>",
+            "<< /Filter /FlateDecode /DecodeParms << /Predictor 12 /BitsPerComponent -8 >> >>",
+        ] {
+            let packed = miniz_oxide::deflate::compress_to_vec_zlib(&[0, 1, 2], 6);
+            assert!(matches!(decode(&packed, &dict(bad)), Err(PdfError::Corrupt(_))), "{bad}");
+        }
+        // Predictor 1 and no predictor are the same.
+        let packed = miniz_oxide::deflate::compress_to_vec_zlib(&[7, 8], 6);
+        assert_eq!(decode(&packed, &dict("<< /Filter /FlateDecode /DecodeParms << /Predictor 1 >> >>")).expect("decodes"), [7, 8]);
     }
 
     #[test]

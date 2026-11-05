@@ -78,6 +78,8 @@ pub enum Variant {
     NestedObjectStream,
     /// `/Index` asks for more rows than the stream has.
     MissingRows,
+    /// The entry for the filespec has the wrong index in its object stream.
+    WrongIndex,
 }
 
 pub fn compressed_pdf(xml: &str) -> Vec<u8> {
@@ -113,7 +115,8 @@ pub fn compressed_pdf_with(xml: &str, variant: Variant) -> Vec<u8> {
         let (kind, f1, f2): (u8, u32, u8) = match n {
             0 => (0, 0, 255),
             1 => (2, 10, 0),
-            4 => (2, 10, 7), // (the index is wrong: the number decides)
+            4 if variant == Variant::WrongIndex => (2, 10, 7),
+            4 => (2, 10, 1),
             5 => (1, u32::try_from(stream_at).expect("fits"), 0),
             10 if variant == Variant::NestedObjectStream => (2, 10, 0),
             10 => (1, u32::try_from(objstm_at).expect("fits"), 0),

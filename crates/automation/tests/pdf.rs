@@ -68,12 +68,35 @@ fn a_file_that_is_not_text_has_no_text_and_what_is_not_a_pdf_or_outside_the_root
     std::fs::write(outside.path().join("o.pdf"), pdf("a.xml", "text#2Fxml", b"<a/>")).expect("writes");
     let mut a = Automation::with_root(dir.path()).expect("root");
     let r = files(&mut a, json!({ "path": "b.pdf", "extract": 0 })).expect("runs");
+    assert_eq!((r["extracted"]["bytes"].as_u64(), r["extracted"]["textual"].as_bool()), (Some(6), Some(false)), "the extraction ran: {r}");
     assert!(r["extracted"].get("text").is_none(), "{r}");
     let e = files(&mut a, json!({ "path": "x.pdf" })).expect_err("not a pdf");
     assert!(e.to_string().contains("not a PDF"), "{e}");
     let e = files(&mut a, json!({ "path": outside.path().join("o.pdf").to_str().expect("utf-8") })).expect_err("outside");
     assert!(e.to_string().contains("outside the root"), "{e}");
     assert!(matches!(files(&mut a, json!({})), Err(ToolError::InvalidArgs(_))));
+}
+
+#[test]
+fn text_is_returned_for_text_files_only_and_not_beyond_the_size_a_response_can_carry() {
+    let dir = tempfile::tempdir().expect("dir");
+    // Bytes that are valid UTF-8 are not thereby text: the media type and the name decide.
+    std::fs::write(dir.path().join("zip.pdf"), pdf("a.bin", "application#2Foctet-stream", b"PK\x03\x04 hello")).expect("writes");
+    std::fs::write(dir.path().join("img.pdf"), pdf("logo.png", "image#2Fpng", b"plain ascii")).expect("writes");
+    std::fs::write(dir.path().join("named.pdf"), pdf("data.xml", "application#2Foctet-stream", b"<a/>")).expect("writes");
+    std::fs::write(dir.path().join("typed.pdf"), pdf("noext", "application#2Fvnd.x+xml", b"<a/>")).expect("writes");
+    let huge = vec![b'a'; 4 * 1024 * 1024 + 1];
+    std::fs::write(dir.path().join("huge.pdf"), pdf("big.xml", "text#2Fxml", &huge)).expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    let extract = |a: &mut Automation, name: &str| files(a, json!({ "path": name, "extract": 0 })).expect("runs")["extracted"].clone();
+    assert_eq!(extract(&mut a, "zip.pdf")["textual"], false);
+    assert!(extract(&mut a, "zip.pdf").get("text").is_none());
+    assert_eq!(extract(&mut a, "img.pdf")["textual"], false);
+    assert_eq!(extract(&mut a, "named.pdf")["text"], "<a/>", "a generic media type and an XML name");
+    assert_eq!(extract(&mut a, "typed.pdf")["text"], "<a/>", "an XML media type and no extension");
+    let big = extract(&mut a, "huge.pdf");
+    assert!(big.get("text").is_none() && big["text_omitted"].as_str().is_some_and(|m| m.contains("larger")), "{big}");
+    assert_eq!(big["bytes"].as_u64(), Some(huge.len() as u64));
 }
 
 fn replace(a: &mut Automation, args: Value) -> Result<Value, ToolError> {

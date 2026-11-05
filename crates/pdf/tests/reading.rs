@@ -267,3 +267,121 @@ fn an_embedded_file_entry_that_is_not_a_stream_is_not_a_file() {
     let names: Vec<String> = pdf.embedded_files().into_iter().map(|f| f.name).collect();
     assert_eq!(names, ["b.xml"], "a dictionary has no data");
 }
+
+#[test]
+fn an_entry_with_the_wrong_index_in_its_object_stream_is_found_by_its_number() {
+    let pdf = Pdf::open(common::compressed_pdf_with(XML, common::Variant::WrongIndex)).expect("opens");
+    assert!(!pdf.recovered());
+    assert_eq!(pdf.embedded_files()[0].name, "z.xml");
+}
+
+#[test]
+fn a_reference_with_the_wrong_generation_names_nothing() {
+    let mut b = Builder::new();
+    b.object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+    b.offsets.push((7, b.out.len()));
+    b.out.extend_from_slice(b"7 1 obj\n(reused)\nendobj\n");
+    let mut bytes = b.finish(8, "");
+    // The table says object 7 is generation 1 (the builder writes 0 for all): patch its line.
+    let text = String::from_utf8_lossy(&bytes).into_owned();
+    let at = text.rfind("7 1\n").expect("the subsection of object 7") + 4;
+    bytes[at + 11..at + 16].copy_from_slice(b"00001");
+    let pdf = Pdf::open(bytes).expect("opens");
+    assert_eq!(pdf.get(ObjRef { number: 7, generation: 1 }).and_then(|o| o.as_string().map(<[u8]>::to_vec)), Some(b"reused".to_vec()));
+    assert_eq!(pdf.get(r(7)), None, "the old generation of a number that was reused");
+    assert!(pdf.get(r(1)).is_some());
+}
+
+#[test]
+fn a_chain_that_loops_or_has_a_bad_link_is_not_trusted() {
+    let build = |link: &dyn Fn(usize) -> String| {
+        let mut b = Builder::new();
+        b.object(1, "<< /Type /Catalog /Names << /EmbeddedFiles << /Names [(i) 4 0 R] >> >> >>");
+        b.object(4, "<< /F (a.xml) /EF << /F 5 0 R >> >>");
+        b.stream(5, "/Subtype /text#2Fxml", b"<a/>");
+        let table = b.out.len();
+        b.finish(6, &link(table))
+    };
+    for (bytes, why) in [
+        (build(&|table| format!("/Prev {table}")), "a table that points back at itself"),
+        (build(&|_| "/Prev (x)".to_owned()), "a link that is not an offset"),
+    ] {
+        let pdf = Pdf::open(bytes).expect("opens");
+        assert!(pdf.recovered(), "{why}");
+        assert_eq!(pdf.embedded_files().len(), 1, "{why}: the objects are found by scanning");
+    }
+    // A chain that is in order is followed (the first section is the newest).
+    assert!(!Pdf::open(build(&|_| String::new())).expect("opens").recovered());
+}
+
+#[test]
+fn filter_references_that_multiply_are_followed_only_so_far() {
+    let mut b = Builder::new();
+    b.object(1, "<< /Type /Catalog >>");
+    // Object 6 is an array of two hundred references to itself: five levels of it would be 200^5 resolutions.
+    b.object(6, &format!("[{}]", "6 0 R ".repeat(200)));
+    b.offsets.push((7, b.out.len()));
+    b.out.extend_from_slice(b"7 0 obj\n<< /Filter 6 0 R /Length 3 >>\nstream\nabc\nendstream\nendobj\n");
+    let pdf = Pdf::open(b.finish(8, "")).expect("opens");
+    let Some(Object::Stream(s)) = pdf.get(r(7)) else { panic!("a stream") };
+    let started = std::time::Instant::now();
+    assert!(pdf.stream_data(&s).is_err(), "the filter is not a list of names");
+    assert!(started.elapsed() < std::time::Duration::from_secs(5), "{:?}", started.elapsed());
+}
+
+#[test]
+fn a_stream_with_a_wrong_length_may_hold_the_word_endstream() {
+    let mut b = Builder::new();
+    b.object(1, "<< /Type /Catalog >>");
+    b.offsets.push((2, b.out.len()));
+    b.out.extend_from_slice(b"2 0 obj\n<< /Length 99999 >>\nstream\nbefore endstream inside\nendstream\nendobj\n");
+    let pdf = Pdf::open(b.finish(3, "")).expect("opens");
+    let Some(Object::Stream(s)) = pdf.get(r(2)) else { panic!("a stream") };
+    assert_eq!(pdf.stream_data(&s).expect("data"), b"before endstream inside");
+}
+
+#[test]
+fn file_specifications_are_listed_by_identity_and_the_list_is_bounded() {
+    let mut b = Builder::new();
+    b.object(1, "<< /Type /Catalog /Names << /EmbeddedFiles << /Names [(a) 2 0 R (b) 4 0 R] >> >> /AF [2 0 R 4 0 R] >>");
+    b.object(2, "<< /F (a.xml) /AFRelationship /Data /EF << /F 3 0 R >> >>");
+    b.stream(3, "/Subtype /text#2Fxml", b"<same/>");
+    b.object(4, "<< /F (b.xml) /AFRelationship /Alternative /EF << /F 3 0 R >> >>");
+    let pdf = Pdf::open(b.finish(5, "")).expect("opens");
+    let found: Vec<(String, Option<String>)> = pdf.embedded_files().into_iter().map(|f| (f.name, f.relationship)).collect();
+    assert_eq!(
+        found,
+        [("a.xml".to_owned(), Some("Data".to_owned())), ("b.xml".to_owned(), Some("Alternative".to_owned()))],
+        "one stream, two file specifications"
+    );
+    // Fifteen thousand in-place specifications: no more than ten thousand are listed.
+    let mut many = Builder::new();
+    let names: String = (0..15_000).map(|i| format!("(n{i}) << /F (f{i}.xml) /EF << /F 3 0 R >> >> ")).collect();
+    many.object(1, &format!("<< /Type /Catalog /Names << /EmbeddedFiles << /Names [{names}] >> >> >>"));
+    many.object(2, "<< >>");
+    many.stream(3, "/Subtype /text#2Fxml", b"<a/>");
+    let pdf = Pdf::open(many.finish(4, "")).expect("opens");
+    assert_eq!(pdf.embedded_files().len(), 10_000);
+}
+
+#[test]
+fn text_strings_without_a_mark_are_pdfdoc_encoded() {
+    assert_eq!(text_string(&[0x80, 0x18, 0x84, 0x92, 0xA0, 0xE4, 0xFF]), "•˘—™€äÿ");
+    assert_eq!(text_string(&[0x7F, 0x9F, 0xAD]), "\u{FFFD}\u{FFFD}\u{FFFD}");
+}
+
+#[test]
+fn a_name_tree_that_contains_itself_is_walked_once() {
+    let mut b = Builder::new();
+    b.object(1, "<< /Type /Catalog /Names << /EmbeddedFiles 6 0 R >> /AF [2 0 R] >>");
+    // A node whose kids are twelve references to itself and an empty leaf: sixteen levels of that would never end (and nothing would
+    // be listed on the way to stop it).
+    b.object(6, &format!("<< /Kids [{} 7 0 R] >>", "6 0 R ".repeat(12)));
+    b.object(7, "<< /Names [] >>");
+    b.object(2, "<< /F (a.xml) /EF << /F 3 0 R >> >>");
+    b.stream(3, "/Subtype /text#2Fxml", b"<a/>");
+    let pdf = Pdf::open(b.finish(8, "")).expect("opens");
+    let started = std::time::Instant::now();
+    assert_eq!(pdf.embedded_files().len(), 1);
+    assert!(started.elapsed() < std::time::Duration::from_secs(5), "{:?}", started.elapsed());
+}

@@ -9,6 +9,8 @@ use crate::object::{Dict, ObjRef, Object, Parser, Stream, find, rfind};
 
 /// The most cross-reference entries (objects) read.
 const MAX_OBJECTS: usize = 10_000_000;
+/// The most references followed to read the filters of one stream.
+const MAX_RESOLUTIONS: usize = 256;
 /// The most sections of the cross-reference chain.
 const MAX_SECTIONS: usize = 4096;
 /// The most objects in one object stream.
@@ -17,7 +19,7 @@ const MAX_IN_STREAM: usize = 1_000_000;
 #[derive(Clone, Copy, Debug)]
 enum Entry {
     Free,
-    InFile { offset: usize },
+    InFile { offset: usize, generation: u16 },
     InStream { stream: u32, index: u32 },
 }
 
@@ -103,16 +105,26 @@ impl Pdf {
         self.trailer.get("Root").and_then(Object::as_ref)
     }
 
-    /// The object with this number (the generation is not compared: an object that was freed and reused is the new one).
+    /// The object a reference names. A reference whose generation is not that of the object is stale (the object was freed and the
+    /// number reused) and names nothing, as the specification has it.
     pub fn get(&self, r: ObjRef) -> Option<Object> {
-        match *self.entries.get(&r.number)? {
+        match self.entries.get(&r.number)? {
+            Entry::InFile { generation, .. } if *generation != r.generation => None,
+            Entry::InStream { .. } if r.generation != 0 => None,
+            _ => self.get_number(r.number),
+        }
+    }
+
+    /// The object with this number, whatever generation it has.
+    pub(crate) fn get_number(&self, number: u32) -> Option<Object> {
+        match *self.entries.get(&number)? {
             Entry::Free => None,
-            Entry::InFile { offset } => self.object_at(offset, Some(r.number)),
+            Entry::InFile { offset, .. } => self.object_at(offset, Some(number)),
             Entry::InStream { stream, index } => {
                 let objects = self.object_stream(stream)?;
-                objects.get(usize::try_from(index).ok()?).filter(|(n, _)| *n == r.number).map(|(_, o)| o.clone()).or_else(|| {
+                objects.get(usize::try_from(index).ok()?).filter(|(n, _)| *n == number).map(|(_, o)| o.clone()).or_else(|| {
                     // The index may be wrong in a file whose entries were found by scanning: look the number up.
-                    objects.iter().find(|(n, _)| *n == r.number).map(|(_, o)| o.clone())
+                    objects.iter().find(|(n, _)| *n == number).map(|(_, o)| o.clone())
                 })
             }
         }
@@ -121,7 +133,7 @@ impl Pdf {
     /// The offset of the object in the file when it is an ordinary one (not in an object stream).
     pub fn offset_of(&self, number: u32) -> Option<usize> {
         match self.entries.get(&number)? {
-            Entry::InFile { offset } => Some(*offset),
+            Entry::InFile { offset, .. } => Some(*offset),
             _ => None,
         }
     }
@@ -144,7 +156,10 @@ impl Pdf {
 
     /// The value of an indirect `/Length` (an integer object that is not itself a stream).
     fn length_of(&self, r: ObjRef) -> Option<usize> {
-        let Entry::InFile { offset } = *self.entries.get(&r.number)? else { return None };
+        let Entry::InFile { offset, generation } = *self.entries.get(&r.number)? else { return None };
+        if generation != r.generation {
+            return None;
+        }
         let mut parser = Parser::new(&self.data, offset);
         parser.object_header()?;
         match parser.object(&|_| None)? {
@@ -173,22 +188,30 @@ impl Pdf {
         let raw = self.data.get(stream.data.clone()).ok_or_else(|| PdfError::Corrupt("a stream is outside the file".to_owned()))?;
         // The references in the filter entries are followed (an array of filters, or parameters, may be indirect).
         let mut dict = stream.dict.clone();
+        // (One budget for all the references followed here: an array of references to arrays of references must not multiply.)
+        let mut budget = MAX_RESOLUTIONS;
         for (key, value) in &mut dict.entries {
             if matches!(key.as_str(), "Filter" | "F" | "DecodeParms" | "DP") {
-                *value = self.resolve_deep(value, 0);
+                *value = self.resolve_deep(value, 0, &mut budget);
             }
         }
         filter::decode(raw, &dict)
     }
 
-    fn resolve_deep(&self, object: &Object, depth: usize) -> Object {
+    fn resolve_deep(&self, object: &Object, depth: usize, budget: &mut usize) -> Object {
+        if *budget == 0 {
+            return Object::Null;
+        }
+        *budget -= 1;
         let resolved = self.resolve(object);
         if depth > 4 {
             return resolved;
         }
         match resolved {
-            Object::Array(items) => Object::Array(items.iter().map(|o| self.resolve_deep(o, depth + 1)).collect()),
-            Object::Dict(d) => Object::Dict(Dict { entries: d.entries.iter().map(|(k, v)| (k.clone(), self.resolve_deep(v, depth + 1))).collect() }),
+            Object::Array(items) => Object::Array(items.iter().map(|o| self.resolve_deep(o, depth + 1, budget)).collect()),
+            Object::Dict(d) => {
+                Object::Dict(Dict { entries: d.entries.iter().map(|(k, v)| (k.clone(), self.resolve_deep(v, depth + 1, budget))).collect() })
+            }
             other => other,
         }
     }
@@ -199,7 +222,7 @@ impl Pdf {
         }
         // An object stream is an ordinary object of the file: one that a cross-reference entry puts inside another stream (or itself)
         // is not one, and following it would never end.
-        let Entry::InFile { offset } = *self.entries.get(&number)? else { return None };
+        let Entry::InFile { offset, .. } = *self.entries.get(&number)? else { return None };
         let Object::Stream(stream) = self.object_at(offset, Some(number))? else { return None };
         let count = usize::try_from(stream.dict.get("N").and_then(|n| self.resolve(n).as_int())?).ok().filter(|n| *n <= MAX_IN_STREAM)?;
         let first = usize::try_from(stream.dict.get("First").and_then(|n| self.resolve(n).as_int())?).ok()?;
@@ -235,8 +258,11 @@ impl Pdf {
         let mut seen: HashSet<usize> = HashSet::new();
         let mut first = true;
         while let Some(offset) = next.take() {
-            if !seen.insert(offset) || seen.len() > MAX_SECTIONS {
-                break;
+            if !seen.insert(offset) {
+                return Err(PdfError::Corrupt("the cross-reference sections lead back to themselves".to_owned()));
+            }
+            if seen.len() > MAX_SECTIONS {
+                return Err(PdfError::LimitExceeded("the cross-reference has more than 4096 sections".to_owned()));
             }
             let (trailer, hybrid, freed) = self.read_section(offset, &HashSet::new())?;
             // A hybrid file's table is followed by the entries of its cross-reference stream before the older sections. The table lists
@@ -246,14 +272,21 @@ impl Pdf {
             {
                 self.read_section(h, &freed)?;
             }
-            next = trailer.get("Prev").and_then(Object::as_int).and_then(|n| usize::try_from(n).ok());
+            next = match trailer.get("Prev") {
+                None => None,
+                Some(p) => Some(
+                    p.as_int()
+                        .and_then(|n| usize::try_from(n).ok())
+                        .ok_or_else(|| PdfError::Corrupt("a trailer's /Prev is not an offset".to_owned()))?,
+                ),
+            };
+            if self.entries.len() > MAX_OBJECTS {
+                return Err(PdfError::LimitExceeded("the file has more than 10 million objects".to_owned()));
+            }
             if first {
                 self.trailer = trailer;
                 first = false;
             }
-        }
-        if self.entries.len() > MAX_OBJECTS {
-            return Err(PdfError::Corrupt("the file has too many objects".to_owned()));
         }
         Ok(())
     }
@@ -277,12 +310,12 @@ impl Pdf {
                     u32::try_from(first).map_err(|_| bad("has a bad subsection"))?,
                     usize::try_from(count).map_err(|_| bad("has a bad subsection"))?,
                 );
-                if count > MAX_OBJECTS {
-                    return Err(bad("has too many entries"));
+                if count > MAX_OBJECTS || added.len().saturating_add(count) > MAX_OBJECTS {
+                    return Err(PdfError::LimitExceeded(format!("the cross-reference at {offset} has more than 10 million entries")));
                 }
                 for i in 0..count {
                     let at = parser.unsigned().ok_or_else(|| bad("has a bad entry"))?;
-                    parser.unsigned().ok_or_else(|| bad("has a bad entry"))?;
+                    let generation = u16::try_from(parser.unsigned().ok_or_else(|| bad("has a bad entry"))?).unwrap_or(u16::MAX);
                     let kind = if parser.keyword("n") {
                         true
                     } else if parser.keyword("f") {
@@ -293,7 +326,7 @@ impl Pdf {
                     let number =
                         first.checked_add(u32::try_from(i).map_err(|_| bad("has too many entries"))?).ok_or_else(|| bad("has a bad number"))?;
                     let entry = match usize::try_from(at) {
-                        Ok(offset) if kind && offset > 0 => Entry::InFile { offset },
+                        Ok(offset) if kind && offset > 0 => Entry::InFile { offset, generation },
                         _ => Entry::Free,
                     };
                     added.push((number, entry));
@@ -358,7 +391,9 @@ impl Pdf {
                 let Some(number) = first.checked_add(i) else { continue };
                 let entry = match kind {
                     0 => Entry::Free,
-                    1 => usize::try_from(f1).map_or(Entry::Free, |offset| Entry::InFile { offset }),
+                    1 => {
+                        usize::try_from(f1).map_or(Entry::Free, |offset| Entry::InFile { offset, generation: u16::try_from(f2).unwrap_or(u16::MAX) })
+                    }
                     2 => match (u32::try_from(f1), u32::try_from(f2)) {
                         (Ok(stream), Ok(index)) => Entry::InStream { stream, index },
                         _ => Entry::Free,
@@ -393,7 +428,7 @@ impl Pdf {
         self.streams = Mutex::new(HashMap::new());
         let data = &self.data;
         let mut from = 0;
-        let mut found: Vec<(u32, usize)> = Vec::new();
+        let mut found: Vec<(u32, usize, u16)> = Vec::new();
         while let Some(at) = find(data, b"obj", from) {
             from = at + 3;
             let before_ok = at > 0 && data.get(at - 1).is_some_and(|b| crate::object::is_space(*b) || b.is_ascii_digit());
@@ -416,20 +451,18 @@ impl Pdf {
                 data.get(*i..end).and_then(|d| std::str::from_utf8(d).ok()).and_then(|d| d.parse::<u64>().ok())
             };
             skip_space(&mut i);
-            let Some(_generation) = digits(&mut i) else { continue };
+            let Some(generation) = digits(&mut i) else { continue };
             skip_space(&mut i);
-            let start_of_number_end = i;
             let Some(number) = digits(&mut i) else { continue };
-            let _ = start_of_number_end;
-            if let Ok(number) = u32::try_from(number) {
-                found.push((number, i));
+            if let (Ok(number), Ok(generation)) = (u32::try_from(number), u16::try_from(generation)) {
+                found.push((number, i, generation));
             }
             if found.len() > MAX_OBJECTS {
                 break;
             }
         }
-        for (number, offset) in &found {
-            self.entries.insert(*number, Entry::InFile { offset: *offset });
+        for (number, offset, generation) in &found {
+            self.entries.insert(*number, Entry::InFile { offset: *offset, generation: *generation });
         }
         // Trailers: the last `trailer` dictionary that has a /Root, or the dictionary of a cross-reference stream.
         let mut at = 0;
@@ -443,8 +476,8 @@ impl Pdf {
             }
         }
         if self.trailer.get("Root").is_none() {
-            for (number, _) in &found {
-                if let Some(Object::Stream(s)) = self.get(ObjRef { number: *number, generation: 0 })
+            for (number, _, _) in &found {
+                if let Some(Object::Stream(s)) = self.get_number(*number)
                     && s.dict.get("Type").and_then(Object::as_name) == Some("XRef")
                     && s.dict.get("Root").is_some()
                 {
@@ -455,7 +488,7 @@ impl Pdf {
         // The objects inside object streams.
         let streams: Vec<u32> = found
             .iter()
-            .filter_map(|(n, _)| match self.get(ObjRef { number: *n, generation: 0 }) {
+            .filter_map(|(n, _, _)| match self.get_number(*n) {
                 Some(Object::Stream(s)) if s.dict.get("Type").and_then(Object::as_name) == Some("ObjStm") => Some(*n),
                 _ => None,
             })
@@ -463,6 +496,10 @@ impl Pdf {
         for stream in streams {
             if let Some(objects) = self.object_stream(stream) {
                 for (index, (n, _)) in objects.iter().enumerate() {
+                    // (The objects of all the streams together are bounded as the objects of the file are.)
+                    if self.entries.len() >= MAX_OBJECTS {
+                        break;
+                    }
                     if !matches!(self.entries.get(n), Some(Entry::InFile { .. })) {
                         self.entries.insert(*n, Entry::InStream { stream, index: u32::try_from(index).unwrap_or(0) });
                     }
@@ -471,8 +508,8 @@ impl Pdf {
         }
         // Without a trailer: the catalog is the object that says it is.
         if self.trailer.get("Root").is_none() {
-            let catalog = found.iter().rev().find_map(|(n, _)| {
-                let r = ObjRef { number: *n, generation: 0 };
+            let catalog = found.iter().rev().find_map(|(n, _, generation)| {
+                let r = ObjRef { number: *n, generation: *generation };
                 match self.get(r)? {
                     Object::Dict(d) if d.get("Type").and_then(Object::as_name) == Some("Catalog") => Some(r),
                     _ => None,
