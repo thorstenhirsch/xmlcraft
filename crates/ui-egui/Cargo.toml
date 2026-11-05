@@ -20,6 +20,7 @@ xmlcraft-convert = { workspace = true }
 xmlcraft-engine = { workspace = true }
 xmlcraft-diff = { workspace = true }
 xmlcraft-infer = { workspace = true }
+xmlcraft-query = { workspace = true }
 xmlcraft-resolve = { workspace = true }
 xmlcraft-sample = { workspace = true }
 xmlcraft-format = { workspace = true }
