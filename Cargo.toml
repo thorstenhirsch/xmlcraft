@@ -25,6 +25,7 @@ craft-window = { git = "https://github.com/storytold/craft-libs", version = "0.1
 # internal
 xmlcraft-text = { path = "crates/text", version = "0.1.0" }
 xmlcraft-syntax = { path = "crates/syntax", version = "0.1.0" }
+xmlcraft-json-syntax = { path = "crates/json-syntax", version = "0.1.0" }
 xmlcraft-format = { path = "crates/format", version = "0.1.0" }
 xmlcraft-catalog = { path = "crates/catalog", version = "0.1.0" }
 xmlcraft-schemas = { path = "crates/schemas", version = "0.1.0" }
