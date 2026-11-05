@@ -10,6 +10,7 @@ mod chrome;
 mod commands;
 mod completion;
 mod control;
+mod convert_dialog;
 mod dialog;
 mod documents;
 pub mod editor_view;
