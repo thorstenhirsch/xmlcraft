@@ -15,6 +15,9 @@ xmlcraft-syntax = { workspace = true }
 xee-xpath = "0.1.5"
 xee-xpath-compiler = "0.1.5"
 xot = "0.31"
+xee-xslt-compiler = "0.1.6"
+xee-interpreter = "0.2.0"
+xee-name = "0.1.5"
 rowan = { workspace = true }
 
 [dev-dependencies]

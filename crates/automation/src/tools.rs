@@ -70,6 +70,9 @@ pub fn tools() -> &'static [ToolDef] {
         table.extend(crate::xpath::tools());
         table.extend(crate::openapi::tools());
         table.extend(crate::wsdl::tools());
+        table.extend(crate::xslt::tools());
+        table.extend(crate::schematron::tools());
+        table.extend(crate::einvoice::tools());
         table.extend(crate::diff::tools());
         table.extend(crate::sample::tools());
         table.extend(crate::load_schema::tools());

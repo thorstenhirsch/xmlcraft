@@ -20,12 +20,14 @@ pub mod recent;
 pub mod schema;
 pub mod schema_fetch;
 pub mod schema_link;
+pub mod schematron;
 pub mod selfcheck;
 pub mod templates;
 pub mod validation;
 mod worker;
 pub mod xpath;
 pub mod xsd_schemas;
+pub mod xslt;
 mod yaml_analysis;
 
 pub use document::{Document, FileStamp, MAX_OPEN_BYTES, OpenError, SaveAsPrep, SaveError};

@@ -15,6 +15,7 @@ mod catalog;
 mod convert;
 mod diff;
 mod documents;
+mod einvoice;
 mod entry_helpers;
 pub mod file_access;
 mod infer;
@@ -25,11 +26,13 @@ mod openapi;
 mod pdf;
 mod sample;
 mod schema;
+mod schematron;
 mod script;
 mod tools;
 mod validate;
 mod wsdl;
 mod xpath;
+mod xslt;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod control;
