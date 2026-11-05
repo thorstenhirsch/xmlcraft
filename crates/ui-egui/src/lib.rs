@@ -8,6 +8,7 @@ mod assign;
 mod auto_validate;
 mod chrome;
 mod commands;
+mod compare_dialog;
 mod completion;
 mod control;
 mod convert_dialog;
@@ -147,6 +148,8 @@ pub struct XmlCraftApp {
     /// Make schemas and sample documents in the background, when the Generate dialogs ask.
     schema_generator: xmlcraft_engine::generate::SchemaGenerator,
     sample_generator: xmlcraft_engine::generate::SampleGenerator,
+    /// Compares the documents of the Compare window.
+    comparer: xmlcraft_engine::compare::Comparer,
     /// Evaluates the expressions of the XPath window.
     xpath: xmlcraft_engine::xpath::XPathRunner,
     /// The expression last typed in the XPath window, put back when it is opened again.
@@ -264,6 +267,10 @@ impl XmlCraftApp {
             let repaint = repaint.clone();
             move || repaint.request_repaint()
         });
+        app.comparer.on_done({
+            let repaint = repaint.clone();
+            move || repaint.request_repaint()
+        });
         app.xpath.on_done({
             let repaint = repaint.clone();
             move || repaint.request_repaint()
@@ -313,6 +320,7 @@ impl XmlCraftApp {
             validator: Validator::new(resolvers()),
             schema_generator: xmlcraft_engine::generate::SchemaGenerator::new(),
             sample_generator: xmlcraft_engine::generate::SampleGenerator::new(resolvers()),
+            comparer: xmlcraft_engine::compare::Comparer::new(),
             xpath: xmlcraft_engine::xpath::XPathRunner::new(),
             xpath_last: String::new(),
             generate_serial: 0,
@@ -443,6 +451,7 @@ impl eframe::App for XmlCraftApp {
         // After everything above that can change a text, so that this frame asks for the analysis of the text it will draw.
         self.pump_analysis();
         self.pump_generate();
+        self.pump_compare();
         self.pump_xpath();
         self.pump_schema_fetch();
         for command in self.viewport_commands.drain(..) {
