@@ -1,0 +1,19 @@
+[package]
+name = "xmlcraft-bson"
+description = "XmlCraft's BSON codec: reads and writes BSON documents with bounds on size and nesting, and projects them to and from MongoDB Extended JSON"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-json-syntax = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+serde_json = { workspace = true }

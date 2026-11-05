@@ -37,6 +37,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("syntax", Class::Standalone(1)),
     ("datatypes", Class::Standalone(1)),
     ("json-syntax", Class::Standalone(1)),
+    ("bson", Class::Standalone(1)),
     // L2 core model
     ("grammar", Class::Layer(2)),
     ("catalog", Class::Layer(2)),
@@ -71,7 +72,8 @@ pub const TABLE: &[(&str, Class)] = &[
 
 /// Workspace crates a standalone crate may use: `datatypes` compiles XSD patterns, `syntax` sits on the text buffer, and `json-syntax`
 /// reports its problems with the shared diagnostics of `syntax`.
-pub const STANDALONE_DEPS: &[(&str, &[&str])] = &[("datatypes", &["pattern"]), ("syntax", &["text"]), ("json-syntax", &["syntax"])];
+pub const STANDALONE_DEPS: &[(&str, &[&str])] =
+    &[("datatypes", &["pattern"]), ("syntax", &["text"]), ("json-syntax", &["syntax"]), ("bson", &["json-syntax"])];
 
 /// Allowed same-layer edges.
 pub const SIDEWAYS: &[(&str, &str)] = &[
@@ -81,6 +83,8 @@ pub const SIDEWAYS: &[(&str, &str)] = &[
     ("json", "resolve"),
     // The JSON reader reports its problems with the shared diagnostic codes.
     ("json-syntax", "syntax"),
+    // The BSON projection reads and writes Extended JSON through the JSON reader.
+    ("bson", "json-syntax"),
     // Completion asks the validator for the context at the cursor.
     ("complete", "validate"),
     // Generators write their output through the formatter, and their tests validate it.

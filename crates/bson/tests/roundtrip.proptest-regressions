@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc f4e77778a595aa663d3c07478568226c177788e6f145d000212a0b7c9be43f23 # shrinks to fields = [("", Array([Timestamp { time: 0, increment: 1 }]))], more = 0
