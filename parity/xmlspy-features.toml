@@ -1578,8 +1578,8 @@ milestone = "M5"
 status = "partial"
 commands = ["xml.validate"]
 tools = ["json_validate"]
-evidence = ["crates/json/tests/validate.rs::references_are_followed_within_a_document_and_to_other_documents", "crates/json/tests/validate.rs::what_nothing_else_evaluated_is_unevaluated", "crates/automation/tests/json_schema.rs::violations_are_listed_with_their_place_in_the_text", "crates/engine/src/json_validation.rs::a_json_document_is_checked_against_the_schema_it_names_and_each_problem_is_where_it_is", "crates/ui-egui/tests/json.rs::f8_checks_a_json_document_against_the_schema_it_names_and_lists_what_is_wrong"]
-notes = "`xmlcraft-json` validates against drafts 04, 06, 07, 2019-09 and 2020-12 (the draft from `$schema`): all the validation and applicator keywords, `$ref`/`$recursiveRef`/`$dynamicRef` with their scopes, `unevaluatedProperties` and `unevaluatedItems`, exact numbers, and every violation placed in the text of the instance. Headless: the tool `json_validate` (the schema as a file, as text or the file the document names; referred schemas are files next to it, through the root confinement). The JSON Schema Test Suite (required tests, drafts 4 to 2020-12) is the measure: 99.76% (4938 of 4950), ratcheted by `cargo xtask conformance jsonschema`. In the window (and headless for YAML, see `json.yaml-validate`) F8 does the checking. Missing: `format` assertions, the meta-schemas (a schema is not checked against its meta-schema; the 10 suite tests that refer to them fail), vocabularies, look-around in patterns. F8 (Validate) on a JSON, JSONC, JSON5 or JSON Lines document that names a schema with `$schema` (a path or URI relative to the file; a `$schema` that names a draft is not a schema to check against) reads the schema (and the documents it refers to) through the resolver, the open documents first, and lists each violation in Problems at its place in the text (a member at its name). Not yet: assigning a schema to a document that does not name one, validating while typing, completion and hover, the bundled meta-schemas, SchemaStore, BSON instances."
+evidence = ["crates/json/tests/validate.rs::references_are_followed_within_a_document_and_to_other_documents", "crates/json/tests/validate.rs::what_nothing_else_evaluated_is_unevaluated", "crates/automation/tests/json_schema.rs::violations_are_listed_with_their_place_in_the_text", "crates/engine/src/json_validation.rs::a_json_document_is_checked_against_the_schema_it_names_and_each_problem_is_where_it_is", "crates/ui-egui/tests/json.rs::f8_checks_a_json_document_against_the_schema_it_names_and_lists_what_is_wrong", "crates/engine/src/json_validation.rs::a_document_that_names_a_draft_is_a_schema_and_is_checked_against_the_meta_schema_of_that_draft"]
+notes = "`xmlcraft-json` validates against drafts 04, 06, 07, 2019-09 and 2020-12 (the draft from `$schema`): all the validation and applicator keywords, `$ref`/`$recursiveRef`/`$dynamicRef` with their scopes, `unevaluatedProperties` and `unevaluatedItems`, exact numbers, and every violation placed in the text of the instance. Headless: the tool `json_validate` (the schema as a file, as text or the file the document names; referred schemas are files next to it, through the root confinement). The JSON Schema Test Suite (required tests, drafts 4 to 2020-12) is the measure: 99.96% (4948 of 4950), ratcheted by `cargo xtask conformance jsonschema`. In the window (and headless for YAML, see `json.yaml-validate`) F8 does the checking. Missing: `format` assertions, vocabularies, look-around in patterns. F8 (Validate) on a JSON, JSONC, JSON5 or JSON Lines document that names a schema with `$schema` (a path or URI relative to the file; a `$schema` that names a draft is not a schema to check against) reads the schema (and the documents it refers to) through the resolver, the open documents first, and lists each violation in Problems at its place in the text (a member at its name). Not yet: assigning a schema to a document that does not name one, validating while typing, completion and hover, SchemaStore, BSON instances. A document that names a draft with `$schema` is a schema and is checked against the bundled meta-schema of the draft (M5.10). A document that names a draft of JSON Schema with `$schema` is itself checked against the bundled meta-schema of that draft."
 
 [[feature]]
 id = "json.yaml-editor"
@@ -1635,11 +1635,11 @@ title = "OpenAPI editing and validation (umbrella; see the openapi.* entries for
 area = "I"
 tier = "P2"
 milestone = "M8"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["xml.validate"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/engine/src/json_validation.rs::an_openapi_description_is_checked_against_the_schema_of_its_version", "crates/ui-egui/tests/json.rs::f8_checks_an_openapi_description_and_a_json_schema_against_the_bundled_schemas"]
+notes = "Known limit of the official 3.1 and 3.2 schemas, which are bundled unmodified: a callback object rejects `x-*` extensions that are not objects. A document whose `openapi` or `swagger` member is not a string or number is not taken for an OpenAPI description (a flag called `openapi` in some configuration is not one). The umbrella: OpenAPI 2.0, 3.0, 3.1 and 3.2 descriptions in JSON or YAML are validated against their official schemas (see the `openapi.*` entries)."
 
 [[feature]]
 id = "json.bson-avro"
@@ -2165,11 +2165,11 @@ title = "OpenAPI 2.0 (Swagger)"
 area = "I"
 tier = "P2"
 milestone = "M8"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["xml.validate"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/engine/src/json_validation.rs::an_openapi_description_is_checked_against_the_schema_of_its_version", "crates/ui-egui/tests/json.rs::f8_checks_an_openapi_description_and_a_json_schema_against_the_bundled_schemas"]
+notes = "F8 (Validate) on a JSON or YAML document that says `swagger: \"2.0\"` checks it against the official JSON Schema of OpenAPI 2.0 (Swagger), bundled and never fetched (`xmlcraft-schemas`), and lists each problem at its place in the text (a member at its name). Missing: editing aids (completion and hover from the schema, an outline of paths and operations), the semantic rules the schema cannot say (unique operation ids, resolvable `$ref`s, path parameters), the request builder, and bundled newer patch releases of the schemas."
 
 [[feature]]
 id = "openapi.v30"
@@ -2177,11 +2177,11 @@ title = "OpenAPI 3.0"
 area = "I"
 tier = "P2"
 milestone = "M8"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["xml.validate"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/engine/src/json_validation.rs::an_openapi_description_is_checked_against_the_schema_of_its_version", "crates/ui-egui/tests/json.rs::f8_checks_an_openapi_description_and_a_json_schema_against_the_bundled_schemas"]
+notes = "F8 (Validate) on a JSON or YAML document that says `openapi: 3.0.x` checks it against the official JSON Schema of OpenAPI 3.0 (the schema of 2024-10-18), bundled and never fetched (`xmlcraft-schemas`), and lists each problem at its place in the text (a member at its name). Missing: editing aids (completion and hover from the schema, an outline of paths and operations), the semantic rules the schema cannot say (unique operation ids, resolvable `$ref`s, path parameters), the request builder, and bundled newer patch releases of the schemas."
 
 [[feature]]
 id = "openapi.v31"
@@ -2189,11 +2189,11 @@ title = "OpenAPI 3.1"
 area = "I"
 tier = "P2"
 milestone = "M8"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["xml.validate"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/engine/src/json_validation.rs::an_openapi_description_is_checked_against_the_schema_of_its_version", "crates/ui-egui/tests/json.rs::f8_checks_an_openapi_description_and_a_json_schema_against_the_bundled_schemas"]
+notes = "F8 (Validate) on a JSON or YAML document that says `openapi: 3.1.x` checks it against the official JSON Schema of OpenAPI 3.1 (the schema of 2025-09-15 with its JSON Schema dialect, so Schema Objects are validated too), bundled and never fetched (`xmlcraft-schemas`), and lists each problem at its place in the text (a member at its name). Missing: editing aids (completion and hover from the schema, an outline of paths and operations), the semantic rules the schema cannot say (unique operation ids, resolvable `$ref`s, path parameters), the request builder, and bundled newer patch releases of the schemas."
 
 [[feature]]
 id = "openapi.v32"
@@ -2201,11 +2201,11 @@ title = "OpenAPI 3.2"
 area = "I"
 tier = "P2"
 milestone = "M8"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["xml.validate"]
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/engine/src/json_validation.rs::an_openapi_description_is_checked_against_the_schema_of_its_version", "crates/ui-egui/tests/json.rs::f8_checks_an_openapi_description_and_a_json_schema_against_the_bundled_schemas"]
+notes = "F8 (Validate) on a JSON or YAML document that says `openapi: 3.2.x` checks it against the official JSON Schema of OpenAPI 3.2 (the schema of 2025-09-17 with its dialect), bundled and never fetched (`xmlcraft-schemas`), and lists each problem at its place in the text (a member at its name). Missing: editing aids (completion and hover from the schema, an outline of paths and operations), the semantic rules the schema cannot say (unique operation ids, resolvable `$ref`s, path parameters), the request builder, and bundled newer patch releases of the schemas."
 
 [[feature]]
 id = "openapi.request-builder"

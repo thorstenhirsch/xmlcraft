@@ -1,15 +1,5 @@
 # jsonschema tests XmlCraft does not pass yet, one test per line (the draft and file, the group, and the test).
 # A new failure fails `cargo xtask conformance jsonschema`; so does a test that now passes and is still listed.
 # Regenerate with `cargo xtask conformance jsonschema --write`.
-draft2019-09/defs.json | validate definition against metaschema | valid definition schema
-draft2019-09/ref.json | remote ref, containing refs itself | remote ref valid
 draft2019-09/vocabulary.json | schema that uses custom metaschema with with no validation vocabulary | no validation: invalid number, but it still validates
-draft2020-12/defs.json | validate definition against metaschema | valid definition schema
-draft2020-12/ref.json | remote ref, containing refs itself | remote ref valid
 draft2020-12/vocabulary.json | schema that uses custom metaschema with with no validation vocabulary | no validation: invalid number, but it still validates
-draft4/definitions.json | validate definition against metaschema | valid definition schema
-draft4/ref.json | remote ref, containing refs itself | remote ref valid
-draft6/definitions.json | validate definition against metaschema | valid definition schema
-draft6/ref.json | remote ref, containing refs itself | remote ref valid
-draft7/definitions.json | validate definition against metaschema | valid definition schema
-draft7/ref.json | remote ref, containing refs itself | remote ref valid
