@@ -107,7 +107,6 @@ struct Builder<'a> {
     full: bool,
     /// Finished values that have an anchor, with the number of values in each.
     anchors: HashMap<usize, (Value, usize)>,
-    /// The names of anchors, by id, for the message of an alias that is not defined.
     /// How many values the copies made by aliases have, together.
     expanded: usize,
     /// Anchors of values that were dropped for being nested too deeply: an alias to one is dropped too, with the depth problem as the reason.
