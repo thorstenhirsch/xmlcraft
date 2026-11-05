@@ -64,6 +64,7 @@ pub fn tools() -> &'static [ToolDef] {
         table.extend(crate::entry_helpers::tools());
         table.extend(crate::assign::tools());
         table.extend(crate::infer::tools());
+        table.extend(crate::xpath::tools());
         table.extend(crate::diff::tools());
         table.extend(crate::sample::tools());
         table.extend(crate::load_schema::tools());

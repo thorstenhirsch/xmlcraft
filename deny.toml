@@ -50,6 +50,11 @@ ignore = [
     { id = "RUSTSEC-2026-0370", reason = "zvariant unmaintained; Linux a11y stack via accesskit_unix" },
     { id = "RUSTSEC-2026-0371", reason = "zbus_names unmaintained; Linux a11y stack via accesskit_unix" },
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive unmaintained; Linux a11y stack via accesskit_unix" },
+    # The XPath engine (`xee`, through `xmlcraft-query`) uses `json` for fn:parse-json and `proc-macro-error` (a build-time macro helper)
+    # through `genawaiter` in `xot`: unmaintained, no vulnerability. Revisit when `xee` is vendored (M7): fn:parse-json can then read
+    # with `xmlcraft-json-syntax`, and `xot` can move on.
+    { id = "RUSTSEC-2022-0081", reason = "json unmaintained; xee's fn:parse-json" },
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained; build-time, via genawaiter in xot" },
 ]
 
 # egui's default UI fonts (Ubuntu-Light, Hack, emoji-icon-font): font licences on the AGENTS.md

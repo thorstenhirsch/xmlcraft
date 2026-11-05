@@ -1,2 +1,6 @@
 [alias]
 xtask = "run -p xtask --"
+
+# getrandom 0.3 (a dependency of the XPath engine's hash maps) has no default source of randomness on wasm32-unknown-unknown.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]
