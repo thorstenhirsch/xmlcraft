@@ -194,3 +194,35 @@ fn f8_checks_a_json_document_against_the_schema_it_names_and_lists_what_is_wrong
     }
     assert!(h.state().status.contains("is valid"), "{}", h.state().status);
 }
+
+#[test]
+fn f8_checks_an_openapi_description_and_a_json_schema_against_the_bundled_schemas() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    let wait = |h: &mut Harness<'static, XmlCraftApp>, count: (usize, usize)| {
+        let started = Instant::now();
+        while h.state().validity() != Some(count) {
+            assert!(started.elapsed() < Duration::from_secs(10), "waiting for the validation: {:?}", h.state().validity());
+            h.run_steps(1);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        h.run_steps(2);
+    };
+    // No `$schema` and no file next to it: the version the description says is enough.
+    let api = "{\n  \"openapi\": \"3.0.3\",\n  \"info\": {\"title\": 5, \"version\": \"1\"},\n  \"paths\": {}\n}\n";
+    open(&mut h, &file(dir.path(), "api.json", api));
+    assert!(h.state_mut().execute("xml.validate"));
+    wait(&mut h, (1, 0));
+    assert!(h.query_by_label_contains("title").is_some(), "the problem is listed");
+    // A JSON Schema that names its draft is checked against that draft's meta-schema.
+    let schema = "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"type\": \"strin\"\n}\n";
+    open(&mut h, &file(dir.path(), "schema.json", schema));
+    assert!(h.state_mut().execute("xml.validate"));
+    let started = Instant::now();
+    while h.state().validity().is_none_or(|(errors, _)| errors == 0) {
+        assert!(started.elapsed() < Duration::from_secs(10), "waiting for the second validation");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(h.state().validity().is_some_and(|(errors, _)| errors >= 1), "{:?}", h.state().validity());
+}

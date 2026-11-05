@@ -117,6 +117,38 @@ pub struct Document {
     /// A BSON file: its documents as they were read (or last saved) with the bytes of each, so that a document that is not edited is
     /// written back as the exact bytes it came from.
     bson: Option<Vec<(xmlcraft_bson::Document, Vec<u8>)>>,
+    /// A PDF file: the document shows the XML embedded in it, and saving it writes the PDF back with that XML replaced.
+    pdf: Option<PdfSource>,
+}
+
+/// What a PDF document came from: the whole file, and the embedded XML as it was.
+struct PdfSource {
+    /// The bytes of the PDF as they were read (or last written).
+    file: Vec<u8>,
+    /// The name of the embedded file shown.
+    name: String,
+    /// The bytes of that embedded file, as they were read (or last written): text that encodes to the same is not a change.
+    xml: Vec<u8>,
+    /// Why the file would not be written (encrypted, signed, damaged), if it would not.
+    not_editable: Option<String>,
+}
+
+/// Whether a file name says PDF.
+fn is_pdf_name(name: &str) -> bool {
+    name.rsplit(['/', '\\']).next().and_then(|file| file.rsplit_once('.')).is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("pdf"))
+}
+
+/// Names the XML of an e-invoice is usually embedded under, first choice first.
+const INVOICE_XML_NAMES: &[&str] =
+    &["factur-x.xml", "zugferd-invoice.xml", "xrechnung.xml", "order-x.xml", "cida.xml", "ubl-invoice.xml", "ubl.xml", "cii.xml", "invoice.xml"];
+
+fn is_xml_file(file: &xmlcraft_pdf::EmbeddedFile) -> bool {
+    let by_name = file.name.rsplit_once('.').is_some_and(|(_, e)| e.eq_ignore_ascii_case("xml"));
+    let by_type = file.mime.as_deref().is_some_and(|m| {
+        let m = m.to_ascii_lowercase();
+        m == "text/xml" || m == "application/xml" || m.ends_with("+xml")
+    });
+    by_name || by_type
 }
 
 impl Document {
@@ -136,6 +168,7 @@ impl Document {
             stamp: None,
             endings: Cell::new(None),
             bson: None,
+            pdf: None,
         }
     }
 
@@ -147,6 +180,9 @@ impl Document {
         let name = path.as_deref().and_then(Path::file_name).map_or_else(|| "Untitled".to_owned(), |n| n.to_string_lossy().into_owned());
         if Language::of_name(&name) == Language::Bson && !bytes.is_empty() {
             return Self::from_bson(id, name, path, bytes, stamp);
+        }
+        if is_pdf_name(&name) {
+            return Self::from_pdf(id, name, path, bytes, stamp);
         }
         let encoding = sniff(bytes);
         let decoded = decode(bytes, &encoding);
@@ -167,6 +203,7 @@ impl Document {
             stamp,
             endings: Cell::new(None),
             bson: None,
+            pdf: None,
         })
     }
 
@@ -194,7 +231,60 @@ impl Document {
             stamp,
             endings: Cell::new(None),
             bson: Some(originals),
+            pdf: None,
         })
+    }
+
+    /// A PDF file: shown as the XML embedded in it (the invoice of a ZUGFeRD, Factur-X or XRechnung PDF). A PDF with no embedded XML, one
+    /// that is not a PDF and an encrypted one are not opened as text (they would be saved back as something else).
+    fn from_pdf(id: u64, name: String, path: Option<PathBuf>, bytes: &[u8], stamp: Option<FileStamp>) -> Result<Self, OpenError> {
+        let pdf = xmlcraft_pdf::Pdf::open(bytes.to_vec()).map_err(|e| OpenError::Invalid(format!("this PDF cannot be opened ({e})")))?;
+        let files = pdf.embedded_files();
+        let xml: Vec<&xmlcraft_pdf::EmbeddedFile> = files.iter().filter(|f| is_xml_file(f)).collect();
+        let chosen = INVOICE_XML_NAMES
+            .iter()
+            .find_map(|wanted| xml.iter().find(|f| f.name.eq_ignore_ascii_case(wanted)))
+            .or_else(|| xml.first())
+            .copied()
+            .ok_or_else(|| {
+                let names: Vec<&str> = files.iter().map(|f| f.name.as_str()).collect();
+                OpenError::Invalid(if names.is_empty() {
+                    "this PDF has no embedded file, so there is no XML to show".to_owned()
+                } else {
+                    format!("this PDF has no embedded XML file (it has: {})", names.join(", "))
+                })
+            })?;
+        let data = pdf.embedded_data(chosen).map_err(|e| OpenError::Invalid(format!("the embedded file {} cannot be read ({e})", chosen.name)))?;
+        let encoding = sniff(&data);
+        let decoded = decode(&data, &encoding);
+        let mut editor = Editor::with_settings("", settings_for(&decoded.text));
+        editor.load(&decoded.text);
+        editor.set_syntax(Syntax::Xml);
+        let source = PdfSource { file: bytes.to_vec(), name: chosen.name.clone(), xml: data, not_editable: pdf.why_not_editable() };
+        Ok(Self {
+            id,
+            name,
+            path,
+            saved_state: editor.state_id(),
+            saved_encoding: (encoding.encoding, encoding.bom),
+            editor,
+            encoding,
+            lossy: decoded.lossy,
+            stamp,
+            endings: Cell::new(None),
+            bson: None,
+            pdf: Some(source),
+        })
+    }
+
+    /// For a PDF document, the name of the embedded file it shows.
+    pub fn pdf_embedded_name(&self) -> Option<&str> {
+        self.pdf.as_ref().map(|p| p.name.as_str())
+    }
+
+    /// For a PDF document, why saving it as a PDF would be refused (it is encrypted, signed, certified or damaged), if it would.
+    pub fn pdf_not_editable(&self) -> Option<&str> {
+        self.pdf.as_ref().and_then(|p| p.not_editable.as_deref())
     }
 
     pub fn id(&self) -> u64 {
@@ -477,10 +567,40 @@ impl Document {
         self.to_bytes_as(self.language())
     }
 
-    /// The bytes of the file when it is written under a name of the language `target` (Save As may change the language: a BSON file
-    /// saved as `.json` is written as the text it is shown as, and a text saved as `.bson` as the documents it stands for).
-    pub fn to_bytes_for(&self, path: &Path) -> Result<Vec<u8>, SaveError> {
-        self.to_bytes_as(path.file_name().map_or_else(|| self.language(), |n| Language::of_name(&n.to_string_lossy())))
+    /// The bytes of the file when it is written under the name `path` (Save As may change the language: a BSON file saved as `.json` is
+    /// written as the text it is shown as, and a text saved as `.bson` as the documents it stands for). `now` (seconds since the Unix
+    /// epoch) dates the change of a PDF.
+    ///
+    /// A PDF document saved as a PDF is the original file followed by an incremental update that replaces the embedded XML (the same
+    /// bytes when the XML was not edited); saved under another name it is the XML text.
+    pub fn to_bytes_for(&self, path: &Path, now: i64) -> Result<Vec<u8>, SaveError> {
+        let file = path.file_name().map(|n| n.to_string_lossy().into_owned());
+        let target_is_pdf = file.as_deref().is_some_and(is_pdf_name);
+        match (&self.pdf, target_is_pdf) {
+            (Some(source), true) => self.pdf_bytes(source, now),
+            (None, true) => Err(SaveError::Invalid(
+                "this document is not a PDF, and XmlCraft does not make one: save it as .xml, or open the PDF it belongs to".to_owned(),
+            )),
+            _ => self.to_bytes_as(file.map_or_else(|| self.language(), |n| Language::of_name(&n))),
+        }
+    }
+
+    /// The bytes of a PDF document: the original with the embedded XML replaced by the text, appended as an incremental update.
+    fn pdf_bytes(&self, source: &PdfSource, now: i64) -> Result<Vec<u8>, SaveError> {
+        let text = self.to_bytes_as(Language::Xml)?;
+        if text == source.xml {
+            return Ok(source.file.clone());
+        }
+        if let Some(why) = &source.not_editable {
+            return Err(SaveError::Invalid(format!("this PDF is not changed: {why}. Save the XML as a file of its own instead")));
+        }
+        let pdf = xmlcraft_pdf::Pdf::open(source.file.clone()).map_err(|e| SaveError::Invalid(format!("the PDF cannot be read again ({e})")))?;
+        let files = pdf.embedded_files();
+        let file = files
+            .iter()
+            .find(|f| f.name == source.name && is_xml_file(f))
+            .ok_or_else(|| SaveError::Invalid(format!("the embedded file {} is not in the PDF any more", source.name)))?;
+        pdf.replace_embedded(file, &text, &xmlcraft_pdf::pdf_date(now)).map_err(|e| SaveError::Invalid(format!("the PDF is not changed ({e})")))
     }
 
     fn to_bytes_as(&self, target: Language) -> Result<Vec<u8>, SaveError> {
@@ -530,6 +650,23 @@ impl Document {
     /// The document was written to `path` (the same or a new one): it is clean, has that name, and no longer has bytes that were lost
     /// (the text now is what the file holds).
     pub fn mark_saved(&mut self, path: PathBuf, stamp: Option<FileStamp>) {
+        self.mark_saved_bytes(path, stamp, None);
+    }
+
+    /// [`Self::mark_saved`], told the bytes that were written: a PDF document is then made of them (its next save is an update of this
+    /// file, and XML that is back to what they hold is no change). A PDF document saved under another name is the XML text from then on.
+    pub fn mark_saved_bytes(&mut self, path: PathBuf, stamp: Option<FileStamp>, written: Option<&[u8]>) {
+        let is_pdf = path.file_name().is_some_and(|n| is_pdf_name(&n.to_string_lossy()));
+        if let Some(source) = self.pdf.take() {
+            self.pdf = match (is_pdf, written) {
+                (true, Some(bytes)) => {
+                    let xml = self.to_bytes_as(Language::Xml).unwrap_or_default();
+                    Some(PdfSource { file: bytes.to_vec(), name: source.name, xml, not_editable: source.not_editable })
+                }
+                (true, None) => Some(source),
+                (false, _) => None,
+            };
+        }
         self.name = path.file_name().map_or_else(|| self.name.clone(), |n| n.to_string_lossy().into_owned());
         self.path = Some(path);
         self.editor.set_syntax(syntax_of(self.language()));
@@ -1014,6 +1151,138 @@ mod tests {
         assert!(d.editor().text().contains('y'), "an edit made since is not undone");
     }
 
+    /// A small PDF with embedded files (name, media type, data), a classic cross-reference table.
+    fn pdf_with(files: &[(&str, &str, &[u8])]) -> Vec<u8> {
+        let mut out = b"%PDF-1.7\n%\xE2\xE3\xCF\xD3\n".to_vec();
+        let mut offsets: Vec<(u32, usize)> = Vec::new();
+        let mut object = |out: &mut Vec<u8>, number: u32, body: &[u8]| {
+            offsets.push((number, out.len()));
+            out.extend_from_slice(format!("{number} 0 obj\n").as_bytes());
+            out.extend_from_slice(body);
+            out.extend_from_slice(b"\nendobj\n");
+        };
+        let names: String = files.iter().enumerate().map(|(i, (name, _, _))| format!("({name}) {} 0 R ", 2 + 2 * i)).collect();
+        object(&mut out, 1, format!("<< /Type /Catalog /Names << /EmbeddedFiles << /Names [{names}] >> >> >>").as_bytes());
+        for (i, (name, mime, data)) in files.iter().enumerate() {
+            let (spec, stream) = (2 + 2 * i, 3 + 2 * i);
+            object(&mut out, spec as u32, format!("<< /F ({name}) /UF ({name}) /AFRelationship /Data /EF << /F {stream} 0 R >> >>").as_bytes());
+            let mut body = format!("<< /Type /EmbeddedFile /Subtype /{mime} /Params << /Size {} >> /Length {} >>\nstream\n", data.len(), data.len())
+                .into_bytes();
+            body.extend_from_slice(data);
+            body.extend_from_slice(b"\nendstream");
+            object(&mut out, stream as u32, &body);
+        }
+        let table = out.len();
+        let count = 1 + 2 * files.len();
+        out.extend_from_slice(format!("xref\n0 1\n0000000000 65535 f \n1 {count}\n").as_bytes());
+        for (_, offset) in &offsets {
+            out.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+        }
+        out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{table}\n%%EOF\n", count + 1).as_bytes());
+        out
+    }
+
+    const INVOICE: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Invoice><ID>RE-1</ID><Note>Käse</Note></Invoice>\n";
+
+    fn pdf_document(bytes: &[u8]) -> Document {
+        Document::from_bytes(1, Some(PathBuf::from("/d/rechnung.pdf")), bytes, None).expect("opens")
+    }
+
+    #[test]
+    fn a_pdf_shows_its_embedded_xml_and_an_unedited_save_writes_the_same_file() {
+        let pdf = pdf_with(&[("logo.png", "image#2Fpng", &[1, 2, 3]), ("factur-x.xml", "text#2Fxml", INVOICE.as_bytes())]);
+        let d = pdf_document(&pdf);
+        assert_eq!((d.language(), d.editor().syntax()), (Language::Xml, Syntax::Xml));
+        assert_eq!(d.editor().text(), INVOICE);
+        assert_eq!(d.pdf_embedded_name(), Some("factur-x.xml"), "the XML, not the image");
+        assert_eq!(d.to_bytes_for(Path::new("/d/rechnung.pdf"), 0).expect("saves"), pdf, "not one byte differs");
+        assert!(!d.is_dirty());
+    }
+
+    #[test]
+    fn an_edit_is_saved_as_an_update_that_leaves_the_file_before_it_alone() {
+        let pdf = pdf_with(&[("factur-x.xml", "text#2Fxml", INVOICE.as_bytes())]);
+        let mut d = pdf_document(&pdf);
+        let at = d.editor().text().find("RE-1").expect("there");
+        d.editor_mut().set_selection(at, at + 4);
+        d.editor_mut().type_text("RE-2");
+        let saved = d.to_bytes_for(Path::new("/d/rechnung.pdf"), 1_793_000_000).expect("saves");
+        assert!(saved.len() > pdf.len() && saved.starts_with(&pdf), "the original bytes come first, then the update");
+        let reread = xmlcraft_pdf::Pdf::open(saved.clone()).expect("a PDF");
+        assert!(!reread.recovered(), "its cross-reference is followed, not rebuilt");
+        let files = reread.embedded_files();
+        let data = reread.embedded_data(&files[0]).expect("data");
+        assert_eq!(String::from_utf8(data).expect("utf-8"), INVOICE.replace("RE-1", "RE-2"));
+        // What was written is what the document is made of now: back to the old text is a change again, the same text is not.
+        d.mark_saved_bytes(PathBuf::from("/d/rechnung.pdf"), None, Some(&saved));
+        assert!(!d.is_dirty());
+        assert_eq!(d.to_bytes_for(Path::new("/d/rechnung.pdf"), 5).expect("saves"), saved, "unedited since: the same bytes");
+        let at = d.editor().text().find("RE-2").expect("there");
+        d.editor_mut().set_selection(at, at + 4);
+        d.editor_mut().type_text("RE-1");
+        let again = d.to_bytes_for(Path::new("/d/rechnung.pdf"), 6).expect("saves");
+        assert!(again.len() > saved.len() && again.starts_with(&saved), "a second update after the first");
+    }
+
+    #[test]
+    fn a_pdf_saved_under_another_name_is_its_xml_and_text_is_never_made_a_pdf() {
+        let pdf = pdf_with(&[("factur-x.xml", "text#2Fxml", INVOICE.as_bytes())]);
+        let mut d = pdf_document(&pdf);
+        assert_eq!(d.to_bytes_for(Path::new("/d/rechnung.xml"), 0).expect("saves"), INVOICE.as_bytes());
+        d.mark_saved_bytes(PathBuf::from("/d/rechnung.xml"), None, Some(INVOICE.as_bytes()));
+        assert_eq!(d.pdf_embedded_name(), None, "it is an XML file now");
+        let Err(SaveError::Invalid(why)) = d.to_bytes_for(Path::new("/d/x.pdf"), 0) else { panic!("refused") };
+        assert!(why.contains("not a PDF"), "{why}");
+        let text = open(b"<a/>");
+        assert!(matches!(text.to_bytes_for(Path::new("/d/a.pdf"), 0), Err(SaveError::Invalid(_))));
+    }
+
+    #[test]
+    fn the_invoice_xml_is_chosen_among_the_xml_files_and_what_has_none_is_not_opened() {
+        let pdf = pdf_with(&[("other.xml", "text#2Fxml", b"<other/>"), ("ZUGFeRD-invoice.xml", "text#2Fxml", INVOICE.as_bytes())]);
+        assert_eq!(pdf_document(&pdf).pdf_embedded_name(), Some("ZUGFeRD-invoice.xml"), "a known invoice name comes first, in any case");
+        let plain = pdf_with(&[("a.xml", "text#2Fxml", b"<a/>"), ("b.xml", "text#2Fxml", b"<b/>")]);
+        assert_eq!(pdf_document(&plain).pdf_embedded_name(), Some("a.xml"));
+        let no_xml = pdf_with(&[("logo.png", "image#2Fpng", &[1, 2, 3])]);
+        let Err(OpenError::Invalid(why)) = Document::from_bytes(1, Some(PathBuf::from("/d/x.pdf")), &no_xml, None) else { panic!("refused") };
+        assert!(why.contains("no embedded XML") && why.contains("logo.png"), "{why}");
+        let Err(OpenError::Invalid(why)) = Document::from_bytes(1, Some(PathBuf::from("/d/x.pdf")), b"not a pdf", None) else { panic!("refused") };
+        assert!(why.contains("cannot be opened"), "{why}");
+        let Err(OpenError::Invalid(why)) = Document::from_bytes(1, Some(PathBuf::from("/d/x.pdf")), &pdf_with(&[]), None) else { panic!("refused") };
+        assert!(why.contains("no embedded file"), "{why}");
+    }
+
+    #[test]
+    fn a_pdf_that_cannot_be_changed_is_not_changed_and_the_xml_can_still_be_saved_apart() {
+        // Damaged: no startxref is found, so the file is read by scanning and is not one to change.
+        let mut pdf = pdf_with(&[("factur-x.xml", "text#2Fxml", INVOICE.as_bytes())]);
+        let at = pdf.windows(9).rposition(|w| w == b"startxref").expect("there");
+        pdf.truncate(at);
+        let mut d = pdf_document(&pdf);
+        assert!(d.pdf_not_editable().is_some_and(|why| why.contains("damaged")), "{:?}", d.pdf_not_editable());
+        assert_eq!(d.to_bytes_for(Path::new("/d/r.pdf"), 0).expect("an unedited save is the same file"), pdf);
+        d.editor_mut().set_selection(0, 0);
+        d.editor_mut().type_text(" ");
+        let Err(SaveError::Invalid(why)) = d.to_bytes_for(Path::new("/d/r.pdf"), 0) else { panic!("refused") };
+        assert!(why.contains("not changed") && why.contains("damaged"), "{why}");
+        assert!(d.to_bytes_for(Path::new("/d/r.xml"), 0).is_ok(), "the XML can be saved as a file of its own");
+    }
+
+    #[test]
+    fn xml_in_another_encoding_is_written_back_in_it() {
+        let latin1 = b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><a>K\xE4se</a>";
+        let pdf = pdf_with(&[("factur-x.xml", "text#2Fxml", latin1)]);
+        let mut d = pdf_document(&pdf);
+        assert!(d.editor().text().contains("Käse"));
+        let at = d.editor().text().find("</a>").expect("there");
+        d.editor_mut().set_selection(at, at);
+        d.editor_mut().type_text("!");
+        let saved = d.to_bytes_for(Path::new("/d/r.pdf"), 1_793_000_000).expect("saves");
+        let reread = xmlcraft_pdf::Pdf::open(saved).expect("a PDF");
+        let data = reread.embedded_data(&reread.embedded_files()[0]).expect("data");
+        assert_eq!(data, b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><a>K\xE4se!</a>");
+    }
+
     fn bson_bytes(documents: &[xmlcraft_bson::Document]) -> Vec<u8> {
         xmlcraft_bson::write_all(documents).expect("writes")
     }
@@ -1078,16 +1347,16 @@ mod tests {
         let bytes = bson_bytes(&two_documents());
         let d = Document::from_bytes(1, Some(PathBuf::from("/d/a.bson")), &bytes, None).expect("opens");
         // Before the name changes: BSON saved as .json is the text, BSON saved as .bson is the bytes.
-        assert_eq!(d.to_bytes_for(Path::new("/d/b.json")).expect("saves"), d.editor().text().into_bytes());
-        assert_eq!(d.to_bytes_for(Path::new("/d/b.bson")).expect("saves"), bytes);
+        assert_eq!(d.to_bytes_for(Path::new("/d/b.json"), 0).expect("saves"), d.editor().text().into_bytes());
+        assert_eq!(d.to_bytes_for(Path::new("/d/b.bson"), 0).expect("saves"), bytes);
         // A text saved as .bson is encoded, and as .json is itself.
         let mut t = Document::from_bytes(2, Some(PathBuf::from("/d/t.json")), b"{\"k\": {\"$numberLong\": \"7\"}}", None).expect("opens");
-        let saved = t.to_bytes_for(Path::new("/d/t.bson")).expect("saves");
+        let saved = t.to_bytes_for(Path::new("/d/t.bson"), 0).expect("saves");
         assert_eq!(xmlcraft_bson::read_all(&saved).expect("reads")[0].fields[0].1, xmlcraft_bson::Bson::Int64(7));
-        assert_eq!(t.to_bytes_for(Path::new("/d/u.json")).expect("saves"), t.editor().text().into_bytes());
+        assert_eq!(t.to_bytes_for(Path::new("/d/u.json"), 0).expect("saves"), t.editor().text().into_bytes());
         t.editor_mut().select_all();
         t.editor_mut().type_text("not json at all");
-        assert!(matches!(t.to_bytes_for(Path::new("/d/t.bson")), Err(SaveError::Invalid(_))));
+        assert!(matches!(t.to_bytes_for(Path::new("/d/t.bson"), 0), Err(SaveError::Invalid(_))));
     }
 
     #[test]
