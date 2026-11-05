@@ -68,10 +68,10 @@ pub(crate) fn analyze_json(text: &str, version: u64, flavor: JsonFlavor) -> Anal
 }
 
 /// A short look at a scalar value; none for an object or an array.
-fn label_of(value: &Value) -> Option<String> {
+pub(crate) fn label_of(value: &Value) -> Option<String> {
     let shown = match &value.data {
         Data::String(s) => {
-            let one_line: String = s.chars().filter(|c| !c.is_control()).collect();
+            let one_line: String = s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect::<String>().trim().to_owned();
             let mut shown: String = one_line.chars().take(MAX_LABEL).collect();
             if one_line.chars().count() > MAX_LABEL {
                 shown.push('…');

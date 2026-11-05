@@ -55,7 +55,7 @@ fn add_language(properties: &mut Value) {
     if let Some(map) = properties.as_object_mut() {
         map.insert(
             "language".into(),
-            json!({ "type": "string", "enum": ["xml", "json", "jsonc", "json5", "jsonl"], "description": "What `text` is written in (default xml). An open document or a file is read by its name: JSON for `.json` (also `.geojson`, `.webmanifest`, `.har`, `.ipynb`, `.jsonld`, `.map`), JSON with comments for `.jsonc` and editor configuration files such as `tsconfig.json` and `settings.json`, `.json5`, JSON Lines for `.jsonl` and `.ndjson`; anything else is XML." }),
+            json!({ "type": "string", "enum": ["xml", "json", "jsonc", "json5", "jsonl", "yaml"], "description": "What `text` is written in (default xml). An open document or a file is read by its name: JSON for `.json` (also `.geojson`, `.webmanifest`, `.har`, `.ipynb`, `.jsonld`, `.map`), JSON with comments for `.jsonc` and editor configuration files such as `tsconfig.json` and `settings.json`, `.json5`, JSON Lines for `.jsonl` and `.ndjson`, YAML for `.yaml` and `.yml`; anything else is XML." }),
         );
     }
 }
@@ -672,6 +672,7 @@ fn language_arg(args: &Value) -> Result<Language> {
         Some("jsonc") => Language::Json(JsonFlavor::Jsonc),
         Some("json5") => Language::Json(JsonFlavor::Json5),
         Some("jsonl") => Language::Json(JsonFlavor::Lines),
+        Some("yaml") => Language::Yaml,
         Some(other) => return Err(ToolError::InvalidArgs(format!("language is xml, json, jsonc, json5 or jsonl, not {other:?}"))),
     })
 }

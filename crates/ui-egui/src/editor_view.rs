@@ -10,6 +10,7 @@ use xmlcraft_engine::folding::FoldRange;
 use xmlcraft_json_syntax::{JsonClass, Mode as JsonMode, highlight_line as json_line};
 use xmlcraft_syntax::{FarJump, HighlightClass, Highlighter, Severity};
 use xmlcraft_text::Buffer;
+use xmlcraft_yaml_syntax::{Mode as YamlMode, highlight_line as yaml_line};
 
 use crate::theme::{ThemeKind, Tokens};
 
@@ -178,6 +179,9 @@ pub struct XmlStyler {
     /// The text is JSON: coloured by its own line rules, with the mode each line starts in (known for the lines before `json_modes.len()`).
     json: bool,
     json_modes: Vec<JsonMode>,
+    /// The same for YAML.
+    yaml: bool,
+    yaml_modes: Vec<YamlMode>,
 }
 
 /// A line this many lines past the lines whose mode is known is coloured as if no comment were open, instead of reading all that is
@@ -197,16 +201,24 @@ impl XmlStyler {
             folds_valid_before: 0,
             json: false,
             json_modes: Vec::new(),
+            yaml: false,
+            yaml_modes: Vec::new(),
         }
     }
 
     /// Colour the text as JSON (or as XML again). Returns whether that changed: the caller then bumps the view's `highlight_version`.
     pub fn set_json(&mut self, json: bool) -> bool {
-        if self.json == json {
+        self.set_data(json, false)
+    }
+
+    /// Colour the text as JSON, as YAML, or (neither) as XML. Returns whether that changed.
+    pub fn set_data(&mut self, json: bool, yaml: bool) -> bool {
+        if self.json == json && self.yaml == yaml {
             return false;
         }
-        self.json = json;
+        (self.json, self.yaml) = (json, yaml);
         self.json_modes.clear();
+        self.yaml_modes.clear();
         self.highlighter.reset();
         true
     }
@@ -220,6 +232,7 @@ impl XmlStyler {
     pub fn reset(&mut self) {
         self.highlighter.reset();
         self.json_modes.clear();
+        self.yaml_modes.clear();
         self.problems.clear();
         self.reach.clear();
         self.folds.clear();
@@ -294,6 +307,33 @@ impl XmlStyler {
         self.json_modes.get(line).copied().unwrap_or_default()
     }
 
+    /// The mode line `line` starts in, for YAML.
+    fn yaml_mode_at(&mut self, buffer: &Buffer, line: usize) -> YamlMode {
+        if self.yaml_modes.is_empty() {
+            self.yaml_modes.push(YamlMode::Normal);
+        }
+        if line.saturating_sub(self.yaml_modes.len()) > MAX_JSON_MODE_WALK {
+            return YamlMode::Normal;
+        }
+        while self.yaml_modes.len() <= line {
+            let at = self.yaml_modes.len() - 1;
+            let mode = self.yaml_modes.get(at).copied().unwrap_or_default();
+            let next = match buffer.line_range_with_break(at).and_then(|r| buffer.slice(r).ok()) {
+                Some(text) => yaml_line(&text, mode).1,
+                None => YamlMode::Normal,
+            };
+            self.yaml_modes.push(next);
+        }
+        self.yaml_modes.get(line).copied().unwrap_or_default()
+    }
+
+    fn style_yaml_line(&mut self, buffer: &Buffer, line: usize) -> Vec<StyleSpan> {
+        let mode = self.yaml_mode_at(buffer, line);
+        let Some(text) = buffer.line_range(line).and_then(|r| buffer.slice(r).ok()) else { return Vec::new() };
+        let (spans, _) = yaml_line(&text, mode);
+        spans.into_iter().map(|(range, class)| StyleSpan { range, color: self.tokens.json_color(class) }).collect()
+    }
+
     fn style_json_line(&mut self, buffer: &Buffer, line: usize) -> Vec<StyleSpan> {
         let mode = self.json_mode_at(buffer, line);
         // The spans are of the line without its break (the break is read for the modes only).
@@ -307,11 +347,15 @@ impl LineStyler for XmlStyler {
     fn text_changed(&mut self, first_line: usize) {
         self.highlighter.invalidate_from(first_line);
         self.json_modes.truncate(first_line.saturating_add(1));
+        self.yaml_modes.truncate(first_line.saturating_add(1));
     }
 
     fn style_line(&mut self, buffer: &Buffer, line: usize, _text: &str) -> Vec<StyleSpan> {
         if self.json {
             return self.style_json_line(buffer, line);
+        }
+        if self.yaml {
+            return self.style_yaml_line(buffer, line);
         }
         // A very large text is coloured at a place far from what has been looked at from an estimate, not by reading all that is before.
         self.highlighter.set_far_jump(FarJump::for_len(buffer.len()));

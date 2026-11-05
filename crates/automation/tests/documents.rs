@@ -779,3 +779,27 @@ fn json_is_formatted_by_xml_format_in_text_in_files_and_in_documents() {
     let r = ok(&mut a, "xml_format", json!({ "text": "{ \"a\" : 1 }\n\n{ \"b\" : 2 }\n", "language": "jsonl", "minify": true }));
     assert_eq!(r["text"].as_str(), Some("{\"a\":1}\n\n{\"b\":2}\n"));
 }
+
+#[test]
+fn yaml_is_read_by_the_same_tools_as_xml_and_json() {
+    let mut a = Automation::new();
+    let text = "name: x\nitems:\n  - id: 1\n  - id: 2\n";
+    let r = ok(&mut a, "xml_wellformed", json!({ "text": text, "language": "yaml" }));
+    assert_eq!((r["errors"].as_u64(), r["well_formed"].as_bool()), (Some(0), Some(true)));
+    let outline = ok(&mut a, "xml_outline", json!({ "text": text, "language": "yaml" }));
+    let names: Vec<_> = outline["items"].as_array().expect("items").iter().map(|i| i["name"].as_str().unwrap_or_default()).collect();
+    assert_eq!(names, ["name", "items", "[0]", "id", "[1]", "id"]);
+    let folds = ok(&mut a, "xml_folds", json!({ "text": text, "language": "yaml" }));
+    assert_eq!(folds["folds"].as_array().map(Vec::len), Some(1), "the list of items; its entries are one line each");
+    assert_eq!(
+        (folds["folds"][0]["first_line"].as_u64(), folds["folds"][0]["last_line"].as_u64(), folds["folds"][0]["kind"].as_str()),
+        (Some(2), Some(4), Some("array"))
+    );
+    let bad = ok(&mut a, "xml_wellformed", json!({ "text": "a: [1\nb: 2\n", "language": "yaml" }));
+    assert_eq!(bad["problems"][0]["code"].as_str(), Some("yaml.syntax-error"));
+    let dir = tempfile::tempdir().expect("dir");
+    let path = file(dir.path(), "x.yml", text.as_bytes());
+    assert_eq!(ok(&mut a, "xml_outline", json!({ "path": path }))["count"].as_u64(), Some(6), "read by its name");
+    let e = err(&mut a, "xml_format", json!({ "text": text, "language": "yaml" }));
+    assert!(e.contains("YAML is not reformatted"), "{e}");
+}

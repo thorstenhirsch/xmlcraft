@@ -24,6 +24,8 @@ pub enum Syntax {
     Json,
     /// JSON5: single quotes make strings too.
     Json5,
+    /// YAML: nothing is typed for you (its white space is its structure).
+    Yaml,
 }
 
 /// How text is indented and how new lines end.

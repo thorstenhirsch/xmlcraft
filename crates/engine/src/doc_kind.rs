@@ -13,14 +13,17 @@ pub enum DocKind {
     Dtd,
     /// JSON, JSONC, JSON5 or JSON Lines.
     Json,
+    Yaml,
 }
 
 /// What the document called `name` is: a JSON name (see [`crate::language::Language::of_name`]) is JSON; otherwise by its extension (`.xsd` is a schema; `.dtd`, `.ent` and `.mod` are DTDs), else by its
 /// text (a root element `schema` of the XML Schema namespace is a schema), else XML. `analysis` is the analysis of its text, when there
 /// is one; without it only the name decides.
 pub fn doc_kind(name: &str, analysis: Option<&Analysis>) -> DocKind {
-    if crate::language::Language::of_name(name).is_json() {
-        return DocKind::Json;
+    match crate::language::Language::of_name(name) {
+        crate::language::Language::Json(_) => return DocKind::Json,
+        crate::language::Language::Yaml => return DocKind::Yaml,
+        crate::language::Language::Xml => {}
     }
     let extension = name.rsplit_once('.').map(|(_, ext)| ext.to_ascii_lowercase());
     match extension.as_deref() {
