@@ -6469,6 +6469,7 @@ dependencies = [
  "xmlcraft-bson",
  "xmlcraft-catalog",
  "xmlcraft-complete",
+ "xmlcraft-diff",
  "xmlcraft-dtd",
  "xmlcraft-editor",
  "xmlcraft-engine",
@@ -6546,6 +6547,18 @@ dependencies = [
  "chrono",
  "proptest",
  "xmlcraft-pattern",
+]
+
+[[package]]
+name = "xmlcraft-diff"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "rowan",
+ "serde_json",
+ "xmlcraft-json-syntax",
+ "xmlcraft-syntax",
+ "xmlcraft-yaml-syntax",
 ]
 
 [[package]]
