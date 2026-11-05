@@ -167,7 +167,7 @@ fn without_a_grammar_the_names_used_in_the_document_are_offered_after_a_bracket(
 }
 
 #[test]
-fn the_popup_goes_when_the_caret_moves_away_or_the_text_changes_by_other_means() {
+fn the_popup_goes_when_the_caret_moves_away_the_text_is_undone_or_the_caret_is_put_elsewhere() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell();
     open_at(&mut h, dir.path(), &format!("{DTD}<r><a id='1'/>¦</r>"));
@@ -178,6 +178,11 @@ fn the_popup_goes_when_the_caret_moves_away_or_the_text_changes_by_other_means()
     assert!(h.query_by_label("Complete s").is_none(), "moving the caret closes it");
     type_text(&mut h, "<");
     assert!(h.query_all_by_label_contains("Complete").count() > 0);
+    // An undo is a change that is not typing: the popup is not about that text any more.
+    assert!(h.state_mut().execute("edit.undo"));
+    h.run_steps(3);
+    assert_eq!(h.query_all_by_label_contains("Complete").count(), 0, "undo closes it");
+    type_text(&mut h, "<");
     // The caret put somewhere else by something other than the keyboard: it is not the popup's any more.
     h.state_mut().session.active_document_mut().expect("shown").editor_mut().set_selection(0, 0);
     h.run_steps(3);
@@ -196,4 +201,32 @@ fn an_attribute_that_is_there_already_is_not_offered_and_a_value_is_of_its_own_a
     type_text(&mut h, "\"");
     assert!(h.query_by_label("Complete p").is_some());
     assert!(h.query_by_label("Complete m").is_none() && h.query_by_label("Complete s").is_none(), "the values of size are not those of kind");
+}
+
+#[test]
+fn a_bracket_in_a_comment_or_a_cdata_section_offers_nothing() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open_at(&mut h, dir.path(), &format!("{DTD}<r><a id='1'/><!-- ¦ --></r>"));
+    type_text(&mut h, "<");
+    assert_eq!(h.query_all_by_label_contains("Complete").count(), 0, "in a comment");
+    type_text(&mut h, "&");
+    assert_eq!(h.query_all_by_label_contains("Complete").count(), 0, "an ampersand in a comment too");
+}
+
+#[test]
+fn the_keys_of_the_popup_are_the_editors_only_while_it_has_the_keyboard() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open_at(&mut h, dir.path(), &format!("{DTD}<r><a id='1'/>¦</r>"));
+    type_text(&mut h, "<");
+    assert!(h.query_by_label("Complete s").is_some());
+    let before = text(&h);
+    // The keyboard goes to the find bar: Enter there is the find bar's, and writes nothing in the document.
+    assert!(h.state_mut().execute("edit.find"));
+    h.run_steps(4);
+    h.key_press(egui::Key::Enter);
+    h.run_steps(3);
+    assert_eq!(text(&h), before, "the popup did not take the Enter");
+    assert_eq!(h.query_all_by_label_contains("Complete").count(), 0, "and it is gone");
 }

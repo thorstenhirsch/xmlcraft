@@ -34,48 +34,66 @@ pub(crate) struct Context {
     pub partial: String,
 }
 
-fn is_name_char(c: char) -> bool {
-    c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | ':')
+/// The most characters before the caret looked at to find the name of an attribute whose value is open.
+const LOOK_BACK: usize = 4096;
+
+/// What to complete at the caret of `editor` (a single empty caret), after the typing that put it there. Nothing for a place completion
+/// has nothing to say about: text, comments, CDATA, a value that is not an attribute's, white space between attributes. Where the caret is
+/// in the markup comes from the lexer, so a `<` in a comment, or a tag over several lines, is what it is.
+pub(crate) fn context(editor: &mut xmlcraft_editor::Editor) -> Option<Context> {
+    use xmlcraft_syntax::{Mode, is_name_char};
+    let head = editor.primary().head();
+    let buffer = editor.buffer();
+    let before_caret = buffer.slice(buffer.line_start(buffer.line_of(head)).unwrap_or(0)..head).ok()?;
+    let word_len: usize = before_caret.chars().rev().take_while(|c| is_name_char(*c)).map(char::len_utf8).sum();
+    let word_start = head - word_len;
+    let partial = buffer.slice(word_start..head).ok()?;
+    let previous = if word_start > 0 { buffer.char_at(buffer.prev_char(word_start)) } else { None };
+    match previous {
+        // `<name`: an element, where the `<` is in character data.
+        Some('<') => {
+            let at = word_start - 1;
+            (editor.markup_mode_at(at) == Mode::Content).then_some(Context { kind: Kind::Element, start: at, partial })
+        }
+        Some('&') => {
+            let at = word_start - 1;
+            (editor.markup_mode_at(at) == Mode::Content).then_some(Context { kind: Kind::Entity, start: at, partial })
+        }
+        _ => match editor.markup_mode_at(word_start) {
+            Mode::AttrValue(quote) => value_context(editor, word_start, quote),
+            Mode::Tag => {
+                // An attribute name: some letters of it, after white space.
+                let after_space = previous.is_some_and(char::is_whitespace);
+                (!partial.is_empty() && after_space).then_some(Context { kind: Kind::Attribute, start: word_start, partial })
+            }
+            _ => None,
+        },
+    }
 }
 
-/// What to complete at the end of `prefix` (the text of the caret's line up to the caret), after `typed` was typed. Nothing for a place
-/// completion has nothing to say about (text, a comment, white space between attributes).
-pub(crate) fn context(prefix: &str, typed: char) -> Option<Context> {
-    let word_len: usize = prefix.chars().rev().take_while(|c| is_name_char(*c)).map(char::len_utf8).sum();
-    let word_start = prefix.len() - word_len;
-    let (before, partial) = (prefix.get(..word_start)?, prefix.get(word_start..)?);
-    if before.ends_with('<') {
-        return Some(Context { kind: Kind::Element, start: word_start - 1, partial: partial.to_owned() });
-    }
-    if before.ends_with('&') {
-        return Some(Context { kind: Kind::Entity, start: word_start - 1, partial: partial.to_owned() });
-    }
-    // Inside a start tag (a `<` and a name after it, and no `>` since)?
-    let open = prefix.rfind('<')?;
-    let tag = prefix.get(open + 1..)?;
-    if tag.contains('>') || !tag.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_' || c == ':') {
+/// An open attribute value: everything typed after the quote is what a value replaces; the attribute is named before the `=`.
+fn value_context(editor: &mut xmlcraft_editor::Editor, caret_word_start: usize, quote: xmlcraft_syntax::Quote) -> Option<Context> {
+    use xmlcraft_syntax::{Quote, is_name_char};
+    let q = if quote == Quote::Double { '"' } else { '\'' };
+    let head = editor.primary().head();
+    let buffer = editor.buffer();
+    // The quote that opened the value: the nearest one of its kind before the caret (a value cannot hold its own quote).
+    let from = caret_word_start.saturating_sub(LOOK_BACK);
+    let from = (from..=caret_word_start).find(|o| buffer.is_boundary(*o)).unwrap_or(caret_word_start);
+    let window = buffer.slice(from..head).ok()?;
+    let quote_at = from + window.rfind(q)?;
+    let value_start = quote_at + q.len_utf8();
+    let before_quote = buffer.slice(from..quote_at).ok()?;
+    let name_part = before_quote.trim_end().strip_suffix('=')?.trim_end();
+    let name_len: usize = name_part.chars().rev().take_while(|c| is_name_char(*c)).map(char::len_utf8).sum();
+    let (rest, name) = name_part.split_at(name_part.len() - name_len);
+    // An attribute follows white space; a name straight after `<` is the element's.
+    if name.is_empty() || !rest.ends_with(char::is_whitespace) {
         return None;
     }
-    // Which quote is open, if one is: the state of the tag so far. A quote of the other kind inside a value is a character of it.
-    let mut open_quote: Option<(char, usize)> = None;
-    for (i, c) in tag.char_indices() {
-        match open_quote {
-            None if c == '"' || c == '\'' => open_quote = Some((c, i)),
-            Some((q, _)) if c == q => open_quote = None,
-            _ => {}
-        }
-    }
-    if let Some((_, at)) = open_quote {
-        // The name of the attribute whose value is open: before `=` (and white space) before the quote.
-        let name_part = tag.get(..at)?.trim_end().strip_suffix('=')?.trim_end();
-        let name: String = name_part.chars().rev().take_while(|c| is_name_char(*c)).collect::<Vec<_>>().into_iter().rev().collect();
-        return (!name.is_empty()).then_some(Context { kind: Kind::Value(name), start: word_start, partial: partial.to_owned() });
-    }
-    // An attribute name: some letters of it have been typed, after white space.
-    if !partial.is_empty() && before.ends_with(char::is_whitespace) && is_name_char(typed) {
-        return Some(Context { kind: Kind::Attribute, start: word_start, partial: partial.to_owned() });
-    }
-    None
+    let name = name.to_owned();
+    let partial = buffer.slice(value_start..head).ok()?;
+    Some(Context { kind: Kind::Value(name), start: value_start, partial })
 }
 
 /// One row of the popup.
@@ -147,9 +165,13 @@ impl XmlCraftApp {
             (Kind::Attribute, Some(choices)) => choices
                 .attributes
                 .iter()
-                .filter(|a| !a.used && a.declare.is_none())
+                .filter(|a| !a.used)
                 .map(|a| {
-                    let snippet = attribute_snippet(&a.name, a.values.first().map(String::as_str));
+                    // (An attribute of another namespace brings the declaration of its prefix.)
+                    let snippet = match &a.declare {
+                        Some(_) => xmlcraft_complete::xsd_attribute_snippet(&a.name, a.values.first().map(String::as_str), a.declare.as_ref()),
+                        None => attribute_snippet(&a.name, a.values.first().map(String::as_str)),
+                    };
                     // The text starts with the space that separates attributes: there is one before the word already.
                     Item {
                         label: a.name.clone(),
@@ -171,7 +193,12 @@ impl XmlCraftApp {
                 .iter()
                 .map(|e| {
                     let snippet = entity_snippet(&e.name);
-                    Item { label: format!("&{};", e.name), detail: e.value.clone().unwrap_or_default(), text: snippet.text, caret: snippet.caret }
+                    Item {
+                        label: format!("&{};", e.name),
+                        detail: e.value.as_deref().and_then(crate::entry_helpers::shown_value).unwrap_or_default(),
+                        text: snippet.text,
+                        caret: snippet.caret,
+                    }
                 })
                 .collect(),
             _ => Vec::new(),
@@ -193,42 +220,32 @@ impl XmlCraftApp {
 
     /// Work out what to offer at the caret after the frame's typing, and open or close the popup.
     pub(crate) fn update_completion(&mut self) {
-        let Some(doc) = self.session.active_document() else {
+        let Some(doc) = self.session.active_document_mut() else {
             self.completion = None;
             return;
         };
-        let editor = doc.editor();
-        let (id, version) = (doc.id(), editor.version());
+        let id = doc.id();
+        let editor = doc.editor_mut();
+        let version = editor.version();
         let caret = editor.primary();
         if editor.carets().len() != 1 || !caret.is_empty() {
             self.completion = None;
             return;
         }
         let head = caret.head();
-        let buffer = editor.buffer();
-        let line_start = buffer.line_start(buffer.line_of(head)).unwrap_or(0);
-        let Ok(prefix) = buffer.slice(line_start..head) else {
+        let Some(ctx) = context(editor) else {
             self.completion = None;
             return;
         };
-        let Some(typed) = prefix.chars().next_back() else {
-            self.completion = None;
-            return;
-        };
-        let Some(ctx) = context(&prefix, typed) else {
-            self.completion = None;
-            return;
-        };
-        // An element goes where the `<` is; the rest is about the place of the caret.
-        let choices = if ctx.kind == Kind::Element { self.helper_choices_at(line_start + ctx.start) } else { self.helper_choices() };
-        let items = narrowed(self.completion_items(&ctx.kind, choices.as_ref()), &ctx.partial);
+        // An element goes where the `<` is (what is typed is not a tag yet); the rest is about the place of the caret.
+        let choices = if ctx.kind == Kind::Element { self.helper_choices_at(ctx.start) } else { self.helper_choices() };
+        let mut items = narrowed(self.completion_items(&ctx.kind, choices.as_ref()), &ctx.partial);
         if items.is_empty() {
             self.completion = None;
             return;
         }
-        let mut items = items;
         items.truncate(200);
-        self.completion = Some(Completion { doc: id, version, start: line_start + ctx.start, caret: head, items, selected: 0 });
+        self.completion = Some(Completion { doc: id, version, start: ctx.start, caret: head, items, selected: 0 });
     }
 
     /// Whether the popup that is open is about the text as it is in the document being shown.
@@ -240,7 +257,8 @@ impl XmlCraftApp {
     /// Before the editor is drawn: the keys of the popup. Arrow keys choose, Enter and Tab write the choice, Escape closes it; they are
     /// taken from the frame's input so that the editor does not also act on them.
     pub(crate) fn completion_keys(&mut self, ui: &mut egui::Ui) {
-        if self.completion.is_some() && !self.completion_is_current() {
+        // The keys are the editor's: with the keyboard in the find bar, the palette or a dialog the popup is not theirs to take them.
+        if self.completion.is_some() && (!self.completion_is_current() || !self.editor_has_focus) {
             self.completion = None;
         }
         let Some(c) = &mut self.completion else { return };
@@ -356,42 +374,59 @@ impl XmlCraftApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use xmlcraft_editor::Editor;
 
-    fn kind_of(prefix: &str, typed: char) -> Option<(Kind, String)> {
-        context(prefix, typed).map(|c| (c.kind, c.partial))
+    /// The context at the `¦` of `marked` (the caret).
+    fn at(marked: &str) -> Option<(Kind, String, usize)> {
+        let caret = marked.find('¦').expect("a marker");
+        let mut editor = Editor::new(&marked.replacen('¦', "", 1));
+        editor.set_selection(caret, caret);
+        context(&mut editor).map(|c| (c.kind, c.partial, c.start))
     }
 
     #[test]
     fn a_name_after_an_open_bracket_is_an_element_and_after_an_ampersand_an_entity() {
-        assert_eq!(kind_of("<", '<'), Some((Kind::Element, String::new())));
-        assert_eq!(kind_of("  <bo", 'o'), Some((Kind::Element, "bo".to_owned())));
-        assert_eq!(context("  <bo", 'o').map(|c| c.start), Some(2), "the replacement starts at the bracket");
-        assert_eq!(kind_of("a &", '&'), Some((Kind::Entity, String::new())));
-        assert_eq!(kind_of("a &am", 'm'), Some((Kind::Entity, "am".to_owned())));
-        assert_eq!(context("x &am", 'm').map(|c| c.start), Some(2));
+        assert_eq!(at("<r><¦</r>"), Some((Kind::Element, String::new(), 3)));
+        assert_eq!(at("<r>  <bo¦</r>"), Some((Kind::Element, "bo".to_owned(), 5)), "the replacement starts at the bracket");
+        assert_eq!(at("<r>a &¦</r>"), Some((Kind::Entity, String::new(), 5)));
+        assert_eq!(at("<r>x &am¦</r>"), Some((Kind::Entity, "am".to_owned(), 5)));
+        assert_eq!(at("<r><é́x¦</r>").map(|c| c.1), Some("é́x".to_owned()), "combining marks are name characters");
     }
 
     #[test]
-    fn letters_after_white_space_in_a_start_tag_are_an_attribute() {
-        assert_eq!(kind_of("<a i", 'i'), Some((Kind::Attribute, "i".to_owned())));
-        assert_eq!(kind_of("<a x=\"1\" ki", 'i'), Some((Kind::Attribute, "ki".to_owned())));
+    fn letters_after_white_space_in_a_start_tag_are_an_attribute_even_over_several_lines() {
+        assert_eq!(at("<a i¦").map(|c| (c.0, c.1)), Some((Kind::Attribute, "i".to_owned())));
+        assert_eq!(at("<a x=\"1\" ki¦").map(|c| c.1), Some("ki".to_owned()));
+        assert_eq!(at("<a x=\"1>2\" ki¦").map(|c| c.0), Some(Kind::Attribute), "a > inside a value does not end the tag");
+        assert_eq!(at("<a\n   x=\"1\"\n   ki¦").map(|c| c.0), Some(Kind::Attribute), "the tag goes on over lines");
         // Not at the white space itself, not in text, not after the tag has ended.
-        assert_eq!(kind_of("<a ", ' '), None);
-        assert_eq!(kind_of("<a x=\"1\"> te", 'e'), None);
-        assert_eq!(kind_of("text te", 'e'), None);
-        assert_eq!(kind_of("<!-- a b", 'b'), None);
-        assert_eq!(kind_of("</a i", 'i'), None, "an end tag has no attributes");
+        assert_eq!(at("<a ¦"), None);
+        assert_eq!(at("<a x=\"1\"> te¦"), None);
+        assert_eq!(at("text te¦"), None);
     }
 
     #[test]
-    fn inside_the_quotes_of_an_attribute_its_values_are_offered() {
-        assert_eq!(kind_of("<a kind=\"", '"'), Some((Kind::Value("kind".to_owned()), String::new())));
-        assert_eq!(kind_of("<a kind=\"p", 'p'), Some((Kind::Value("kind".to_owned()), "p".to_owned())));
-        assert_eq!(kind_of("<a kind='q", 'q'), Some((Kind::Value("kind".to_owned()), "q".to_owned())));
-        assert_eq!(kind_of("<a id=\"1\" kind = \"", '"'), Some((Kind::Value("kind".to_owned()), String::new())));
-        // A closed value is not open any more; a quote of the other kind inside one does not open another.
-        assert_eq!(kind_of("<a kind=\"p\" x", 'x'), Some((Kind::Attribute, "x".to_owned())));
-        assert_eq!(kind_of("<a kind=\"it's", 's'), Some((Kind::Value("kind".to_owned()), "s".to_owned())));
+    fn markup_that_is_not_a_tag_offers_nothing() {
+        for text in ["<!-- <¦", "<!-- &am¦", "<r><![CDATA[ <¦", "<r><![CDATA[ &am¦", "<?pi <¦", "<!-- <a i¦"] {
+            assert_eq!(at(text), None, "{text}");
+        }
+        assert!(at("<r><!-- a --><¦").is_some(), "after the comment it is a tag again");
+    }
+
+    #[test]
+    fn inside_the_quotes_of_an_attribute_its_values_are_offered_whole() {
+        assert_eq!(at("<a kind=\"¦"), Some((Kind::Value("kind".to_owned()), String::new(), 9)));
+        assert_eq!(at("<a kind=\"p¦").map(|c| c.1), Some("p".to_owned()));
+        assert_eq!(at("<a kind='q¦").map(|c| (c.0, c.1)), Some((Kind::Value("kind".to_owned()), "q".to_owned())));
+        assert_eq!(at("<a id=\"1\" kind = \"¦").map(|c| c.0), Some(Kind::Value("kind".to_owned())));
+        // A value with spaces in it is replaced whole, from the quote.
+        let (kind, partial, start) = at("<a state=\"not ap¦").expect("a value");
+        assert_eq!((kind, partial.as_str(), start), (Kind::Value("state".to_owned()), "not ap", 10));
+        // A closed value is not open; a quote of the other kind inside one is a character of it.
+        assert_eq!(at("<a kind=\"p\" x¦").map(|c| c.0), Some(Kind::Attribute));
+        assert_eq!(at("<a kind=\"it's¦").map(|c| c.1), Some("it's".to_owned()));
+        // A value with no attribute name before it (or in an end tag's place) is nothing.
+        assert_eq!(at("<a =\"¦"), None);
     }
 
     #[test]

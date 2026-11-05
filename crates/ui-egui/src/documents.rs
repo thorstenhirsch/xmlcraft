@@ -647,6 +647,7 @@ impl XmlCraftApp {
         if let Some(line) = output.fold_clicked {
             self.when_analysed(Then::FoldLine(line));
         }
+        self.editor_has_focus = output.response.has_focus();
         // A completion is offered after typing, and goes when the text or the caret changed in any other way.
         if output.typed {
             self.update_completion();

@@ -363,7 +363,7 @@ status = "partial"
 commands = []
 tools = []
 evidence = ["crates/ui-egui/tests/completion.rs::without_a_grammar_the_names_used_in_the_document_are_offered_after_a_bracket", "crates/ui-egui/tests/completion.rs::nothing_is_offered_in_text_or_without_a_typed_character", "crates/ui-egui/src/completion.rs::a_name_after_an_open_bracket_is_an_element_and_after_an_ampersand_an_entity"]
-notes = "Typing `<` in a document that has no DTD or schema offers the element names the document already uses (a popup under the caret; more letters narrow it, prefix matches first; arrow keys choose, Enter or Tab writes `<name></name>`, Escape closes). Missing: attribute names and values from the document, names after `</`, and a key to ask for the popup (Ctrl+Space)."
+notes = "Typing `<` in a document that has no DTD or schema offers the element names the document already uses (a popup under the caret; more letters narrow it, prefix matches first; arrow keys choose, Enter or Tab writes `<name></name>`, Escape closes). Missing: attribute names and values from the document, names after `</`, a key to ask for the popup (Ctrl+Space), and a headless tool (completion is the window's popup; the choices are `xml_entry_helpers`)."
 
 [[feature]]
 id = "editor.completion-schema"

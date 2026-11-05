@@ -169,6 +169,12 @@ impl Editor {
     }
 
     /// Counts up with every change of the text (including undo and redo), not with caret moves.
+    /// Where in the markup `offset` is, as the lexer sees it: content, a tag, an attribute value, a comment, a CDATA section and so on
+    /// (what typing aids and completion decide by).
+    pub fn markup_mode_at(&mut self, offset: usize) -> xmlcraft_syntax::Mode {
+        self.lexer.mode_at(&self.buffer, offset)
+    }
+
     pub fn version(&self) -> u64 {
         self.version
     }
