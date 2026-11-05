@@ -6484,6 +6484,7 @@ dependencies = [
  "xmlcraft-query",
  "xmlcraft-resolve",
  "xmlcraft-sample",
+ "xmlcraft-schematron",
  "xmlcraft-syntax",
  "xmlcraft-text",
  "xmlcraft-validate",
@@ -6635,6 +6636,7 @@ dependencies = [
  "xmlcraft-resolve",
  "xmlcraft-sample",
  "xmlcraft-schemas",
+ "xmlcraft-schematron",
  "xmlcraft-syntax",
  "xmlcraft-text",
  "xmlcraft-validate",
@@ -6770,6 +6772,16 @@ name = "xmlcraft-schemas"
 version = "0.1.0"
 dependencies = [
  "miniz_oxide 0.9.1",
+]
+
+[[package]]
+name = "xmlcraft-schematron"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "xmlcraft-query",
+ "xmlcraft-syntax",
+ "xmlcraft-xsd",
 ]
 
 [[package]]
