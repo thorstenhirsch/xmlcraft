@@ -2213,11 +2213,11 @@ title = "Build and send an HTTP request from an OpenAPI operation"
 area = "I"
 tier = "P2"
 milestone = "M8"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["openapi_describe", "openapi_request", "openapi_call"]
+evidence = ["crates/openapi/tests/openapi.rs::operations_servers_and_parameters_are_read_with_refs_followed", "crates/openapi/tests/openapi.rs::examples_come_from_schemas_with_refs_enums_formats_and_recursion_cut", "crates/openapi/tests/openapi.rs::a_request_has_its_path_filled_in_and_encoded_its_query_headers_and_body", "crates/openapi/tests/openapi.rs::a_yaml_description_and_swagger_2_are_read_too", "crates/automation/tests/openapi.rs::a_call_is_sent_to_a_server_and_the_json_answer_is_read_and_nothing_is_sent_offline_or_to_this_computer_unless_allowed"]
+notes = "`xmlcraft-openapi` reads OpenAPI 2.0, 3.0, 3.1 and 3.2 descriptions in JSON or YAML into servers (variables resolved; for 2.0 from host, basePath and schemes) and operations with their parameters (path, query, header, cookie; shared and own, local $refs followed) and request bodies per media type, makes example values from JSON Schemas (example, default, const, first enum value, required and optional properties, an array item, the first of oneOf or anyOf, allOf merged, formats, 3.1 type lists; a recursive schema is cut) and builds the HTTP request (path parameters filled in and percent-encoded, query, headers, body, Content-Type; what is required and missing is an error). The tools `openapi_describe`, `openapi_request` and `openapi_call` (sends it with the HTTP client of the SOAP call: no redirects, private hosts refused unless allowed, only when a person allowed the network; the JSON answer is read) use it. Missing: the window, authentication schemes and security requirements, cookie parameters in the request, parameter styles beyond the default, form and multipart bodies, response validation, remote $refs, a history."
 
 [[feature]]
 id = "soap.wsdl-editor"

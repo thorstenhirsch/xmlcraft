@@ -21,6 +21,7 @@ mod infer;
 mod json_schema;
 mod lines;
 mod load_schema;
+mod openapi;
 mod pdf;
 mod sample;
 mod schema;
