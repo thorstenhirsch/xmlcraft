@@ -119,7 +119,9 @@ fn files_the_schema_refers_to_outside_the_root_are_not_read() {
     let root = tempfile::tempdir().expect("root");
     let outside = tempfile::tempdir().expect("outside");
     file(outside.path(), "secret.json", r#"{"type":"string"}"#);
-    let schema_inside = file(root.path(), "s.json", &format!(r#"{{"$ref":"file://{}/secret.json"}}"#, outside.path().display()));
+    // (Built as JSON, not formatted into text: a Windows path has backslashes.)
+    let reference = json!({ "$ref": format!("file://{}/secret.json", outside.path().display()) });
+    let schema_inside = file(root.path(), "s.json", &reference.to_string());
     let mut confined = Automation::with_root(root.path()).expect("root");
     let r = ok(&mut confined, json!({ "text": "1", "schema": schema_inside }));
     assert_eq!(r["valid"].as_bool(), Some(false));
