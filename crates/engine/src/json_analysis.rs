@@ -12,9 +12,46 @@ use crate::language::{JsonFlavor, Language};
 const MAX_LABEL: usize = 40;
 
 pub(crate) fn analyze_json(text: &str, version: u64, flavor: JsonFlavor) -> Analysis {
+    analyze_json_as(text, version, flavor, Language::Json(flavor))
+}
+
+/// The text of a BSON file: read as the JSON it is laid out as, and as Extended JSON besides (the values that are not valid Extended
+/// JSON are problems too).
+pub(crate) fn analyze_bson(text: &str, version: u64) -> Analysis {
+    let flavor = match xmlcraft_bson::layout_of_text(text) {
+        xmlcraft_bson::Layout::Lines => JsonFlavor::Lines,
+        xmlcraft_bson::Layout::Single => JsonFlavor::Json,
+    };
+    let mut analysis = analyze_json_as(text, version, flavor, Language::Bson);
+    // A file of no documents is a valid BSON file (an empty list), not an empty JSON text.
+    if text.trim_matches(|c: char| c.is_whitespace() || c == '\u{FEFF}').is_empty() {
+        analysis.diagnostics.retain(|d| d.code.key() != "json.empty-document");
+    }
+    // Only a text that is JSON can be asked what it means.
+    if analysis.diagnostics.iter().all(|d| d.severity() != xmlcraft_json_syntax::Severity::Error)
+        && let Err(errors) = xmlcraft_bson::from_text(text)
+    {
+        for e in errors.into_iter().take(1_000) {
+            let end = (e.offset + e.length.max(1)).min(text.len());
+            analysis.diagnostics.push(Diagnostic::new(Code::BsonInvalid, e.offset.min(end)..end, vec![e.message]));
+        }
+        analysis.diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
+    }
+    analysis
+}
+
+fn analyze_json_as(text: &str, version: u64, flavor: JsonFlavor, language: Language) -> Analysis {
     let options = Options { dialect: flavor.dialect(), ..Options::default() };
     let lines = Lines::new(text);
-    let mut out = Walk { text, lines: &lines, outline: Vec::new(), outline_truncated: false, folds: Vec::new(), folds_truncated: false };
+    let mut out = Walk {
+        text,
+        lines: &lines,
+        outline: Vec::new(),
+        outline_truncated: false,
+        folds: Vec::new(),
+        folds_truncated: false,
+        extended: language == Language::Bson,
+    };
     let mut diagnostics = Vec::new();
     let mut capped = false;
     if flavor == JsonFlavor::Lines {
@@ -53,7 +90,7 @@ pub(crate) fn analyze_json(text: &str, version: u64, flavor: JsonFlavor) -> Anal
     }
     Analysis {
         version,
-        language: Language::Json(flavor),
+        language,
         diagnostics,
         outline: out.outline,
         outline_truncated: out.outline_truncated,
@@ -68,10 +105,11 @@ pub(crate) fn analyze_json(text: &str, version: u64, flavor: JsonFlavor) -> Anal
 }
 
 /// A short look at a scalar value; none for an object or an array.
-fn label_of(value: &Value) -> Option<String> {
+pub(crate) fn label_of(value: &Value) -> Option<String> {
     let shown = match &value.data {
         Data::String(s) => {
-            let one_line: String = s.chars().filter(|c| !c.is_control()).collect();
+            // (Line breaks at the ends are not part of what is shown; the spaces of the text are.)
+            let one_line: String = s.trim_matches(['\n', '\r']).chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
             let mut shown: String = one_line.chars().take(MAX_LABEL).collect();
             if one_line.chars().count() > MAX_LABEL {
                 shown.push('…');
@@ -104,6 +142,8 @@ struct Walk<'a> {
     outline_truncated: bool,
     folds: Vec<FoldRange>,
     folds_truncated: bool,
+    /// The text is Extended JSON: an object like `{"$oid": …}` is one typed value, not a container.
+    extended: bool,
 }
 
 impl Walk<'_> {
@@ -118,6 +158,9 @@ impl Walk<'_> {
     /// The members (or items) of `value` as outline items at `depth`, and the folds of it and of what is in it. `level` counts the
     /// brackets around, 1 for the outermost.
     fn value(&mut self, value: &Value, depth: usize, level: usize) {
+        if self.typed(value).is_some() {
+            return;
+        }
         self.fold(value, level);
         match &value.data {
             Data::Object(members) => {
@@ -141,8 +184,24 @@ impl Walk<'_> {
         }
     }
 
+    /// In Extended JSON, the look at the value of an object that stands for one typed value (`7 ($numberInt)`).
+    fn typed(&self, value: &Value) -> Option<String> {
+        if !self.extended {
+            return None;
+        }
+        let Data::Object(members) = &value.data else { return None };
+        // (`$code` may come after `$scope`, as in the conversion.)
+        let first = members.iter().find(|m| m.key == "$code").or_else(|| members.first().filter(|m| xmlcraft_bson::is_wrapper_name(&m.key)))?;
+        let inner = match &first.value.data {
+            Data::Object(inner) => inner.first().and_then(|m| label_of(&m.value)),
+            _ => label_of(&first.value),
+        };
+        Some(format!("{} ({})", inner.unwrap_or_default().trim_matches('"'), first.key))
+    }
+
     fn item(&self, name: String, name_range: Range<usize>, value: &Value, depth: usize) -> OutlineItem {
-        let container = matches!(value.data, Data::Object(_) | Data::Array(_));
+        let typed = self.typed(value);
+        let container = typed.is_none() && matches!(value.data, Data::Object(_) | Data::Array(_));
         let (start_tag, end_tag) = if container {
             let open = value.span.start..(value.span.start + 1).min(value.span.end);
             // (A container that was not closed has no closing bracket.)
@@ -152,7 +211,7 @@ impl Walk<'_> {
             (value.span.clone(), None)
         };
         let range = if container { value.span.clone() } else { name_range.start.min(value.span.start)..value.span.end.max(name_range.end) };
-        OutlineItem { depth, name, label: label_of(value), range, name_range, start_tag, end_tag, end_name_range: None }
+        OutlineItem { depth, name, label: typed.or_else(|| label_of(value)), range, name_range, start_tag, end_tag, end_name_range: None }
     }
 
     /// The fold of an object or array that goes over lines. The closing bracket stays visible when it has a line of its own.
@@ -332,5 +391,37 @@ mod tests {
         let labels: Vec<_> = a.outline.iter().filter_map(|i| i.label.clone()).collect();
         assert!(labels.iter().all(|l| l.ends_with('…') || l.ends_with("…\"")), "{labels:?}");
         assert_eq!(a.language, Language::Json(JsonFlavor::Json));
+    }
+
+    #[test]
+    fn bson_text_is_checked_as_extended_json_too() {
+        let a = analyze_as(Language::Bson, "{\"id\": {\"$oid\": \"zz\"}, \"n\": 1}\n", 2);
+        assert_eq!(a.language, Language::Bson);
+        let codes: Vec<_> = a.diagnostics.iter().map(|d| d.code.key()).collect();
+        assert_eq!(codes, ["bson.invalid-value"]);
+        assert_eq!(&"{\"id\": {\"$oid\": \"zz\"}, \"n\": 1}\n"[a.diagnostics[0].span.clone()], "\"zz\"");
+        // A syntax error is the JSON reader's, and Extended JSON is not asked about a text that is not JSON.
+        let a = analyze_as(Language::Bson, "{\"id\": {\"$oid\": ", 2);
+        assert!(a.diagnostics.iter().all(|d| d.code.key().starts_with("json.")), "{:?}", a.diagnostics);
+        // Documents one to a line have an item each; one document is a tree.
+        let lines = analyze_as(Language::Bson, "{\"a\": 1}\n{\"b\": 2}\n", 2);
+        assert_eq!(lines.outline.iter().filter(|i| i.depth == 0).count(), 2);
+        assert!(analyze_as(Language::Bson, "{\"a\": 1}\n", 1).is_well_formed());
+        // A typed value is one item with a look at it; its wrapper is not a container to fold or list.
+        let typed = analyze_as(
+            Language::Bson,
+            "{\n  \"id\": {\"$oid\": \"0123456789abcdef01234567\"},\n  \"o\": {\n    \"d\": {\"$date\": {\"$numberLong\": \"5\"}}\n  }\n}\n",
+            1,
+        );
+        let shown: Vec<_> = typed.outline.iter().map(|i| (i.depth, i.name.as_str(), i.label.as_deref())).collect();
+        assert_eq!(shown, [(0, "id", Some("0123456789abcdef01234567 ($oid)")), (0, "o", None), (1, "d", Some("5 ($date)"))]);
+        // A file of no documents is valid BSON, not an empty JSON text.
+        assert!(analyze_as(Language::Bson, "", 1).diagnostics.is_empty());
+        assert!(analyze_as(Language::Bson, " \n", 1).diagnostics.is_empty());
+        assert!(!analyze_as(Language::Json(JsonFlavor::Json), "", 1).diagnostics.is_empty(), "while an empty JSON file is empty");
+        // JavaScript with a scope is one typed value, whichever member comes first.
+        let code = analyze_as(Language::Bson, "{\"f\": {\"$scope\": {\"x\": {\"$numberInt\": \"1\"}}, \"$code\": \"go()\"}}\n", 1);
+        let shown: Vec<_> = code.outline.iter().map(|i| (i.name.as_str(), i.label.as_deref())).collect();
+        assert_eq!(shown, [("f", Some("go() ($code)"))]);
     }
 }

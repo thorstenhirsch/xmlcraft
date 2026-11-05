@@ -16,6 +16,6 @@ mod decimal;
 mod ejson;
 mod model;
 
-pub use codec::{MAX_DEPTH, read_all, write_all};
-pub use ejson::{Layout, from_text, to_text};
+pub use codec::{MAX_DEPTH, read_all, read_with_ranges, write_all};
+pub use ejson::{Layout, from_text, is_wrapper_name, layout_of_text, to_text};
 pub use model::{Bson, BsonError, Document};

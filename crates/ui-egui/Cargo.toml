@@ -24,6 +24,7 @@ xmlcraft-format = { workspace = true }
 xmlcraft-text = { workspace = true }
 xmlcraft-syntax = { workspace = true }
 xmlcraft-json-syntax = { workspace = true }
+xmlcraft-yaml-syntax = { workspace = true }
 xmlcraft-editor = { workspace = true }
 xmlcraft-code-editor = { workspace = true }
 xmlcraft-platform = { workspace = true }
@@ -43,6 +44,7 @@ png = "0.18"
 base64 = "0.23"
 
 [dev-dependencies]
+xmlcraft-bson = { workspace = true }
 xmlcraft-xsd = { workspace = true }
 tempfile = "3"
 egui_kittest = { workspace = true, features = ["eframe", "wgpu"] }

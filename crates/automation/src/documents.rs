@@ -55,7 +55,7 @@ fn add_language(properties: &mut Value) {
     if let Some(map) = properties.as_object_mut() {
         map.insert(
             "language".into(),
-            json!({ "type": "string", "enum": ["xml", "json", "jsonc", "json5", "jsonl"], "description": "What `text` is written in (default xml). An open document or a file is read by its name: JSON for `.json` (also `.geojson`, `.webmanifest`, `.har`, `.ipynb`, `.jsonld`, `.map`), JSON with comments for `.jsonc` and editor configuration files such as `tsconfig.json` and `settings.json`, `.json5`, JSON Lines for `.jsonl` and `.ndjson`; anything else is XML." }),
+            json!({ "type": "string", "enum": ["xml", "json", "jsonc", "json5", "jsonl", "yaml", "bson"], "description": "What `text` is written in (default xml). An open document or a file is read by its name: JSON for `.json` (also `.geojson`, `.webmanifest`, `.har`, `.ipynb`, `.jsonld`, `.map`), JSON with comments for `.jsonc` and editor configuration files such as `tsconfig.json` and `settings.json`, `.json5`, JSON Lines for `.jsonl` and `.ndjson`, YAML for `.yaml` and `.yml`, a BSON file (`.bson`) as the Extended JSON text of its documents (for `text`, `bson` means that text); anything else is XML." }),
         );
     }
 }
@@ -465,8 +465,8 @@ pub(crate) fn tools() -> Vec<ToolDef> {
         ToolDef {
             name: "xml_wellformed",
             title: "Check well-formedness",
-            description: "Check XML 1.0 well-formedness and Namespaces, of an open document (`id`), a file (`path`) or text. Returns the counts and the problems with \
-                          their position and message.",
+            description: "Check XML 1.0 well-formedness and Namespaces, of an open document (`id`), a file (`path`) or text; for JSON, JSON with comments, JSON5, JSON Lines and \
+                          YAML (by name, or `language` for text) the syntax of that language. Returns the counts and the problems with their position and message.",
             input_schema: object(language_source_properties(), &[]),
             read_only: true,
             destructive: false,
@@ -493,7 +493,8 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             title: "What can be folded",
             description: "The stretches of lines that can be folded in an open document (`id`), a file (`path`) or text: elements whose content is on lines of their own, \
                           and comments, CDATA sections, processing instructions and DOCTYPEs over several lines. Each has the line that stands for it (`first_line`), the \
-                          last line it hides (`last_line`), the line it ends on, its level (1 is the root element) and its kind. Lines count from 1.",
+                          last line it hides (`last_line`), the line it ends on, its level (1 is the root element) and its kind. In JSON, JSON with comments, JSON5, JSON Lines and \
+                          YAML (by name, or `language` for text): the objects and arrays (YAML: blocks and multi-line scalars) over several lines. Lines count from 1.",
             input_schema: object(language_source_properties(), &[]),
             read_only: true,
             destructive: false,
@@ -503,7 +504,8 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             name: "xml_outline",
             title: "Outline of the elements",
             description: "The element tree of an open document (`id`), a file (`path`) or text: each element with its depth, name, a hint from its id, name or key \
-                          attribute, and where it starts and ends.",
+                          attribute, and where it starts and ends. For JSON, JSON Lines and YAML (by name, or `language` for text): each member (and each list entry that is an \
+                          object or list) with its depth, its name and a look at its value.",
             input_schema: object(language_source_properties(), &[]),
             read_only: true,
             destructive: false,
@@ -513,7 +515,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             name: "xml_format",
             title: "Pretty-print or minify",
             description: "Change only the white space between nodes (XML) or tokens (JSON, JSONC, JSON5): pretty-print (one node or member per line, indented) or minify. XML text with mixed content and elements with \
-                          xml:space=\"preserve\" are left alone, JSON Lines can only be minified, and a document that is not well-formed is refused. On an open document (`id`) it is one undoable edit; \
+                          xml:space=\"preserve\" are left alone, JSON Lines can only be minified, YAML is never reformatted (its white space is its structure: the tool refuses), and a document that is not well-formed is refused. On an open document (`id`) it is one undoable edit; \
                           for a file or text the formatted text is returned and nothing is written.",
             input_schema: {
                 let mut properties = language_source_properties();
@@ -655,8 +657,16 @@ pub(crate) fn source(a: &Automation, args: &Value) -> Result<Source> {
         (None, Some(path), None) => {
             let path = a.confinement.resolve_read(path)?;
             let loaded = xmlcraft_platform::files::read_file(&path).map_err(|e| ToolError::Failed(format!("{}: {e}", path.display())))?;
-            let decoded = decode(&loaded.bytes, &sniff(&loaded.bytes));
             let language = path.file_name().map_or(Language::Xml, |n| Language::of_name(&n.to_string_lossy()));
+            // A BSON file is read as the Extended JSON text of its documents, the text it is edited as.
+            if language == Language::Bson && !loaded.bytes.is_empty() {
+                let documents =
+                    xmlcraft_bson::read_all(&loaded.bytes).map_err(|e| ToolError::Failed(format!("{}: not a BSON file ({e})", path.display())))?;
+                let (text, _) =
+                    xmlcraft_bson::to_text(&documents, true).map_err(|e| ToolError::Failed(format!("{}: {}", path.display(), e.message)))?;
+                return Ok(Source { text, language, id: None, lossy: false, path: Some(path) });
+            }
+            let decoded = decode(&loaded.bytes, &sniff(&loaded.bytes));
             Ok(Source { text: decoded.text, language, id: None, lossy: decoded.lossy, path: Some(path) })
         }
         (None, None, Some(text)) => Ok(Source { text: text.to_owned(), language: language_arg(args)?, id: None, lossy: false, path: None }),
@@ -672,7 +682,9 @@ fn language_arg(args: &Value) -> Result<Language> {
         Some("jsonc") => Language::Json(JsonFlavor::Jsonc),
         Some("json5") => Language::Json(JsonFlavor::Json5),
         Some("jsonl") => Language::Json(JsonFlavor::Lines),
-        Some(other) => return Err(ToolError::InvalidArgs(format!("language is xml, json, jsonc, json5 or jsonl, not {other:?}"))),
+        Some("yaml") => Language::Yaml,
+        Some("bson") => Language::Bson,
+        Some(other) => return Err(ToolError::InvalidArgs(format!("language is xml, json, jsonc, json5, jsonl, yaml or bson, not {other:?}"))),
     })
 }
 
@@ -1207,10 +1219,10 @@ fn doc_save(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         }
     }
     let prep = doc.prepare_save_as(&target);
-    let bytes = match doc.to_bytes() {
+    let bytes = match doc.to_bytes_for(&target) {
         Ok(bytes) => bytes,
         Err(SaveError::Unmappable(e)) if text_arg(args, "unmappable") == Some("references") => {
-            let written = doc.apply_character_references().and_then(|_| doc.to_bytes());
+            let written = doc.apply_character_references().and_then(|_| doc.to_bytes_for(&target));
             match written {
                 Ok(bytes) => bytes,
                 Err(_) => {
@@ -1226,6 +1238,10 @@ fn doc_save(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         Err(SaveError::Lossy) => {
             doc.undo_save_as(prep);
             return fail("the document cannot be saved over its file");
+        }
+        Err(SaveError::Invalid(why)) => {
+            doc.undo_save_as(prep);
+            return fail(why);
         }
     };
     let stamp = match files::write_file(&target, &bytes) {

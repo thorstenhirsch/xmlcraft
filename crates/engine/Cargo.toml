@@ -22,6 +22,8 @@ xmlcraft-grammar = { workspace = true }
 xmlcraft-validate = { workspace = true }
 xmlcraft-syntax = { workspace = true }
 xmlcraft-json-syntax = { workspace = true }
+xmlcraft-bson = { workspace = true }
+xmlcraft-yaml-syntax = { workspace = true }
 xmlcraft-format = { workspace = true }
 rowan = { workspace = true }
 log = { workspace = true }

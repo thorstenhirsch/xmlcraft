@@ -32,7 +32,8 @@ fn syntax_of(language: Language) -> Syntax {
     match language {
         Language::Xml => Syntax::Xml,
         Language::Json(crate::language::JsonFlavor::Json5) => Syntax::Json5,
-        Language::Json(_) => Syntax::Json,
+        Language::Json(_) | Language::Bson => Syntax::Json,
+        Language::Yaml => Syntax::Yaml,
     }
 }
 
@@ -50,13 +51,19 @@ pub struct FileStamp {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum OpenError {
-    TooLarge { len: usize, max: usize },
+    TooLarge {
+        len: usize,
+        max: usize,
+    },
+    /// The bytes are not what the name says they are (a `.bson` file that is not BSON).
+    Invalid(String),
 }
 
 impl std::fmt::Display for OpenError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OpenError::TooLarge { len, max } => write!(f, "the file is {len} bytes, more than the {max} bytes XmlCraft opens"),
+            OpenError::Invalid(why) => f.write_str(why),
         }
     }
 }
@@ -70,6 +77,8 @@ pub enum SaveError {
     Unmappable(EncodeError),
     /// Reading the file replaced bytes that were not valid; saving over it would make that permanent.
     Lossy,
+    /// The text is not what the file format needs (a BSON file whose text is not valid Extended JSON): the reason.
+    Invalid(String),
 }
 
 impl std::fmt::Display for SaveError {
@@ -77,6 +86,7 @@ impl std::fmt::Display for SaveError {
         match self {
             SaveError::Unmappable(e) => e.fmt(f),
             SaveError::Lossy => f.write_str("the file has bytes that are not valid in its encoding, and saving would replace them for good"),
+            SaveError::Invalid(why) => f.write_str(why),
         }
     }
 }
@@ -104,6 +114,9 @@ pub struct Document {
     stamp: Option<FileStamp>,
     /// The line endings of the text, counted for the editor version in the first part (counting reads the whole text).
     endings: Cell<Option<(u64, LineEndings)>>,
+    /// A BSON file: its documents as they were read (or last saved) with the bytes of each, so that a document that is not edited is
+    /// written back as the exact bytes it came from.
+    bson: Option<Vec<(xmlcraft_bson::Document, Vec<u8>)>>,
 }
 
 impl Document {
@@ -122,6 +135,7 @@ impl Document {
             lossy: false,
             stamp: None,
             endings: Cell::new(None),
+            bson: None,
         }
     }
 
@@ -130,12 +144,15 @@ impl Document {
         if bytes.len() > MAX_OPEN_BYTES {
             return Err(OpenError::TooLarge { len: bytes.len(), max: MAX_OPEN_BYTES });
         }
+        let name = path.as_deref().and_then(Path::file_name).map_or_else(|| "Untitled".to_owned(), |n| n.to_string_lossy().into_owned());
+        if Language::of_name(&name) == Language::Bson && !bytes.is_empty() {
+            return Self::from_bson(id, name, path, bytes, stamp);
+        }
         let encoding = sniff(bytes);
         let decoded = decode(bytes, &encoding);
         let settings = settings_for(&decoded.text);
         let mut editor = Editor::with_settings("", settings);
         editor.load(&decoded.text);
-        let name = path.as_deref().and_then(Path::file_name).map_or_else(|| "Untitled".to_owned(), |n| n.to_string_lossy().into_owned());
         let saved_encoding = (encoding.encoding, encoding.bom);
         editor.set_syntax(syntax_of(Language::of_name(&name)));
         Ok(Self {
@@ -149,6 +166,34 @@ impl Document {
             lossy: decoded.lossy,
             stamp,
             endings: Cell::new(None),
+            bson: None,
+        })
+    }
+
+    /// A BSON file: shown as the Extended JSON text of its documents. A file that is not BSON is not opened as text (it would be saved
+    /// back as something else).
+    fn from_bson(id: u64, name: String, path: Option<PathBuf>, bytes: &[u8], stamp: Option<FileStamp>) -> Result<Self, OpenError> {
+        let read = xmlcraft_bson::read_with_ranges(bytes).map_err(|e| OpenError::Invalid(format!("this is not a BSON file ({e})")))?;
+        let documents: Vec<xmlcraft_bson::Document> = read.iter().map(|(d, _)| d.clone()).collect();
+        let (text, _) = xmlcraft_bson::to_text(&documents, true)
+            .map_err(|e| OpenError::Invalid(format!("this BSON file cannot be shown as text ({})", e.message)))?;
+        let originals = read.into_iter().map(|(d, range)| (d, bytes.get(range).unwrap_or_default().to_vec())).collect();
+        let encoding = Detected::utf8();
+        let mut editor = Editor::with_settings("", settings_for(&text));
+        editor.load(&text);
+        editor.set_syntax(Syntax::Json);
+        Ok(Self {
+            id,
+            name,
+            path,
+            saved_state: editor.state_id(),
+            saved_encoding: (encoding.encoding, encoding.bom),
+            editor,
+            encoding,
+            lossy: false,
+            stamp,
+            endings: Cell::new(None),
+            bson: Some(originals),
         })
     }
 
@@ -368,6 +413,10 @@ impl Document {
         if let Language::Json(flavor) = self.language() {
             return self.apply_json_escapes(&text, &found, flavor.dialect());
         }
+        // (YAML has escapes only inside double quotes, and where the quotes are is for the user to choose: another encoding is the answer.)
+        if self.language() == Language::Yaml {
+            return Err(SaveError::Unmappable(*first));
+        }
         let mut tokens = Lexer::new(&text);
         let mut current = tokens.next();
         let mut edits = Vec::with_capacity(found.len());
@@ -425,7 +474,52 @@ impl Document {
     /// The bytes of the file: the text in the document's encoding. A character the encoding cannot hold is an error (see
     /// [`Self::apply_character_references`] and [`Self::set_encoding`]); nothing is ever replaced silently.
     pub fn to_bytes(&self) -> Result<Vec<u8>, SaveError> {
+        self.to_bytes_as(self.language())
+    }
+
+    /// The bytes of the file when it is written under a name of the language `target` (Save As may change the language: a BSON file
+    /// saved as `.json` is written as the text it is shown as, and a text saved as `.bson` as the documents it stands for).
+    pub fn to_bytes_for(&self, path: &Path) -> Result<Vec<u8>, SaveError> {
+        self.to_bytes_as(path.file_name().map_or_else(|| self.language(), |n| Language::of_name(&n.to_string_lossy())))
+    }
+
+    fn to_bytes_as(&self, target: Language) -> Result<Vec<u8>, SaveError> {
+        if target == Language::Bson {
+            return self.bson_bytes();
+        }
         encode_chunks(self.editor.buffer().chunks(), self.encoding.encoding, self.encoding.bom, Unmappable::Refuse).map_err(SaveError::Unmappable)
+    }
+
+    /// The bytes of a BSON file: the documents the text stands for. A document that is the same (as shown) as one that was read is
+    /// written as the exact bytes it was read from, wherever it now stands, so nothing changes in what nobody edited; the others are
+    /// encoded.
+    fn bson_bytes(&self) -> Result<Vec<u8>, SaveError> {
+        let text = self.editor.text();
+        let documents = xmlcraft_bson::from_text(&text).map_err(|errors| {
+            let first = errors
+                .first()
+                .map(|e| format!("line {}: {}", self.editor.buffer().line_of(e.offset.min(self.editor.buffer().len())) + 1, e.message))
+                .unwrap_or_default();
+            SaveError::Invalid(format!("the text is not valid Extended JSON ({first})"))
+        })?;
+        let shown = |d: &xmlcraft_bson::Document| xmlcraft_bson::to_text(std::slice::from_ref(d), true).ok().map(|(t, _)| t);
+        // The documents that were read, by their text (what the text cannot say, such as the payload of a NaN, is then not lost); the
+        // same text twice is used up in order.
+        let mut originals: std::collections::HashMap<String, std::collections::VecDeque<&[u8]>> = std::collections::HashMap::new();
+        for (old, bytes) in self.bson.iter().flatten() {
+            if let Some(t) = shown(old) {
+                originals.entry(t).or_default().push_back(bytes);
+            }
+        }
+        let mut out = Vec::new();
+        for document in &documents {
+            if let Some(original) = shown(document).and_then(|t| originals.get_mut(&t)).and_then(|queue| queue.pop_front()) {
+                out.extend_from_slice(original);
+            } else {
+                out.extend_from_slice(&xmlcraft_bson::write_all(std::slice::from_ref(document)).map_err(|e| SaveError::Invalid(e.message))?);
+            }
+        }
+        Ok(out)
     }
 
     /// Whether saving over the file the document came from is allowed.
@@ -444,6 +538,17 @@ impl Document {
         self.saved_encoding = (self.encoding.encoding, self.encoding.bom);
         self.lossy = false;
         self.editor.break_undo_group();
+        // What was written is what a BSON file is now made of (worked out while the old documents are still there, so that those that
+        // nobody edited keep the exact bytes they had).
+        if self.language() == Language::Bson {
+            self.bson = self.bson_bytes().ok().and_then(|bytes| {
+                xmlcraft_bson::read_with_ranges(&bytes)
+                    .ok()
+                    .map(|read| read.into_iter().map(|(d, r)| (d, bytes.get(r).unwrap_or_default().to_vec())).collect())
+            });
+        } else {
+            self.bson = None;
+        }
     }
 
     /// Replace the text with the contents of the file as they are now on disk (revert, or accepting a change made elsewhere). The undo
@@ -907,5 +1012,109 @@ mod tests {
         d.editor_mut().type_text("y");
         d.undo_save_as(prep);
         assert!(d.editor().text().contains('y'), "an edit made since is not undone");
+    }
+
+    fn bson_bytes(documents: &[xmlcraft_bson::Document]) -> Vec<u8> {
+        xmlcraft_bson::write_all(documents).expect("writes")
+    }
+
+    fn two_documents() -> Vec<xmlcraft_bson::Document> {
+        use xmlcraft_bson::{Bson, Document};
+        vec![
+            Document { fields: vec![("n".into(), Bson::Int32(1)), ("odd".into(), Bson::Double(f64::from_bits(0x7ff8_0000_0000_0001)))] },
+            Document { fields: vec![("s".into(), Bson::String("x".into()))] },
+        ]
+    }
+
+    #[test]
+    fn a_bson_file_is_shown_as_text_and_saved_as_the_bytes_it_came_from_where_nobody_edited() {
+        let bytes = bson_bytes(&two_documents());
+        let mut d = Document::from_bytes(1, Some(PathBuf::from("/d/a.bson")), &bytes, None).expect("opens");
+        assert_eq!((d.language(), d.editor().syntax()), (Language::Bson, Syntax::Json));
+        assert!(d.editor().text().contains("\"$numberInt\":\"1\"") && d.editor().text().lines().count() == 2, "{}", d.editor().text());
+        assert_eq!(d.to_bytes().expect("saves"), bytes, "nothing edited: the same bytes, whatever the text cannot say (a NaN payload)");
+        // Edit the second document only: the first keeps its exact bytes.
+        let text = d.editor().text().replace("\"x\"", "\"y\"");
+        d.editor_mut().select_all();
+        d.editor_mut().type_text(&text);
+        let saved = d.to_bytes().expect("saves");
+        let first = bson_bytes(&two_documents()[..1]);
+        assert_eq!(&saved[..first.len()], first.as_slice(), "the unedited document is byte for byte what it was");
+        assert_ne!(saved, bytes);
+        let read = xmlcraft_bson::read_all(&saved).expect("reads");
+        assert_eq!(read[1].fields[0].1, xmlcraft_bson::Bson::String("y".into()));
+        // After saving, what was written is the new baseline.
+        d.mark_saved(PathBuf::from("/d/a.bson"), None);
+        assert_eq!(d.to_bytes().expect("saves"), saved);
+    }
+
+    #[test]
+    fn text_that_is_not_extended_json_is_not_saved_and_a_file_that_is_not_bson_is_not_opened() {
+        let bytes = bson_bytes(&two_documents());
+        let mut d = Document::from_bytes(1, Some(PathBuf::from("/d/a.bson")), &bytes, None).expect("opens");
+        d.editor_mut().select_all();
+        d.editor_mut().type_text("{\"a\": {\"$oid\": \"zz\"}}");
+        let Err(SaveError::Invalid(why)) = d.to_bytes() else { panic!("refused") };
+        assert!(why.contains("Extended JSON") && why.contains("line 1"), "{why}");
+        let Err(OpenError::Invalid(why)) = Document::from_bytes(2, Some(PathBuf::from("/d/b.bson")), b"not bson at all", None) else {
+            panic!("refused")
+        };
+        assert!(why.contains("not a BSON file"), "{why}");
+        // An empty file is an empty document list; a text document saved under a .bson name is encoded.
+        let empty = Document::from_bytes(3, Some(PathBuf::from("/d/c.bson")), b"", None).expect("opens");
+        assert_eq!(empty.to_bytes().expect("saves"), Vec::<u8>::new());
+        let mut text = Document::untitled(4, 1);
+        text.editor_mut().type_text("{\"k\": {\"$numberLong\": \"7\"}}");
+        text.mark_saved(PathBuf::from("/d/new.bson"), None);
+        assert_eq!(xmlcraft_bson::read_all(&text.to_bytes().expect("saves")).expect("reads")[0].fields[0].1, xmlcraft_bson::Bson::Int64(7));
+        // And a BSON document saved as .json is plain text.
+        let mut d = Document::from_bytes(5, Some(PathBuf::from("/d/a.bson")), &bytes, None).expect("opens");
+        d.mark_saved(PathBuf::from("/d/a.json"), None);
+        assert_eq!(d.to_bytes().expect("saves"), d.editor().text().into_bytes());
+    }
+
+    #[test]
+    fn save_as_writes_the_bytes_of_the_language_of_the_new_name() {
+        let bytes = bson_bytes(&two_documents());
+        let d = Document::from_bytes(1, Some(PathBuf::from("/d/a.bson")), &bytes, None).expect("opens");
+        // Before the name changes: BSON saved as .json is the text, BSON saved as .bson is the bytes.
+        assert_eq!(d.to_bytes_for(Path::new("/d/b.json")).expect("saves"), d.editor().text().into_bytes());
+        assert_eq!(d.to_bytes_for(Path::new("/d/b.bson")).expect("saves"), bytes);
+        // A text saved as .bson is encoded, and as .json is itself.
+        let mut t = Document::from_bytes(2, Some(PathBuf::from("/d/t.json")), b"{\"k\": {\"$numberLong\": \"7\"}}", None).expect("opens");
+        let saved = t.to_bytes_for(Path::new("/d/t.bson")).expect("saves");
+        assert_eq!(xmlcraft_bson::read_all(&saved).expect("reads")[0].fields[0].1, xmlcraft_bson::Bson::Int64(7));
+        assert_eq!(t.to_bytes_for(Path::new("/d/u.json")).expect("saves"), t.editor().text().into_bytes());
+        t.editor_mut().select_all();
+        t.editor_mut().type_text("not json at all");
+        assert!(matches!(t.to_bytes_for(Path::new("/d/t.bson")), Err(SaveError::Invalid(_))));
+    }
+
+    #[test]
+    fn an_unedited_bson_document_keeps_its_bytes_when_the_documents_above_it_change() {
+        let documents = two_documents();
+        let bytes = bson_bytes(&documents);
+        let mut d = Document::from_bytes(1, Some(PathBuf::from("/d/a.bson")), &bytes, None).expect("opens");
+        // Put a new document above the two: the first one (with its NaN payload) is found by its text, not by its place.
+        let lines: Vec<String> = d.editor().text().lines().map(str::to_owned).collect();
+        let text = format!("{{\"new\":true}}\n{}\n{}\n", lines[0], lines[1]);
+        d.editor_mut().select_all();
+        d.editor_mut().type_text(&text);
+        let saved = d.to_bytes().expect("saves");
+        let first = bson_bytes(&documents[..1]);
+        let new = bson_bytes(&[xmlcraft_bson::Document { fields: vec![("new".into(), xmlcraft_bson::Bson::Bool(true))] }]);
+        assert_eq!(&saved[new.len()..new.len() + first.len()], first.as_slice(), "the NaN payload survived the move");
+    }
+
+    #[test]
+    fn a_yaml_document_has_its_own_syntax_no_declaration_and_no_references() {
+        let mut d = Document::from_bytes(1, Some(PathBuf::from("/d/a.yaml")), "a: \"日\"\n".as_bytes(), None).expect("opens");
+        assert_eq!((d.language(), d.editor().syntax()), (Language::Yaml, Syntax::Yaml));
+        assert!(!d.link_tag_names());
+        d.set_encoding(Encoding::WINDOWS_1252, false);
+        assert_eq!(d.editor().text(), "a: \"日\"\n", "no declaration is written into YAML");
+        assert!(matches!(d.apply_character_references(), Err(SaveError::Unmappable(_))), "a reference is XML's; the encoding is the answer");
+        assert_eq!(d.editor().text(), "a: \"日\"\n");
+        assert_eq!(d.pretty_print().map_err(|e| e.to_string()).expect_err("refused"), "YAML is not reformatted: its white space is its structure");
     }
 }

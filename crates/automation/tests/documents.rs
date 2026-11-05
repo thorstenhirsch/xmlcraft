@@ -738,7 +738,7 @@ fn json_is_read_by_the_same_tools_as_xml_by_name_or_by_the_language_given() {
     // By the language given for text.
     assert_eq!(ok(&mut a, "xml_wellformed", json!({ "text": text, "language": "jsonc" }))["errors"].as_u64(), Some(0));
     assert_eq!(ok(&mut a, "xml_wellformed", json!({ "text": text, "language": "json" }))["errors"].as_u64(), Some(1));
-    assert!(err(&mut a, "xml_wellformed", json!({ "text": text, "language": "yaml" })).contains("language"), "an unknown language is refused");
+    assert!(err(&mut a, "xml_wellformed", json!({ "text": text, "language": "toml" })).contains("language"), "an unknown language is refused");
     let outline = ok(&mut a, "xml_outline", json!({ "text": text, "language": "jsonc" }));
     let names: Vec<_> = outline["items"].as_array().expect("items").iter().map(|i| (i["depth"].as_u64(), i["name"].as_str())).collect();
     assert_eq!(names, [(Some(0), Some("a")), (Some(1), Some("b"))]);
@@ -778,4 +778,56 @@ fn json_is_formatted_by_xml_format_in_text_in_files_and_in_documents() {
     assert!(e.contains("JSON Lines"), "{e}");
     let r = ok(&mut a, "xml_format", json!({ "text": "{ \"a\" : 1 }\n\n{ \"b\" : 2 }\n", "language": "jsonl", "minify": true }));
     assert_eq!(r["text"].as_str(), Some("{\"a\":1}\n\n{\"b\":2}\n"));
+}
+
+#[test]
+fn bson_files_are_read_by_their_text_and_saved_as_bytes() {
+    let dir = tempfile::tempdir().expect("dir");
+    let docs = vec![xmlcraft_bson::Document {
+        fields: vec![("a".into(), xmlcraft_bson::Bson::Int32(7)), ("o".into(), xmlcraft_bson::Bson::Document(Default::default()))],
+    }];
+    let path = file(dir.path(), "x.bson", &xmlcraft_bson::write_all(&docs).expect("writes"));
+    let mut a = Automation::new();
+    let outline = ok(&mut a, "xml_outline", json!({ "path": path }));
+    let names: Vec<_> = outline["items"].as_array().expect("items").iter().map(|i| i["name"].as_str().unwrap_or_default()).collect();
+    assert_eq!(names, ["a", "o"], "a typed value is one item, not a container: {outline}");
+    assert_eq!(outline["items"][0]["label"].as_str(), Some("7 ($numberInt)"));
+    let id = ok(&mut a, "doc_open", json!({ "path": path }))["id"].as_u64().expect("an id");
+    let text = ok(&mut a, "doc_text", json!({ "id": id }))["text"].as_str().expect("text").to_owned();
+    assert!(text.contains("\"$numberInt\""), "{text}");
+    ok(&mut a, "doc_set_text", json!({ "id": id, "text": text.replace("\"7\"", "\"9\"") }));
+    ok(&mut a, "doc_save", json!({ "id": id }));
+    let back = xmlcraft_bson::read_all(&std::fs::read(&path).expect("reads")).expect("reads");
+    assert_eq!(back[0].fields[0].1, xmlcraft_bson::Bson::Int32(9));
+    ok(&mut a, "doc_set_text", json!({ "id": id, "text": "{\"a\": {\"$oid\": \"zz\"}}" }));
+    let e = err(&mut a, "doc_save", json!({ "id": id }));
+    assert!(e.contains("Extended JSON"), "{e}");
+    assert_eq!(xmlcraft_bson::read_all(&std::fs::read(&path).expect("reads")).expect("still valid")[0].fields[0].1, xmlcraft_bson::Bson::Int32(9));
+    let fake = file(dir.path(), "fake.bson", b"nope");
+    assert!(err(&mut a, "xml_outline", json!({ "path": fake })).contains("not a BSON file"));
+    assert!(err(&mut a, "doc_open", json!({ "path": fake })).contains("not a BSON file"));
+}
+
+#[test]
+fn yaml_is_read_by_the_same_tools_as_xml_and_json() {
+    let mut a = Automation::new();
+    let text = "name: x\nitems:\n  - id: 1\n  - id: 2\n";
+    let r = ok(&mut a, "xml_wellformed", json!({ "text": text, "language": "yaml" }));
+    assert_eq!((r["errors"].as_u64(), r["well_formed"].as_bool()), (Some(0), Some(true)));
+    let outline = ok(&mut a, "xml_outline", json!({ "text": text, "language": "yaml" }));
+    let names: Vec<_> = outline["items"].as_array().expect("items").iter().map(|i| i["name"].as_str().unwrap_or_default()).collect();
+    assert_eq!(names, ["name", "items", "[0]", "id", "[1]", "id"]);
+    let folds = ok(&mut a, "xml_folds", json!({ "text": text, "language": "yaml" }));
+    assert_eq!(folds["folds"].as_array().map(Vec::len), Some(1), "the list of items; its entries are one line each");
+    assert_eq!(
+        (folds["folds"][0]["first_line"].as_u64(), folds["folds"][0]["last_line"].as_u64(), folds["folds"][0]["kind"].as_str()),
+        (Some(2), Some(4), Some("array"))
+    );
+    let bad = ok(&mut a, "xml_wellformed", json!({ "text": "a: [1\nb: 2\n", "language": "yaml" }));
+    assert_eq!(bad["problems"][0]["code"].as_str(), Some("yaml.syntax-error"));
+    let dir = tempfile::tempdir().expect("dir");
+    let path = file(dir.path(), "x.yml", text.as_bytes());
+    assert_eq!(ok(&mut a, "xml_outline", json!({ "path": path }))["count"].as_u64(), Some(6), "read by its name");
+    let e = err(&mut a, "xml_format", json!({ "text": text, "language": "yaml" }));
+    assert!(e.contains("YAML is not reformatted"), "{e}");
 }

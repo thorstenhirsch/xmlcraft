@@ -33,6 +33,9 @@ impl JsonFlavor {
 pub enum Language {
     Xml,
     Json(JsonFlavor),
+    /// A BSON file: shown and edited as its MongoDB Extended JSON text, saved as the bytes that text stands for.
+    Bson,
+    Yaml,
 }
 
 /// File names (lower case) that are JSON with comments although they end in `.json`: the configuration files editors read that way.
@@ -60,6 +63,8 @@ impl Language {
             Some("jsonc") => Language::Json(JsonFlavor::Jsonc),
             Some("json5") => Language::Json(JsonFlavor::Json5),
             Some("jsonl" | "ndjson") => Language::Json(JsonFlavor::Lines),
+            Some("bson") => Language::Bson,
+            Some("yaml" | "yml") => Language::Yaml,
             _ => Language::Xml,
         }
     }
@@ -76,6 +81,12 @@ impl Language {
             }),
             Language::Json(flavor) if minify => xmlcraft_format::json::minify(text, flavor.dialect()),
             Language::Json(flavor) => xmlcraft_format::json::pretty_print(text, flavor.dialect(), options),
+            // A BSON file's text is one indented document, or one document to a line: formatted as the one it is.
+            Language::Bson => match xmlcraft_bson::layout_of_text(text) {
+                xmlcraft_bson::Layout::Lines => Language::Json(JsonFlavor::Lines).format(text, options, minify),
+                xmlcraft_bson::Layout::Single => Language::Json(JsonFlavor::Json).format(text, options, minify),
+            },
+            Language::Yaml => Err(FormatError::Refused { message: "YAML is not reformatted: its white space is its structure".to_owned() }),
         }
     }
 
@@ -87,6 +98,24 @@ impl Language {
         matches!(self, Language::Json(_))
     }
 
+    /// JSON in a form (a BSON file is shown as Extended JSON): coloured, folded and typed in as JSON.
+    pub fn is_json_like(self) -> bool {
+        matches!(self, Language::Json(_) | Language::Bson)
+    }
+
+    pub fn is_bson(self) -> bool {
+        self == Language::Bson
+    }
+
+    pub fn is_yaml(self) -> bool {
+        self == Language::Yaml
+    }
+
+    /// A data language (JSON, YAML or BSON): read into a value tree, with no markup, tags or schema hints.
+    pub fn is_data(self) -> bool {
+        self != Language::Xml
+    }
+
     /// The name used in the tools' answers.
     pub fn name(self) -> &'static str {
         match self {
@@ -95,6 +124,8 @@ impl Language {
             Language::Json(JsonFlavor::Jsonc) => "jsonc",
             Language::Json(JsonFlavor::Json5) => "json5",
             Language::Json(JsonFlavor::Lines) => "jsonl",
+            Language::Bson => "bson",
+            Language::Yaml => "yaml",
         }
     }
 }
@@ -115,6 +146,8 @@ mod tests {
         assert_eq!(of("a.json5"), Language::Json(JsonFlavor::Json5));
         assert_eq!(of("log.NDJSON"), Language::Json(JsonFlavor::Lines));
         assert_eq!(of("a.jsonl"), Language::Json(JsonFlavor::Lines));
+        assert_eq!((of("a.yaml"), of("B.YML"), of("/x/docker-compose.yml")), (Language::Yaml, Language::Yaml, Language::Yaml));
+        assert_eq!(of("a.yaml.xml"), Language::Xml);
         for xml in ["a.xml", "a.xsd", "a.dtd", "Untitled-1", "", "json", ".json.bak", "a.json.xml", "dir.json/a"] {
             assert_eq!(of(xml), Language::Xml, "{xml:?}");
         }

@@ -5210,6 +5210,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "xmlcraft-bson",
  "xmlcraft-catalog",
  "xmlcraft-complete",
  "xmlcraft-convert",
@@ -5336,6 +5337,7 @@ dependencies = [
  "log",
  "proptest",
  "rowan",
+ "xmlcraft-bson",
  "xmlcraft-dtd",
  "xmlcraft-editor",
  "xmlcraft-format",
@@ -5348,6 +5350,7 @@ dependencies = [
  "xmlcraft-text",
  "xmlcraft-validate",
  "xmlcraft-xsd",
+ "xmlcraft-yaml-syntax",
 ]
 
 [[package]]
@@ -5485,6 +5488,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "xmlcraft-bson",
  "xmlcraft-code-editor",
  "xmlcraft-complete",
  "xmlcraft-editor",
@@ -5499,6 +5503,7 @@ dependencies = [
  "xmlcraft-syntax",
  "xmlcraft-text",
  "xmlcraft-xsd",
+ "xmlcraft-yaml-syntax",
 ]
 
 [[package]]
