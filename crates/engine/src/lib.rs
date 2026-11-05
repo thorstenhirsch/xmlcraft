@@ -6,6 +6,7 @@
 pub mod analysis;
 pub mod assign;
 pub mod commands;
+pub mod compare;
 pub mod doc_kind;
 mod document;
 pub mod elements;
