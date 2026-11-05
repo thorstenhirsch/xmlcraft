@@ -336,4 +336,15 @@ mod tests {
         assert!(!names_a_schema("{\"a\": ", Language::Json(JsonFlavor::Json)));
         assert!(!names_a_schema("{\"a\": 1}", Language::Json(JsonFlavor::Json)), "no `$schema` at all");
     }
+
+    #[test]
+    fn schemas_may_have_comments_in_the_documents_they_refer_to_too() {
+        let schemas = [
+            ("/d/s.json", "// the schema\n{\"properties\": {\"p\": {\"$ref\": \"part.json\"}}}"),
+            ("/d/part.json", "{\n  // a string\n  \"type\": \"string\",\n}"),
+        ];
+        let v = validate_data(r#"{"$schema": "s.json", "p": 3}"#, Language::Json(JsonFlavor::Json), 1, "/d/doc.json", &resolver(&schemas));
+        assert_eq!(v.verdict, Verdict::Invalid, "the string type is enforced, the comment is no problem: {:?}", v.problems);
+        assert!(v.problems.iter().all(|p| p.diagnostic.code == Code::JsonSchemaViolation), "{:?}", v.problems);
+    }
 }
