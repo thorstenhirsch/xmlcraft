@@ -1,6 +1,7 @@
 # XmlCraft parity with Altova XMLSpy
 
-> **Last reviewed:** 2026-11-05 · **Last updated:** 2026-11-05 · **Change:** the headline is measured again after the new scope of 2026-11-05 (XBRL, e-invoicing, PDF, SOAP, HTML5, OpenAPI, debuggers and profilers, YAML/BSON, conversions, three-way diff, Grid for all formats; duplicates folded): 188 counted features, 10 shipped, 97 partial, 31.1% weighted (this change: M9.1, the PDF reader, `pdf.embedded-xml` planned → partial; the rows of the revision history below say what moved before it). Older changes are in the revision history.
+> **Last reviewed:** 2026-11-05 · **Last updated:** 2026-11-05 · **Change:** the headline is measured again after the new scope of 2026-11-05 (XBRL, e-invoicing, PDF, SOAP, HTML5, OpenAPI, debuggers and profilers, YAML/BSON, conversions, three-way diff, Grid for all formats; duplicates folded): 188 counted features, 10 shipped, 98 partial, 31.4% weighted (M5.4: json.schema-validate planned → partial; M5.2: JSON editing, JSONC, JSON Lines and the language abstraction planned → partial). Older changes are in the revision history.
+> **Last reviewed:** 2026-11-05 · **Last updated:** 2026-11-05 · **Change:** the headline is measured again after the new scope of 2026-11-05 (XBRL, e-invoicing, PDF, SOAP, HTML5, OpenAPI, debuggers and profilers, YAML/BSON, conversions, three-way diff, Grid for all formats; duplicates folded): 188 counted features, 10 shipped, 98 partial, 31.4% weighted (this change: M9.1, the PDF reader, `pdf.embedded-xml` planned → partial; the rows of the revision history below say what moved before it). Older changes are in the revision history.
 
 The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -10,7 +11,7 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **5.3%** shipped, 31.1% with partial counted half (10 shipped + 97 partial of 188 counted; 64 P0, 62 P1, 53 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-05) |
+| **Feature breadth**, unweighted | **5.3%** shipped, 31.4% with partial counted half (10 shipped + 98 partial of 188 counted; 64 P0, 62 P1, 53 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-05) |
 | Must-have (P0) features | 7.8% shipped, 45.3% weighted (5 shipped + 48 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **100%** (1017 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): a valid document has no well-formedness or validity error, an invalid one is well-formed and has at least one validity error (which one is not compared; 73 of the 227 are documents with no DOCTYPE, invalid because there is nothing to validate against) | measured (same run) |
@@ -116,4 +117,5 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 - 2026-11-05: M9.1: `pdf.embedded-xml` planned → partial (`xmlcraft-pdf`, `pdf_files`).
 - 2026-11-05: M7.1: `query.xpath-evaluator` planned → partial (`xmlcraft-query`, `xpath_eval`; XPath 3.1 on `xee`); 10 shipped and 82 partial of 188 counted features, 26.3% weighted.
 - 2026-11-05: M9.2: `pdf.incremental-update` planned → partial (`Pdf::replace_embedded`, `pdf_replace_file`); 10 shipped and 86 partial of 188 counted features, 28.2% weighted.
+- 2026-11-05: M7.3: `validate.schematron` planned → partial (`xmlcraft-schematron`, F8 with `xml-model`, `schematron_validate`); 10 shipped and 92 partial of 188 counted features, 29.8% weighted.
 - 2026-11-05: M9.4: `einvoice.xrechnung-ubl`, `einvoice.xrechnung-cii`, `einvoice.en16931`, `einvoice.peppol-bis3`, `einvoice.fatturapa` and `einvoice.zugferd-facturx` planned → partial (`xmlcraft-einvoice`, `einvoice_detect`: recognition only); 10 shipped and 92 partial of 188 counted features, 29.8% weighted.
