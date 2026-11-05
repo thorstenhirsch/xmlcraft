@@ -14,11 +14,15 @@
 mod document;
 mod embedded;
 mod filter;
+mod md5;
 mod object;
+mod update;
 
 pub use document::Pdf;
 pub use embedded::{EmbeddedFile, text_string};
+pub use md5::md5_hex;
 pub use object::{Dict, ObjRef, Object, Parser, Stream};
+pub use update::pdf_date;
 
 /// Why a PDF was not read.
 #[derive(Clone, Debug, PartialEq, Eq)]

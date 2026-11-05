@@ -75,3 +75,60 @@ fn a_file_that_is_not_text_has_no_text_and_what_is_not_a_pdf_or_outside_the_root
     assert!(e.to_string().contains("outside the root"), "{e}");
     assert!(matches!(files(&mut a, json!({})), Err(ToolError::InvalidArgs(_))));
 }
+
+fn replace(a: &mut Automation, args: Value) -> Result<Value, ToolError> {
+    a.call("pdf_replace_file", &args).map(|content| match content.into_iter().next() {
+        Some(Content::Json(v)) => v,
+        None => Value::Null,
+    })
+}
+
+#[test]
+fn the_embedded_xml_is_replaced_in_a_copy_and_the_original_is_not_touched() {
+    let dir = tempfile::tempdir().expect("dir");
+    let original = pdf("factur-x.xml", "text#2Fxml", b"<old/>");
+    std::fs::write(dir.path().join("i.pdf"), &original).expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    let r = replace(&mut a, json!({ "path": "i.pdf", "text": "<new>ä</new>", "output": "o.pdf" })).expect("runs");
+    assert_eq!((r["file"].as_str(), r["added"].as_u64().is_some_and(|n| n > 0)), (Some("factur-x.xml"), true), "{r}");
+    assert_eq!(std::fs::read(dir.path().join("i.pdf")).expect("reads"), original, "the input is as it was");
+    let written = std::fs::read(dir.path().join("o.pdf")).expect("reads");
+    assert_eq!(&written[..original.len()], &original[..], "the original bytes are the beginning of the copy");
+    let read = files(&mut a, json!({ "path": "o.pdf", "extract": 0 })).expect("runs");
+    assert_eq!(read["extracted"]["text"], "<new>ä</new>", "{read}");
+    assert_eq!(read["files"][0]["size"].as_u64(), Some("<new>ä</new>".len() as u64), "the declared size is the new one");
+    // An existing output is not replaced unless asked; the input may be replaced in place when asked.
+    let e = replace(&mut a, json!({ "path": "i.pdf", "text": "<x/>", "output": "o.pdf" })).expect_err("exists");
+    assert!(e.to_string().contains("overwrite"), "{e}");
+    replace(&mut a, json!({ "path": "i.pdf", "text": "<x/>", "output": "i.pdf", "overwrite": true })).expect("runs");
+    assert_eq!(files(&mut a, json!({ "path": "i.pdf", "extract": "factur-x.xml" })).expect("runs")["extracted"]["text"], "<x/>");
+}
+
+#[test]
+fn what_cannot_be_written_is_refused_and_nothing_is_written() {
+    let dir = tempfile::tempdir().expect("dir");
+    let outside = tempfile::tempdir().expect("dir");
+    std::fs::write(dir.path().join("i.pdf"), pdf("a.xml", "text#2Fxml", b"<old/>")).expect("writes");
+    std::fs::write(dir.path().join("x.pdf"), b"hello").expect("writes");
+    std::fs::write(outside.path().join("in.pdf"), pdf("a.xml", "text#2Fxml", b"<old/>")).expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    let refused = |a: &mut Automation, args: Value, why: &str| {
+        let e = replace(a, args.clone()).expect_err("refused");
+        assert!(e.to_string().contains(why), "{args}: {e}");
+    };
+    refused(&mut a, json!({ "path": "i.pdf", "text": "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><a/>", "output": "o.pdf" }), "ISO-8859-1");
+    refused(&mut a, json!({ "path": "i.pdf", "text": "<a/>", "output": "o.pdf", "file": "nope.xml" }), "no such embedded file");
+    refused(&mut a, json!({ "path": "x.pdf", "text": "<a/>", "output": "o.pdf" }), "not a PDF");
+    refused(&mut a, json!({ "path": outside.path().join("in.pdf").to_str().expect("utf-8"), "text": "<a/>", "output": "o.pdf" }), "outside the root");
+    refused(&mut a, json!({ "path": "i.pdf", "text": "<a/>", "output": outside.path().join("o.pdf").to_str().expect("utf-8") }), "outside the root");
+    assert!(!dir.path().join("o.pdf").exists() && !outside.path().join("o.pdf").exists(), "nothing was written");
+    // UTF-8 declarations are fine, and so is no declaration.
+    replace(&mut a, json!({ "path": "i.pdf", "text": "<?xml version='1.0' encoding='utf-8'?><a/>", "output": "o.pdf" })).expect("runs");
+    for bad in [
+        json!({ "path": "i.pdf", "text": "<a/>" }),
+        json!({ "path": "i.pdf", "text": "<a/>", "output": "p.pdf", "overwrite": "yes" }),
+        json!({ "path": "i.pdf", "text": "<a/>", "output": "p.pdf", "file": 1.5 }),
+    ] {
+        assert!(matches!(replace(&mut a, bad.clone()), Err(ToolError::InvalidArgs(_))), "{bad}");
+    }
+}
