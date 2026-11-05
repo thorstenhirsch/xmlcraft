@@ -1090,7 +1090,7 @@ mod tests {
         let documents = two_documents();
         let bytes = bson_bytes(&documents);
         let mut d = Document::from_bytes(1, Some(PathBuf::from("/d/a.bson")), &bytes, None).expect("opens");
-        // Delete the second document, then put a new one above the first: the first (with its NaN payload) is found by its text.
+        // Put a new document above the two: the first one (with its NaN payload) is found by its text, not by its place.
         let lines: Vec<String> = d.editor().text().lines().map(str::to_owned).collect();
         let text = format!("{{\"new\":true}}\n{}\n{}\n", lines[0], lines[1]);
         d.editor_mut().select_all();
