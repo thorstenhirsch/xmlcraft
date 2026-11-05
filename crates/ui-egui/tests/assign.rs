@@ -293,7 +293,7 @@ fn choosing_a_file_takes_the_error_away() {
 }
 
 #[test]
-fn a_json_schema_is_assigned_to_json_and_yaml_documents_and_then_F8_checks_the_document_against_it() {
+fn a_json_schema_is_assigned_to_json_and_yaml_documents_and_then_f8_checks_the_document_against_it() {
     let dir = tempfile::tempdir().expect("dir");
     file(dir.path(), "s.json", "{\"type\": \"object\", \"properties\": {\"n\": {\"type\": \"integer\"}}}");
     let mut h = shell();
