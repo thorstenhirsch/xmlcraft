@@ -36,7 +36,6 @@ pub enum Language {
 
 /// File names (lower case) that are JSON with comments although they end in `.json`: the configuration files editors read that way.
 const JSONC_NAMES: &[&str] = &[
-    "tsconfig.json",
     "jsconfig.json",
     "devcontainer.json",
     "settings.json",
@@ -95,6 +94,7 @@ mod tests {
         assert_eq!(of("A.GeoJSON"), Language::Json(JsonFlavor::Json));
         assert_eq!(of("/x/y/a.jsonc"), Language::Json(JsonFlavor::Jsonc));
         assert_eq!(of("C:\\x\\tsconfig.json"), Language::Json(JsonFlavor::Jsonc));
+        assert_eq!(of("/p/.vscode/settings.json"), Language::Json(JsonFlavor::Jsonc));
         assert_eq!(of("tsconfig.app.json"), Language::Json(JsonFlavor::Jsonc));
         assert_eq!(of("a.json5"), Language::Json(JsonFlavor::Json5));
         assert_eq!(of("log.NDJSON"), Language::Json(JsonFlavor::Lines));

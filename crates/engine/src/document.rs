@@ -187,10 +187,6 @@ impl Document {
     /// [`Self::link_tag_names`] with the analysis done by `analyse` (the fuzzer's self-check passes the unguarded one, so that a panic in
     /// the analysis is seen and not turned into "no pairs").
     pub fn link_tag_names_by(&mut self, analyse: impl FnOnce(&str, u64) -> crate::analysis::Analysis) -> bool {
-        if self.language() != Language::Xml {
-            self.editor.unlink_names();
-            return false;
-        }
         let editor = &mut self.editor;
         let [caret] = editor.carets() else {
             editor.unlink_names();
@@ -788,5 +784,20 @@ mod tests {
     fn untitled_documents_are_numbered() {
         let d = Document::untitled(7, 3);
         assert_eq!((d.id(), d.name(), d.path().is_none(), d.is_dirty()), (7, "Untitled-3", true, false));
+    }
+
+    #[test]
+    fn the_name_of_a_document_decides_how_typing_and_tag_links_treat_it() {
+        let json = Document::from_bytes(1, Some(PathBuf::from("/d/a.json")), b"<a></a>", None).expect("opens");
+        assert_eq!((json.language(), json.editor().syntax()), (Language::Json(crate::language::JsonFlavor::Json), Syntax::Json));
+        let mut json = json;
+        json.editor_mut().set_selection(2, 2);
+        assert!(!json.link_tag_names(), "text that looks like a tag in a JSON file has no tag names to keep in step");
+        let mut d = Document::untitled(2, 1);
+        assert_eq!(d.editor().syntax(), Syntax::Xml);
+        d.name_untitled("x.jsonc");
+        assert_eq!(d.editor().syntax(), Syntax::Json, "a generated document called x.jsonc is JSON");
+        d.mark_saved(PathBuf::from("/d/y.xml"), None);
+        assert_eq!((d.language(), d.editor().syntax()), (Language::Xml, Syntax::Xml), "Save As under another extension changes how it is read");
     }
 }
