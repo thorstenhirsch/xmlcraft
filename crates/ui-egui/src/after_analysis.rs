@@ -39,7 +39,7 @@ impl XmlCraftApp {
         let view = self.views.entry(document).or_insert_with(|| DocView::new(kind));
         if view.requested() != Some(version) {
             view.set_requested(version);
-            self.analyzer.submit(document, version, doc.editor().buffer());
+            self.analyzer.submit(document, version, doc.editor().buffer(), doc.language());
         }
         self.waiting = Some(Waiting { document, version, then });
         self.finish_waiting();

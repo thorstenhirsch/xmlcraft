@@ -8,8 +8,9 @@ use std::path::PathBuf;
 
 use serde_json::{Value, json};
 use xmlcraft_editor::find::{MAX_MATCHES, Matcher, Query};
-use xmlcraft_engine::analysis::{Analysis, Skipped, analyze, analyze_guarded};
+use xmlcraft_engine::analysis::{Analysis, Skipped, analyze, analyze_as, analyze_guarded_as};
 use xmlcraft_engine::folding::{FoldAction, FoldRange};
+use xmlcraft_engine::language::Language;
 use xmlcraft_engine::{Document, SaveError};
 use xmlcraft_format::{BlankLines, FormatError, Indent};
 use xmlcraft_syntax::{Diagnostic, Severity};
@@ -41,6 +42,22 @@ pub(crate) fn source_properties() -> Value {
         "path": { "type": "string", "description": "A file to read (it is not opened as a document)" },
         "text": { "type": "string", "description": "The XML itself" },
     })
+}
+
+/// [`source_properties`] with `language`, for the tools that read any of the supported languages, not only XML.
+pub(crate) fn language_source_properties() -> Value {
+    let mut properties = source_properties();
+    add_language(&mut properties);
+    properties
+}
+
+fn add_language(properties: &mut Value) {
+    if let Some(map) = properties.as_object_mut() {
+        map.insert(
+            "language".into(),
+            json!({ "type": "string", "enum": ["xml", "json", "jsonc", "json5", "jsonl"], "description": "What `text` is written in (default xml). An open document or a file is read by its name: `.json`, `.jsonc`, `.json5`, `.jsonl` and `.ndjson` are JSON, anything else XML." }),
+        );
+    }
 }
 
 /// The properties that say which text, and a place in it: `line` and `column` (from 1) or a byte `offset`.
@@ -450,7 +467,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             title: "Check well-formedness",
             description: "Check XML 1.0 well-formedness and Namespaces, of an open document (`id`), a file (`path`) or text. Returns the counts and the problems with \
                           their position and message.",
-            input_schema: object(source_properties(), &[]),
+            input_schema: object(language_source_properties(), &[]),
             read_only: true,
             destructive: false,
             handler: xml_wellformed,
@@ -462,7 +479,11 @@ pub(crate) fn tools() -> Vec<ToolDef> {
                           `column` (from 1) or as a byte `offset`. Returns the tag and its name, the other tag and its name, and where the caret would go \
                           (`jump_to`); `match` is null where the position is in no tag, or the tag has no other (an empty-element tag, an element that is not \
                           closed).",
-            input_schema: object(source_and_position_properties(), &[]),
+            input_schema: {
+                let mut properties = source_and_position_properties();
+                add_language(&mut properties);
+                object(properties, &[])
+            },
             read_only: true,
             destructive: false,
             handler: xml_matching_tag,
@@ -473,7 +494,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             description: "The stretches of lines that can be folded in an open document (`id`), a file (`path`) or text: elements whose content is on lines of their own, \
                           and comments, CDATA sections, processing instructions and DOCTYPEs over several lines. Each has the line that stands for it (`first_line`), the \
                           last line it hides (`last_line`), the line it ends on, its level (1 is the root element) and its kind. Lines count from 1.",
-            input_schema: object(source_properties(), &[]),
+            input_schema: object(language_source_properties(), &[]),
             read_only: true,
             destructive: false,
             handler: xml_folds,
@@ -483,7 +504,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             title: "Outline of the elements",
             description: "The element tree of an open document (`id`), a file (`path`) or text: each element with its depth, name, a hint from its id, name or key \
                           attribute, and where it starts and ends.",
-            input_schema: object(source_properties(), &[]),
+            input_schema: object(language_source_properties(), &[]),
             read_only: true,
             destructive: false,
             handler: xml_outline,
@@ -607,6 +628,8 @@ fn problem_json(buffer: &Buffer, d: &Diagnostic) -> Value {
 /// The XML a tool works on: the text, and the open document it came from.
 pub(crate) struct Source {
     pub(crate) text: String,
+    /// What the text is written in.
+    pub(crate) language: Language,
     pub(crate) id: Option<u64>,
     /// A file whose bytes were not valid in its encoding was read (they are shown as U+FFFD).
     pub(crate) lossy: bool,
@@ -621,21 +644,40 @@ pub(crate) fn source(a: &Automation, args: &Value) -> Result<Source> {
     match (id, path, text) {
         (Some(id), None, None) => {
             let doc = a.session.document(index_of(a, id)?).ok_or_else(|| ToolError::Failed(format!("no document has the id {id}")))?;
-            Ok(Source { text: doc.editor().text(), id: Some(id), lossy: doc.is_lossy(), path: doc.path().map(std::path::Path::to_path_buf) })
+            Ok(Source {
+                text: doc.editor().text(),
+                language: doc.language(),
+                id: Some(id),
+                lossy: doc.is_lossy(),
+                path: doc.path().map(std::path::Path::to_path_buf),
+            })
         }
         (None, Some(path), None) => {
             let path = a.confinement.resolve_read(path)?;
             let loaded = xmlcraft_platform::files::read_file(&path).map_err(|e| ToolError::Failed(format!("{}: {e}", path.display())))?;
             let decoded = decode(&loaded.bytes, &sniff(&loaded.bytes));
-            Ok(Source { text: decoded.text, id: None, lossy: decoded.lossy, path: Some(path) })
+            let language = path.file_name().map_or(Language::Xml, |n| Language::of_name(&n.to_string_lossy()));
+            Ok(Source { text: decoded.text, language, id: None, lossy: decoded.lossy, path: Some(path) })
         }
-        (None, None, Some(text)) => Ok(Source { text: text.to_owned(), id: None, lossy: false, path: None }),
+        (None, None, Some(text)) => Ok(Source { text: text.to_owned(), language: language_arg(args)?, id: None, lossy: false, path: None }),
         _ => Err(ToolError::InvalidArgs("give exactly one of id, path and text".into())),
     }
 }
 
+fn language_arg(args: &Value) -> Result<Language> {
+    use xmlcraft_engine::language::JsonFlavor;
+    Ok(match text_arg(args, "language") {
+        None | Some("xml") => Language::Xml,
+        Some("json") => Language::Json(JsonFlavor::Json),
+        Some("jsonc") => Language::Json(JsonFlavor::Jsonc),
+        Some("json5") => Language::Json(JsonFlavor::Json5),
+        Some("jsonl") => Language::Json(JsonFlavor::Lines),
+        Some(other) => return Err(ToolError::InvalidArgs(format!("language is xml, json, jsonc, json5 or jsonl, not {other:?}"))),
+    })
+}
+
 pub(crate) fn analysis_of(source: &Source) -> Result<Analysis> {
-    let analysis = analyze(&source.text, 0);
+    let analysis = analyze_as(source.language, &source.text, 0);
     match analysis.skipped {
         Some(Skipped::TooLarge) => fail("the text is too large to analyse"),
         Some(Skipped::Failed) => fail("the analysis failed (a bug); nothing was changed"),
@@ -1079,7 +1121,7 @@ fn doc_fold(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let (ranges, truncated) = if action == FoldAction::UnfoldAll {
         (Vec::new(), false)
     } else {
-        let analysis = analyze_guarded(&doc.editor().text(), 0);
+        let analysis = analyze_guarded_as(doc.language(), &doc.editor().text(), 0);
         if analysis.skipped.is_some() {
             return fail("the text is too large to analyse, or the analysis failed: nothing was folded");
         }

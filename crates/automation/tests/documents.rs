@@ -723,3 +723,33 @@ fn quick_fixes_are_listed_and_one_is_applied_as_a_single_undoable_edit() {
     assert!(err(&mut a, "doc_quick_fix", json!({ "id": id, "apply": 9 })).contains("no fix number 9"));
     assert!(err(&mut a, "doc_quick_fix", json!({ "id": id, "line": 1 })).contains("line and column go together"));
 }
+
+#[test]
+fn json_is_read_by_the_same_tools_as_xml_by_name_or_by_the_language_given() {
+    let dir = tempfile::tempdir().expect("dir");
+    let text = "{\n  \"a\": {\n    \"b\": [1, 2]\n  } // c\n}";
+    let json_path = file(dir.path(), "x.json", text.as_bytes());
+    let jsonc_path = file(dir.path(), "x.jsonc", text.as_bytes());
+    let mut a = Automation::new();
+    // By name: strict JSON complains about the comment, JSONC does not.
+    let strict = ok(&mut a, "xml_wellformed", json!({ "path": json_path }));
+    assert_eq!((strict["errors"].as_u64(), strict["problems"][0]["code"].as_str()), (Some(1), Some("json.comment-not-allowed")));
+    assert_eq!(ok(&mut a, "xml_wellformed", json!({ "path": jsonc_path }))["errors"].as_u64(), Some(0));
+    // By the language given for text.
+    assert_eq!(ok(&mut a, "xml_wellformed", json!({ "text": text, "language": "jsonc" }))["errors"].as_u64(), Some(0));
+    assert_eq!(ok(&mut a, "xml_wellformed", json!({ "text": text, "language": "json" }))["errors"].as_u64(), Some(1));
+    assert!(err(&mut a, "xml_wellformed", json!({ "text": text, "language": "yaml" })).contains("language"), "an unknown language is refused");
+    let outline = ok(&mut a, "xml_outline", json!({ "text": text, "language": "jsonc" }));
+    let names: Vec<_> = outline["items"].as_array().expect("items").iter().map(|i| (i["depth"].as_u64(), i["name"].as_str())).collect();
+    assert_eq!(names, [(Some(0), Some("a")), (Some(1), Some("b"))]);
+    let folds = ok(&mut a, "xml_folds", json!({ "text": text, "language": "jsonc" }));
+    let kinds: Vec<_> = folds["folds"].as_array().expect("folds").iter().map(|f| (f["first_line"].as_u64(), f["kind"].as_str())).collect();
+    assert_eq!(kinds, [(Some(1), Some("object")), (Some(2), Some("object"))]);
+    // Without a language the text is XML, as before.
+    assert_eq!(ok(&mut a, "xml_wellformed", json!({ "text": text }))["well_formed"].as_bool(), Some(false));
+    // An open document is read by its name, and folds by doc_fold are those of JSON.
+    let id = ok(&mut a, "doc_open", json!({ "path": jsonc_path }))["id"].as_u64().expect("an id");
+    assert_eq!(ok(&mut a, "xml_wellformed", json!({ "id": id }))["errors"].as_u64(), Some(0));
+    let folded = ok(&mut a, "doc_fold", json!({ "id": id, "action": "fold_all" }));
+    assert_eq!(folded["changed"].as_bool(), Some(true), "{folded}");
+}

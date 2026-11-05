@@ -8,7 +8,9 @@ use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use xmlcraft_editor::{Editor, Settings};
+use xmlcraft_editor::{Editor, Settings, Syntax};
+
+use crate::language::Language;
 use xmlcraft_format::{BlankLines, FormatError, FormatOptions, Indent};
 use xmlcraft_syntax::{Lexer, TokenKind};
 use xmlcraft_text::Edit;
@@ -25,6 +27,10 @@ const DECLARATION_HEAD: usize = 4096;
 
 /// How many unmappable characters are collected; more than this is not a few stray characters.
 const MAX_UNMAPPABLE: usize = 100_000;
+
+fn syntax_of(language: Language) -> Syntax {
+    if language.is_json() { Syntax::Json } else { Syntax::Xml }
+}
 
 /// What a file looked like when it was last read or written, to notice that something else changed it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,6 +127,7 @@ impl Document {
         editor.load(&decoded.text);
         let name = path.as_deref().and_then(Path::file_name).map_or_else(|| "Untitled".to_owned(), |n| n.to_string_lossy().into_owned());
         let saved_encoding = (encoding.encoding, encoding.bom);
+        editor.set_syntax(syntax_of(Language::of_name(&name)));
         Ok(Self {
             id,
             name,
@@ -144,6 +151,11 @@ impl Document {
         &self.name
     }
 
+    /// What the document is written in, by its name.
+    pub fn language(&self) -> Language {
+        Language::of_name(&self.name)
+    }
+
     pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()
     }
@@ -153,6 +165,7 @@ impl Document {
     pub fn name_untitled(&mut self, name: &str) {
         if self.path.is_none() && !name.is_empty() {
             self.name = name.to_owned();
+            self.editor.set_syntax(syntax_of(self.language()));
         }
     }
 
@@ -174,6 +187,10 @@ impl Document {
     /// [`Self::link_tag_names`] with the analysis done by `analyse` (the fuzzer's self-check passes the unguarded one, so that a panic in
     /// the analysis is seen and not turned into "no pairs").
     pub fn link_tag_names_by(&mut self, analyse: impl FnOnce(&str, u64) -> crate::analysis::Analysis) -> bool {
+        if self.language() != Language::Xml {
+            self.editor.unlink_names();
+            return false;
+        }
         let editor = &mut self.editor;
         let [caret] = editor.carets() else {
             editor.unlink_names();
@@ -364,6 +381,7 @@ impl Document {
     pub fn mark_saved(&mut self, path: PathBuf, stamp: Option<FileStamp>) {
         self.name = path.file_name().map_or_else(|| self.name.clone(), |n| n.to_string_lossy().into_owned());
         self.path = Some(path);
+        self.editor.set_syntax(syntax_of(self.language()));
         self.stamp = stamp;
         self.saved_state = self.editor.state_id();
         self.saved_encoding = (self.encoding.encoding, self.encoding.bom);

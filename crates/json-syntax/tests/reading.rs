@@ -97,8 +97,9 @@ fn what_json_does_not_allow_is_reported_and_the_relatives_allow_it() {
     assert_eq!(codes("\"x\" // c", Dialect::Json), ["json.comment-not-allowed"]);
     // White space: the four of RFC 8259 in JSON and JSONC, every Unicode space in JSON5; a leading byte-order mark is skipped.
     assert!(codes("[1,\u{a0}2]", Dialect::Json5).is_empty());
-    assert!(!codes("[1,\u{a0}2]", Dialect::Json).is_empty());
-    assert!(!codes("[1,\u{a0}2]", Dialect::Jsonc).is_empty());
+    // (U+00A0 is no space there: it makes the word `\u{a0}2`, which is no number.)
+    assert_eq!(codes("[1,\u{a0}2]", Dialect::Json), ["json.invalid-number"]);
+    assert_eq!(codes("[1,\u{a0}2]", Dialect::Jsonc), ["json.invalid-number"]);
     assert!(codes("\u{FEFF}[1]", Dialect::Json).is_empty());
 }
 

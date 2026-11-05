@@ -521,8 +521,6 @@ impl Reader<'_> {
     }
 }
 
-/// Whether `word` is a number in the dialect: `-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?`; JSON5 also allows a leading `+`,
-/// `.5`, `5.`, `0x1F` and (handled by the caller) `Infinity` and `NaN`.
 /// A bare name JSON5 allows as a key: letters, `$` and `_` first, then also digits (the ECMAScript IdentifierName, without `\u` escapes).
 fn is_identifier_name(word: &str) -> bool {
     let mut chars = word.chars();
@@ -530,6 +528,8 @@ fn is_identifier_name(word: &str) -> bool {
         && chars.all(|c| c.is_alphanumeric() || c == '$' || c == '_' || c == '\u{200C}' || c == '\u{200D}')
 }
 
+/// Whether `word` is a number in the dialect: `-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?`; JSON5 also allows a leading `+`,
+/// `.5`, `5.`, `0x1F` and (handled by the caller) `Infinity` and `NaN`.
 pub(crate) fn number_ok(word: &str, dialect: Dialect) -> bool {
     let json5 = dialect == Dialect::Json5;
     let body = match word.strip_prefix('-') {

@@ -58,7 +58,7 @@ impl Editor {
     /// Whether the (single) caret is inside a tag as the lexer sees it, where a name to link could be.
     pub fn caret_in_tag(&mut self) -> bool {
         let [caret] = self.carets.as_slice() else { return false };
-        matches!(self.lexer.mode_at(&self.buffer, caret.head()), xmlcraft_syntax::Mode::Tag)
+        self.syntax() == crate::Syntax::Xml && matches!(self.lexer.mode_at(&self.buffer, caret.head()), xmlcraft_syntax::Mode::Tag)
     }
 
     /// Wrap the selection (or, with none, the place of the caret) in a new element called `name`: `<name>…</name>`, as one undoable step.

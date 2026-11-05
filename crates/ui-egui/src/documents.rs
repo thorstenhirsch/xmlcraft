@@ -228,7 +228,7 @@ impl XmlCraftApp {
             let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
             if view.requested != Some(version) {
                 view.requested = Some(version);
-                self.analyzer.submit(id, version, doc.editor().buffer());
+                self.analyzer.submit(id, version, doc.editor().buffer(), doc.language());
             }
         }
         self.request_schema();
@@ -400,13 +400,18 @@ impl XmlCraftApp {
     pub(crate) fn validate_now(&mut self) {
         let kind = self.applied.unwrap_or(ThemeKind::Light);
         let Some(doc) = self.session.active_document() else { return };
+        // The validators read XML; a JSON document is checked for its syntax (a schema for it comes with JSON Schema support).
+        if doc.language().is_json() {
+            self.check_now();
+            return;
+        }
         let (id, version) = (doc.id(), doc.editor().version());
         let name = doc.name().to_owned();
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
         // The well-formedness analysis of the same text is what Messages shows with it.
         if view.requested != Some(version) {
             view.requested = Some(version);
-            self.analyzer.submit(id, version, doc.editor().buffer());
+            self.analyzer.submit(id, version, doc.editor().buffer(), doc.language());
         }
         // F8 always checks again: what a document is checked against (a schema that is open and being edited, a DTD or a schema on
         // disk) can change with the text of the document the same. The answer to the last request would otherwise stand for it.
@@ -565,7 +570,7 @@ impl XmlCraftApp {
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
         if view.requested != Some(version) {
             view.requested = Some(version);
-            self.analyzer.submit(id, version, doc.editor().buffer());
+            self.analyzer.submit(id, version, doc.editor().buffer(), doc.language());
         }
         self.check_pending = Some((id, version));
         self.bottom_open = true;
@@ -631,6 +636,9 @@ impl XmlCraftApp {
         let (id, version) = (doc.id(), doc.editor().version());
         let matches = self.find.shown_matches(id, version);
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
+        if view.styler.set_json(doc.language().is_json()) {
+            view.view.highlight_version += 1;
+        }
         view.styler.set_matches(matches);
         view.styler.set_tag_match(Self::matching_tag_names(view, doc.editor()));
         Self::link_tag_names(view, doc.editor_mut());
