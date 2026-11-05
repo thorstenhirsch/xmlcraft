@@ -12,16 +12,18 @@ The ranked gaps. Prefer fixing these over adding new features. Every gap states 
 | 2 | The resolver (M2.3) finds the external parts of a DTD and the documents of a schema among the open documents, in the catalogs, in the bundle (a hundred W3C files, by public identifier, address or namespace) and as files; the OASIS and other sets are not bundled (M4.7), and Preferences ▸ Schemas does not exist (M2.12; what is there is XML ▸ Work Offline). What is not found there is downloaded and kept on disk (M2.4) | P0 | M2 |
 | 3 | The XSD engine (schema documents read, loaded and assembled, content models compiled, documents validated, identity constraints checked) is reached from F8, `xml_validate`, the CLI and the generators, and passes 98.2% of the W3C XML Schema Test Suite (37,756 of 38,438 accepted tests; 685 are known failures, listed in `xtask/baselines/xsdtests.txt`). What is left: the schema constraints behind most of those (Derivation Valid (Restriction) and the like: 435 invalid schemas and instances are accepted), `xs:redefine`, wildcards, large occurrence counts, some `gMonth` and pattern syntax cases, XSD authoring support | P1 | M3 |
 | 4 | Schema inference (`xmlcraft-infer`) and sample generation (`xmlcraft-sample`) exist, with the tools `xml_infer` and `xml_sample`, the CLI commands, and the dialogs Generate Schema… and Generate Sample XML… in the XML menu (M4.1–M4.6). What is left: offering to assign a generated schema to the document it came from once it is saved (Assign Schema exists: M2.12), a sample from the schema a document names, keys and uniqueness in samples | P1 | M4 |
-| 5 | No JSON or YAML support | P1 | M5 |
-| 6 | No XPath/XQuery, XSLT or debugger | P2 | M6+ |
-| 7 | No Grid view, graphical schema editor or Authentic-style forms view | P2 | M6+ |
-| 8 | No diff/merge, projects, database or web-service tooling | P3 | M6+ |
-| 9 | No XSD 1.1 (assertions, alternatives, openContent) | P2 | M6+ |
-| 10 | English only, no translations | P3 | M6+ |
+| 5 | No JSON, YAML or BSON support (editing, JSON Schema, on par with XML) | P1 | M5 |
+| 6 | No XPath/XQuery, XSLT, debugger or profiler | P1 | M7 |
+| 7 | No Grid view (any format), graphical schema editor or Authentic-style forms view | P1 | M6, M10 |
+| 8 | No diff, three-way merge, conversion between XML, JSON, YAML and BSON, or projects | P1 | M6, M10 |
+| 9 | No XSD 1.1 (assertions, alternatives, openContent) | P2 | M10 |
+| 22 | No HTML5 editing or browser view, no OpenAPI (2.0–3.2), no WSDL/SOAP editor, client or debugger | P2 | M8 |
+| 23 | No XBRL, no e-invoicing (XRechnung, ZUGFeRD/Factur-X, Peppol, FatturaPA), no PDF with embedded XML | P2 | M9 |
+| 10 | English only, no translations | P3 | M10 |
 | 11 | Text outside Latin, Greek and Cyrillic has no interface or editor font (CJK, Arabic, Hebrew, Indic scripts draw as boxes) | P1 | M1 |
 | 12 | The tab strip neither scrolls nor reorders by drag when many documents are open | P1 | M1.12 |
-| 13 | No Preferences ▸ Animation effects, and the system "reduce motion" request is not read | P3 | M6+ |
-| 14 | No window buttons drawn by the app on GNOME/Wayland (the desktop frame is used everywhere except macOS's integrated bar) | P2 | M6+ |
+| 13 | No Preferences ▸ Animation effects, and the system "reduce motion" request is not read | P3 | M10 |
+| 14 | No window buttons drawn by the app on GNOME/Wayland (the desktop frame is used everywhere except macOS's integrated bar) | P2 | M10 |
 | 15 | No log file, only standard error | P2 | M1 |
 | 17 | The analysis is whole-document and per edit: results can be a little behind the text, underlines are clamped (not shifted) through later edits, and a document over 32 MB is not analysed | P1 | M1.15 |
 | 18 | Colour at a far place in a text over 1 MiB is an estimate: a construct (comment, CDATA section, tag, …) that opens more than 256 KiB before it is coloured as content until it ends | P2 | M1.15 |
@@ -30,6 +32,10 @@ The ranked gaps. Prefer fixing these over adding new features. Every gap states 
 | 21 | The XSD engine passes 98.2% of the W3C xsdtests; `xs:redefine` and particle restriction (Derivation Valid) are not done, and the 682 known failures are in the baseline | P1 | M3.10 |
 
 ## The gaps
+
+**22. Web formats.** HTML5 gets entry helpers and a locked-down browser view (a native webview with JavaScript off and the network blocked unless a document is allowed); OpenAPI 2.0, 3.0, 3.1 and 3.2 are validated against the official JSON Schemas with the version found from `swagger` or `openapi`; WSDL 1.1/2.0 are edited and validated, SOAP 1.1 and 1.2 messages are built, validated and sent by a client, and a debugger is an intercepting proxy that breaks per operation (XPath conditions), lets the message be edited and forwards it. Measured by the loopback mock service tests and the official OpenAPI examples.
+
+**23. Business formats.** XBRL 2.1 instances and taxonomies (discovery, calculation, dimensions, inline XBRL, taxonomy packages, OIM conversions; formula and tables later), and e-invoices: XRechnung (UBL and CII), EN 16931, Peppol BIS Billing 3, FatturaPA, ZUGFeRD/Factur-X (profiles MINIMUM to EXTENDED and XRECHNUNG). XMLSpy has none of the e-invoice features; they are designed from the public standards. A PDF with embedded XML is edited by an incremental update only, so the original bytes and any signature stay valid; encrypted and certified files are refused. Measured by the KoSIT XRechnung test suite, an XBRL conformance subset and the PDF round-trip tests.
 
 **11. Fonts for other scripts.** The interface and the editor embed Inter and JetBrains Mono (Latin, Greek, Cyrillic) behind egui's own fallback faces. XML documents routinely contain CJK, Arabic, Hebrew and Indic text, and those characters have no face yet. The plan is PdfCraft's approach: one font already installed on the user's machine, read at run time as the last fallback (never embedded or shipped, AGENTS.md §1.4), with its glyphs moved onto Inter's baseline. Measured by a glyph-coverage test and a screenshot with synthetic multi-script text.
 

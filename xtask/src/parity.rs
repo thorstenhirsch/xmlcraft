@@ -135,7 +135,7 @@ fn valid_id(id: &str) -> bool {
 }
 
 /// The highest milestone number of docs/roadmap.md.
-const LAST_MILESTONE: u32 = 9;
+const LAST_MILESTONE: u32 = 10;
 
 fn valid_milestone(m: &str) -> bool {
     m == "none" || m.strip_prefix('M').and_then(|n| n.parse::<u32>().ok()).is_some_and(|n| n <= LAST_MILESTONE)

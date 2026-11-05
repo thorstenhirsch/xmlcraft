@@ -5,7 +5,7 @@
 # from every percentage.
 # Tiers: P0 = needed for the 0.1.0 MVP; P1 = important, soon after; P2 = valuable; P3 = long tail.
 # `commands` lists registry ids from crates/engine/src/commands.rs only; `tools` lists crates/automation/src/tools.rs names.
-# `evidence` lists `path.rs::test_fn` entries that must exist. Milestones are those of docs/roadmap.md (M0-M9, or none).
+# `evidence` lists `path.rs::test_fn` entries that must exist. Milestones are those of docs/roadmap.md (M0-M10, or none).
 [schema]
 version = 1
 statuses = ["planned", "partial", "shipped", "na"]
@@ -106,7 +106,7 @@ id = "editor.find-in-files"
 title = "Find and replace across files and folders"
 area = "A"
 tier = "P1"
-milestone = "M6"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -130,7 +130,7 @@ id = "editor.bookmarks"
 title = "Bookmarks"
 area = "A"
 tier = "P2"
-milestone = "M6"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -406,7 +406,7 @@ id = "editor.snippets"
 title = "Snippets and templates"
 area = "A"
 tier = "P2"
-milestone = "M6"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -478,7 +478,7 @@ id = "editor.spell-check"
 title = "Spell checking of text and attribute values"
 area = "A"
 tier = "P3"
-milestone = "M9"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -603,7 +603,7 @@ id = "view.docking"
 title = "Dockable and floating panels"
 area = "B"
 tier = "P2"
-milestone = "M6"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -615,7 +615,7 @@ id = "view.split-editor"
 title = "Split editor and side-by-side documents"
 area = "B"
 tier = "P2"
-milestone = "M6"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -624,22 +624,22 @@ notes = ""
 
 [[feature]]
 id = "view.grid"
-title = "Grid view: tree-table editing of XML and JSON"
+title = "Grid view for XML, JSON, YAML and BSON"
 area = "B"
-tier = "P2"
-milestone = "M7"
+tier = "P1"
+milestone = "M6"
 status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "The nested-box and table displays of XMLSpy's Grid view for every supported format (rows and columns for repeated elements or array items, sort, add/remove rows and columns, copy and paste as tab-separated text), editing through the same edits as the text view."
 
 [[feature]]
 id = "view.schema-design"
 title = "Graphical XSD editor (content model diagrams)"
 area = "B"
 tier = "P2"
-milestone = "M7"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -648,9 +648,9 @@ notes = ""
 
 [[feature]]
 id = "view.browser-preview"
-title = "Browser preview of HTML and transformation output"
+title = "Browser view of HTML, HTML5 and transformation output (locked-down webview)"
 area = "B"
-tier = "P3"
+tier = "P2"
 milestone = "M8"
 status = "planned"
 commands = []
@@ -776,7 +776,7 @@ id = "dtd.convert-xsd"
 title = "Convert between DTD and XSD"
 area = "C"
 tier = "P2"
-milestone = "M8"
+milestone = "M6"
 status = "planned"
 commands = []
 tools = []
@@ -961,7 +961,7 @@ id = "xsd.version-1-1"
 title = "XSD 1.1: assertions, alternatives, openContent, override"
 area = "D"
 tier = "P2"
-milestone = "M8"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -973,7 +973,7 @@ id = "xsd.refactoring"
 title = "Rename and refactor schema components"
 area = "D"
 tier = "P2"
-milestone = "M8"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -985,7 +985,7 @@ id = "xsd.documentation-output"
 title = "Generate schema documentation (HTML)"
 area = "D"
 tier = "P2"
-milestone = "M8"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -997,7 +997,7 @@ id = "xsd.flatten"
 title = "Flatten a multi-file schema into one"
 area = "D"
 tier = "P3"
-milestone = "M9"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -1170,7 +1170,7 @@ id = "validate.multiple-files"
 title = "Validate many files or a folder"
 area = "E"
 tier = "P1"
-milestone = "M6"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -1181,8 +1181,8 @@ notes = ""
 id = "validate.schematron"
 title = "Schematron validation"
 area = "E"
-tier = "P3"
-milestone = "M9"
+tier = "P2"
+milestone = "M7"
 status = "planned"
 commands = []
 tools = []
@@ -1316,10 +1316,10 @@ notes = ""
 
 [[feature]]
 id = "generate.convert-xml-json"
-title = "Convert between XML and JSON"
+title = "Convert between XML, JSON, YAML and BSON"
 area = "F"
-tier = "P2"
-milestone = "M8"
+tier = "P1"
+milestone = "M6"
 status = "planned"
 commands = []
 tools = []
@@ -1330,8 +1330,8 @@ notes = ""
 id = "generate.convert-xsd-json-schema"
 title = "Convert between XSD and JSON Schema"
 area = "F"
-tier = "P3"
-milestone = "M9"
+tier = "P2"
+milestone = "M6"
 status = "planned"
 commands = []
 tools = []
@@ -1456,7 +1456,7 @@ id = "catalog.xinclude"
 title = "XInclude processing"
 area = "G"
 tier = "P2"
-milestone = "M6"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -1470,10 +1470,10 @@ notes = ""
 
 [[feature]]
 id = "query.xpath-evaluator"
-title = "XPath evaluator window"
+title = "XPath and XQuery evaluator window (1.0 to 3.1)"
 area = "H"
 tier = "P1"
-milestone = "M6"
+milestone = "M7"
 status = "planned"
 commands = []
 tools = []
@@ -1497,7 +1497,7 @@ id = "query.xpath-completion"
 title = "XPath completion"
 area = "H"
 tier = "P2"
-milestone = "M6"
+milestone = "M7"
 status = "planned"
 commands = []
 tools = []
@@ -1506,10 +1506,10 @@ notes = ""
 
 [[feature]]
 id = "query.xslt-transform"
-title = "Run XSLT transformations"
+title = "XSLT 1.0, 2.0 and 3.0 transformations"
 area = "H"
-tier = "P2"
-milestone = "M8"
+tier = "P1"
+milestone = "M7"
 status = "planned"
 commands = []
 tools = []
@@ -1518,10 +1518,10 @@ notes = ""
 
 [[feature]]
 id = "query.xslt-debugger"
-title = "XSLT debugger and profiler"
+title = "XSLT debugger"
 area = "H"
-tier = "P3"
-milestone = "M8"
+tier = "P1"
+milestone = "M7"
 status = "planned"
 commands = []
 tools = []
@@ -1530,10 +1530,10 @@ notes = ""
 
 [[feature]]
 id = "query.xquery"
-title = "XQuery editing and execution"
+title = "XQuery 1.0, 3.0 and 3.1 (with Update): editing and execution"
 area = "H"
-tier = "P3"
-milestone = "M8"
+tier = "P1"
+milestone = "M7"
 status = "planned"
 commands = []
 tools = []
@@ -1621,8 +1621,8 @@ notes = ""
 id = "json.lines"
 title = "JSON Lines"
 area = "I"
-tier = "P3"
-milestone = "M9"
+tier = "P2"
+milestone = "M5"
 status = "planned"
 commands = []
 tools = []
@@ -1631,10 +1631,10 @@ notes = ""
 
 [[feature]]
 id = "json.openapi"
-title = "OpenAPI editing and validation"
+title = "OpenAPI 2.0, 3.0, 3.1 and 3.2 editing and validation"
 area = "I"
-tier = "P3"
-milestone = "M9"
+tier = "P2"
+milestone = "M8"
 status = "planned"
 commands = []
 tools = []
@@ -1643,15 +1643,15 @@ notes = ""
 
 [[feature]]
 id = "json.bson-avro"
-title = "BSON and Avro"
+title = "BSON (as Extended JSON, saved back to BSON) and Avro"
 area = "I"
-tier = "P3"
-milestone = "M9"
+tier = "P1"
+milestone = "M5"
 status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "BSON opens as a projected Extended-JSON text and saves back to the container with every untouched byte identical; Avro follows BSON."
 
 
 # ==================================================================================================
@@ -1663,7 +1663,7 @@ id = "project.window"
 title = "Project window"
 area = "J"
 tier = "P2"
-milestone = "M6"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -1684,10 +1684,10 @@ notes = "File ▸ New from Template… (⇧⌘N) and the buttons of the home vie
 
 [[feature]]
 id = "project.diff-files"
-title = "Compare two files"
+title = "Compare two files (XML, JSON, YAML; text and tree)"
 area = "J"
-tier = "P2"
-milestone = "M8"
+tier = "P1"
+milestone = "M6"
 status = "planned"
 commands = []
 tools = []
@@ -1698,8 +1698,8 @@ notes = ""
 id = "project.diff-directories"
 title = "Compare two folders"
 area = "J"
-tier = "P3"
-milestone = "M8"
+tier = "P2"
+milestone = "M6"
 status = "planned"
 commands = []
 tools = []
@@ -1711,7 +1711,7 @@ id = "project.git"
 title = "Source control integration"
 area = "J"
 tier = "P3"
-milestone = "M9"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -1723,7 +1723,7 @@ id = "project.find-in-schemas"
 title = "Find in schemas"
 area = "J"
 tier = "P3"
-milestone = "M8"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -1848,7 +1848,7 @@ id = "app.keyboard-shortcuts"
 title = "Customisable keyboard shortcuts"
 area = "K"
 tier = "P2"
-milestone = "M6"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -1884,7 +1884,7 @@ id = "app.update-check"
 title = "Update check on request"
 area = "K"
 tier = "P2"
-milestone = "M9"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -1896,7 +1896,7 @@ id = "app.localization"
 title = "Translated interface"
 area = "K"
 tier = "P3"
-milestone = "M9"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -1908,7 +1908,7 @@ id = "app.web-build"
 title = "Browser build"
 area = "K"
 tier = "P3"
-milestone = "M9"
+milestone = "M10"
 status = "planned"
 commands = []
 tools = []
@@ -1977,15 +1977,15 @@ notes = ""
 
 [[feature]]
 id = "scope.xbrl"
-title = "XBRL taxonomy and instance tooling"
+title = "XBRL taxonomy and instance tooling (umbrella; see the xbrl.* entries)"
 area = "K"
-tier = "N/A"
-milestone = "none"
-status = "na"
+tier = "P2"
+milestone = "M9"
+status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "The scope decision of 2026-11-05: in scope."
 
 [[feature]]
 id = "scope.authentic-view"
@@ -2001,15 +2001,15 @@ notes = "Needs a proprietary design format."
 
 [[feature]]
 id = "scope.web-services"
-title = "WSDL editor, SOAP client and debugger"
+title = "WSDL 1.1/2.0 editor, SOAP 1.1/1.2 client and debugger (umbrella; see the soap.* entries)"
 area = "K"
-tier = "N/A"
-milestone = "none"
-status = "na"
+tier = "P2"
+milestone = "M8"
+status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = "WSDL and SOAP schemas are still bundled for validation."
+notes = "The scope decision of 2026-11-05: in scope. WSDL and SOAP schemas are already bundled for validation."
 
 [[feature]]
 id = "scope.code-generation"
@@ -2034,3 +2034,500 @@ commands = []
 tools = []
 evidence = []
 notes = ""
+
+# ==================================================================================================
+# New scope of 2026-11-05 (M5-M9): data formats, conversion/grid/diff, query engines, web and business formats
+# ==================================================================================================
+
+[[feature]]
+id = "json.language-abstraction"
+title = "One editor stack for XML, JSON, YAML and BSON (language abstraction)"
+area = "A"
+tier = "P1"
+milestone = "M5"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Highlighting, modes, typing aids, outline, folding, formatting and analysis come from a per-language object instead of XML assumptions."
+
+[[feature]]
+id = "json.schema-drafts"
+title = "JSON Schema drafts 04, 06, 07, 2019-09 and 2020-12"
+area = "I"
+tier = "P1"
+milestone = "M5"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "One validator for all five, chosen by $schema; the JSON-Schema-Test-Suite is the ratchet."
+
+[[feature]]
+id = "json.on-par-with-xml"
+title = "JSON, YAML and BSON on par with XML (outline, folding, format, Entry Helpers, hover, Problems)"
+area = "I"
+tier = "P1"
+milestone = "M5"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Every text-editing feature that XML has, for the formats that have a structure."
+
+[[feature]]
+id = "yaml.validate-json-schema"
+title = "YAML validated against JSON Schema (also written in YAML)"
+area = "I"
+tier = "P1"
+milestone = "M5"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "bson.validate-json-schema"
+title = "BSON validated against JSON Schema"
+area = "I"
+tier = "P1"
+milestone = "M5"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "json.schema-inference"
+title = "Generate JSON Schema from JSON, YAML or BSON, and samples from a schema"
+area = "F"
+tier = "P1"
+milestone = "M5"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "convert.xml-yaml"
+title = "Convert between XML and YAML"
+area = "F"
+tier = "P1"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "convert.json-yaml"
+title = "Convert between JSON and YAML"
+area = "F"
+tier = "P1"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "convert.bson"
+title = "Convert between BSON, JSON and YAML"
+area = "F"
+tier = "P1"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "view.grid-table"
+title = "Grid table display (repeated items as rows) for every format"
+area = "B"
+tier = "P1"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "project.diff-three-way"
+title = "Three-way compare and merge of XML, JSON and YAML"
+area = "J"
+tier = "P1"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "The DiffDog feature: base, left, right, keep one side per difference."
+
+[[feature]]
+id = "project.diff-ignore-options"
+title = "Diff ignore options (whitespace, prefixes, attribute and child order, comments)"
+area = "J"
+tier = "P2"
+milestone = "M6"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "query.xpath-versions"
+title = "XPath 1.0, 2.0, 3.0 and 3.1 semantics"
+area = "H"
+tier = "P1"
+milestone = "M7"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Chosen per document or window, as in XMLSpy."
+
+[[feature]]
+id = "query.xquery-update"
+title = "XQuery Update Facility 3.0"
+area = "H"
+tier = "P2"
+milestone = "M7"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "query.xpath-xquery-debugger"
+title = "XPath and XQuery debugger (breakpoints, tracepoints, watch, call stack, context)"
+area = "H"
+tier = "P1"
+milestone = "M7"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "query.xpath-xquery-profiler"
+title = "XPath and XQuery profiler (hit count, call graph)"
+area = "H"
+tier = "P1"
+milestone = "M7"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "query.xslt-editor"
+title = "XSLT editor with intelligent completion and entry helpers"
+area = "H"
+tier = "P1"
+milestone = "M7"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "query.xslt-profiler"
+title = "XSLT profiler (hit count, call graph, durations, charts)"
+area = "H"
+tier = "P1"
+milestone = "M7"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "html.editing"
+title = "HTML and HTML5 editing with element and attribute completion"
+area = "A"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "openapi.v2"
+title = "OpenAPI 2.0 (Swagger)"
+area = "I"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "openapi.v30"
+title = "OpenAPI 3.0"
+area = "I"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "openapi.v31"
+title = "OpenAPI 3.1"
+area = "I"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "openapi.v32"
+title = "OpenAPI 3.2"
+area = "I"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "openapi.request-builder"
+title = "Build and send an HTTP request from an OpenAPI operation"
+area = "I"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "soap.wsdl-editor"
+title = "WSDL 1.1 and 2.0 editing and validation"
+area = "E"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "soap.client"
+title = "SOAP 1.1 and 1.2 client (build, validate, send, view the response)"
+area = "E"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "soap.debugger"
+title = "SOAP debugger: an intercepting proxy with breakpoints per operation, conditions, edit and forward"
+area = "E"
+tier = "P2"
+milestone = "M8"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xbrl.instance-validation"
+title = "XBRL 2.1 instance validation"
+area = "E"
+tier = "P2"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xbrl.taxonomy"
+title = "XBRL taxonomy discovery, linkbases and validation, taxonomy packages"
+area = "E"
+tier = "P2"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xbrl.dimensions"
+title = "XBRL Dimensions 1.0"
+area = "E"
+tier = "P2"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xbrl.inline"
+title = "Inline XBRL 1.1 transform and validate"
+area = "E"
+tier = "P2"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xbrl.oim"
+title = "xBRL-XML, xBRL-JSON and xBRL-CSV conversion and validation"
+area = "F"
+tier = "P3"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "xbrl.formula-tables"
+title = "XBRL Formula and Table linkbases"
+area = "E"
+tier = "P3"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "einvoice.xrechnung-ubl"
+title = "XRechnung in UBL 2.1 (invoice and credit note)"
+area = "E"
+tier = "P2"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "einvoice.xrechnung-cii"
+title = "XRechnung in UN/CEFACT CII"
+area = "E"
+tier = "P2"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "einvoice.en16931"
+title = "EN 16931 business rules"
+area = "E"
+tier = "P2"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "einvoice.peppol-bis3"
+title = "Peppol BIS Billing 3.0"
+area = "E"
+tier = "P2"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "einvoice.fatturapa"
+title = "FatturaPA (Italy)"
+area = "E"
+tier = "P3"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "einvoice.zugferd-facturx"
+title = "ZUGFeRD and Factur-X profiles (MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED, XRECHNUNG)"
+area = "E"
+tier = "P2"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = ""
+
+[[feature]]
+id = "pdf.embedded-xml"
+title = "Open and edit the XML embedded in a PDF (ZUGFeRD/Factur-X)"
+area = "J"
+tier = "P2"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "A projected document: the XML is edited in a tab, the PDF is changed by one appended incremental update."
+
+[[feature]]
+id = "pdf.incremental-update"
+title = "PDF incremental update that never changes the original bytes"
+area = "J"
+tier = "P2"
+milestone = "M9"
+status = "planned"
+commands = []
+tools = []
+evidence = []
+notes = "Encrypted and certified (DocMDP) files are refused; Params, XMP and trailer ID are updated together."
+
