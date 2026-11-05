@@ -22,6 +22,7 @@ xmlcraft-convert = { workspace = true }
 xmlcraft-query = { workspace = true }
 xmlcraft-schematron = { workspace = true }
 xmlcraft-diff = { workspace = true }
+xmlcraft-einvoice = { workspace = true }
 xmlcraft-complete = { workspace = true }
 xmlcraft-dtd = { workspace = true }
 xmlcraft-infer = { workspace = true }

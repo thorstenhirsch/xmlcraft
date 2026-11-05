@@ -53,6 +53,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("query", Class::Layer(4)),
     ("schematron", Class::Layer(4)),
     ("diff", Class::Layer(4)),
+    ("einvoice", Class::Layer(4)),
     ("infer", Class::Layer(4)),
     ("sample", Class::Layer(4)),
     ("format", Class::Layer(4)),
