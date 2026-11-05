@@ -25,6 +25,7 @@ pub mod selfcheck;
 pub mod templates;
 pub mod validation;
 mod worker;
+pub mod xbrl;
 pub mod xpath;
 pub mod xsd_schemas;
 mod yaml_analysis;

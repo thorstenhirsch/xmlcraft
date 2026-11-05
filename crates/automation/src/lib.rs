@@ -29,6 +29,7 @@ mod schematron;
 mod script;
 mod tools;
 mod validate;
+mod xbrl;
 mod xpath;
 
 #[cfg(not(target_arch = "wasm32"))]

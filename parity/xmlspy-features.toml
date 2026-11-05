@@ -2261,11 +2261,11 @@ title = "XBRL 2.1 instance validation"
 area = "E"
 tier = "P2"
 milestone = "M9"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.validate"]
+tools = ["xbrl_facts"]
+evidence = ["crates/xbrl/tests/xbrl.rs::contexts_units_and_facts_are_read_with_their_places_and_dimensions", "crates/xbrl/tests/xbrl.rs::what_the_instance_says_wrong_about_itself_is_found_at_the_fact_or_context", "crates/xbrl/tests/xbrl.rs::periods_duplicates_and_what_is_never_used", "crates/engine/src/validation.rs::an_xbrl_instance_is_checked_for_what_it_says_of_itself_and_is_not_blamed_for_having_no_doctype", "crates/automation/tests/xbrl.rs::facts_contexts_units_and_findings_are_listed_with_places"]
+notes = "`xmlcraft-xbrl` reads an XBRL 2.1 instance into contexts (entity identifier and scheme, instant, duration or forever, explicit and typed dimension members of segment and scenario), units (measures, divide) and facts (concept, value, contextRef, unitRef, decimals, precision, nil, id, place in the text) and checks what the specification says of the instance itself: a fact whose contextRef or unitRef names nothing or is missing, duplicate context and unit ids, a period that is no date or ends before it starts, an entity with no scheme, decimals with precision, decimals or precision that is not an integer or INF, a nil fact with a value, a number that is not one, duplicate and inconsistent facts, contexts and units never used, a missing schemaRef. F8 lists the findings in Problems at their fact or context (and an XBRL instance is not blamed for naming no DOCTYPE); the tool `xbrl_facts` lists the facts, contexts, units and findings. Missing: everything that needs the taxonomy (is the concept numeric, its period type, its balance, the calculation relationships, the dimensional validation of members and hypercubes), schemaRef resolution, the XBRL conformance suite, a facts table in the window."
 
 [[feature]]
 id = "xbrl.taxonomy"
@@ -2297,11 +2297,11 @@ title = "Inline XBRL 1.1 transform and validate"
 area = "E"
 tier = "P2"
 milestone = "M9"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.validate"]
+tools = ["xbrl_facts"]
+evidence = ["crates/xbrl/tests/xbrl.rs::inline_xbrl_facts_are_read_with_scale_and_sign_applied_and_checked_like_an_instance"]
+notes = "Inline XBRL documents (XHTML with ix: tags) are read into the same facts, contexts and units: `ix:nonNumeric`, `ix:nonFraction` (the default number format with thousands separators; `scale` and `sign` applied, so `1,234.5` with scale 3 is 1234500) and `ix:fraction`, with the contexts and units of `ix:resources` and the `schemaRef` of `ix:references`; a number that is not one in the default format is a finding that names the transformation format. They are checked like an instance. Missing: the ixt transformation registries (formats such as ixt:num-comma-decimal and date formats), nested and continued `ix:continuation` text, the Inline XBRL transform to an XBRL instance, hidden facts and `ix:exclude`, a viewer."
 
 [[feature]]
 id = "xbrl.oim"
