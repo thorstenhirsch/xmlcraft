@@ -176,7 +176,8 @@ fn f8_checks_a_json_document_against_the_schema_it_names_and_lists_what_is_wrong
     h.run_steps(2);
     assert_eq!(h.state().validity(), Some((2, 0)), "the minimum and the required name");
     assert!(h.query_by_label("2 validity errors").is_some() || h.state().status.contains("2 validity errors"), "{}", h.state().status);
-    assert!(h.query_by_label_contains("minimum").is_some(), "the problem is listed");
+    assert!(h.query_by_label_contains("minimum").is_some(), "the minimum is listed");
+    assert!(h.query_by_label_contains("required").is_some(), "and the required name");
     // Fixed, it is valid.
     {
         let doc = h.state_mut().session.active_document_mut().expect("shown");

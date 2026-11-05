@@ -58,7 +58,8 @@ fn read(text: &str, language: Language) -> Option<Instance> {
 /// Whether the text names a schema to be checked against (see the module). Only the beginning of the text is looked at for a YAML
 /// modeline; the root object is read.
 pub fn names_a_schema(text: &str, language: Language) -> bool {
-    text.len() <= MAX_ANALYSED_BYTES && read(text, language).is_some_and(|i| !i.broken && i.reference.is_some())
+    // (Both ways of naming a schema contain `$schema`: a text without it is not read at all.)
+    text.len() <= MAX_ANALYSED_BYTES && text.contains("$schema") && read(text, language).is_some_and(|i| !i.broken && i.reference.is_some())
 }
 
 /// The `$schema` of an object, when it is a string and is not a draft.
@@ -100,6 +101,8 @@ fn modeline(text: &str) -> Option<(Range<usize>, String)> {
 struct Documents<'r> {
     resolver: &'r Resolver,
     budget: RefCell<Budget>,
+    /// The documents the schema refers to that could not be read, with why.
+    failed: RefCell<Vec<(String, String)>>,
 }
 
 impl Documents<'_> {
@@ -115,7 +118,13 @@ impl Documents<'_> {
 
 impl Loader for Documents<'_> {
     fn load(&self, uri: &str) -> Option<String> {
-        self.fetch(uri, "").ok().map(|(_, text)| text)
+        match self.fetch(uri, "") {
+            Ok((_, text)) => Some(text),
+            Err(why) => {
+                self.failed.borrow_mut().push((uri.to_owned(), why));
+                None
+            }
+        }
     }
 }
 
@@ -129,7 +138,7 @@ pub fn validate_data(text: &str, language: Language, version: u64, location: &st
         return Validation { version, verdict: Verdict::NotWellFormed, problems: Vec::new(), truncated: false };
     }
     let Some((span, reference)) = instance.reference else { return finish(version, Vec::new()) };
-    let documents = Documents { resolver, budget: RefCell::new(Budget::default()) };
+    let documents = Documents { resolver, budget: RefCell::new(Budget::default()), failed: RefCell::new(Vec::new()) };
     let own = |code: Code, span: Range<usize>, args: Vec<String>| ValidityProblem { diagnostic: Diagnostic::new(code, span, args), file: None };
     let (schema_location, schema_text) = match documents.fetch(&reference, location) {
         Ok(found) => found,
@@ -154,11 +163,24 @@ pub fn validate_data(text: &str, language: Language, version: u64, location: &st
             ValidityProblem { diagnostic: Diagnostic::new(Code::JsonSchemaInvalid, at, vec![p.message.clone()]), file: Some(named) }
         })
         .collect();
+    // A document the schema refers to that could not be read is a problem of the schema, said once at its start; what then cannot be
+    // resolved is not the instance's fault and is not listed against it.
+    let failed = documents.failed.borrow().clone();
+    for (uri, why) in &failed {
+        problems.push(ValidityProblem {
+            diagnostic: Diagnostic::new(Code::JsonSchemaRefUnavailable, 0..0, vec![uri.clone(), why.clone()]),
+            file: Some(schema_location.clone()),
+        });
+    }
     let mut truncated = false;
     for value in &instance.roots {
         let outcome = set.validate(value);
         truncated |= outcome.truncated;
         for v in outcome.violations {
+            // A reference that cannot be resolved because its document could not be read is said above, not against the instance.
+            if v.keyword == "$ref" && v.message.contains("cannot be resolved") && !failed.is_empty() {
+                continue;
+            }
             let at = value.span_of_pointer(&v.instance).unwrap_or_else(|| value.span.clone());
             let args = vec![format!("{} ({})", v.message, v.keyword)];
             problems.push(own(Code::JsonSchemaViolation, at, args));
@@ -273,22 +295,23 @@ mod tests {
     }
 
     #[test]
-    fn a_broken_or_wrong_schema_is_reported_in_the_schema_file() {
+    fn a_broken_schema_is_a_warning_and_a_schema_document_that_cannot_be_read_is_a_problem_of_the_schema() {
         let broken =
             validate_data(r#"{"$schema": "s.json"}"#, Language::Json(JsonFlavor::Json), 1, "/d/doc.json", &resolver(&[("/d/s.json", "{\"type\": ")]));
         assert_eq!(broken.problems[0].diagnostic.code, Code::JsonSchemaUnavailable);
-        let wrong = validate_data(
+        assert!(broken.problems[0].file.is_none(), "it is the document's warning");
+        let missing = validate_data(
             r#"{"$schema": "s.json", "a": 1}"#,
             Language::Json(JsonFlavor::Json),
             1,
             "/d/doc.json",
-            &resolver(&[("/d/s.json", r##"{"properties": {"a": {"$ref": "#/$defs/missing"}}}"##)]),
+            &resolver(&[("/d/s.json", r#"{"properties": {"a": {"$ref": "gone.json"}}}"#)]),
         );
-        assert!(
-            wrong.problems.iter().any(|p| p.diagnostic.code == Code::JsonSchemaInvalid || p.diagnostic.code == Code::JsonSchemaViolation),
-            "{:?}",
-            wrong.problems
-        );
+        assert_eq!(missing.verdict, Verdict::Valid, "the instance is not at fault: {:?}", missing.problems);
+        assert_eq!(missing.problems.len(), 1);
+        assert_eq!(missing.problems[0].diagnostic.code, Code::JsonSchemaRefUnavailable);
+        assert!(missing.problems[0].file.as_deref().is_some_and(|f| f.ends_with("s.json")), "{:?}", missing.problems[0].file);
+        assert!(missing.problems[0].diagnostic.args.iter().any(|a| a.contains("gone.json")), "{:?}", missing.problems[0].diagnostic.args);
     }
 
     #[test]
@@ -311,5 +334,6 @@ mod tests {
         assert!(!names_a_schema(text, Language::Yaml));
         assert!(names_a_schema("# yaml-language-server: $schema=s.json\nn: 0\n", Language::Yaml));
         assert!(!names_a_schema("{\"a\": ", Language::Json(JsonFlavor::Json)));
+        assert!(!names_a_schema("{\"a\": 1}", Language::Json(JsonFlavor::Json)), "no `$schema` at all");
     }
 }

@@ -252,6 +252,7 @@ codes! {
     // JSON Schema (checked by `xmlcraft-json`, for JSON and YAML documents)
     JsonSchemaViolation => ("json-schema.violation", Error, "{0}"),
     JsonSchemaUnavailable => ("json-schema.unavailable", Warning, "The document cannot be checked against its schema '{0}': {1}."),
+    JsonSchemaRefUnavailable => ("json-schema.reference-unavailable", Warning, "The schema document '{0}' that the schema refers to could not be read: {1}."),
     JsonSchemaInvalid => ("json-schema.invalid-schema", Error, "{0}"),
     // BSON (shown as Extended JSON; `xmlcraft-bson`)
     BsonInvalid => ("bson.invalid-value", Error, "{0}"),
