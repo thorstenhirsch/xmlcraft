@@ -1626,7 +1626,7 @@ milestone = "M5"
 status = "partial"
 commands = ["xml.minify"]
 tools = ["xml_wellformed", "xml_outline", "xml_folds", "xml_format"]
-evidence = ["crates/json-syntax/tests/reading.rs::json_lines_are_read_line_by_line_at_their_places_in_the_text", "crates/engine/src/json_analysis.rs::json_lines_have_an_item_per_line_and_problems_at_the_right_line"]
+evidence = ["crates/json-syntax/tests/reading.rs::json_lines_are_read_line_by_line_at_their_places_in_the_text", "crates/engine/src/json_analysis.rs::json_lines_have_an_item_per_line_and_problems_at_the_right_line", "crates/format/tests/json.rs::json_lines_are_minified_line_by_line_with_the_edits_at_their_places"]
 notes = "`.jsonl` and `.ndjson`: one value per line, each line an outline item with its members, problems at their lines. Minify works per line (pretty-printing is refused: a value per line is the format). Still missing: schema validation per line."
 
 [[feature]]
