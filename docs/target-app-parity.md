@@ -1,6 +1,6 @@
 # XmlCraft parity with Altova XMLSpy
 
-> **Last reviewed:** 2026-11-05 · **Last updated:** 2026-11-05 · **Change:** the headline is measured again after the new scope of 2026-11-05 (XBRL, e-invoicing, PDF, SOAP, HTML5, OpenAPI, debuggers and profilers, YAML/BSON, conversions, three-way diff, Grid for all formats; duplicates folded): 188 counted features, 10 shipped, 87 partial, 28.5% weighted (M5.4: json.schema-validate planned → partial; M5.2: JSON editing, JSONC, JSON Lines and the language abstraction planned → partial). Older changes are in the revision history.
+> **Last reviewed:** 2026-11-05 · **Last updated:** 2026-11-05 · **Change:** the headline is measured again after the new scope of 2026-11-05 (XBRL, e-invoicing, PDF, SOAP, HTML5, OpenAPI, debuggers and profilers, YAML/BSON, conversions, three-way diff, Grid for all formats; duplicates folded): 188 counted features, 10 shipped, 88 partial, 28.7% weighted (M5.4: json.schema-validate planned → partial; M5.2: JSON editing, JSONC, JSON Lines and the language abstraction planned → partial). Older changes are in the revision history.
 
 The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -10,7 +10,7 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **5.3%** shipped, 28.5% with partial counted half (10 shipped + 87 partial of 188 counted; 64 P0, 62 P1, 53 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-05) |
+| **Feature breadth**, unweighted | **5.3%** shipped, 28.7% with partial counted half (10 shipped + 88 partial of 188 counted; 64 P0, 62 P1, 53 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-05) |
 | Must-have (P0) features | 7.8% shipped, 45.3% weighted (5 shipped + 48 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **100%** (1017 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): a valid document has no well-formedness or validity error, an invalid one is well-formed and has at least one validity error (which one is not compared; 73 of the 227 are documents with no DOCTYPE, invalid because there is nothing to validate against) | measured (same run) |
@@ -113,3 +113,4 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 - 2026-11-05: M6.3: `project.diff-files`, `project.diff-three-way` and `project.diff-ignore-options` planned → partial (the `xmlcraft-diff` crate and the tools `diff_compare` and `diff_merge`; no window yet); with the YAML (M5.6), BSON (M5.8) and JSON Schema (M5.4) entries that moved before it, 10 shipped and 81 partial of 188 counted features, 26.9% weighted.
 - 2026-11-05: M5.9: `json.yaml-validate` planned → partial and `json.schema-validate` gets the window (F8 against the `$schema` a document names); 10 shipped and 82 partial of 188 counted features, 27.1% weighted.
 - 2026-11-05: M5.10: the meta-schemas of the five drafts and the OpenAPI 2.0, 3.0, 3.1 and 3.2 schemas are bundled (`json.schema-validate` and the new `json.openapi` evidence); the JSON Schema Test Suite is 4948 of 4950 (99.96%), the ten tests that needed the meta-schemas now pass; `openapi.v2`, `openapi.v30`, `openapi.v31`, `openapi.v32` and `json.openapi` planned → partial; 10 shipped and 87 partial of 188 counted features, 28.5% weighted.
+- 2026-11-05: M7.1: `query.xpath-evaluator` planned → partial (`xmlcraft-query`, `xpath_eval`; XPath 3.1 on `xee`); 10 shipped and 82 partial of 188 counted features, 26.3% weighted.
