@@ -18,7 +18,7 @@ XmlCraft is a clean-room, open-source XML editor in the spirit of Altova XMLSpy,
 
 ## Headline numbers
 
-- **Feature breadth: 5.1% shipped** (10 shipped and 71 partial of 197 counted features; 64 P0, 71 P1, 53 P2, 9 P3; 8 out of scope), 23.1% weighted (the new scope of 2026-11-05 added 43 planned features, so the percentages fell), from `cargo xtask parity`. The editor opens, edits, colours and saves XML files byte-faithfully; validation against a DTD and an XML Schema, Entry Helpers from either, Assign Schema, and the generators (schema inference, sample XML, with their dialogs) work; quick fixes cover the common well-formedness problems and required attributes; the rest of the bundled schema set and JSON/YAML are not there yet.
+- **Feature breadth: 5.3% shipped** (10 shipped and 71 partial of 188 counted features; 64 P0, 62 P1, 53 P2, 9 P3; 8 out of scope), 24.2% weighted (the new scope of 2026-11-05 added 43 planned features, so the percentages fell), from `cargo xtask parity`. The editor opens, edits, colours and saves XML files byte-faithfully; validation against a DTD and an XML Schema, Entry Helpers from either, Assign Schema, and the generators (schema inference, sample XML, with their dialogs) work; quick fixes cover the common well-formedness problems and required attributes; the rest of the bundled schema set and JSON/YAML are not there yet.
 - **W3C xmlconf** (XML 1.0 fifth edition, validating, namespace-aware): not-well-formed **100%** (1017 of 1017), valid **100%** (721 of 721), invalid **100%** (227 of 227; the baseline is empty). W3C **xsdtests** (XML Schema 1.0, 2007 release, accepted tests): **98.23%** (37,754 of 38,436; schemas 96.21%, instances 99.34%; 682 known failures are the baseline).
 
 ## Progress log

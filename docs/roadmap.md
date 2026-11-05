@@ -31,7 +31,8 @@ Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is 
 - **M7:** QT3 (XPath/XQuery) and the W3C XSLT 3.0 suite are fetched and ratcheted (XPath 3.1 at least as good as `xee` alone, XQuery 3.1 and XSLT 3.0 measured and stated); a breakpoint stops a transformation, an XPath and an XQuery at the line it names; the profiler's hit counts equal a counted run.
 - **M8:** every OpenAPI version validates against its official JSON Schema (the official examples pass); a SOAP 1.1 and a SOAP 1.2 call to a loopback mock service round-trips and the debugger holds, edits and forwards a message; the browser view renders a fixed fixture with JavaScript off and the network blocked.
 - **M9:** the XRechnung test suite of KoSIT (UBL and CII) gives the expected verdicts; an XBRL 2.1 conformance subset is ratcheted; editing the XML of a ZUGFeRD PDF leaves every byte before the update unchanged, the file re-parses, and an external PDF/A checker still accepts it.
-- **0.2.0** is released when M5–M10 have no task left.
+- **M10:** xsdtests at least 99.5% with the baseline of known failures shrinking (gap 21: Derivation Valid, `xs:redefine`, UPA, counters); a 100 MB file opens, scrolls and is analysed within the M1 budgets (gaps 17 and 18); an edited file is recovered after a forced kill and a change on disk is noticed while the window is unfocused; text in CJK, Arabic, Hebrew and Indic scripts draws without boxes (glyph-coverage test); the accessibility snapshot lists every control of the main window; the update check and single instance work in their kittest and CLI tests.
+- **0.2.0** is released when M5–M10 have no task left and every exit criterion above is met.
 
 ## Decisions that shape the roadmap
 

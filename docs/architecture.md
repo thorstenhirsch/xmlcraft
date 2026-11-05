@@ -22,7 +22,7 @@ One Cargo workspace (edition 2024, Rust ≥ 1.95, `MIT OR Apache-2.0`): library 
 | L0 foundation | `text`, `pattern`, `schemas` | Rope buffer, positions, encodings and undo log; XSD regular expressions; the embedded bundle of standard schemas |
 | L1 syntax and datatypes | `syntax`, `datatypes` | Restartable lexer, lossless error-tolerant CST, streaming reader, well-formedness, namespaces, the shared `Diagnostic` type (on `text`); the 44 XSD built-in types and facets (on `pattern`) |
 | L2 core model | `grammar`, `catalog` | **The one schema model both DTD and XSD compile into** (declarations, content-model automata, identity constraints, documentation, origin spans); OASIS XML Catalogs |
-| L3 core services | `dtd`, `xsd`, `resolve`, `json` (M5) | Schema readers that compile to `grammar`; the resolution chain (open documents → catalogs → local files → cache → network) behind traits; JSON/YAML syntax and JSON Schema |
+| L3 core services | `dtd`, `xsd`, `resolve`, `json` (M5) | Schema readers that compile to `grammar`; the resolution chain (open documents → catalogs → local files → cache → network) behind traits; JSON Schema (`json`; the JSON and YAML syntax crates are L1) |
 | L4 features | `validate`, `infer`, `sample`, `format`, `complete` | Validation; schema inference; sample generation; formatting as minimal edits; completion, Entry Helpers and quick fixes |
 | L5 interaction | `editor` | Headless editor model: multi-cursor selections, folds, editing commands, find/replace |
 | L6 façade | `engine` | Sessions and documents, the background analysis scheduler, the command registry |
@@ -36,8 +36,8 @@ One Cargo workspace (edition 2024, Rust ≥ 1.95, `MIT OR Apache-2.0`): library 
 |---|---|---|
 | L1 | `json-syntax`, `yaml-syntax`, `bson` (codec), `pdf` | Lossless CST of JSON/JSONC/JSON5/JSON Lines; YAML events with spans and alias caps; BSON read/write and its Extended JSON text; a minimal PDF object reader and **incremental-update writer** |
 | L2 | `datamodel` | One format-neutral tree with spans (object, array, scalar, element, attribute) under Grid, conversion and diff |
-| L3 | `json` (JSON Schema), `openapi` | JSON Schema drafts 04–2020-12 with pointer → span; OpenAPI 2.0–3.2 on top of it |
-| L4 | `query` (vendored and extended `xee`), `schematron`, `diff`, `convert`, `xbrl`, `einvoice`, SOAP/WSDL message building | Engines and format logic; all pure and wasm-clean |
+| L3 | `json` (JSON Schema) | JSON Schema drafts 04–2020-12 with pointer → span |
+| L4 | `openapi` (on top of `json`), `query` (vendored and extended `xee`), `schematron`, `diff`, `convert`, `xbrl`, `einvoice`, SOAP/WSDL message building | Engines and format logic; all pure and wasm-clean |
 | L7 | `platform` (HTTP/SOAP client, proxy, webview host — native only), `ui-egui` (Grid, diff view, debugger and profiler panes, browser view) | Everything that needs a socket, a window or a webview |
 
 Two rules for these formats. **A projected document**: BSON is shown and edited as its Extended JSON text, and a PDF with embedded XML is shown as its XML in a linked tab; saving writes the original container back and every byte outside the edited object stays identical (a PDF only ever gets an appended incremental update; encrypted or certified files are refused). **A language abstraction** in `syntax`, `editor` and `engine` (highlight, modes, typing aids, outline, folds, format, analysis) replaces the XML assumptions, so JSON, YAML and the rest are not special cases.

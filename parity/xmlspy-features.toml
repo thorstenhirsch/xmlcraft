@@ -99,7 +99,7 @@ status = "partial"
 commands = ["edit.find", "edit.replace", "edit.find_next", "edit.find_previous"]
 tools = ["doc_find", "doc_replace"]
 evidence = ["crates/editor/src/find.rs::literal_search_agrees_with_the_standard_library", "crates/editor/src/find.rs::replacing_one_at_a_time_then_all", "crates/ui-egui/tests/find.rs::the_find_bar_finds_counts_and_steps_through_matches", "crates/ui-egui/tests/find.rs::replace_one_and_replace_all", "crates/automation/tests/documents.rs::finding_and_replacing_text_and_patterns"]
-notes = "⌘F opens a bar above the editor: text or a regular expression (groups in the replacement as $1), match case, whole word, a counter, next and previous (Enter, F3), Replace and Replace All (one undo step), every match highlighted in the text (up to 10,000 matches, in documents up to 4 MB; a match across lines is highlighted on each of its lines; above 4 MB the bar does not count, and the matches on each line drawn are highlighted, except a match across lines and any on a line longer than 64 KB), and `doc_find` / `doc_replace` headlessly. Replace All refuses more than 10,000 matches or 16 MiB of replacement text, and says so. Still missing: searching only the selection from the bar (the engine can), find history, a replace preview, and find in files (M6)."
+notes = "⌘F opens a bar above the editor: text or a regular expression (groups in the replacement as $1), match case, whole word, a counter, next and previous (Enter, F3), Replace and Replace All (one undo step), every match highlighted in the text (up to 10,000 matches, in documents up to 4 MB; a match across lines is highlighted on each of its lines; above 4 MB the bar does not count, and the matches on each line drawn are highlighted, except a match across lines and any on a line longer than 64 KB), and `doc_find` / `doc_replace` headlessly. Replace All refuses more than 10,000 matches or 16 MiB of replacement text, and says so. Still missing: searching only the selection from the bar (the engine can), find history, a replace preview, and find in files (M10)."
 
 [[feature]]
 id = "editor.find-in-files"
@@ -624,7 +624,7 @@ notes = ""
 
 [[feature]]
 id = "view.grid"
-title = "Grid view for XML, JSON, YAML and BSON"
+title = "Grid view (nested boxes and tables) for XML, JSON, YAML and BSON"
 area = "B"
 tier = "P1"
 milestone = "M6"
@@ -632,7 +632,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = "The nested-box and table displays of XMLSpy's Grid view for every supported format (rows and columns for repeated elements or array items, sort, add/remove rows and columns, copy and paste as tab-separated text), editing through the same edits as the text view."
+notes = "The nested-box and table displays of XMLSpy's Grid view for every supported format (rows and columns for repeated elements or array items, sort, add/remove rows and columns, copy and paste as tab-separated text), editing through the same edits as the text view. The table display shows repeated items as rows for every format."
 
 [[feature]]
 id = "view.schema-design"
@@ -1292,7 +1292,7 @@ notes = "Values that satisfy the facets: an enumeration, strings made from the s
 
 [[feature]]
 id = "generate.json-schema"
-title = "Infer a JSON Schema from JSON or YAML"
+title = "Infer a JSON Schema from JSON, YAML or BSON"
 area = "F"
 tier = "P1"
 milestone = "M5"
@@ -1304,7 +1304,7 @@ notes = ""
 
 [[feature]]
 id = "generate.sample-json"
-title = "Generate sample JSON or YAML from a JSON Schema"
+title = "Generate sample JSON, YAML or BSON from a JSON Schema"
 area = "F"
 tier = "P1"
 milestone = "M5"
@@ -1324,7 +1324,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = ""
+notes = "Every pair of the four formats (XML-JSON through the standard json-to-xml mapping and a plain mapping, XML-YAML, JSON-YAML, and BSON to and from the others through its Extended JSON text); lossless where the mapping is, and the options say what is not."
 
 [[feature]]
 id = "generate.convert-xsd-json-schema"
@@ -1470,7 +1470,7 @@ notes = ""
 
 [[feature]]
 id = "query.xpath-evaluator"
-title = "XPath and XQuery evaluator window (1.0 to 3.1)"
+title = "XPath and XQuery evaluator window (XPath 1.0, 2.0, 3.0, 3.1; XQuery 1.0, 3.0, 3.1)"
 area = "H"
 tier = "P1"
 milestone = "M7"
@@ -1571,7 +1571,7 @@ notes = ""
 
 [[feature]]
 id = "json.schema-validate"
-title = "Validate JSON against JSON Schema (drafts 4 to 2020-12)"
+title = "Validate JSON against JSON Schema (drafts 04, 06, 07, 2019-09 and 2020-12)"
 area = "I"
 tier = "P1"
 milestone = "M5"
@@ -1595,7 +1595,7 @@ notes = ""
 
 [[feature]]
 id = "json.yaml-validate"
-title = "Validate YAML against JSON Schema"
+title = "Validate YAML and BSON against JSON Schema"
 area = "I"
 tier = "P1"
 milestone = "M5"
@@ -1603,7 +1603,7 @@ status = "planned"
 commands = []
 tools = []
 evidence = []
-notes = "YAML has no schema language of its own."
+notes = "YAML and BSON have no schema language of their own; a schema may itself be written in YAML."
 
 [[feature]]
 id = "json.completion"
@@ -1631,7 +1631,7 @@ notes = ""
 
 [[feature]]
 id = "json.openapi"
-title = "OpenAPI 2.0, 3.0, 3.1 and 3.2 editing and validation"
+title = "OpenAPI editing and validation (umbrella; see the openapi.* entries for the versions)"
 area = "I"
 tier = "P2"
 milestone = "M8"
@@ -2052,18 +2052,6 @@ evidence = []
 notes = "Highlighting, modes, typing aids, outline, folding, formatting and analysis come from a per-language object instead of XML assumptions."
 
 [[feature]]
-id = "json.schema-drafts"
-title = "JSON Schema drafts 04, 06, 07, 2019-09 and 2020-12"
-area = "I"
-tier = "P1"
-milestone = "M5"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = "One validator for all five, chosen by $schema; the JSON-Schema-Test-Suite is the ratchet."
-
-[[feature]]
 id = "json.on-par-with-xml"
 title = "JSON, YAML and BSON on par with XML (outline, folding, format, Entry Helpers, hover, Problems)"
 area = "I"
@@ -2074,90 +2062,6 @@ commands = []
 tools = []
 evidence = []
 notes = "Every text-editing feature that XML has, for the formats that have a structure."
-
-[[feature]]
-id = "yaml.validate-json-schema"
-title = "YAML validated against JSON Schema (also written in YAML)"
-area = "I"
-tier = "P1"
-milestone = "M5"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
-
-[[feature]]
-id = "bson.validate-json-schema"
-title = "BSON validated against JSON Schema"
-area = "I"
-tier = "P1"
-milestone = "M5"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
-
-[[feature]]
-id = "json.schema-inference"
-title = "Generate JSON Schema from JSON, YAML or BSON, and samples from a schema"
-area = "F"
-tier = "P1"
-milestone = "M5"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
-
-[[feature]]
-id = "convert.xml-yaml"
-title = "Convert between XML and YAML"
-area = "F"
-tier = "P1"
-milestone = "M6"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
-
-[[feature]]
-id = "convert.json-yaml"
-title = "Convert between JSON and YAML"
-area = "F"
-tier = "P1"
-milestone = "M6"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
-
-[[feature]]
-id = "convert.bson"
-title = "Convert between BSON, JSON and YAML"
-area = "F"
-tier = "P1"
-milestone = "M6"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
-
-[[feature]]
-id = "view.grid-table"
-title = "Grid table display (repeated items as rows) for every format"
-area = "B"
-tier = "P1"
-milestone = "M6"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
 
 [[feature]]
 id = "project.diff-three-way"
@@ -2182,18 +2086,6 @@ commands = []
 tools = []
 evidence = []
 notes = ""
-
-[[feature]]
-id = "query.xpath-versions"
-title = "XPath 1.0, 2.0, 3.0 and 3.1 semantics"
-area = "H"
-tier = "P1"
-milestone = "M7"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = "Chosen per document or window, as in XMLSpy."
 
 [[feature]]
 id = "query.xquery-update"
