@@ -755,3 +755,27 @@ fn json_is_read_by_the_same_tools_as_xml_by_name_or_by_the_language_given() {
     let ranges: Vec<_> = folded["folded"].as_array().expect("folded").iter().map(|f| (f["first_line"].as_u64(), f["last_line"].as_u64())).collect();
     assert_eq!(ranges, [(Some(1), Some(4)), (Some(2), Some(3))], "the root object and the nested one: {folded}");
 }
+
+#[test]
+fn json_is_formatted_by_xml_format_in_text_in_files_and_in_documents() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = file(dir.path(), "x.json", b"{\"a\":[1,2],\"b\":{}}\n");
+    let mut a = Automation::new();
+    let r = ok(&mut a, "xml_format", json!({ "text": "{\"a\":[1]}", "language": "json" }));
+    assert_eq!((r["text"].as_str(), r["changed"].as_bool()), (Some("{\n  \"a\": [\n    1\n  ]\n}"), Some(true)));
+    let r = ok(&mut a, "xml_format", json!({ "text": "{ \"a\" : [ 1 ] }", "language": "json", "minify": true }));
+    assert_eq!(r["text"].as_str(), Some("{\"a\":[1]}"));
+    let r = ok(&mut a, "xml_format", json!({ "path": path, "indent": 4 }));
+    assert_eq!(r["text"].as_str(), Some("{\n    \"a\": [\n        1,\n        2\n    ],\n    \"b\": {}\n}\n"));
+    assert_eq!(std::fs::read(&path).expect("reads"), b"{\"a\":[1,2],\"b\":{}}\n", "a file is never written");
+    let id = ok(&mut a, "doc_open", json!({ "path": path }))["id"].as_u64().expect("an id");
+    assert_eq!(ok(&mut a, "xml_format", json!({ "id": id }))["changed"].as_bool(), Some(true));
+    assert!(ok(&mut a, "doc_text", json!({ "id": id }))["text"].as_str().is_some_and(|t| t.starts_with("{\n  \"a\": [\n    1,")));
+    // Errors say where, and JSON Lines refuse indenting.
+    let e = err(&mut a, "xml_format", json!({ "text": "{\"a\": }", "language": "json" }));
+    assert!(e.contains("not well-formed") && e.contains("line 1"), "{e}");
+    let e = err(&mut a, "xml_format", json!({ "text": "{\"a\":1}\n", "language": "jsonl" }));
+    assert!(e.contains("JSON Lines"), "{e}");
+    let r = ok(&mut a, "xml_format", json!({ "text": "{ \"a\" : 1 }\n\n{ \"b\" : 2 }\n", "language": "jsonl", "minify": true }));
+    assert_eq!(r["text"].as_str(), Some("{\"a\":1}\n\n{\"b\":2}\n"));
+}
