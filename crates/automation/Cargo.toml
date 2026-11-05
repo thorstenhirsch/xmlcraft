@@ -18,6 +18,7 @@ mcp = []
 [dependencies]
 xmlcraft-catalog = { workspace = true }
 xmlcraft-pdf = { workspace = true }
+xmlcraft-query = { workspace = true }
 xmlcraft-diff = { workspace = true }
 xmlcraft-complete = { workspace = true }
 xmlcraft-dtd = { workspace = true }
