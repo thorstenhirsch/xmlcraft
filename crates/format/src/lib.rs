@@ -13,6 +13,9 @@
 //! - A document that is not well-formed is refused ([`FormatError::NotWellFormed`]): the formatter does not guess what broken markup
 //!   was meant to be.
 //! - Formatting is idempotent: formatting the result again changes nothing.
+//! - [`json`] does the same for JSON, JSONC and JSON5: only the white space between tokens changes.
+
+pub mod json;
 
 use xmlcraft_syntax::{Parse, SyntaxElement, SyntaxKind, SyntaxNode, parse};
 pub use xmlcraft_text::Edit;
@@ -55,16 +58,19 @@ impl Default for FormatOptions {
 /// Why nothing was done.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FormatError {
-    /// The text is not well-formed XML; this is the first problem (its message and byte offset).
+    /// The text is not well-formed (XML) or not valid JSON; this is the first problem (its message and byte offset).
     NotWellFormed { message: String, offset: usize },
+    /// The text is fine but this formatting is not done to it (JSON Lines are not indented; a JSON text too large to format).
+    Refused { message: String },
 }
 
 impl std::fmt::Display for FormatError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             FormatError::NotWellFormed { message, offset } => {
-                write!(f, "the document is not well-formed, so it is left as it is (at byte {offset}: {message})")
+                write!(f, "the document has a syntax error, so it is left as it is (at byte {offset}: {message})")
             }
+            FormatError::Refused { message } => f.write_str(message),
         }
     }
 }
@@ -104,7 +110,7 @@ pub fn pretty_print_settled(text: &str, options: &FormatOptions) -> Result<Vec<E
 
 /// The line endings of `text` with `edits` applied (`own` are its own), counted from the endings the edits remove and write, without
 /// building the result. The edits replace white space between nodes, whole runs of it, so none splits a `\r\n`.
-fn endings_after(text: &str, edits: &[Edit], own: xmlcraft_text::eol::LineEndings) -> xmlcraft_text::eol::LineEndings {
+pub(crate) fn endings_after(text: &str, edits: &[Edit], own: xmlcraft_text::eol::LineEndings) -> xmlcraft_text::eol::LineEndings {
     use xmlcraft_text::eol::LineEndings;
     let mut result = own;
     for edit in edits {
@@ -506,7 +512,7 @@ mod tests {
             let error = pretty_print(src, &FormatOptions::default()).expect_err(src);
             assert!(matches!(error, FormatError::NotWellFormed { .. }), "{src}");
             assert!(minify(src).is_err());
-            assert!(error.to_string().contains("not well-formed"));
+            assert!(error.to_string().contains("syntax error"));
         }
     }
 
