@@ -15,6 +15,7 @@ mod catalog;
 mod convert;
 mod diff;
 mod documents;
+mod einvoice;
 mod entry_helpers;
 pub mod file_access;
 mod infer;
