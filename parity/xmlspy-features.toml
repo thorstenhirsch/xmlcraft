@@ -1552,7 +1552,7 @@ area = "I"
 tier = "P1"
 milestone = "M5"
 status = "partial"
-commands = []
+commands = ["xml.pretty_print", "xml.minify"]
 tools = ["xml_wellformed", "xml_outline", "xml_folds", "xml_format"]
 evidence = ["crates/format/tests/json.rs::pretty_printing_gives_what_serde_json_prints_and_minifying_what_it_prints_compactly", "crates/ui-egui/tests/json.rs::pretty_print_and_minify_work_on_json_and_a_text_with_an_error_is_left_alone", "crates/json-syntax/tests/reading.rs::what_serde_json_writes_is_read_back_without_a_problem_and_equal", "crates/engine/src/json_analysis.rs::folds_hide_the_lines_between_the_brackets_and_leave_the_closing_bracket_visible", "crates/ui-egui/tests/json.rs::the_outline_of_a_json_document_lists_its_members", "crates/editor/src/typing.rs::json_quotes_and_brackets_are_paired_and_stepped_over"]
 notes = "A `.json` document is read by its own rules (RFC 8259, with every problem at its place), coloured, outlined (members and containers, with a look at scalar values), folded (objects and arrays, the closing bracket stays visible) and typed in with paired quotes and brackets that are stepped over. Pretty-print and Minify (as minimal edits of the white space between tokens, comments kept in place, one undo step) work on JSON, JSONC and JSON5; JSON Lines can be minified. The tools xml_wellformed, xml_outline, xml_folds and xml_format read it (a `language` argument for text). Still missing: completion, hover, sorting of keys, and a schema (JSON Schema)."
@@ -1564,10 +1564,10 @@ area = "I"
 tier = "P2"
 milestone = "M5"
 status = "partial"
-commands = []
-tools = ["xml_wellformed", "xml_outline", "xml_folds"]
+commands = ["xml.pretty_print", "xml.minify"]
+tools = ["xml_wellformed", "xml_outline", "xml_folds", "xml_format"]
 evidence = ["crates/json-syntax/tests/reading.rs::what_json_does_not_allow_is_reported_and_the_relatives_allow_it", "crates/ui-egui/tests/json.rs::json_is_checked_as_json_and_a_relative_that_allows_the_text_is_not_complained_about"]
-notes = "`.jsonc`, `.json5` and the configuration files editors read as JSON with comments (tsconfig.json, settings.json, …) are read with comments and trailing commas allowed (JSON5 also single quotes, bare names and more number forms). Still missing: the same editing aids as JSON beyond colouring and folds (formatting, completion)."
+notes = "`.jsonc`, `.json5` and the configuration files editors read as JSON with comments (tsconfig.json, settings.json, …) are read with comments and trailing commas allowed (JSON5 also single quotes, bare names and more number forms). Pretty-print and Minify work (comments stay where they were). Still missing: completion, hover."
 
 [[feature]]
 id = "json.schema-validate"
@@ -1624,8 +1624,8 @@ area = "I"
 tier = "P2"
 milestone = "M5"
 status = "partial"
-commands = []
-tools = ["xml_wellformed", "xml_outline", "xml_folds"]
+commands = ["xml.minify"]
+tools = ["xml_wellformed", "xml_outline", "xml_folds", "xml_format"]
 evidence = ["crates/json-syntax/tests/reading.rs::json_lines_are_read_line_by_line_at_their_places_in_the_text", "crates/engine/src/json_analysis.rs::json_lines_have_an_item_per_line_and_problems_at_the_right_line"]
 notes = "`.jsonl` and `.ndjson`: one value per line, each line an outline item with its members, problems at their lines. Minify works per line (pretty-printing is refused: a value per line is the format). Still missing: schema validation per line."
 

@@ -60,7 +60,7 @@ impl Default for FormatOptions {
 pub enum FormatError {
     /// The text is not well-formed (XML) or not valid JSON; this is the first problem (its message and byte offset).
     NotWellFormed { message: String, offset: usize },
-    /// The text is fine but this formatting is not done to it (JSON Lines are not indented; a text too large to format).
+    /// The text is fine but this formatting is not done to it (JSON Lines are not indented; a JSON text too large to format).
     Refused { message: String },
 }
 
@@ -68,7 +68,7 @@ impl std::fmt::Display for FormatError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             FormatError::NotWellFormed { message, offset } => {
-                write!(f, "the document is not well-formed, so it is left as it is (at byte {offset}: {message})")
+                write!(f, "the document has a syntax error, so it is left as it is (at byte {offset}: {message})")
             }
             FormatError::Refused { message } => f.write_str(message),
         }
@@ -110,7 +110,7 @@ pub fn pretty_print_settled(text: &str, options: &FormatOptions) -> Result<Vec<E
 
 /// The line endings of `text` with `edits` applied (`own` are its own), counted from the endings the edits remove and write, without
 /// building the result. The edits replace white space between nodes, whole runs of it, so none splits a `\r\n`.
-fn endings_after(text: &str, edits: &[Edit], own: xmlcraft_text::eol::LineEndings) -> xmlcraft_text::eol::LineEndings {
+pub(crate) fn endings_after(text: &str, edits: &[Edit], own: xmlcraft_text::eol::LineEndings) -> xmlcraft_text::eol::LineEndings {
     use xmlcraft_text::eol::LineEndings;
     let mut result = own;
     for edit in edits {

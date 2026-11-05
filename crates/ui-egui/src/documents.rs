@@ -554,7 +554,7 @@ impl XmlCraftApp {
     }
 
     /// Pretty-print (or, with `minify`, strip the white space of) the document being shown, as one undoable edit. A document that is not
-    /// well-formed is left as it is and the reason is shown.
+    /// well-formed (or, for JSON, with a syntax error) is left as it is and the reason is shown.
     pub(crate) fn reformat(&mut self, minify: bool) {
         let Some(doc) = self.session.active_document_mut() else { return };
         let name = doc.name().to_owned();

@@ -83,10 +83,42 @@ fn minifying_removes_all_white_space_between_tokens_but_the_line_break_that_ends
 }
 
 #[test]
-fn nesting_beyond_the_limit_is_indented_no_further_and_does_not_panic() {
+fn nesting_beyond_the_limit_is_indented_no_further_and_the_result_stays_bounded() {
     let deep = format!("{}1{}", "[".repeat(300), "]".repeat(300));
     let out = pretty(&deep, Dialect::Json);
-    assert!(out.lines().all(|l| l.len() < 2 * 300 + 2));
+    let widest = out.lines().map(|l| l.len() - l.trim_start().len()).max().unwrap_or(0);
+    assert_eq!(widest, 64 * 2, "64 levels of two spaces and no more");
+    // A text of many short items deep inside cannot be made to grow without bound: each item would carry the whole indent.
+    let items = vec!["1"; 100_000].join(",");
+    let wide = format!("{}{items}{}", "[".repeat(70), "]".repeat(70));
+    let result = pretty_print(&wide, Dialect::Json, &options(Indent::Spaces(2)));
+    assert!(matches!(result, Err(FormatError::Refused { .. })), "{:?}", result.map(|e| e.len()));
+    // The same items near the top are fine.
+    let shallow = format!("[{items}]");
+    assert!(pretty_print(&shallow, Dialect::Json, &options(Indent::Spaces(2))).is_ok());
+}
+
+#[test]
+fn blank_lines_can_be_removed_and_a_text_that_mixes_line_endings_is_formatted_once_and_for_all() {
+    let text = "{\"a\": 1,\n\n\n\"b\": 2}";
+    let remove = FormatOptions { blank_lines: BlankLines::Remove, ..options(Indent::Spaces(2)) };
+    assert_eq!(apply(text, &pretty_print(text, Dialect::Json, &remove).expect("formats")), "{\n  \"a\": 1,\n  \"b\": 2\n}");
+    // Blank lines go, and with them the votes of the ending they were written in: the ending most of the result uses is written.
+    let comment = "[ /* a\r\nb\r\nc\r\nd\r\n*/\n\n\n\n\n1]";
+    let once = apply(comment, &pretty_print(comment, Dialect::Jsonc, &remove).expect("formats"));
+    assert_eq!(pretty_print(&once, Dialect::Jsonc, &remove), Ok(Vec::new()), "{once:?}");
+    for mixed in ["[1,\r\n2,\n3,\r\n4]", "{\"a\":\n1,\r\n\"b\":\r\n2,\r\n\"c\":3}\n", "[\r1,\r\n2\n]"] {
+        let once = pretty(mixed, Dialect::Json);
+        assert_eq!(pretty_print(&once, Dialect::Json, &options(Indent::Spaces(2))), Ok(Vec::new()), "{mixed:?} -> {once:?}");
+    }
+}
+
+#[test]
+fn a_json_lines_line_with_a_unicode_space_is_not_blank() {
+    use xmlcraft_format::json::minify_lines;
+    assert!(minify_lines("{\"a\": 1}\n\u{a0}\n", Dialect::Json).is_err(), "a no-break space is no white space in JSON");
+    assert!(minify_lines("{\"a\": 1}\n\u{a0}\n", Dialect::Json5).is_ok());
+    assert!(minify_lines("{\"a\": 1}\n \t \n", Dialect::Json).is_ok());
 }
 
 fn arb_json() -> impl Strategy<Value = serde_json::Value> {
@@ -125,12 +157,13 @@ proptest! {
         let dialect = [Dialect::Jsonc, Dialect::Json5][usize::from(dialect)];
         let Ok(edits) = pretty_print(&text, dialect, &options(Indent::Spaces(2))) else { return Ok(()) };
         let result = apply(&text, &edits);
-        let strip = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
-        prop_assert_eq!(strip(&result), strip(&text), "only white space moved");
+        // The tokens (every string, number, name and comment with its own white space) are the same, in the same order.
+        let contents = |t: &str| xmlcraft_json_syntax::tokens(t, dialect, usize::MAX).0.iter().map(|tok| t[tok.span.clone()].to_owned()).collect::<Vec<_>>();
+        prop_assert_eq!(contents(&result), contents(&text), "only the white space between tokens moved");
         let again = pretty_print(&result, dialect, &options(Indent::Spaces(2)));
         prop_assert!(again.as_ref().is_ok_and(Vec::is_empty), "{text:?} -> {result:?} -> {again:?}");
         let small = apply(&text, &minify(&text, dialect).expect("minifies"));
-        prop_assert_eq!(strip(&small), strip(&text));
+        prop_assert_eq!(contents(&small), contents(&text));
         prop_assert_eq!(minify(&small, dialect), Ok(Vec::new()));
     }
 }

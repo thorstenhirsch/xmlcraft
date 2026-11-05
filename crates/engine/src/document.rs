@@ -334,14 +334,16 @@ impl Document {
         FormatOptions { indent, eol, blank_lines: BlankLines::Keep }
     }
 
-    /// Pretty-print the text: only the white space between nodes changes (see `xmlcraft-format`), as one undoable edit. Returns whether
-    /// anything changed. A document that is not well-formed is refused and left as it is.
+    /// Pretty-print the text in the way of its language: only the white space between nodes (XML) or tokens (JSON) changes (see
+    /// `xmlcraft-format`), as one undoable edit. Returns whether anything changed. A document with a syntax error is refused and left as it
+    /// is; so is a form this language is not given (JSON Lines are not indented).
     pub fn pretty_print(&mut self) -> Result<bool, FormatError> {
         let edits = self.language().format(&self.editor.text(), &self.format_options(), false)?;
         Ok(self.editor.apply_edits(&edits) && !edits.is_empty())
     }
 
-    /// Remove the white space between nodes that means nothing, as one undoable edit. Returns whether anything changed.
+    /// Remove the white space between nodes (XML) or tokens (JSON) that means nothing, as one undoable edit. Returns whether anything
+    /// changed. A document with a syntax error is refused.
     pub fn minify(&mut self) -> Result<bool, FormatError> {
         let edits = self.language().format(&self.editor.text(), &self.format_options(), true)?;
         Ok(self.editor.apply_edits(&edits) && !edits.is_empty())

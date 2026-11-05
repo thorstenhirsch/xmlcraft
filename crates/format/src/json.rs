@@ -8,22 +8,40 @@
 use xmlcraft_json_syntax::{Dialect, Options, Severity, Token, TokenKind, parse, tokens};
 use xmlcraft_text::Edit;
 
-use crate::{FormatError, FormatOptions, Indent, MAX_INDENT};
+use crate::{BlankLines, FormatError, FormatOptions, Indent, MAX_INDENT};
 
 /// Texts larger than this are not formatted (the tokens of a text are held in memory).
-pub const MAX_FORMAT_BYTES: usize = 64 * 1024 * 1024;
-const MAX_TOKENS: usize = 16 * 1024 * 1024;
-/// Containers nested deeper than this are not indented any further (the parser stops reading there too).
-const MAX_INDENT_DEPTH: usize = 256;
+pub const MAX_FORMAT_BYTES: usize = 8 * 1024 * 1024;
+const MAX_TOKENS: usize = 4 * 1024 * 1024;
+/// Containers nested deeper than this are not indented any further.
+const MAX_INDENT_DEPTH: usize = 64;
 
-/// The edits that pretty-print `text`, which is read as `dialect`.
+/// The edits that pretty-print `text`, which is read as `dialect`. The line ending written is the one most of the line breaks of the
+/// *result* use (as for XML), so that formatting the result again changes nothing, however the text mixes endings; a text with no line
+/// break gets the option's.
 pub fn pretty_print(text: &str, dialect: Dialect, options: &FormatOptions) -> Result<Vec<Edit>, FormatError> {
+    use xmlcraft_text::eol::LineEndings;
     let (tokens, first) = checked_tokens(text, dialect)?;
-    // The line ending the text has most of is the one written; a text with no line break gets the option's.
-    let own = xmlcraft_text::eol::LineEndings::count(text);
-    let eol = if own.total() > 0 { own.dominant() } else { options.eol }.as_str();
+    let own = LineEndings::count(text);
+    let mut eol = if own.total() > 0 { own.dominant() } else { options.eol };
+    let edits = layout(text, &tokens, first, options, eol.as_str())?;
+    if own.is_mixed() {
+        let result = crate::endings_after(text, &edits, own);
+        if result.total() > 0 && result.dominant() != eol {
+            eol = result.dominant();
+            return layout(text, &tokens, first, options, eol.as_str());
+        }
+    }
+    Ok(edits)
+}
+
+/// The edits that put the white space between `tokens` in its pretty-printed shape, with `eol` for line breaks.
+fn layout(text: &str, tokens: &[Token], first: usize, options: &FormatOptions, eol: &str) -> Result<Vec<Edit>, FormatError> {
     let mut edits = Vec::new();
     let mut depth = 0usize;
+    // What is written is no more than a few times the text: deep nesting cannot make it grow without bound.
+    let mut budget = text.len().saturating_mul(4).saturating_add(1 << 20);
+    let keep_blank_lines = options.blank_lines == BlankLines::Keep;
     for (i, token) in tokens.iter().enumerate() {
         let prev = i.checked_sub(1).and_then(|p| tokens.get(p));
         let gap = prev.map_or(first, |p| p.span.end)..token.span.start;
@@ -34,7 +52,7 @@ pub fn pretty_print(text: &str, dialect: Dialect, options: &FormatOptions) -> Re
         let newlines = old.matches('\n').count().max(old.matches('\r').count().saturating_sub(old.matches("\r\n").count()));
         let line = |blank: bool| {
             let mut s = String::from(eol);
-            if blank && newlines >= 2 {
+            if blank && keep_blank_lines && newlines >= 2 {
                 s.push_str(eol);
             }
             s.push_str(&indent(options.indent, depth));
@@ -60,6 +78,9 @@ pub fn pretty_print(text: &str, dialect: Dialect, options: &FormatOptions) -> Re
         if let Some(wanted) = wanted
             && wanted != old
         {
+            budget = budget
+                .checked_sub(wanted.len())
+                .ok_or_else(|| FormatError::Refused { message: "the result would be too large: the nesting is too deep to indent".to_owned() })?;
             edits.push(Edit::replace(gap, wanted));
         }
     }
@@ -84,11 +105,14 @@ pub fn minify(text: &str, dialect: Dialect) -> Result<Vec<Edit>, FormatError> {
 
 /// [`minify`] for JSON Lines: each line is a value of its own, so each is minified alone and the line breaks stay.
 pub fn minify_lines(text: &str, dialect: Dialect) -> Result<Vec<Edit>, FormatError> {
+    if text.len() > MAX_FORMAT_BYTES {
+        return Err(FormatError::Refused { message: format!("the text is larger than the {MAX_FORMAT_BYTES} bytes that are formatted") });
+    }
     let mut edits = Vec::new();
     let mut start = 0;
     for line in text.split_inclusive('\n') {
         let content = line.trim_end_matches(['\n', '\r']);
-        if !content.trim().is_empty() {
+        if !is_blank(content, dialect) {
             match minify(content, dialect) {
                 Ok(found) => edits.extend(found.into_iter().map(|e| Edit::replace(e.range.start + start..e.range.end + start, e.text))),
                 Err(FormatError::NotWellFormed { message, offset }) => return Err(FormatError::NotWellFormed { message, offset: offset + start }),
@@ -98,6 +122,11 @@ pub fn minify_lines(text: &str, dialect: Dialect) -> Result<Vec<Edit>, FormatErr
         start += line.len();
     }
     Ok(edits)
+}
+
+/// A line with nothing in it: only the white space the dialect knows (so other Unicode spaces are text, and a syntax error).
+fn is_blank(line: &str, dialect: Dialect) -> bool {
+    line.chars().all(|c| matches!(c, ' ' | '\t' | '\n' | '\r') || (dialect == Dialect::Json5 && c.is_whitespace()))
 }
 
 /// The first line break of `gap` as it is written (a gap after a line comment has one).
