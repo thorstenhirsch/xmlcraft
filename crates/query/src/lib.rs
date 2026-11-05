@@ -198,7 +198,9 @@ fn without_doctype(xml: &str) -> String {
     match (xml.get(..start), xml.get(start..end), xml.get(end..)) {
         (Some(before), Some(declaration), Some(after)) => {
             // (Line breaks stay, so lines are where they were.)
-            let blank: String = declaration.chars().map(|c| if matches!(c, '\n' | '\r') { c } else { ' ' }).collect();
+            // (A space for each byte, so that the places of the rest of the text do not move.)
+            let blank: String =
+                declaration.chars().map(|c| if matches!(c, '\n' | '\r') { c.to_string() } else { " ".repeat(c.len_utf8()) }).collect();
             format!("{before}{blank}{after}")
         }
         _ => xml.to_owned(),

@@ -198,3 +198,11 @@ fn errors_say_what_is_wrong_and_functions_are_written_as_xpath() {
     assert!(array.text.starts_with('[') && !array.text.contains("Array"), "{}", array.text);
     assert_eq!(run("fn:upper-case#1").items[0].kind, "function");
 }
+
+#[test]
+fn a_doctype_with_non_ascii_text_does_not_move_the_places_after_it() {
+    let doc = "<!DOCTYPE r [<!-- ünï ✓ --><!ELEMENT r ANY>]>\n<r><a>é</a></r>";
+    let r = evaluate(doc, "/r/a", &Options::default()).expect("runs");
+    assert_eq!(&doc[r.items[0].span.clone().expect("a place")], "<a>é</a>");
+    assert_eq!(r.items[0].text, "<a>é</a>");
+}
