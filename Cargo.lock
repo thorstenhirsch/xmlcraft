@@ -6827,6 +6827,7 @@ dependencies = [
  "xmlcraft-engine",
  "xmlcraft-format",
  "xmlcraft-grammar",
+ "xmlcraft-grid",
  "xmlcraft-infer",
  "xmlcraft-json-syntax",
  "xmlcraft-pdf",

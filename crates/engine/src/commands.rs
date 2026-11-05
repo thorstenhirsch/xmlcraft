@@ -246,6 +246,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("xml.generate_sample", "Generate Sample XML…", XML, None, Needs::Document, "sparkles"),
     c("view.palette", "Find tools and commands…", VIEW, Some(Shortcut::cmd("K")), Nothing, "search"),
     c("view.outline", "Outline", VIEW, None, Nothing, "list-tree").toggle().sep(),
+    c("view.grid", "Grid", VIEW, Some(Shortcut::cmd_alt("G")), Needs::Document, "layout-grid").toggle(),
     c("view.entry_helpers", "Entry Helpers", VIEW, None, Nothing, "braces").toggle(),
     c("view.focus_entry_helpers", "Go to Entry Helpers", VIEW, Some(Shortcut::cmd_shift("E")), Needs::Document, "braces"),
     c("view.messages", "Problems", VIEW, None, Nothing, "panel-bottom").toggle(),

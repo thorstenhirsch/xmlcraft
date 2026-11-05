@@ -65,6 +65,7 @@ impl XmlCraftApp {
     pub fn command_checked(&self, id: &str) -> Option<bool> {
         match id {
             "view.outline" => Some(self.left_open),
+            "view.grid" => Some(self.grid_shown()),
             "view.entry_helpers" => Some(self.right.is_some()),
             "view.messages" => Some(self.bottom_open),
             "xml.validate_typing" => Some(self.validate_typing),
@@ -182,7 +183,8 @@ impl XmlCraftApp {
             "xml.assign_schema" => self.open_assign_schema(),
             "xml.rename_element" => {
                 // Not over a question that is being asked: its answer would be lost.
-                if self.dialog.is_none() {
+                // In the grid it renames the chosen row in place.
+                if self.dialog.is_none() && !self.grid_begin_edit(crate::grid_view::Cell::Name) {
                     self.open_rename_element();
                 }
             }
@@ -221,6 +223,7 @@ impl XmlCraftApp {
                 self.palette_query.clear();
             }
             "view.outline" => self.left_open = !self.left_open,
+            "view.grid" => self.toggle_grid(),
             "view.focus_entry_helpers" => {
                 // Open the pane when it is closed, and give the keyboard to its filter: type, arrows to choose, Enter to insert.
                 self.right = Some(RightPanel::EntryHelpers);

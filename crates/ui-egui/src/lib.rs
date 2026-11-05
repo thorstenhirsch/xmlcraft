@@ -18,6 +18,7 @@ pub mod editor_view;
 mod entry_helpers;
 mod find_bar;
 mod generate;
+mod grid_view;
 mod header;
 mod home;
 mod i18n;

@@ -116,5 +116,5 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 - 2026-11-05: M9.1: `pdf.embedded-xml` planned → partial (`xmlcraft-pdf`, `pdf_files`).
 - 2026-11-05: M7.1: `query.xpath-evaluator` planned → partial (`xmlcraft-query`, `xpath_eval`; XPath 3.1 on `xee`); 10 shipped and 82 partial of 188 counted features, 26.3% weighted.
 - 2026-11-05: M9.2: `pdf.incremental-update` planned → partial (`Pdf::replace_embedded`, `pdf_replace_file`); 10 shipped and 86 partial of 188 counted features, 28.2% weighted.
-- 2026-11-05: M6.5: `view.grid` planned → partial (`xmlcraft-grid`, `grid_rows`, `grid_edit`: the model and its minimal text edits, not yet the window); 10 shipped and 98 partial of 188 counted features, 31.4% weighted.
+- 2026-11-05: M6.5: `view.grid` planned → partial (`xmlcraft-grid`, `grid_rows`, `grid_edit`, View ▸ Grid: the model, its minimal text edits and a window with in-place editing); 10 shipped and 98 partial of 188 counted features, 31.4% weighted.
 - 2026-11-05: M9.4: `einvoice.xrechnung-ubl`, `einvoice.xrechnung-cii`, `einvoice.en16931`, `einvoice.peppol-bis3`, `einvoice.fatturapa` and `einvoice.zugferd-facturx` planned → partial (`xmlcraft-einvoice`, `einvoice_detect`: recognition only); 10 shipped and 92 partial of 188 counted features, 29.8% weighted.
