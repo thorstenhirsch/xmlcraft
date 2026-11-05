@@ -39,6 +39,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("json-syntax", Class::Standalone(1)),
     ("yaml-syntax", Class::Standalone(1)),
     ("bson", Class::Standalone(1)),
+    ("pdf", Class::Standalone(1)),
     // L2 core model
     ("grammar", Class::Layer(2)),
     ("catalog", Class::Layer(2)),

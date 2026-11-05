@@ -2405,11 +2405,11 @@ title = "Open and edit the XML embedded in a PDF (ZUGFeRD/Factur-X)"
 area = "J"
 tier = "P2"
 milestone = "M9"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "A projected document: the XML is edited in a tab, the PDF is changed by one appended incremental update."
+tools = ["pdf_files"]
+evidence = ["crates/pdf/tests/reading.rs::a_classic_pdf_lists_and_gives_its_embedded_file_once", "crates/pdf/tests/reading.rs::cross_reference_streams_object_streams_filters_and_predictors_are_read", "crates/pdf/tests/reading.rs::a_damaged_cross_reference_is_recovered_by_scanning_and_says_so", "crates/automation/tests/pdf.rs::the_embedded_files_are_listed_and_one_is_read_as_text"]
+notes = "The `xmlcraft-pdf` crate reads a PDF (classic and stream cross-references, object streams, Flate/ASCIIHex/ASCII85 with predictors, damaged files by scanning) and lists and decodes the files embedded in it (the name tree and `/AF`, with relationship, media type and declared size); the tool `pdf_files` lists them and returns the text of one, through the root confinement. Encrypted files are refused. Missing: opening the XML as a document in a tab (a projected document), saving it back (the incremental update, `pdf.incremental-update`), and the PDF/A-3 and Factur-X checks."
 
 [[feature]]
 id = "pdf.incremental-update"
