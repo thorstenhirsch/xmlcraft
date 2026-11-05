@@ -104,7 +104,8 @@ fn a_damaged_cross_reference_is_recovered_by_scanning_and_says_so() {
     assert_eq!(pdf.embedded_data(&pdf.embedded_files()[0]).expect("data"), XML.as_bytes());
     // A file with the table gone and the trailer too: the catalog is found by its type.
     let mut bytes = invoice_pdf("a.xml", XML);
-    let at = bytes.windows(4).rposition(|w| w == b"xref").expect("xref");
+    // The table starts a line; the last `xref` in the file is the one inside `startxref`.
+    let at = bytes.windows(5).rposition(|w| w == b"\nxref").expect("xref") + 1;
     bytes.truncate(at);
     let pdf = Pdf::open(bytes).expect("opens");
     assert!(pdf.recovered());
@@ -193,4 +194,76 @@ proptest! {
             }
         }
     }
+}
+
+#[test]
+fn an_object_stream_that_a_cross_reference_puts_inside_a_stream_is_not_followed_forever() {
+    // The entry for the object stream says it is inside object stream 10, which is itself: reading must end, and ends in a recovery.
+    let pdf = Pdf::open(common::compressed_pdf_with(XML, common::Variant::NestedObjectStream)).expect("opens");
+    assert!(pdf.recovered(), "the table led nowhere");
+    assert_eq!(pdf.embedded_data(&pdf.embedded_files()[0]).expect("data"), XML.as_bytes());
+}
+
+#[test]
+fn a_cross_reference_stream_with_fewer_rows_than_it_says_is_damaged() {
+    let pdf = Pdf::open(common::compressed_pdf_with(XML, common::Variant::MissingRows)).expect("opens");
+    assert!(pdf.recovered(), "the table is not trusted, the objects are found by scanning");
+    assert_eq!(pdf.embedded_files().len(), 1);
+}
+
+#[test]
+fn a_hybrid_file_takes_the_objects_of_its_streams_from_the_stream_its_table_names() {
+    use miniz_oxide::deflate::compress_to_vec_zlib;
+    // Object 4 (the filespec) is in object stream 10; the classic table lists it as free and names a cross-reference stream (11) that
+    // says where it is.
+    let mut out = b"%PDF-1.5\n".to_vec();
+    let mut offsets: Vec<(u32, usize)> = Vec::new();
+    let mut add = |out: &mut Vec<u8>, n: u32, body: &[u8]| {
+        offsets.push((n, out.len()));
+        out.extend_from_slice(format!("{n} 0 obj\n").as_bytes());
+        out.extend_from_slice(body);
+        out.extend_from_slice(b"\nendobj\n");
+    };
+    add(&mut out, 1, b"<< /Type /Catalog /Names << /EmbeddedFiles << /Names [(i) 4 0 R] >> >> >>");
+    let four = "<< /F (h.xml) /EF << /F 5 0 R >> >>";
+    let body = format!("4 0 {four}");
+    let packed = compress_to_vec_zlib(body.as_bytes(), 6);
+    let mut objstm = format!("<< /Type /ObjStm /N 1 /First 4 /Filter /FlateDecode /Length {} >>\nstream\n", packed.len()).into_bytes();
+    objstm.extend_from_slice(&packed);
+    objstm.extend_from_slice(b"\nendstream");
+    add(&mut out, 10, &objstm);
+    let mut stream = b"<< /Subtype /text#2Fxml /Length 4 >>\nstream\n<h/>\nendstream".to_vec();
+    stream.truncate(stream.len());
+    add(&mut out, 5, &stream);
+    // The cross-reference stream (11): one row, for object 4: type 2, stream 10, index 0 (W [1 2 1]).
+    let rows = [2u8, 0, 10, 0];
+    let mut x = format!("<< /Type /XRef /Size 12 /W [1 2 1] /Index [4 1] /Length {} >>\nstream\n", rows.len()).into_bytes();
+    x.extend_from_slice(&rows);
+    x.extend_from_slice(b"\nendstream");
+    add(&mut out, 11, &x);
+    let table = out.len();
+    out.extend_from_slice(b"xref\n0 1\n0000000000 65535 f \n1 1\n");
+    let at = |n: u32| offsets.iter().find(|(m, _)| *m == n).map_or(0, |(_, o)| *o);
+    out.extend_from_slice(format!("{:010} 00000 n \n", at(1)).as_bytes());
+    out.extend_from_slice(b"4 1\n0000000000 00000 f \n");
+    out.extend_from_slice(format!("5 1\n{:010} 00000 n \n10 2\n{:010} 00000 n \n{:010} 00000 n \n", at(5), at(10), at(11)).as_bytes());
+    out.extend_from_slice(format!("trailer\n<< /Size 12 /Root 1 0 R /XRefStm {} >>\nstartxref\n{table}\n%%EOF\n", at(11)).as_bytes());
+    let pdf = Pdf::open(out).expect("opens");
+    assert!(!pdf.recovered());
+    let files = pdf.embedded_files();
+    assert_eq!(files.len(), 1, "the filespec is in an object stream that only the hybrid part knows");
+    assert_eq!(files[0].name, "h.xml");
+}
+
+#[test]
+fn an_embedded_file_entry_that_is_not_a_stream_is_not_a_file() {
+    let mut b = Builder::new();
+    b.object(1, "<< /Type /Catalog /Names << /EmbeddedFiles << /Names [(a) 2 0 R (b) 4 0 R] >> >> >>");
+    b.object(2, "<< /F (a.xml) /EF << /F 3 0 R >> >>");
+    b.object(3, "<< /Subtype /text#2Fxml >>");
+    b.object(4, "<< /F (b.xml) /EF << /F 5 0 R >> >>");
+    b.stream(5, "/Subtype /text#2Fxml", b"<b/>");
+    let pdf = Pdf::open(b.finish(6, "")).expect("opens");
+    let names: Vec<String> = pdf.embedded_files().into_iter().map(|f| f.name).collect();
+    assert_eq!(names, ["b.xml"], "a dictionary has no data");
 }
