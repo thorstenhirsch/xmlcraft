@@ -6473,6 +6473,7 @@ dependencies = [
  "xmlcraft-diff",
  "xmlcraft-dtd",
  "xmlcraft-editor",
+ "xmlcraft-einvoice",
  "xmlcraft-engine",
  "xmlcraft-format",
  "xmlcraft-infer",
@@ -6601,6 +6602,15 @@ dependencies = [
  "xmlcraft-json-syntax",
  "xmlcraft-syntax",
  "xmlcraft-text",
+]
+
+[[package]]
+name = "xmlcraft-einvoice"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "xmlcraft-syntax",
+ "xmlcraft-xsd",
 ]
 
 [[package]]

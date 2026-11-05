@@ -2333,11 +2333,11 @@ title = "XRechnung in UBL 2.1 (invoice and credit note)"
 area = "E"
 tier = "P2"
 milestone = "M9"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["einvoice_detect"]
+evidence = ["crates/einvoice/src/lib.rs::xrechnung_in_ubl_is_recognised_with_its_version_and_an_extension_is_not_a_plain_xrechnung", "crates/automation/tests/einvoice.rs::text_an_open_document_and_a_file_are_recognised_the_same_way"]
+notes = "Recognised by the UBL Invoice or CreditNote root and the CustomizationID (XRechnung 2.x and 3.x, and its extension profile apart from plain XRechnung): `einvoice_detect` names the standard, version, UBL version and Peppol process. Missing: validation against the UBL schema and the XRechnung rules (Schematron), a status-bar chip."
 
 [[feature]]
 id = "einvoice.xrechnung-cii"
@@ -2345,11 +2345,11 @@ title = "XRechnung in UN/CEFACT CII"
 area = "E"
 tier = "P2"
 milestone = "M9"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["einvoice_detect"]
+evidence = ["crates/einvoice/src/lib.rs::factur_x_and_zugferd_profiles_are_read_from_the_guideline"]
+notes = "Recognised by the CrossIndustryInvoice root and the guideline ID (XRechnung in CII). Missing: validation against the CII schema and the XRechnung rules."
 
 [[feature]]
 id = "einvoice.en16931"
@@ -2357,11 +2357,11 @@ title = "EN 16931 business rules"
 area = "E"
 tier = "P2"
 milestone = "M9"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["einvoice_detect"]
+evidence = ["crates/einvoice/src/lib.rs::peppol_en16931_and_unknown_identifiers_are_told_apart"]
+notes = "The plain EN 16931 identifier is recognised in UBL and CII. Missing: the EN 16931 rules (Schematron)."
 
 [[feature]]
 id = "einvoice.peppol-bis3"
@@ -2369,11 +2369,11 @@ title = "Peppol BIS Billing 3.0"
 area = "E"
 tier = "P2"
 milestone = "M9"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["einvoice_detect"]
+evidence = ["crates/einvoice/src/lib.rs::peppol_en16931_and_unknown_identifiers_are_told_apart"]
+notes = "Peppol BIS Billing 3.0 (and PINT) is recognised by its CustomizationID, with the process from ProfileID. Missing: the Peppol rules (Schematron)."
 
 [[feature]]
 id = "einvoice.fatturapa"
@@ -2381,11 +2381,11 @@ title = "FatturaPA (Italy)"
 area = "E"
 tier = "P3"
 milestone = "M9"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["einvoice_detect"]
+evidence = ["crates/einvoice/src/lib.rs::zugferd_1_fatturapa_and_order_x_are_recognised_by_their_roots"]
+notes = "FatturaElettronica is recognised with its schema version and transmission format (FPR12, FPA12). Missing: validation against the FatturaPA schema."
 
 [[feature]]
 id = "einvoice.zugferd-facturx"
@@ -2393,11 +2393,11 @@ title = "ZUGFeRD and Factur-X profiles (MINIMUM, BASIC WL, BASIC, EN 16931, EXTE
 area = "E"
 tier = "P2"
 milestone = "M9"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["einvoice_detect"]
+evidence = ["crates/einvoice/src/lib.rs::factur_x_and_zugferd_profiles_are_read_from_the_guideline", "crates/automation/tests/einvoice.rs::factur_x_in_cii_has_its_profile"]
+notes = "Factur-X / ZUGFeRD 2.x (profile minimum, basic WL, basic, EN 16931, extended), ZUGFeRD 2.0 and ZUGFeRD 1.0 are recognised from the CII root and guideline. The PDF itself opens as its embedded XML (`pdf.embedded-xml`). Missing: validation per profile, the PDF/A and XMP metadata checks."
 
 [[feature]]
 id = "pdf.embedded-xml"
