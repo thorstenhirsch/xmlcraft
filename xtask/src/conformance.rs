@@ -1,4 +1,4 @@
-//! `cargo xtask conformance <suite>`: run a W3C/OASIS conformance suite against XmlCraft and hold the line.
+//! `cargo xtask conformance <suite>`: run a conformance suite (W3C, OASIS, JSON Schema) against XmlCraft and hold the line.
 //!
 //! The suites are fetched into the gitignored `conformance/` directory, pinned by URL and SHA-256. A run compares the failures with
 //! the list in `xtask/baselines/<suite>.txt`: a test that fails and is not listed fails the run (a regression); a listed test that
@@ -36,8 +36,9 @@ pub fn run(args: &[String]) -> Result<()> {
     match suite {
         Some("xmlconf") => xmlconf(fetch, write, verbose),
         Some("xsdtests") => crate::xsdtests::run(fetch, write, verbose),
-        Some(other) => bail!("unknown suite `{other}` (available: xmlconf, xsdtests)"),
-        None => bail!("usage: cargo xtask conformance <xmlconf|xsdtests> [--fetch] [--write] [--verbose]"),
+        Some("jsonschema") => crate::jsonschema::run(fetch, write, verbose),
+        Some(other) => bail!("unknown suite `{other}` (available: xmlconf, xsdtests, jsonschema)"),
+        None => bail!("usage: cargo xtask conformance <xmlconf|xsdtests|jsonschema> [--fetch] [--write] [--verbose]"),
     }
 }
 

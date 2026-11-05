@@ -1575,11 +1575,11 @@ title = "Validate JSON against JSON Schema (drafts 04, 06, 07, 2019-09 and 2020-
 area = "I"
 tier = "P1"
 milestone = "M5"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["json_validate"]
+evidence = ["crates/json/tests/validate.rs::references_are_followed_within_a_document_and_to_other_documents", "crates/json/tests/validate.rs::what_nothing_else_evaluated_is_unevaluated", "crates/automation/tests/json_schema.rs::violations_are_listed_with_their_place_in_the_text"]
+notes = "`xmlcraft-json` validates against drafts 04, 06, 07, 2019-09 and 2020-12 (the draft from `$schema`): all the validation and applicator keywords, `$ref`/`$recursiveRef`/`$dynamicRef` with their scopes, `unevaluatedProperties` and `unevaluatedItems`, exact numbers, and every violation placed in the text of the instance. Headless: the tool `json_validate` (the schema as a file, as text or the file the document names; referred schemas are files next to it, through the root confinement). The JSON Schema Test Suite (required tests, drafts 4 to 2020-12) is the measure: 99.76% (4938 of 4950), ratcheted by `cargo xtask conformance jsonschema`. Missing: the window (assigning a schema, underlines and Problems for violations, F8), YAML and BSON instances, `format` assertions, the meta-schemas (a schema is not checked against its meta-schema; the 10 suite tests that refer to them fail), vocabularies, look-around in patterns."
 
 [[feature]]
 id = "json.yaml-editor"
