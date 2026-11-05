@@ -230,3 +230,28 @@ fn the_keys_of_the_popup_are_the_editors_only_while_it_has_the_keyboard() {
     assert_eq!(text(&h), before, "the popup did not take the Enter");
     assert_eq!(h.query_all_by_label_contains("Complete").count(), 0, "and it is gone");
 }
+
+#[test]
+fn an_end_tag_has_no_attributes_to_complete_and_a_value_has_no_bracket() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open_at(&mut h, dir.path(), &format!("{DTD}<r><a id='1'/><b>x</b¦</r>"));
+    type_text(&mut h, " ki");
+    assert_eq!(h.query_all_by_label_contains("Complete").count(), 0, "an end tag has no attributes, whatever encloses it");
+    open_at(&mut h, dir.path(), &format!("{DTD}<r><a id='1' kind=\"foo¦\"/></r>"));
+    type_text(&mut h, "<");
+    assert_eq!(h.query_all_by_label_contains("Complete").count(), 0, "a bracket in a value is nothing to complete");
+    // Later in such a value: what comes after the bracket is not a value either.
+    open_at(&mut h, dir.path(), &format!("{DTD}<r><a id='1' kind=\"a<b ¦\"/></r>"));
+    type_text(&mut h, "p");
+    assert_eq!(h.query_all_by_label_contains("Complete").count(), 0, "after a bracket in a value");
+}
+
+#[test]
+fn an_entity_is_offered_inside_an_attribute_value_too() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open_at(&mut h, dir.path(), &format!("{DTD}<r><a id=\"¦\"/></r>"));
+    type_text(&mut h, "&");
+    assert!(h.query_by_label("Complete &e;").is_some(), "references are written in values too");
+}

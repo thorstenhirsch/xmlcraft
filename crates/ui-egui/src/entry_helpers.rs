@@ -200,7 +200,7 @@ impl XmlCraftApp {
         }
     }
 
-    fn active_grammar(&self) -> Option<Arc<Grammar>> {
+    pub(crate) fn active_grammar(&self) -> Option<Arc<Grammar>> {
         let id = self.session.active_document()?.id();
         self.views.get(&id)?.helpers.grammar.clone()
     }

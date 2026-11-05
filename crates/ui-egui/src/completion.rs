@@ -27,8 +27,8 @@ pub(crate) enum Kind {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Context {
     pub kind: Kind,
-    /// The byte offset (in the line's prefix) where what the choice replaces starts: the `<` or `&` of an element or an entity, the first
-    /// letter of an attribute name or of a value.
+    /// The byte offset in the document where what the choice replaces starts: the `<` or `&` of an element or an entity, the first letter
+    /// of an attribute name, the first character after the quote of a value.
     pub start: usize,
     /// What is typed of the name so far.
     pub partial: String,
@@ -55,9 +55,10 @@ pub(crate) fn context(editor: &mut xmlcraft_editor::Editor) -> Option<Context> {
             let at = word_start - 1;
             (editor.markup_mode_at(at) == Mode::Content).then_some(Context { kind: Kind::Element, start: at, partial })
         }
+        // `&name`: an entity, in character data or in an attribute value (where references are written too).
         Some('&') => {
             let at = word_start - 1;
-            (editor.markup_mode_at(at) == Mode::Content).then_some(Context { kind: Kind::Entity, start: at, partial })
+            matches!(editor.markup_mode_at(at), Mode::Content | Mode::AttrValue(_)).then_some(Context { kind: Kind::Entity, start: at, partial })
         }
         _ => match editor.markup_mode_at(word_start) {
             Mode::AttrValue(quote) => value_context(editor, word_start, quote),
@@ -93,6 +94,10 @@ fn value_context(editor: &mut xmlcraft_editor::Editor, caret_word_start: usize, 
     }
     let name = name.to_owned();
     let partial = buffer.slice(value_start..head).ok()?;
+    // A value cannot hold `<`: what comes after one is not a value any more.
+    if partial.contains('<') {
+        return None;
+    }
     Some(Context { kind: Kind::Value(name), start: value_start, partial })
 }
 
@@ -188,19 +193,25 @@ impl XmlCraftApp {
                 .flat_map(|a| a.values.iter())
                 .map(|v| Item { label: v.clone(), detail: String::new(), text: v.clone(), caret: v.len() })
                 .collect(),
-            (Kind::Entity, Some(choices)) => choices
-                .entities
-                .iter()
-                .map(|e| {
-                    let snippet = entity_snippet(&e.name);
-                    Item {
-                        label: format!("&{};", e.name),
-                        detail: e.value.as_deref().and_then(crate::entry_helpers::shown_value).unwrap_or_default(),
-                        text: snippet.text,
-                        caret: snippet.caret,
-                    }
-                })
-                .collect(),
+            (Kind::Entity, Some(choices)) => {
+                // Inside the start tag (an attribute value) the choices list none: the grammar's own entities are what a value may refer to.
+                let entities = match (choices.entities.is_empty(), self.active_grammar()) {
+                    (true, Some(grammar)) => xmlcraft_complete::entities(&grammar),
+                    _ => choices.entities.clone(),
+                };
+                entities
+                    .iter()
+                    .map(|e| {
+                        let snippet = entity_snippet(&e.name);
+                        Item {
+                            label: format!("&{};", e.name),
+                            detail: e.value.as_deref().and_then(crate::entry_helpers::shown_value).unwrap_or_default(),
+                            text: snippet.text,
+                            caret: snippet.caret,
+                        }
+                    })
+                    .collect()
+            }
             _ => Vec::new(),
         }
     }
