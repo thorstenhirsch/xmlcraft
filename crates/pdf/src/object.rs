@@ -265,7 +265,18 @@ impl<'a> Parser<'a> {
             }
             // Else the first `endstream` ends it (and the line break before it is not data).
             _ => {
-                let found = find(self.data, b"endstream", start)?;
+                // The first `endstream` that is followed by `endobj` ends it (the token can be inside the data).
+                let first = find(self.data, b"endstream", start)?;
+                let mut from = start;
+                let found = loop {
+                    let Some(candidate) = find(self.data, b"endstream", from) else { break first };
+                    let mut after = Parser::new(self.data, candidate + "endstream".len());
+                    after.skip_space();
+                    if self.data.get(after.pos..).is_some_and(|rest| rest.starts_with(b"endobj")) || after.pos >= self.data.len() {
+                        break candidate;
+                    }
+                    from = candidate + 1;
+                };
                 let mut end = found;
                 if end > start && self.data.get(end - 1) == Some(&b'\n') {
                     end -= 1;

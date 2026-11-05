@@ -10,6 +10,31 @@ use crate::documents::{fail, json_result};
 use crate::tools::ToolDef;
 use crate::{Automation, Content, Result, ToolError};
 
+/// The most bytes of an embedded file that are returned as text.
+const MAX_TEXT_BYTES: usize = 4 * 1024 * 1024;
+
+/// Whether a file is text: by its media type (`text/*`, XML and JSON), else by the extension of its name.
+fn looks_textual(file: &EmbeddedFile) -> bool {
+    if let Some(mime) = file.mime.as_deref().map(str::to_ascii_lowercase) {
+        let textual = mime.starts_with("text/")
+            || matches!(mime.as_str(), "application/xml" | "application/json" | "application/xhtml+xml" | "application/xslt+xml")
+            || mime.ends_with("+xml")
+            || mime.ends_with("+json");
+        if textual {
+            return true;
+        }
+        // A media type that names something else (an image, a font, `application/octet-stream`) is believed unless it is the generic one.
+        if mime != "application/octet-stream" {
+            return false;
+        }
+    }
+    let extension = file.name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase());
+    matches!(
+        extension.as_deref(),
+        Some("xml" | "xsd" | "xsl" | "xslt" | "json" | "txt" | "csv" | "html" | "htm" | "md" | "yaml" | "yml" | "svg" | "rdf")
+    )
+}
+
 /// The largest PDF the tool reads.
 const MAX_BYTES: usize = 256 * 1024 * 1024;
 
@@ -78,10 +103,19 @@ fn pdf_files(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         let Some(file) = file else { return fail(format!("the PDF has no embedded file {wanted}")) };
         let bytes = pdf.embedded_data(file).map_err(|e| ToolError::Failed(e.to_string()))?;
         result["extracted"] = json!({ "name": file.name, "bytes": bytes.len() });
-        let decoded = decode(&bytes, &sniff(&bytes));
-        // A file that is not text (an image, a font) has bytes that are not valid in the encoding sniffed for it.
-        if !decoded.lossy {
-            result["extracted"]["text"] = json!(decoded.text);
+        // Text is returned for a file that is text by its media type or its name (valid UTF-8 alone proves nothing: unmarked bytes
+        // are guessed to be UTF-8), and not beyond a size a response can carry.
+        let textual = looks_textual(file);
+        result["extracted"]["textual"] = json!(textual);
+        if textual && bytes.len() > MAX_TEXT_BYTES {
+            result["extracted"]["text_omitted"] = json!(format!("the file is larger than {} MB", MAX_TEXT_BYTES / (1024 * 1024)));
+        } else if textual {
+            let decoded = decode(&bytes, &sniff(&bytes));
+            if decoded.lossy {
+                result["extracted"]["text_omitted"] = json!("its bytes are not valid in its encoding");
+            } else {
+                result["extracted"]["text"] = json!(decoded.text);
+            }
         }
     }
     json_result(result)

@@ -31,6 +31,8 @@ pub enum PdfError {
     Unsupported(String),
     /// The file is damaged in a way that could not be worked around.
     Corrupt(String),
+    /// The file may be valid, but is larger or more complex than what is read (too many objects, a stream that decodes to too much).
+    LimitExceeded(String),
 }
 
 impl std::fmt::Display for PdfError {
@@ -40,6 +42,7 @@ impl std::fmt::Display for PdfError {
             PdfError::Encrypted => f.write_str("this PDF is encrypted, and XmlCraft does not read or change encrypted PDFs"),
             PdfError::Unsupported(what) => write!(f, "not supported yet: {what}"),
             PdfError::Corrupt(what) => write!(f, "the PDF is damaged: {what}"),
+            PdfError::LimitExceeded(what) => write!(f, "the PDF is larger or more complex than XmlCraft reads: {what}"),
         }
     }
 }

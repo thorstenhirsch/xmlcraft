@@ -15,4 +15,3 @@ miniz_oxide = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
-miniz_oxide = { workspace = true, features = ["with-alloc"] }
