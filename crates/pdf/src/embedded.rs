@@ -77,9 +77,9 @@ impl Pdf {
             let mut seen = HashSet::new();
             self.collect_tree(&root, 0, &mut seen, &mut specs);
         }
+        // (The associated files have a budget of their own: a name tree full of entries that are no files must not use it up.)
         if let Some(Object::Array(items)) = catalog.get("AF").map(|a| self.resolve(a)) {
-            let room = MAX_FILES.saturating_sub(specs.len());
-            specs.extend(items.into_iter().take(room));
+            specs.extend(items.into_iter().take(MAX_FILES));
         }
         let mut found: Vec<EmbeddedFile> = Vec::new();
         // A file specification is one file: found twice (the name tree and `/AF`) it is listed once, by its reference, or, for a
@@ -98,6 +98,10 @@ impl Pdf {
                 continue;
             }
             found.push(file);
+            // (Counted after the entries that are no files, or that repeat, are left out.)
+            if found.len() >= MAX_FILES {
+                break;
+            }
         }
         found
     }
@@ -106,13 +110,20 @@ impl Pdf {
         if depth > MAX_TREE_DEPTH || out.len() >= MAX_FILES {
             return;
         }
-        // (A node is visited once whatever generation a reference to it has: `get` is by number.)
+        // A node is visited once, by its number. A reference that names nothing (a stale generation) marks nothing, so that a later
+        // reference that does resolve is still walked.
         if let Some(r) = node.as_ref()
-            && !seen.insert(r.number)
+            && seen.contains(&r.number)
         {
             return;
         }
-        let node = self.resolve(node);
+        let resolved = self.resolve(node);
+        if let Some(r) = node.as_ref()
+            && resolved != Object::Null
+        {
+            seen.insert(r.number);
+        }
+        let node = resolved;
         let Some(dict) = node.as_dict() else { return };
         if let Some(Object::Array(pairs)) = dict.get("Names").map(|n| self.resolve(n)) {
             for pair in pairs.chunks(2) {

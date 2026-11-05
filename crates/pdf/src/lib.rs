@@ -21,7 +21,7 @@ mod update;
 pub use document::Pdf;
 pub use embedded::{EmbeddedFile, text_string};
 pub use md5::md5_hex;
-pub use object::{Dict, ObjRef, Object, Parser, Stream};
+pub use object::{Dict, Marks, ObjRef, Object, Parser, Stream};
 pub use update::pdf_date;
 
 /// Why a PDF was not read.

@@ -5,11 +5,12 @@ use std::sync::{Arc, Mutex};
 
 use crate::PdfError;
 use crate::filter;
-use crate::object::{Dict, ObjRef, Object, Parser, Stream, find, rfind};
+use crate::object::{Dict, Marks, ObjRef, Object, Parser, Stream, find, rfind};
 
 /// The most cross-reference entries (objects) read.
 const MAX_OBJECTS: usize = 10_000_000;
-/// The most references followed to read the filters of one stream.
+/// The most references followed (an array of references to arrays of references must not multiply) to read the filters and the
+/// decode parameters of one stream.
 const MAX_RESOLUTIONS: usize = 256;
 /// The most sections of the cross-reference chain.
 const MAX_SECTIONS: usize = 4096;
@@ -26,6 +27,29 @@ enum Entry {
 /// The objects of object streams, by the number of the stream.
 type StreamCache = HashMap<u32, Arc<Vec<(u32, Object)>>>;
 
+/// Marks an object stream as being read, and unmarks it when dropped.
+struct ReadingGuard<'a> {
+    set: &'a Mutex<HashSet<u32>>,
+    number: u32,
+}
+
+impl<'a> ReadingGuard<'a> {
+    /// `None` when the stream is being read already (or the lock is poisoned).
+    fn enter(set: &'a Mutex<HashSet<u32>>, number: u32) -> Option<Self> {
+        // (`then`, not `then_some`: a guard built for a refused entry would remove the entry of the one that holds it.)
+        let entered = set.lock().ok()?.insert(number);
+        entered.then(|| Self { set, number })
+    }
+}
+
+impl Drop for ReadingGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut set) = self.set.lock() {
+            set.remove(&self.number);
+        }
+    }
+}
+
 /// A PDF file, read.
 pub struct Pdf {
     data: Vec<u8>,
@@ -37,6 +61,10 @@ pub struct Pdf {
     last_is_stream: bool,
     /// The objects of the object streams read so far, by the number of the stream.
     streams: Mutex<StreamCache>,
+    /// The object streams being read now (an object stream whose own filters are in itself would otherwise be read forever).
+    reading: Mutex<HashSet<u32>>,
+    /// Where `endstream` and `endobj` are.
+    marks: Marks,
 }
 
 impl Pdf {
@@ -46,6 +74,7 @@ impl Pdf {
         if find(head, b"%PDF-", 0).is_none() {
             return Err(PdfError::NotAPdf);
         }
+        let marks = Marks::of(&data);
         let mut pdf = Pdf {
             data,
             entries: HashMap::new(),
@@ -54,6 +83,8 @@ impl Pdf {
             startxref: None,
             last_is_stream: false,
             streams: Mutex::new(HashMap::new()),
+            reading: Mutex::new(HashSet::new()),
+            marks,
         };
         let read = pdf.read_xref_chain();
         let usable = read.is_ok() && pdf.catalog_ref().is_some_and(|r| pdf.get(r).and_then(|o| o.as_dict().map(|_| ())).is_some());
@@ -139,7 +170,7 @@ impl Pdf {
     }
 
     fn object_at(&self, offset: usize, expect: Option<u32>) -> Option<Object> {
-        let mut parser = Parser::new(&self.data, offset);
+        let mut parser = Parser::with_marks(&self.data, offset, &self.marks);
         let header = parser.object_header()?;
         if expect.is_some_and(|n| n != header.number) {
             return None;
@@ -160,7 +191,7 @@ impl Pdf {
         if generation != r.generation {
             return None;
         }
-        let mut parser = Parser::new(&self.data, offset);
+        let mut parser = Parser::with_marks(&self.data, offset, &self.marks);
         parser.object_header()?;
         match parser.object(&|_| None)? {
             Object::Int(n) => usize::try_from(n).ok(),
@@ -188,32 +219,38 @@ impl Pdf {
         let raw = self.data.get(stream.data.clone()).ok_or_else(|| PdfError::Corrupt("a stream is outside the file".to_owned()))?;
         // The references in the filter entries are followed (an array of filters, or parameters, may be indirect).
         let mut dict = stream.dict.clone();
-        // (One budget for all the references followed here: an array of references to arrays of references must not multiply.)
         let mut budget = MAX_RESOLUTIONS;
         for (key, value) in &mut dict.entries {
             if matches!(key.as_str(), "Filter" | "F" | "DecodeParms" | "DP") {
-                *value = self.resolve_deep(value, 0, &mut budget);
+                *value = self.resolve_deep(value, 0, &mut budget)?;
             }
         }
         filter::decode(raw, &dict)
     }
 
-    fn resolve_deep(&self, object: &Object, depth: usize, budget: &mut usize) -> Object {
-        if *budget == 0 {
-            return Object::Null;
-        }
-        *budget -= 1;
-        let resolved = self.resolve(object);
-        if depth > 4 {
-            return resolved;
-        }
-        match resolved {
-            Object::Array(items) => Object::Array(items.iter().map(|o| self.resolve_deep(o, depth + 1, budget)).collect()),
-            Object::Dict(d) => {
-                Object::Dict(Dict { entries: d.entries.iter().map(|(k, v)| (k.clone(), self.resolve_deep(v, depth + 1, budget))).collect() })
+    /// `object` with every reference in it followed (to a depth); each reference followed is paid for from `budget`, and when it is
+    /// spent the stream is refused rather than read with some of its parameters left out.
+    fn resolve_deep(&self, object: &Object, depth: usize, budget: &mut usize) -> Result<Object, PdfError> {
+        let resolved = match object {
+            Object::Ref(_) => {
+                if *budget == 0 {
+                    return Err(PdfError::LimitExceeded("a stream's filters refer to more than 256 objects".to_owned()));
+                }
+                *budget -= 1;
+                self.resolve(object)
             }
-            other => other,
+            other => other.clone(),
+        };
+        if depth > 4 {
+            return Ok(resolved);
         }
+        Ok(match resolved {
+            Object::Array(items) => Object::Array(items.iter().map(|o| self.resolve_deep(o, depth + 1, budget)).collect::<Result<_, _>>()?),
+            Object::Dict(d) => Object::Dict(Dict {
+                entries: d.entries.iter().map(|(k, v)| Ok((k.clone(), self.resolve_deep(v, depth + 1, budget)?))).collect::<Result<_, PdfError>>()?,
+            }),
+            other => other,
+        })
     }
 
     fn object_stream(&self, number: u32) -> Option<Arc<Vec<(u32, Object)>>> {
@@ -223,6 +260,8 @@ impl Pdf {
         // An object stream is an ordinary object of the file: one that a cross-reference entry puts inside another stream (or itself)
         // is not one, and following it would never end.
         let Entry::InFile { offset, .. } = *self.entries.get(&number)? else { return None };
+        // A stream whose own filters are objects inside it would be read forever: it is read once at a time.
+        let _reading = ReadingGuard::enter(&self.reading, number)?;
         let Object::Stream(stream) = self.object_at(offset, Some(number))? else { return None };
         let count = usize::try_from(stream.dict.get("N").and_then(|n| self.resolve(n).as_int())?).ok().filter(|n| *n <= MAX_IN_STREAM)?;
         let first = usize::try_from(stream.dict.get("First").and_then(|n| self.resolve(n).as_int())?).ok()?;
@@ -354,7 +393,7 @@ impl Pdf {
             return Ok((trailer, hybrid, freed));
         }
         // A cross-reference stream.
-        let mut parser = Parser::new(&self.data, offset);
+        let mut parser = Parser::with_marks(&self.data, offset, &self.marks);
         parser.object_header().ok_or_else(|| bad("is neither a table nor a stream"))?;
         let Some(Object::Stream(stream)) = parser.object(&|d| d.get("Length").and_then(Object::as_int).and_then(|n| usize::try_from(n).ok())) else {
             return Err(bad("is not a stream"));
@@ -469,7 +508,7 @@ impl Pdf {
         let mut at = 0;
         while let Some(p) = find(&self.data, b"trailer", at) {
             at = p + 7;
-            let mut parser = Parser::new(&self.data, at);
+            let mut parser = Parser::with_marks(&self.data, at, &self.marks);
             if let Some(Object::Dict(d)) = parser.object(&|_| None)
                 && d.get("Root").is_some()
             {

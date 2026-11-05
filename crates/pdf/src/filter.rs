@@ -185,9 +185,7 @@ fn predict(data: Vec<u8>, params: Option<&Dict>, limit: usize) -> Result<Vec<u8>
     let stride = row + 1;
     // Only whole rows are rows (a last row that is cut short is not decoded); what comes out is no larger than what went in.
     let rows = data.len() / stride;
-    if rows.saturating_mul(row) > limit {
-        return Err(PdfError::LimitExceeded("predicted data would be larger than the bound".to_owned()));
-    }
+    // (What comes out is the rows, each a byte shorter than it was: no more than went in, which the inflate bound has bounded.)
     let mut out: Vec<u8> = Vec::with_capacity(rows.saturating_mul(row).min(limit));
     let mut previous: Vec<u8> = vec![0; row];
     for chunk in data.chunks_exact(stride) {
@@ -282,11 +280,11 @@ mod tests {
             decode_with(&inflated, &dict("<< /Filter /FlateDecode >>"), 100).is_err(),
             "a bomb is cut off by the inflate bound, not by the size of its input"
         );
-        // Inflated within the bound but too large once predicted: the rows are counted before they are made.
+        // The output of the predictor is no larger than its input, so the inflate bound is the bound.
         let flat = miniz_oxide::deflate::compress_to_vec_zlib(&[0; 64], 6);
         let wide = dict("<< /Filter /FlateDecode /DecodeParms << /Predictor 10 /Columns 7 >> >>");
         assert!(decode_with(&flat, &wide, 16).is_err());
-        assert!(matches!(decode_with(&flat, &wide, 63), Err(PdfError::Corrupt(_) | PdfError::LimitExceeded(_))));
+        assert!(decode_with(&flat, &wide, 63).is_err(), "64 inflated bytes are over the bound of 63");
         assert_eq!(decode_with(&flat, &wide, 64).expect("fits").len(), 56);
     }
 

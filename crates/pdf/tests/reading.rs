@@ -385,3 +385,86 @@ fn a_name_tree_that_contains_itself_is_walked_once() {
     assert_eq!(pdf.embedded_files().len(), 1);
     assert!(started.elapsed() < std::time::Duration::from_secs(5), "{:?}", started.elapsed());
 }
+
+#[test]
+fn a_file_of_streams_with_no_end_is_not_read_in_quadratic_time() {
+    // Fifty thousand streams with no `endstream`: each would have scanned the rest of the file for one.
+    let mut bytes = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n".to_vec();
+    for n in 2..50_002 {
+        bytes.extend_from_slice(format!("{n} 0 obj\n<< /Length 99999999 >>\nstream\nabc\n").as_bytes());
+    }
+    let started = std::time::Instant::now();
+    let pdf = Pdf::open(bytes).expect("opens");
+    assert!(pdf.recovered());
+    assert!(started.elapsed() < std::time::Duration::from_secs(10), "{:?}", started.elapsed());
+}
+
+#[test]
+fn a_stream_with_no_endobj_does_not_run_into_the_next_object() {
+    let mut b = Builder::new();
+    b.object(1, "<< /Type /Catalog >>");
+    b.offsets.push((2, b.out.len()));
+    b.out.extend_from_slice(b"2 0 obj\n<< /Length 99999 >>\nstream\nAAA\nendstream\n");
+    b.offsets.push((3, b.out.len()));
+    b.out.extend_from_slice(b"3 0 obj\n<< /Length 99999 >>\nstream\nBBB\nendstream\nendobj\n");
+    let pdf = Pdf::open(b.finish(4, "")).expect("opens");
+    let data = |n: u32| {
+        let Some(Object::Stream(s)) = pdf.get(r(n)) else { panic!("a stream") };
+        pdf.stream_data(&s).expect("data")
+    };
+    assert_eq!((data(2), data(3)), (b"AAA".to_vec(), b"BBB".to_vec()));
+}
+
+#[test]
+fn an_object_stream_whose_filter_is_inside_itself_does_not_loop() {
+    // The filter of object stream 10 is object 4, which the table says is inside object stream 10.
+    let pdf = Pdf::open(common::compressed_pdf_with(XML, common::Variant::FilterInsideItself)).expect("opens");
+    // (What is found is not the point; that it ends is.)
+    let _ = pdf.embedded_files();
+}
+
+#[test]
+fn filters_that_refer_to_too_many_objects_are_refused_and_parameters_are_not_dropped_silently() {
+    let mut b = Builder::new();
+    b.object(1, "<< /Type /Catalog >>");
+    b.object(6, "/FlateDecode");
+    b.offsets.push((7, b.out.len()));
+    b.out.extend_from_slice(format!("7 0 obj\n<< /Filter [{}] /Length 3 >>\nstream\nabc\nendstream\nendobj\n", "6 0 R ".repeat(300)).as_bytes());
+    // A few references are fine, and the parameters after many plain values are still read.
+    let many_values: String = (0..400).map(|i| format!("/K{i} {i} ")).collect();
+    b.offsets.push((8, b.out.len()));
+    b.out.extend_from_slice(
+        format!(
+            "8 0 obj\n<< /Filter [6 0 R] /DecodeParms [<< {many_values} /Predictor 1 /Columns 1 >>] /Length 3 >>\nstream\nabc\nendstream\nendobj\n"
+        )
+        .as_bytes(),
+    );
+    let pdf = Pdf::open(b.finish(9, "")).expect("opens");
+    let Some(Object::Stream(s)) = pdf.get(r(7)) else { panic!("a stream") };
+    assert!(matches!(pdf.stream_data(&s), Err(PdfError::LimitExceeded(_))), "{:?}", pdf.stream_data(&s));
+    let Some(Object::Stream(s)) = pdf.get(r(8)) else { panic!("a stream") };
+    // (`abc` is not Flate data: the error is the filter's, not a refusal of the references.)
+    assert!(matches!(pdf.stream_data(&s), Err(PdfError::Corrupt(_))), "{:?}", pdf.stream_data(&s));
+}
+
+#[test]
+fn a_stale_reference_does_not_hide_the_live_one_in_a_name_tree_and_the_associated_files_have_their_own_budget() {
+    let mut b = Builder::new();
+    b.object(1, "<< /Type /Catalog /Names << /EmbeddedFiles 6 0 R >> /AF [2 0 R] >>");
+    // The kids: object 9 as a stale generation (names nothing), then as the live one.
+    b.object(6, "<< /Kids [9 5 R 9 0 R] >>");
+    b.object(9, "<< /Names [(n) 2 0 R] >>");
+    b.object(2, "<< /F (a.xml) /EF << /F 3 0 R >> >>");
+    b.stream(3, "/Subtype /text#2Fxml", b"<a/>");
+    let pdf = Pdf::open(b.finish(10, "")).expect("opens");
+    assert_eq!(pdf.embedded_files().len(), 1, "the live node was walked");
+    // Ten thousand entries that are no files do not use up the budget of /AF.
+    let mut many = Builder::new();
+    let names: String = (0..10_000).map(|i| format!("(n{i}) 99 0 R ")).collect();
+    many.object(1, &format!("<< /Type /Catalog /Names << /EmbeddedFiles << /Names [{names}] >> >> /AF [2 0 R] >>"));
+    many.object(2, "<< /F (af.xml) /EF << /F 3 0 R >> >>");
+    many.stream(3, "/Subtype /text#2Fxml", b"<a/>");
+    let pdf = Pdf::open(many.finish(4, "")).expect("opens");
+    let names: Vec<String> = pdf.embedded_files().into_iter().map(|f| f.name).collect();
+    assert_eq!(names, ["af.xml"]);
+}
