@@ -6676,6 +6676,7 @@ dependencies = [
  "xmlcraft-diff",
  "xmlcraft-dtd",
  "xmlcraft-editor",
+ "xmlcraft-einvoice",
  "xmlcraft-format",
  "xmlcraft-grammar",
  "xmlcraft-infer",
