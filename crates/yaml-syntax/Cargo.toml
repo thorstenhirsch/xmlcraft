@@ -1,0 +1,19 @@
+[package]
+name = "xmlcraft-yaml-syntax"
+description = "XmlCraft's YAML syntax layer: a tolerant reader with spans into the shared JSON value tree, aliases bounded, and a line highlighter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-syntax = { workspace = true }
+xmlcraft-json-syntax = { workspace = true }
+saphyr-parser = "0.3"
+
+[dev-dependencies]
+proptest = { workspace = true }
