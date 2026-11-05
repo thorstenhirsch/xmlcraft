@@ -16,6 +16,7 @@ rfd = { workspace = true }
 pollster = { workspace = true }
 
 [dependencies]
+xmlcraft-convert = { workspace = true }
 xmlcraft-engine = { workspace = true }
 xmlcraft-infer = { workspace = true }
 xmlcraft-resolve = { workspace = true }

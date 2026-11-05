@@ -195,6 +195,7 @@ impl XmlCraftApp {
             "xml.validate_typing" => self.validate_typing = !self.validate_typing,
             "xml.work_offline" => self.set_work_offline(!self.work_offline),
             "app.about" => self.open_about(),
+            "file.convert" => self.open_convert(),
             "xml.generate_schema" => self.open_generate_schema(),
             "xml.generate_sample" => self.open_generate_sample(),
             "xml.load_schema" => self.load_schema(),

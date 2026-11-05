@@ -6798,6 +6798,7 @@ dependencies = [
  "xmlcraft-bson",
  "xmlcraft-code-editor",
  "xmlcraft-complete",
+ "xmlcraft-convert",
  "xmlcraft-editor",
  "xmlcraft-engine",
  "xmlcraft-format",

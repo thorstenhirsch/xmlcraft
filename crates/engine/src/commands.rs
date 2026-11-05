@@ -199,6 +199,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("file.save", "Save", FILE, Some(Shortcut::cmd("S")), Needs::Document, "save").sep(),
     c("file.save_as", "Save As…", FILE, Some(Shortcut::cmd_shift("S")), Needs::Document, "save"),
     c("file.revert", "Revert", FILE, None, Needs::Document, "file-text"),
+    c("file.convert", "Convert…", FILE, None, Needs::Document, "wand-sparkles").sep(),
     c("file.close", "Close", FILE, Some(Shortcut::cmd("W")), Needs::Document, "x").sep(),
     c("file.quit", "Quit", FILE, Some(Shortcut::cmd("Q")), Nothing, "x"),
     c("edit.undo", "Undo", EDIT, Some(Shortcut::cmd("Z")), Needs::Undo, "undo-2").not_in_text(),
@@ -339,6 +340,7 @@ mod tests {
                 "file.save",
                 "file.save_as",
                 "file.revert",
+                "file.convert",
                 "file.close",
                 "file.quit"
             ]
