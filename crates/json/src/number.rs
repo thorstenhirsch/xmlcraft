@@ -34,10 +34,12 @@ impl Num {
             _ => (false, text),
         };
         if let Some(hex) = body.strip_prefix("0x").or_else(|| body.strip_prefix("0X")) {
-            let digits: Option<Vec<u32>> = hex.chars().map(|c| c.to_digit(16)).collect();
-            let digits = digits.filter(|d| !d.is_empty())?;
-            let value = digits.iter().fold(0f64, |acc, d| acc * 16.0 + f64::from(*d));
-            return Some(Num::Float(if negative { -value } else { value }));
+            // (Folded one character at a time: a token of any length costs no memory.)
+            let mut value = 0f64;
+            for c in hex.chars() {
+                value = value * 16.0 + f64::from(c.to_digit(16)?);
+            }
+            return (!hex.is_empty()).then_some(Num::Float(if negative { -value } else { value }));
         }
         text.parse::<f64>().ok().or_else(|| float_word(text)).map(Num::Float)
     }

@@ -75,7 +75,9 @@ fn unsplit(parts: &Parts<'_>, path: &str) -> String {
 pub(crate) fn join(base: &str, reference: &str) -> String {
     let r = split(reference);
     if r.scheme.is_some() {
-        return reference.to_owned();
+        // An absolute reference stands for itself, with its dot segments taken out (`https://x/a/../b` is `https://x/b`).
+        let hierarchical = r.authority.is_some() || r.path.starts_with('/');
+        return if hierarchical { unsplit(&r, &remove_dots(r.path)) } else { reference.to_owned() };
     }
     let b = split(base);
     let opaque = b.scheme.is_some() && b.authority.is_none() && !b.path.starts_with('/');
@@ -200,6 +202,8 @@ mod tests {
         assert_eq!(j("http://x.test", "c"), "http://x.test/c");
         assert_eq!(j("urn:uuid:1234", "#foo"), "urn:uuid:1234#foo");
         assert_eq!(j("urn:uuid:1234", "other"), "other");
+        assert_eq!(j("http://x.test/a", "https://y.test/defs/../s.json#f"), "https://y.test/s.json#f", "an absolute reference is cleaned too");
+        assert_eq!(j("", "https://y.test/./a/b/../../c"), "https://y.test/c");
         assert_eq!(j("", "a/b.json"), "a/b.json");
         assert_eq!(j("dir/x.json", "y.json"), "dir/y.json");
         assert_eq!(j("file:///d/x.json", "y/z.json"), "file:///d/y/z.json");
