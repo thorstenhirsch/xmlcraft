@@ -5344,6 +5344,7 @@ dependencies = [
  "xmlcraft-format",
  "xmlcraft-grammar",
  "xmlcraft-infer",
+ "xmlcraft-json",
  "xmlcraft-json-syntax",
  "xmlcraft-resolve",
  "xmlcraft-sample",
