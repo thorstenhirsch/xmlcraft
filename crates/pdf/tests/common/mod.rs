@@ -82,6 +82,8 @@ pub enum Variant {
     WrongIndex,
     /// The embedded stream (object 5) is generation 1.
     LaterGeneration,
+    /// The object stream's `/Filter` is object 4, which is inside the object stream.
+    FilterInsideItself,
 }
 
 pub fn compressed_pdf(xml: &str) -> Vec<u8> {
@@ -95,12 +97,13 @@ pub fn compressed_pdf_with(xml: &str, variant: Variant) -> Vec<u8> {
     let one = "<< /Type /Catalog /Names << /EmbeddedFiles << /Names [(i) 4 0 R] >> >> >>";
     let generation: u8 = if variant == Variant::LaterGeneration { 1 } else { 0 };
     let four = format!("<< /F (z.xml) /EF << /UF 5 {generation} R >> /AFRelationship /Source >>");
+    let filter = if variant == Variant::FilterInsideItself { "4 0 R" } else { "/FlateDecode" };
     let header = format!("1 0 4 {} ", one.len() + 1);
     let body = format!("{header}{one} {four}");
     let packed = compress_to_vec_zlib(body.as_bytes(), 6);
     let objstm_at = out.len();
     out.extend_from_slice(
-        format!("10 0 obj\n<< /Type /ObjStm /N 2 /First {} /Filter /FlateDecode /Length {} >>\nstream\n", header.len(), packed.len()).as_bytes(),
+        format!("10 0 obj\n<< /Type /ObjStm /N 2 /First {} /Filter {filter} /Length {} >>\nstream\n", header.len(), packed.len()).as_bytes(),
     );
     out.extend_from_slice(&packed);
     out.extend_from_slice(b"\nendstream\nendobj\n");

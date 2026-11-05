@@ -18,7 +18,7 @@ mod object;
 
 pub use document::Pdf;
 pub use embedded::{EmbeddedFile, text_string};
-pub use object::{Dict, ObjRef, Object, Parser, Stream};
+pub use object::{Dict, Marks, ObjRef, Object, Parser, Stream};
 
 /// Why a PDF was not read.
 #[derive(Clone, Debug, PartialEq, Eq)]

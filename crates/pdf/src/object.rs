@@ -97,15 +97,57 @@ fn is_regular(b: u8) -> bool {
     !is_space(b) && !is_delimiter(b)
 }
 
+/// Where `endstream` and `endobj` are in a file, found once, so that the end of a stream whose length cannot be trusted is found
+/// without scanning the file again for each stream.
+#[derive(Clone, Debug, Default)]
+pub struct Marks {
+    endstream: Vec<usize>,
+    endobj: Vec<usize>,
+    /// The `obj` keywords that open an object (not the end of `endobj`).
+    objs: Vec<usize>,
+}
+
+impl Marks {
+    pub fn of(data: &[u8]) -> Marks {
+        let positions = |needle: &[u8]| {
+            let mut out = Vec::new();
+            let mut from = 0;
+            while let Some(at) = find(data, needle, from) {
+                out.push(at);
+                from = at + needle.len();
+            }
+            out
+        };
+        let objs = positions(b"obj").into_iter().filter(|at| !data.get(at.saturating_sub(3)..*at).is_some_and(|before| before == b"end")).collect();
+        Marks { endstream: positions(b"endstream"), endobj: positions(b"endobj"), objs }
+    }
+
+    /// The `endstream` that ends a stream whose data starts at `start`: the last one before the next `endobj` or the next object (the
+    /// word can be in the data, but a stream does not run past its own object, even when it lacks its `endobj`).
+    fn stream_end(&self, start: usize) -> Option<usize> {
+        let next = |positions: &[usize]| positions.get(positions.partition_point(|p| *p < start)).copied().unwrap_or(usize::MAX);
+        let limit = next(&self.endobj).min(next(&self.objs));
+        let lo = self.endstream.partition_point(|p| *p < start);
+        let hi = self.endstream.partition_point(|p| *p < limit);
+        if hi > lo { self.endstream.get(hi - 1).copied() } else { None }
+    }
+}
+
 /// Reads objects from bytes.
 pub struct Parser<'a> {
     pub data: &'a [u8],
     pub pos: usize,
+    marks: Option<&'a Marks>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(data: &'a [u8], pos: usize) -> Self {
-        Self { data, pos }
+        Self { data, pos, marks: None }
+    }
+
+    /// A parser of a file whose [`Marks`] are known.
+    pub fn with_marks(data: &'a [u8], pos: usize, marks: &'a Marks) -> Self {
+        Self { data, pos, marks: Some(marks) }
     }
 
     fn peek(&self) -> Option<u8> {
@@ -258,24 +300,18 @@ impl<'a> Parser<'a> {
             // The declared length counts if `endstream` follows it.
             Some(n)
                 if self.data.get(start + n..).is_some_and(|rest| {
-                    rest.iter().position(|b| !is_space(*b)).is_some_and(|i| rest.get(i..).is_some_and(|r| r.starts_with(b"endstream")))
+                    // (A few bytes of white space, not a run of any length.)
+                    rest.iter().take(64).position(|b| !is_space(*b)).is_some_and(|i| rest.get(i..).is_some_and(|r| r.starts_with(b"endstream")))
                 }) =>
             {
                 start + n
             }
-            // Else the first `endstream` ends it (and the line break before it is not data).
+            // Else the last `endstream` before the next `endobj` ends it (and the line break before it is not data).
             _ => {
-                // The first `endstream` that is followed by `endobj` ends it (the token can be inside the data).
-                let first = find(self.data, b"endstream", start)?;
-                let mut from = start;
-                let found = loop {
-                    let Some(candidate) = find(self.data, b"endstream", from) else { break first };
-                    let mut after = Parser::new(self.data, candidate + "endstream".len());
-                    after.skip_space();
-                    if self.data.get(after.pos..).is_some_and(|rest| rest.starts_with(b"endobj")) || after.pos >= self.data.len() {
-                        break candidate;
-                    }
-                    from = candidate + 1;
+                let found = match self.marks {
+                    Some(marks) => marks.stream_end(start)?,
+                    // (Without the marks of a whole file, in the little data that is not one: look from here.)
+                    None => Marks::of(self.data.get(start..)?).stream_end(0)? + start,
                 };
                 let mut end = found;
                 if end > start && self.data.get(end - 1) == Some(&b'\n') {
