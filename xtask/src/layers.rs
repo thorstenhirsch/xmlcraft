@@ -55,7 +55,9 @@ pub const TABLE: &[(&str, Class)] = &[
     ("diff", Class::Layer(4)),
     ("xbrl", Class::Layer(4)),
     ("grid", Class::Layer(4)),
+    ("openapi", Class::Layer(4)),
     ("wsdl", Class::Layer(4)),
+    ("grid", Class::Layer(4)),
     ("einvoice", Class::Layer(4)),
     ("infer", Class::Layer(4)),
     ("sample", Class::Layer(4)),
@@ -108,6 +110,8 @@ pub const SIDEWAYS: &[(&str, &str)] = &[
     ("grid", "diff"),
     // A SOAP request is a sample made from the schemas of the description.
     ("wsdl", "sample"),
+    // An OpenAPI description in YAML is read as the data tree the converter makes of it.
+    ("openapi", "convert"),
     // Schematron evaluates its rules with the XPath engine.
     ("schematron", "query"),
     // Completion asks the validator for the context at the cursor.

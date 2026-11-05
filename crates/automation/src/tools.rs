@@ -69,6 +69,7 @@ pub fn tools() -> &'static [ToolDef] {
         table.extend(crate::convert::tools());
         table.extend(crate::xpath::tools());
         table.extend(crate::xbrl::tools());
+        table.extend(crate::openapi::tools());
         table.extend(crate::grid::tools());
         table.extend(crate::xslt::tools());
         table.extend(crate::wsdl::tools());
