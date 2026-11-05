@@ -4,7 +4,7 @@
 //! disagree, strings that are not UTF-8, arrays whose names are not 0, 1, 2 …) and says where; it is bounded in nesting and never
 //! allocates more than the input is long.
 
-use crate::model::{Bson, BsonError, Document};
+use crate::model::{Bson, BsonError, Document, binary_problem};
 
 /// Documents nested deeper than this are refused.
 pub const MAX_DEPTH: usize = 100;
@@ -118,6 +118,9 @@ impl<'a> Reader<'a> {
                 let Some(len) = usize::try_from(len).ok() else { return err(at, "binary data has a negative length") };
                 let subtype = *self.take(at + 4, 1)?.first().unwrap_or(&0);
                 let bytes = self.take(at + 5, len)?.to_vec();
+                if let Some(problem) = binary_problem(subtype, &bytes) {
+                    return err(at, problem);
+                }
                 (Bson::Binary { subtype, bytes }, at + 5 + len)
             }
             0x06 => (Bson::Undefined, at),
@@ -251,11 +254,42 @@ fn put_value(out: &mut Vec<u8>, value: &Bson) {
     }
 }
 
-/// The bytes of `documents`, one after the other.
-pub fn write_all(documents: &[Document]) -> Vec<u8> {
+/// Whether `doc` can be written: names and regular expressions are C strings and cannot hold a zero character, and old binary data has
+/// its inner length.
+fn writable(doc: &Document, path: &mut Vec<String>) -> Result<(), BsonError> {
+    fn value(v: &Bson, path: &mut Vec<String>) -> Result<(), BsonError> {
+        let bad = |message: &str, path: &Vec<String>| BsonError { offset: 0, length: 0, message: format!("{message} (in {})", path.join(".")) };
+        match v {
+            Bson::Document(d) => writable(d, path),
+            Bson::Array(items) => items.iter().try_for_each(|i| value(i, path)),
+            Bson::JavaScriptWithScope { scope, .. } => writable(scope, path),
+            Bson::Regex { pattern, options } if pattern.contains('\0') || options.contains('\0') => {
+                Err(bad("a regular expression cannot hold a zero character", path))
+            }
+            Bson::Binary { subtype, bytes } => binary_problem(*subtype, bytes).map_or(Ok(()), |m| Err(bad(m, path))),
+            _ => Ok(()),
+        }
+    }
+    for (name, v) in &doc.fields {
+        path.push(name.clone());
+        if name.contains('\0') {
+            return Err(BsonError { offset: 0, length: 0, message: format!("a field name cannot hold a zero character (in {})", path.join(".")) });
+        }
+        value(v, path)?;
+        path.pop();
+    }
+    Ok(())
+}
+
+/// The bytes of `documents`, one after the other; or why they cannot be written (a zero character in a name, a regular expression with
+/// one, old binary data without its inner length).
+pub fn write_all(documents: &[Document]) -> Result<Vec<u8>, BsonError> {
+    for document in documents {
+        writable(document, &mut Vec::new())?;
+    }
     let mut out = Vec::new();
     for document in documents {
         put_document(&mut out, &document.fields);
     }
-    out
+    Ok(out)
 }

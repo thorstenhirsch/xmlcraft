@@ -83,7 +83,7 @@ impl Bson {
 /// Why BSON could not be read or a projection could not be turned into BSON.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BsonError {
-    /// Where, as a byte offset of the bytes (reading) or of the text (a projection).
+    /// Where, as an offset into the bytes (reading, writing) or the text (a projection).
     pub offset: usize,
     /// How far the problem reaches in a text (a projection); zero for bytes.
     pub length: usize,
@@ -92,8 +92,33 @@ pub struct BsonError {
 
 impl std::fmt::Display for BsonError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "at byte {}: {}", self.offset, self.message)
+        write!(f, "at offset {}: {}", self.offset, self.message)
     }
 }
 
 impl std::error::Error for BsonError {}
+
+/// Why a binary value cannot be written: the old binary subtype (2) holds an int32 length of the rest of the bytes first.
+pub(crate) fn binary_problem(subtype: u8, bytes: &[u8]) -> Option<&'static str> {
+    if subtype != 0x02 {
+        return None;
+    }
+    let inner = bytes.get(..4).and_then(|b| <[u8; 4]>::try_from(b).ok()).map(i32::from_le_bytes);
+    match inner {
+        Some(n) if usize::try_from(n).is_ok_and(|n| n == bytes.len() - 4) => None,
+        _ => Some("a binary of the old subtype 2 starts with an int32 that is the length of the rest"),
+    }
+}
+
+/// The nesting depth of a document (a document with no document in it is 1).
+pub(crate) fn depth(doc: &Document) -> usize {
+    fn of(value: &Bson) -> usize {
+        match value {
+            Bson::Document(d) => depth(d),
+            Bson::Array(items) => 1 + items.iter().map(of).max().unwrap_or(0),
+            Bson::JavaScriptWithScope { scope, .. } => depth(scope),
+            _ => 0,
+        }
+    }
+    1 + doc.fields.iter().map(|(_, v)| of(v)).max().unwrap_or(0)
+}

@@ -5,7 +5,7 @@ use xmlcraft_json_syntax::{Data, Dialect, Options, Severity, Value, parse, parse
 
 use crate::base64;
 use crate::decimal;
-use crate::model::{Bson, BsonError, Document};
+use crate::model::{Bson, BsonError, Document, binary_problem, depth};
 
 /// A JSON value being built for output.
 enum J {
@@ -219,18 +219,65 @@ pub enum Layout {
 
 /// The text of `documents`: a single document is indented; several are one to a line (so a dump of a million is still a text with a
 /// million lines). `canonical` spells out every type, which is what makes the text turn back into the same bytes.
-pub fn to_text(documents: &[Document], canonical: bool) -> (String, Layout) {
+pub fn to_text(documents: &[Document], canonical: bool) -> Result<(String, Layout), BsonError> {
+    for document in documents {
+        if let Some(name) = ambiguous(document) {
+            return Err(BsonError {
+                offset: 0,
+                length: 0,
+                message: format!("a field named '{name}' cannot be shown in Extended JSON: it would read back as a value of another type"),
+            });
+        }
+    }
     let mut out = String::new();
     if let [only] = documents {
         pretty(&doc_j(only, canonical), 0, &mut out);
         out.push('\n');
-        return (out, Layout::Single);
+        return Ok((out, Layout::Single));
     }
     for document in documents {
         compact(&doc_j(document, canonical), &mut out);
         out.push('\n');
     }
-    (out, Layout::Lines)
+    Ok((out, Layout::Lines))
+}
+
+const WRAPPERS: &[&str] = &[
+    "$oid",
+    "$numberInt",
+    "$numberLong",
+    "$numberDouble",
+    "$numberDecimal",
+    "$date",
+    "$binary",
+    "$uuid",
+    "$regularExpression",
+    "$timestamp",
+    "$undefined",
+    "$minKey",
+    "$maxKey",
+    "$symbol",
+    "$code",
+    "$dbPointer",
+];
+
+/// The name of a field that would make the text read back as a value of another type: the first field of a document that is a wrapper's
+/// name, or a `$code` field anywhere.
+fn ambiguous(doc: &Document) -> Option<&str> {
+    let first = doc.fields.first().map(|(k, _)| k.as_str()).filter(|k| WRAPPERS.contains(k));
+    let code = doc.fields.iter().map(|(k, _)| k.as_str()).find(|k| *k == "$code");
+    if let Some(name) = first.or(code) {
+        return Some(name);
+    }
+    fn inside(value: &Bson) -> Option<&str> {
+        match value {
+            Bson::Document(d) => ambiguous(d),
+            Bson::Array(items) => items.iter().find_map(inside),
+            Bson::JavaScriptWithScope { scope, .. } => ambiguous(scope),
+            _ => None,
+        }
+    }
+    doc.fields.iter().find_map(|(_, v)| inside(v))
 }
 
 fn problem(value: &Value, message: impl Into<String>) -> BsonError {
@@ -240,7 +287,8 @@ fn problem(value: &Value, message: impl Into<String>) -> BsonError {
 /// The documents a text stands for, or every problem found: syntax errors of the JSON, and values that are not valid Extended JSON
 /// (with where they are in the text). One document may be spread over lines; several are one to a line.
 pub fn from_text(text: &str) -> Result<Vec<Document>, Vec<BsonError>> {
-    let options = Options { dialect: Dialect::Json, ..Options::default() };
+    // (A wrapper is an object of its own: the text may nest about twice as deep as the document it stands for.)
+    let options = Options { dialect: Dialect::Json, max_depth: crate::MAX_DEPTH * 2 + 4, ..Options::default() };
     let first_line_is_a_value = text.lines().find(|l| !l.trim().is_empty()).is_some_and(|l| {
         let read = parse(l, &options);
         read.root.is_some() && read.diagnostics.iter().all(|d| d.severity() != Severity::Error)
@@ -290,6 +338,9 @@ pub fn from_text(text: &str) -> Result<Vec<Document>, Vec<BsonError>> {
 fn document_of(value: &Value) -> Result<Document, BsonError> {
     match &value.data {
         Data::Object(_) => match convert(value)? {
+            Bson::Document(d) if depth(&d) > crate::MAX_DEPTH => {
+                Err(problem(value, format!("documents are nested deeper than {} levels", crate::MAX_DEPTH)))
+            }
             Bson::Document(d) => Ok(d),
             _ => Err(problem(value, "a document is an object, not a value of another type")),
         },
@@ -345,7 +396,12 @@ fn convert(value: &Value) -> Result<Bson, BsonError> {
         }
         Data::Array(items) => items.iter().map(convert).collect::<Result<Vec<_>, _>>().map(Bson::Array),
         Data::Object(members) => {
-            let wrapper = members.first().map(|m| m.key.as_str()).filter(|k| k.starts_with('$'));
+            // (`$code` may come after `$scope`.)
+            let wrapper = if members.iter().any(|m| m.key == "$code") {
+                Some("$code")
+            } else {
+                members.first().map(|m| m.key.as_str()).filter(|k| k.starts_with('$'))
+            };
             match wrapper {
                 Some(key) => wrapped(value, members, key),
                 None => plain(members),
@@ -357,6 +413,13 @@ fn convert(value: &Value) -> Result<Bson, BsonError> {
 fn plain(members: &[xmlcraft_json_syntax::Member]) -> Result<Bson, BsonError> {
     let mut fields = Vec::with_capacity(members.len());
     for m in members {
+        if m.key.contains('\0') {
+            return Err(BsonError {
+                offset: m.key_span.start,
+                length: m.key_span.len(),
+                message: "a field name cannot hold a zero character".to_owned(),
+            });
+        }
         fields.push((m.key.clone(), convert(&m.value)?));
     }
     Ok(Bson::Document(Document { fields }))
@@ -399,7 +462,6 @@ fn wrapped(value: &Value, members: &[xmlcraft_json_syntax::Member], key: &str) -
                 Data::String(s) => chrono::DateTime::parse_from_rfc3339(s)
                     .map(|d| Bson::DateTime(d.timestamp_millis()))
                     .map_err(|_| problem(v, "a $date is an ISO 8601 date and time, or a $numberLong")),
-                Data::Number(n) => n.parse().map(Bson::DateTime).map_err(|_| problem(v, "a $date is an integer number of milliseconds")),
                 Data::Object(inner) => {
                     match exact(inner, &["$numberLong"]).and_then(|v| v.first().copied()).and_then(text).and_then(|s| s.parse().ok()) {
                         Some(ms) => Ok(Bson::DateTime(ms)),
@@ -420,6 +482,9 @@ fn wrapped(value: &Value, members: &[xmlcraft_json_syntax::Member], key: &str) -
                 .ok_or_else(|| problem(parts.first().copied().unwrap_or(v), "base64 is not valid base64"))?;
             let subtype = parts.get(1).and_then(|p| text(p)).filter(|s| s.len() <= 2).and_then(|s| u8::from_str_radix(s, 16).ok());
             let subtype = subtype.ok_or_else(|| problem(parts.get(1).copied().unwrap_or(v), "a subType is one or two hexadecimal digits"))?;
+            if let Some(m) = binary_problem(subtype, &bytes) {
+                return Err(problem(v, m));
+            }
             Ok(Bson::Binary { subtype, bytes })
         }
         "$uuid" => {
@@ -452,9 +517,14 @@ fn wrapped(value: &Value, members: &[xmlcraft_json_syntax::Member], key: &str) -
                 _ => Err(problem(v, "t and i are unsigned 32-bit integers")),
             }
         }
-        "$undefined" => Ok(Bson::Undefined),
-        "$minKey" => Ok(Bson::MinKey),
-        "$maxKey" => Ok(Bson::MaxKey),
+        "$undefined" => match one(key).map(|v| &v.data) {
+            Some(Data::Bool(true)) => Ok(Bson::Undefined),
+            _ => Err(bad("$undefined stands alone, with the value true")),
+        },
+        "$minKey" | "$maxKey" => match one(key).map(|v| &v.data) {
+            Some(Data::Number(n)) if n == "1" => Ok(if key == "$minKey" { Bson::MinKey } else { Bson::MaxKey }),
+            _ => Err(bad("$minKey and $maxKey stand alone, with the value 1")),
+        },
         "$symbol" => {
             let v = one(key).ok_or_else(|| bad("$symbol stands alone"))?;
             text(v).map(|s| Bson::Symbol(s.to_owned())).ok_or_else(|| problem(v, "a $symbol is a string"))

@@ -12,7 +12,7 @@ fn the_examples_of_the_specification_are_read_and_written_as_they_are() {
     let hello: &[u8] = b"\x16\0\0\0\x02hello\0\x06\0\0\0world\0\0";
     let docs = read_all(hello).expect("reads");
     assert_eq!(docs, [doc(vec![("hello", Bson::String("world".into()))])]);
-    assert_eq!(write_all(&docs), hello);
+    assert_eq!(write_all(&docs).expect("writes"), hello);
     let awesome: Vec<u8> = (0..49)
         .map(|i| {
             u8::from_str_radix(
@@ -24,7 +24,7 @@ fn the_examples_of_the_specification_are_read_and_written_as_they_are() {
         .collect();
     let docs = read_all(&awesome).expect("reads");
     assert_eq!(docs, [doc(vec![("BSON", Bson::Array(vec![Bson::String("awesome".into()), Bson::Double(5.05), Bson::Int32(1986)]))])]);
-    assert_eq!(write_all(&docs), awesome);
+    assert_eq!(write_all(&docs).expect("writes"), awesome);
     assert_eq!(read_all(b""), Ok(Vec::new()));
 }
 
@@ -70,13 +70,13 @@ fn xmlcraft_bson_decimal(text: &str) -> [u8; 16] {
 #[test]
 fn every_type_survives_bytes_and_canonical_text_exactly() {
     let docs = vec![every_type()];
-    let bytes = write_all(&docs);
+    let bytes = write_all(&docs).expect("writes");
     let read = read_all(&bytes).expect("reads");
-    assert_eq!(write_all(&read), bytes, "bytes to model to bytes");
-    let (text, layout) = to_text(&read, true);
+    assert_eq!(write_all(&read).expect("writes"), bytes, "bytes to model to bytes");
+    let (text, layout) = to_text(&read, true).expect("a text");
     assert_eq!(layout, Layout::Single);
     let back = from_text(&text).unwrap_or_else(|e| panic!("{e:?} in {text}"));
-    assert_eq!(write_all(&back), bytes, "bytes to text to bytes: {text}");
+    assert_eq!(write_all(&back).expect("writes"), bytes, "bytes to text to bytes: {text}");
     assert!(
         text.contains("\"$numberInt\": \"-7\"")
             && text.contains("\"$numberDecimal\": \"12.50\"")
@@ -95,7 +95,7 @@ fn relaxed_text_has_plain_numbers_and_dates_and_still_reads_back() {
         ("d", Bson::DateTime(1_700_000_000_123)),
         ("big", Bson::Int64(i64::MAX)),
     ])];
-    let (text, _) = to_text(&docs, false);
+    let (text, _) = to_text(&docs, false).expect("a text");
     assert!(text.contains("\"n\": 5") && text.contains("\"f\": 2.5") && text.contains("\"$date\": \"2023-11-14T22:13:20.123Z\""), "{text}");
     let back = from_text(&text).expect("reads");
     // Plain integers become int32 when they fit and int64 when they do not: a relaxed text does not say which it was.
@@ -112,26 +112,26 @@ fn a_date_outside_the_years_of_the_relaxed_form_is_spelled_out() {
         ("c", Bson::DateTime(0)),
         ("d", Bson::DateTime(253_402_300_799_999)),
     ])];
-    let (text, _) = to_text(&docs, false);
+    let (text, _) = to_text(&docs, false).expect("a text");
     assert!(text.contains("\"a\": {\"$date\": {\"$numberLong\": \"-1\"}}"), "{text}");
     assert!(text.contains("\"b\": {\"$date\": {\"$numberLong\": \"253402300800000\"}}"), "year 10000: {text}");
     assert!(text.contains("\"c\": {\"$date\": \"1970-01-01T00:00:00.000Z\"}") && text.contains("9999-12-31T23:59:59.999Z"), "{text}");
-    assert_eq!(write_all(&from_text(&text).expect("reads")), write_all(&docs));
+    assert_eq!(write_all(&from_text(&text).expect("reads")).expect("writes"), write_all(&docs).expect("writes"));
 }
 
 #[test]
 fn several_documents_are_one_to_a_line_and_one_may_be_indented() {
     let docs = vec![doc(vec![("a", Bson::Int32(1))]), doc(vec![("b", Bson::String("x".into()))])];
-    let (text, layout) = to_text(&docs, true);
+    let (text, layout) = to_text(&docs, true).expect("a text");
     assert_eq!((layout, text.lines().count()), (Layout::Lines, 2));
     assert_eq!(from_text(&text).expect("reads"), docs);
-    let (single, layout) = to_text(&docs[..1], true);
+    let (single, layout) = to_text(&docs[..1], true).expect("a text");
     assert_eq!(layout, Layout::Single);
     assert!(single.lines().count() > 1 && single.starts_with("{\n  \"a\": {\"$numberInt\": \"1\"}\n}"), "{single}");
     assert_eq!(from_text(&single).expect("reads"), docs[..1]);
     assert_eq!(from_text(""), Ok(Vec::new()));
     assert_eq!(from_text("\n  \n"), Ok(Vec::new()));
-    assert_eq!(to_text(&[], true).0, "");
+    assert_eq!(to_text(&[], true).expect("a text").0, "");
 }
 
 #[test]
@@ -159,8 +159,50 @@ fn text_that_is_not_extended_json_is_reported_where_it_is() {
 }
 
 #[test]
+fn extended_json_that_is_not_quite_a_wrapper_is_refused_not_trimmed() {
+    for (text, expected) in [
+        ("{\"a\": {\"$minKey\": 1, \"extra\": 2}}", "stand alone"),
+        ("{\"a\": {\"$minKey\": 2}}", "the value 1"),
+        ("{\"a\": {\"$undefined\": false}}", "true"),
+        ("{\"a\": {\"$date\": 1700000000000}}", "ISO 8601"),
+        ("{\"a\": {\"$binary\": {\"base64\": \"Zg\", \"subType\": \"00\"}}}", "base64"),
+        ("{\"a\": {\"$binary\": {\"base64\": \"Zg==\", \"subType\": \"02\"}}}", "old subtype 2"),
+        ("{\"a\\u0000b\": 1}", "zero character"),
+        ("{\"a\": {\"$regularExpression\": {\"pattern\": \"a\\u0000\", \"options\": \"\"}}}", "zero character"),
+    ] {
+        let errors = from_text(text).expect_err(text);
+        assert!(errors[0].message.contains(expected), "{text}: {:?}", errors[0]);
+    }
+    assert_eq!(from_text("{\"a\": {\"$minKey\": 1}}").expect("ok")[0].fields[0].1, Bson::MinKey);
+    // `$scope` may come before `$code`.
+    let docs = from_text("{\"f\": {\"$scope\": {\"x\": 1}, \"$code\": \"x\"}}").expect("reads");
+    assert!(matches!(&docs[0].fields[0].1, Bson::JavaScriptWithScope { code, .. } if code == "x"));
+    // Text nested deeper than BSON reads is refused.
+    let deep = format!("{{\"a\": {}1{}}}", "[".repeat(MAX_DEPTH + 5), "]".repeat(MAX_DEPTH + 5));
+    assert!(from_text(&deep).expect_err("too deep")[0].message.contains("nested deeper"));
+}
+
+#[test]
+fn what_cannot_be_written_or_shown_is_an_error_not_a_different_value() {
+    let named = |name: &str| vec![doc(vec![(name, Bson::Null)])];
+    assert!(write_all(&named("a\0b")).expect_err("a zero in a name").message.contains("zero character"));
+    assert!(write_all(&[doc(vec![("r", Bson::Regex { pattern: "a\0".into(), options: String::new() })])]).is_err());
+    assert!(write_all(&[doc(vec![("b", Bson::Binary { subtype: 2, bytes: vec![1, 2, 3] })])]).is_err());
+    let good = Bson::Binary { subtype: 2, bytes: vec![2, 0, 0, 0, 9, 9] };
+    assert!(write_all(&[doc(vec![("b", good)])]).is_ok());
+    // A field that would read back as a wrapper cannot be shown.
+    for name in ["$oid", "$date", "$code", "$minKey"] {
+        let e = to_text(&named(name), true).expect_err(name);
+        assert!(e.message.contains(name), "{e}");
+    }
+    assert!(to_text(&[doc(vec![("a", Bson::Document(doc(vec![("$numberInt", Bson::Null)])))])], true).is_err(), "also inside");
+    assert!(to_text(&[doc(vec![("a", Bson::Null), ("$code", Bson::Null)])], true).is_err(), "`$code` is a wrapper wherever it stands");
+    assert!(to_text(&named("$other"), true).is_ok() && to_text(&named("a"), true).is_ok());
+}
+
+#[test]
 fn damaged_bytes_are_errors_that_say_where_and_never_panics() {
-    let good = write_all(&[every_type()]);
+    let good = write_all(&[every_type()]).expect("writes");
     // Every prefix and every single-byte damage.
     for len in 0..good.len() {
         let _ = read_all(&good[..len]);
@@ -178,6 +220,7 @@ fn damaged_bytes_are_errors_that_say_where_and_never_panics() {
         (b"\xFF\xFF\xFF\x7F\0", "longer"),
         (b"\x0E\0\0\0\x02a\0\x02\0\0\0\xFF\0\0", "UTF-8"),
         (b"\x08\0\0\0\x20a\0\0", "not a BSON type"),
+        (b"\x10\0\0\0\x05a\0\x03\0\0\0\x02\x01\x02\x03\0", "old subtype 2"),
         (b"\x09\0\0\0\x08a\0\x02\0", "neither 0 nor 1"),
         // Code with a scope whose own length is one too many.
         (b"\x17\0\0\0\x0Fa\0\x10\0\0\0\x02\0\0\0x\0\x05\0\0\0\0\0", "does not fit"),
@@ -191,19 +234,27 @@ fn damaged_bytes_are_errors_that_say_where_and_never_panics() {
     for _ in 0..MAX_DEPTH + 5 {
         nested = vec![Bson::Array(nested)];
     }
-    let deep = write_all(&[doc(vec![("a", Bson::Array(nested))])]);
+    let deep = write_all(&[doc(vec![("a", Bson::Array(nested))])]).expect("writes");
     assert!(read_all(&deep).expect_err("too deep").message.contains("nested deeper"));
 }
 
 fn name() -> impl Strategy<Value = String> {
-    "[a-z$.0-9é ]{0,6}"
+    "[a-z.0-9é ]{0,6}"
 }
 
 fn arb_bson() -> impl Strategy<Value = Bson> {
     let leaf = prop_oneof![
         any::<f64>().prop_map(|f| Bson::Double(if f.is_nan() { f64::NAN } else { f })),
         "[^\u{0}]{0,10}".prop_map(Bson::String),
-        (any::<u8>(), prop::collection::vec(any::<u8>(), 0..8)).prop_map(|(subtype, bytes)| Bson::Binary { subtype, bytes }),
+        (any::<u8>(), prop::collection::vec(any::<u8>(), 0..8)).prop_map(|(subtype, mut bytes)| {
+            if subtype == 2 {
+                // The old subtype holds the length of the rest first.
+                let mut framed = (bytes.len() as i32).to_le_bytes().to_vec();
+                framed.append(&mut bytes);
+                bytes = framed;
+            }
+            Bson::Binary { subtype, bytes }
+        }),
         Just(Bson::Undefined),
         any::<[u8; 12]>().prop_map(Bson::ObjectId),
         any::<bool>().prop_map(Bson::Bool),
@@ -234,14 +285,14 @@ proptest! {
     #[test]
     fn any_documents_survive_bytes_and_canonical_text(fields in prop::collection::vec((name(), arb_bson()), 0..5), more in 0usize..3) {
         let docs: Vec<Document> = (0..=more).map(|_| Document { fields: fields.clone() }).collect();
-        let bytes = write_all(&docs);
+        let bytes = write_all(&docs).expect("writes");
         let read = read_all(&bytes).map_err(|e| TestCaseError::fail(format!("{e}")))?;
-        prop_assert_eq!(write_all(&read), bytes.clone());
-        let (text, _) = to_text(&read, true);
+        prop_assert_eq!(write_all(&read).expect("writes"), bytes.clone());
+        let (text, _) = to_text(&read, true).expect("a text");
         let back = from_text(&text).map_err(|e| TestCaseError::fail(format!("{e:?} in {text}")))?;
-        prop_assert_eq!(write_all(&back), bytes, "text was {}", text);
+        prop_assert_eq!(write_all(&back).expect("writes"), bytes, "text was {}", text);
         // The relaxed text always reads (types may differ, nothing is invalid).
-        let (relaxed, _) = to_text(&read, false);
+        let (relaxed, _) = to_text(&read, false).expect("a text");
         prop_assert!(from_text(&relaxed).is_ok(), "{}", relaxed);
     }
 
@@ -253,7 +304,7 @@ proptest! {
 
     #[test]
     fn damaged_valid_bytes_never_panic(fields in prop::collection::vec((name(), arb_bson()), 0..4), at in 0usize..400, byte in any::<u8>()) {
-        let mut bytes = write_all(&[Document { fields }]);
+        let mut bytes = write_all(&[Document { fields }]).unwrap_or_default();
         if let Some(slot) = bytes.get_mut(at) {
             *slot = byte;
         }

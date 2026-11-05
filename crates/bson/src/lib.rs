@@ -6,7 +6,8 @@
 //!   read is written again byte for byte. Reading is strict about what makes bytes ambiguous and says where; it is bounded in nesting
 //!   ([`MAX_DEPTH`]) and never allocates more than the input is long.
 //! - [`to_text`] / [`from_text`]: the documents as MongoDB Extended JSON (canonical, so the text turns back into the same bytes; one
-//!   indented document, or one document to a line) and back, with the place in the text of every value that is not valid Extended JSON.
+//!   indented document, or one document to a line) and back, with the place in the text of the first value of each document that is not
+//!   valid Extended JSON.
 //!   This is the text a BSON file is edited as; saving writes the bytes the edited text stands for.
 
 mod base64;

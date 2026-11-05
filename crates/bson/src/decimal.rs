@@ -72,7 +72,9 @@ pub fn from_string(text: &str) -> Result<[u8; 16], String> {
     if int.is_empty() && frac.is_empty() || !int.bytes().chain(frac.bytes()).all(|b| b.is_ascii_digit()) {
         return Err(format!("'{text}' is not a decimal number"));
     }
-    exponent -= i64::try_from(frac.len()).map_err(|_| "too many digits".to_owned())?;
+    exponent = exponent
+        .checked_sub(i64::try_from(frac.len()).map_err(|_| "too many digits".to_owned())?)
+        .ok_or_else(|| format!("the exponent of '{text}' is out of range"))?;
     let digits: String = int.chars().chain(frac.chars()).collect();
     let mut significant = digits.trim_start_matches('0').to_owned();
     if significant.is_empty() {
@@ -81,13 +83,23 @@ pub fn from_string(text: &str) -> Result<[u8; 16], String> {
     // Trailing zeros beyond 34 digits can be dropped into the exponent without changing the value.
     while significant.len() > MAX_DIGITS && significant.ends_with('0') {
         significant.pop();
-        exponent += 1;
+        exponent = exponent.checked_add(1).ok_or_else(|| format!("the exponent of '{text}' is out of range"))?;
     }
     if significant.len() > MAX_DIGITS {
         return Err(format!("'{text}' has more than {MAX_DIGITS} significant digits"));
     }
-    let coefficient: u128 = significant.parse().map_err(|_| format!("'{text}' is not a decimal number"))?;
-    let exponent = i32::try_from(exponent).map_err(|_| format!("the exponent of '{text}' is out of range"))?;
+    let mut coefficient: u128 = significant.parse().map_err(|_| format!("'{text}' is not a decimal number"))?;
+    let mut exponent = i32::try_from(exponent).map_err(|_| format!("the exponent of '{text}' is out of range"))?;
+    // A value above the largest stored exponent is kept by writing zeros into the coefficient (`1E+6144` is 10^33 × 10^6111).
+    if exponent > MAX_EXPONENT {
+        let shift = u32::try_from(exponent - MAX_EXPONENT).map_err(|_| format!("the exponent of '{text}' is out of range"))?;
+        coefficient = 10u128
+            .checked_pow(shift)
+            .and_then(|p| coefficient.checked_mul(p))
+            .filter(|c| *c < 10u128.pow(MAX_DIGITS as u32))
+            .ok_or_else(|| format!("the exponent of '{text}' is out of range"))?;
+        exponent = MAX_EXPONENT;
+    }
     if !(MIN_EXPONENT..=MAX_EXPONENT).contains(&exponent) {
         return Err(format!("the exponent of '{text}' is out of range"));
     }
@@ -132,7 +144,38 @@ mod tests {
     }
 
     #[test]
+    fn the_stored_bytes_are_those_of_the_specification() {
+        // The vectors of the BSON decimal128 test corpus: 1, 0.1, 1E+3 (coefficient 1, exponent 3), -0, Infinity, NaN.
+        let high = |text: &str| u64::from_le_bytes(from_string(text).expect("a decimal")[8..].try_into().expect("8 bytes"));
+        assert_eq!(high("1"), 0x3040_0000_0000_0000);
+        assert_eq!(high("0.1"), 0x303E_0000_0000_0000);
+        assert_eq!(high("1E+3"), 0x3046_0000_0000_0000);
+        assert_eq!(high("-0"), 0xB040_0000_0000_0000);
+        assert_eq!(high("Infinity"), 0x7800_0000_0000_0000);
+        assert_eq!(high("NaN"), 0x7C00_0000_0000_0000);
+        assert_eq!(u64::from_le_bytes(from_string("1").expect("a decimal")[..8].try_into().expect("8 bytes")), 1);
+    }
+
+    #[test]
+    fn the_largest_exponents_are_kept_by_padding_the_coefficient() {
+        let big = from_string("1E+6144").expect("representable");
+        assert_eq!(to_string(&big), "1.000000000000000000000000000000000E+6144");
+        assert_eq!(from_string(&to_string(&big)), Ok(big));
+        assert!(from_string("1E+6145").is_err(), "the coefficient would need 35 digits");
+        assert!(from_string("12345678901234567890123456789012345E+6144").is_err());
+    }
+
+    #[test]
     fn bad_decimals_are_errors_not_panics() {
+        for hostile in [
+            "1e9223372036854775807",
+            "0.0e9223372036854775807",
+            "1000000000000000000000000000000000000e9223372036854775807",
+            "1e-9223372036854775808",
+            "0.1e-9223372036854775808",
+        ] {
+            let _ = from_string(hostile);
+        }
         for bad in ["", "-", ".", "1e", "e5", "1.2.3", "abc", "1E99999999999", "12345678901234567890123456789012345", "0x10"] {
             assert!(from_string(bad).is_err(), "{bad}");
         }

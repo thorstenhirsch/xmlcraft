@@ -5216,7 +5216,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "proptest",
- "serde_json",
  "xmlcraft-json-syntax",
 ]
 

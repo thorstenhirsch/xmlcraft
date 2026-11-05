@@ -16,14 +16,18 @@ pub(crate) fn encode(bytes: &[u8]) -> String {
     out
 }
 
+/// The bytes of standard base64 with padding: the length is a multiple of four and `=` stands only at the very end (one or two).
 pub(crate) fn decode(text: &str) -> Option<Vec<u8>> {
-    let text = text.trim_end_matches('=');
-    if text.len() % 4 == 1 {
+    if !text.len().is_multiple_of(4) {
         return None;
     }
-    let mut out = Vec::with_capacity(text.len() * 3 / 4);
+    let body = text.trim_end_matches('=');
+    if text.len() - body.len() > 2 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(text.len() / 4 * 3);
     let (mut acc, mut bits) = (0u32, 0u32);
-    for c in text.bytes() {
+    for c in body.bytes() {
         let v = match c {
             b'A'..=b'Z' => c - b'A',
             b'a'..=b'z' => c - b'a' + 26,
@@ -39,7 +43,8 @@ pub(crate) fn decode(text: &str) -> Option<Vec<u8>> {
             out.push(((acc >> bits) & 0xFF) as u8);
         }
     }
-    Some(out)
+    // The bits left over must be zero (a canonical encoding).
+    (acc & ((1 << bits) - 1) == 0).then_some(out)
 }
 
 #[cfg(test)]
@@ -54,5 +59,8 @@ mod tests {
         }
         assert_eq!(decode("Zm9v!"), None);
         assert_eq!(decode("Z"), None);
+        for bad in ["Zg", "=", "Zg=", "Zg===", "Zm9v=", "Zh==", "Zg=a", "Zm8"] {
+            assert_eq!(decode(bad), None, "{bad}");
+        }
     }
 }
