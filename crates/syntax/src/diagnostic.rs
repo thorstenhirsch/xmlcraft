@@ -249,6 +249,10 @@ codes! {
     YamlDuplicateKey => ("yaml.duplicate-key", Warning, "The key '{0}' is used more than once in the mapping."),
     YamlTooDeep => ("yaml.too-deep", Error, "Values nested deeper than {0} levels are not read."),
     YamlBadMerge => ("yaml.bad-merge", Warning, "The value of '<<' must be a mapping or a list of mappings."),
+    // JSON Schema (checked by `xmlcraft-json`, for JSON and YAML documents)
+    JsonSchemaViolation => ("json-schema.violation", Error, "{0}"),
+    JsonSchemaUnavailable => ("json-schema.unavailable", Warning, "The document cannot be checked against its schema '{0}': {1}."),
+    JsonSchemaInvalid => ("json-schema.invalid-schema", Error, "{0}"),
     // BSON (shown as Extended JSON; `xmlcraft-bson`)
     BsonInvalid => ("bson.invalid-value", Error, "{0}"),
     // Limits

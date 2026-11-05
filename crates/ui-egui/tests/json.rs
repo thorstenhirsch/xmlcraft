@@ -158,3 +158,38 @@ fn pretty_print_and_minify_work_on_json_and_a_text_with_an_error_is_left_alone()
     h.run_steps(3);
     assert!(h.query_by_label("Nothing was changed").is_some(), "JSON Lines are not indented");
 }
+
+#[test]
+fn f8_checks_a_json_document_against_the_schema_it_names_and_lists_what_is_wrong() {
+    let dir = tempfile::tempdir().expect("dir");
+    file(dir.path(), "schema.json", r#"{"type": "object", "properties": {"n": {"type": "integer", "minimum": 1}}, "required": ["name"]}"#);
+    let mut h = shell();
+    let text = "{\n  \"$schema\": \"schema.json\",\n  \"n\": 0\n}\n";
+    open(&mut h, &file(dir.path(), "doc.json", text));
+    assert!(h.state_mut().execute("xml.validate"));
+    let started = Instant::now();
+    while h.state().validity().is_none() {
+        assert!(started.elapsed() < Duration::from_secs(10), "waiting for the validation");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    h.run_steps(2);
+    assert_eq!(h.state().validity(), Some((2, 0)), "the minimum and the required name");
+    assert!(h.query_by_label("2 validity errors").is_some() || h.state().status.contains("2 validity errors"), "{}", h.state().status);
+    assert!(h.query_by_label_contains("minimum").is_some(), "the problem is listed");
+    // Fixed, it is valid.
+    {
+        let doc = h.state_mut().session.active_document_mut().expect("shown");
+        doc.editor_mut().select_all();
+        doc.editor_mut().type_text("{\n  \"$schema\": \"schema.json\",\n  \"name\": \"x\",\n  \"n\": 2\n}\n");
+    }
+    h.run_steps(2);
+    assert!(h.state_mut().execute("xml.validate"));
+    let started = Instant::now();
+    while h.state().validity() != Some((0, 0)) {
+        assert!(started.elapsed() < Duration::from_secs(10), "waiting for the second validation");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(h.state().status.contains("is valid"), "{}", h.state().status);
+}
