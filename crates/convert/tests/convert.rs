@@ -470,3 +470,16 @@ fn a_type_marker_with_other_members_beside_it_is_an_ordinary_object() {
         "{\"a\":{\"$undefined\":true,\"x\":1},\"b\":{\"$minKey\":1,\"y\":2},\"c\":null}"
     );
 }
+
+#[test]
+fn an_old_date_is_a_lost_type_even_though_it_is_written_as_a_number() {
+    let o = ConvertOptions { indent: None, ..ConvertOptions::default() };
+    let old = convert_to("{\"d\": {\"$date\": {\"$numberLong\": \"-1\"}}}", Format::Bson, Format::Json, &o).expect("converts");
+    assert_eq!(old.text, "{\"d\":-1}");
+    assert_eq!(old.warnings.len(), 1, "{old:?}");
+    let long = convert_to("{\"d\": {\"$numberLong\": \"-1\"}}", Format::Bson, Format::Json, &o).expect("converts");
+    assert!(long.warnings.is_empty(), "{long:?}");
+    // The warning about characters is given once however many there are.
+    let two = convert_to("{\"a\": \"\\u0001\", \"b\": {\"@k\": \"\\u0002\"}}", Format::Json, Format::Xml, &o).expect("converts");
+    assert_eq!(two.warnings.iter().filter(|w| w.contains("cannot hold")).count(), 1, "{two:?}");
+}

@@ -38,8 +38,10 @@ fn plain(value: &Value, changed: &mut bool) -> Value {
         Data::Array(items) => Value { span: 0..0, data: Data::Array(items.iter().map(|v| plain(v, changed)).collect()) },
         Data::Object(members) => match typed(members) {
             Some(v) => {
-                // (Numbers are what the number types are in the other formats too; the other types are what is lost.)
-                *changed |= !matches!(v.data, Data::Number(_));
+                // (A number type is a number in the other formats too; any other type, a date before 1970 that is only the milliseconds
+                // now included, is what is lost.)
+                let number_type = members.first().is_some_and(|m| m.key.starts_with("$number"));
+                *changed |= !(number_type && matches!(v.data, Data::Number(_)));
                 v
             }
             None => Value {

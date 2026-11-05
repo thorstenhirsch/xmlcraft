@@ -425,7 +425,10 @@ pub fn value_to_xml(value: &Value, options: &DataToXml, indent: Option<usize>, w
         w.out.push('\n');
     }
     if w.dropped {
-        w.warnings.push("characters that XML cannot hold (such as most control characters) were left out".to_owned());
+        let note = "characters that XML cannot hold (such as most control characters) were left out".to_owned();
+        if !w.warnings.contains(&note) {
+            w.warnings.push(note);
+        }
     }
     Ok(w.out)
 }

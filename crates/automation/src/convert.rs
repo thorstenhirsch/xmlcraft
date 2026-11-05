@@ -155,7 +155,9 @@ fn data_convert(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     };
     // JSON Lines (a file or an open document of that language) are read as a list of values.
     let mut options = options;
-    options.json_lines = from == Format::Json && (jsonl || (args.get("text").is_none() && s.language == Language::Json(JsonFlavor::Lines)));
+    // (An explicit `from: json` is JSON, whatever the file is called.)
+    options.json_lines = from == Format::Json
+        && (jsonl || (args.get("from").is_none() && args.get("text").is_none() && s.language == Language::Json(JsonFlavor::Lines)));
     match convert(&s.text, from, to, &options) {
         Ok(done) if done.text.len() > MAX_BYTES => fail(format!("the result is {} bytes; at most {MAX_BYTES} are returned", done.text.len())),
         Ok(done) => json_result(json!({ "text": done.text, "warnings": done.warnings, "from": from.name(), "to": to.name(), "lossy": s.lossy })),

@@ -98,6 +98,8 @@ fn files_are_read_by_their_extension_and_json_lines_are_a_list() {
     assert_eq!(lines["text"], "[{\"a\":1},{\"a\":2}]", "{lines}");
     let text = convert(&mut a, json!({ "text": "{\"a\":1}\n{\"a\":2}\n", "from": "jsonl", "to": "yaml" })).expect("runs");
     assert_eq!(text["text"], "- a: 1\n- a: 2\n");
+    // Said to be JSON, a JSON Lines file is read as one JSON text (and refused, being several).
+    assert!(convert(&mut a, json!({ "path": "d.jsonl", "from": "json", "to": "yaml" })).is_err());
     let bson = convert(&mut a, json!({ "path": "d.bson", "to": "json", "indent": 0 })).expect("runs");
     assert_eq!((bson["from"].as_str(), bson["text"].as_str()), (Some("bson"), Some("{\"n\":5}")), "{bson}");
     // XML is on one line with no indentation.
