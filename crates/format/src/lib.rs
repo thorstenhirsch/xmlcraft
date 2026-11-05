@@ -512,7 +512,7 @@ mod tests {
             let error = pretty_print(src, &FormatOptions::default()).expect_err(src);
             assert!(matches!(error, FormatError::NotWellFormed { .. }), "{src}");
             assert!(minify(src).is_err());
-            assert!(error.to_string().contains("not well-formed"));
+            assert!(error.to_string().contains("syntax error"));
         }
     }
 
