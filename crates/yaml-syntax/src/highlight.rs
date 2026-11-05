@@ -165,13 +165,17 @@ fn block_line(line: &str, mut at: usize, indent: usize, push: &mut impl FnMut(Ra
             }
             _ => {
                 let (end, is_key) = plain_scalar(rest, flow > 0);
-                let text = rest.get(..end).unwrap_or_default().trim_end();
+                // (Only YAML's own white space ends a scalar's text: `trim_end` would take a Unicode space such as U+0085 off as well,
+                // and a range of one byte would then end inside it.)
+                let text = rest.get(..end).unwrap_or_default().trim_end_matches([' ', '\t']);
                 let class = if is_key { JsonClass::Key } else { scalar_class(text) };
                 if is_key && flow == 0 {
                     node = at;
                 }
-                push(at..at + text.len().max(1).min(rest.len()), class);
-                at += end.max(1);
+                // At least the character that is there, whole.
+                let first_len = first.len_utf8();
+                push(at..at + text.len().max(first_len).min(rest.len()), class);
+                at += end.max(first_len);
             }
         }
     }
