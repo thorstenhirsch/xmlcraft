@@ -36,6 +36,7 @@ pub const TABLE: &[(&str, Class)] = &[
     // L1 syntax and datatypes (each builds on one L0 crate)
     ("syntax", Class::Standalone(1)),
     ("datatypes", Class::Standalone(1)),
+    ("json-syntax", Class::Standalone(1)),
     // L2 core model
     ("grammar", Class::Layer(2)),
     ("catalog", Class::Layer(2)),
@@ -69,7 +70,7 @@ pub const TABLE: &[(&str, Class)] = &[
 ];
 
 /// Workspace crates a standalone crate may use: `datatypes` compiles XSD patterns, and `syntax` sits on the text buffer.
-pub const STANDALONE_DEPS: &[(&str, &[&str])] = &[("datatypes", &["pattern"]), ("syntax", &["text"])];
+pub const STANDALONE_DEPS: &[(&str, &[&str])] = &[("datatypes", &["pattern"]), ("syntax", &["text"]), ("json-syntax", &["syntax"])];
 
 /// Allowed same-layer edges.
 pub const SIDEWAYS: &[(&str, &str)] = &[
@@ -77,6 +78,8 @@ pub const SIDEWAYS: &[(&str, &str)] = &[
     ("dtd", "resolve"),
     ("xsd", "resolve"),
     ("json", "resolve"),
+    // The JSON reader reports its problems with the shared diagnostic codes.
+    ("json-syntax", "syntax"),
     // Completion asks the validator for the context at the cursor.
     ("complete", "validate"),
     // Generators write their output through the formatter, and their tests validate it.
