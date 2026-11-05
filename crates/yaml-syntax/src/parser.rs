@@ -12,7 +12,8 @@ use xmlcraft_syntax::{Code, Diagnostic};
 pub struct Options {
     /// Values nested deeper than this are not read.
     pub max_depth: usize,
-    /// Aliases are expanded into copies; no more than this many values are made in all (the defence against "billion laughs").
+    /// Aliases are expanded into copies; the copies together are no more than this many values (the defence against "billion laughs").
+    /// The values the text itself spells out are not counted.
     pub max_nodes: usize,
     /// More problems than this are not listed; the last one says so.
     pub max_diagnostics: usize,
@@ -46,29 +47,28 @@ pub fn parse(text: &str, options: &Options) -> Parse {
     builder.finish()
 }
 
-/// Turns the line and column of a marker into a byte offset of the text (the parser counts characters).
+/// Turns the character index of a marker into a byte offset of the text (the parser counts characters). A checkpoint every
+/// [`CHECKPOINT`] characters keeps a conversion short whatever the line breaks are.
 struct Offsets<'a> {
     text: &'a str,
-    /// Where each line starts.
-    starts: Vec<usize>,
+    /// The byte offset of character 0, `CHECKPOINT`, `2 * CHECKPOINT` …
+    checkpoints: Vec<usize>,
 }
+
+const CHECKPOINT: usize = 1024;
 
 impl<'a> Offsets<'a> {
     fn new(text: &'a str) -> Self {
-        let mut starts = vec![0];
-        starts.extend(text.match_indices('\n').map(|(at, _)| at + 1));
-        Self { text, starts }
+        let checkpoints = text.char_indices().step_by(CHECKPOINT).map(|(at, _)| at).collect();
+        Self { text, checkpoints }
     }
 
-    /// The offset a marker is at: its line (from 1) and its column in characters (from 0), kept inside the text.
+    /// The offset a marker is at, kept inside the text.
     fn byte(&self, marker: Marker) -> usize {
-        let line = marker.line().saturating_sub(1);
-        let Some(&start) = self.starts.get(line).or(self.starts.last()) else { return 0 };
+        let index = marker.index();
+        let Some(&start) = self.checkpoints.get(index / CHECKPOINT) else { return self.text.len() };
         let rest = self.text.get(start..).unwrap_or_default();
-        let line_len = rest.find('\n').unwrap_or(rest.len());
-        let line_text = rest.get(..line_len).unwrap_or_default();
-        let within = line_text.char_indices().nth(marker.col()).map_or(line_len, |(at, _)| at);
-        start + within
+        rest.char_indices().nth(index % CHECKPOINT).map_or(self.text.len(), |(at, _)| start + at)
     }
 
     fn span(&self, span: YamlSpan) -> Range<usize> {
@@ -108,7 +108,10 @@ struct Builder<'a> {
     /// Finished values that have an anchor, with the number of values in each.
     anchors: HashMap<usize, (Value, usize)>,
     /// The names of anchors, by id, for the message of an alias that is not defined.
-    made: usize,
+    /// How many values the copies made by aliases have, together.
+    expanded: usize,
+    /// Anchors of values that were dropped for being nested too deeply: an alias to one is dropped too, with the depth problem as the reason.
+    dropped_anchors: HashSet<usize>,
     too_deep_reported: bool,
     expansion_reported: bool,
 }
@@ -124,7 +127,8 @@ impl<'a> Builder<'a> {
             diagnostics: Vec::new(),
             full: false,
             anchors: HashMap::new(),
-            made: 0,
+            expanded: 0,
+            dropped_anchors: HashSet::new(),
             too_deep_reported: false,
             expansion_reported: false,
         }
@@ -212,9 +216,15 @@ impl<'a> Builder<'a> {
     fn start_container(&mut self, map: bool, span: Range<usize>, anchor: usize) {
         if let Some(Frame::Skipped { depth }) = self.stack.last_mut() {
             *depth += 1;
+            if anchor != 0 {
+                self.dropped_anchors.insert(anchor);
+            }
             return;
         }
         if self.stack.len() >= self.options.max_depth {
+            if anchor != 0 {
+                self.dropped_anchors.insert(anchor);
+            }
             if !self.too_deep_reported {
                 self.too_deep_reported = true;
                 self.report(Code::YamlTooDeep, span, vec![self.options.max_depth.to_string()]);
@@ -248,7 +258,6 @@ impl<'a> Builder<'a> {
             }
             Frame::Skipped { .. } => return,
         };
-        self.made = self.made.saturating_add(1);
         self.push_value(value, anchor);
     }
 
@@ -257,13 +266,17 @@ impl<'a> Builder<'a> {
             return;
         }
         let Some((value, size)) = self.anchors.get(&id).cloned() else {
-            let name = self.text.get(span.clone()).unwrap_or_default().trim_start_matches('*').to_owned();
-            self.report(Code::YamlUnknownAlias, span.clone(), vec![name]);
+            // The parser knows which anchors exist, so this is an anchor that was dropped for being too deep (already reported), or one it
+            // gave an id we do not have.
+            if !self.dropped_anchors.contains(&id) {
+                let name = self.text.get(span.clone()).unwrap_or_default().to_owned();
+                self.report(Code::YamlSyntax, span.clone(), vec![format!("the alias {name} refers to a value that is not available")]);
+            }
             self.push_value(Value { span, data: Data::Null }, 0);
             return;
         };
-        self.made = self.made.saturating_add(size);
-        if self.made > self.options.max_nodes {
+        self.expanded = self.expanded.saturating_add(size);
+        if self.expanded > self.options.max_nodes {
             if !self.expansion_reported {
                 self.expansion_reported = true;
                 self.report(Code::YamlAliasTooLarge, span.clone(), vec![self.options.max_nodes.to_string()]);
@@ -278,9 +291,11 @@ impl<'a> Builder<'a> {
 
     fn scalar(&mut self, text: &str, style: ScalarStyle, anchor: usize, tag: Option<&Tag>, span: Range<usize>) {
         if matches!(self.stack.last(), Some(Frame::Skipped { .. })) {
+            if anchor != 0 {
+                self.dropped_anchors.insert(anchor);
+            }
             return;
         }
-        self.made = self.made.saturating_add(1);
         let data = resolve(text, style, tag);
         self.push_value(Value { span, data }, anchor);
     }
@@ -363,7 +378,7 @@ fn resolve(text: &str, style: ScalarStyle, tag: Option<&Tag>) -> Data {
 }
 
 /// A plain scalar that is null, a boolean or a number.
-fn plain(text: &str) -> Option<Data> {
+pub(crate) fn plain(text: &str) -> Option<Data> {
     match text {
         "" | "~" | "null" | "Null" | "NULL" => return Some(Data::Null),
         "true" | "True" | "TRUE" => return Some(Data::Bool(true)),
@@ -379,7 +394,18 @@ fn plain(text: &str) -> Option<Data> {
     if let Some(octal) = text.strip_prefix("0o").filter(|o| !o.is_empty() && o.bytes().all(|b| (b'0'..=b'7').contains(&b))) {
         return u128::from_str_radix(octal, 8).ok().map(|v| Data::Number(v.to_string()));
     }
-    is_number(text).then(|| Data::Number(text.strip_prefix('+').unwrap_or(text).to_owned()))
+    is_number(text).then(|| Data::Number(normal_number(text)))
+}
+
+/// A number as JSON writes it: no `+`, no leading zeros of an integer (`012` is twelve; a zero before the point stays: `0.5`).
+fn normal_number(text: &str) -> String {
+    let (sign, body) = match text.strip_prefix('-') {
+        Some(rest) => ("-", rest),
+        None => ("", text.strip_prefix('+').unwrap_or(text)),
+    };
+    let plain_integer = body.bytes().all(|b| b.is_ascii_digit());
+    let body = if plain_integer { body.trim_start_matches('0') } else { body };
+    format!("{sign}{}", if body.is_empty() { "0" } else { body })
 }
 
 /// `[-+]? ( [0-9]+ | ( \.[0-9]+ | [0-9]+ (\.[0-9]*)? ) ([eE][-+]?[0-9]+)? )`

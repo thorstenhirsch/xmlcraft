@@ -16,5 +16,5 @@ mod parser;
 
 pub use highlight::{Mode, Span, highlight_line};
 pub use parser::{Options, Parse, parse};
-pub use xmlcraft_json_syntax::{Data, JsonClass, Member, Value};
+pub use xmlcraft_json_syntax::{Data, JsonClass, Member, Segment, Value};
 pub use xmlcraft_syntax::{Code, Diagnostic, Severity};

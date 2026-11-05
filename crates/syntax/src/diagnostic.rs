@@ -245,7 +245,6 @@ codes! {
     JsonTooDeep => ("json.too-deep", Error, "Values nested deeper than {0} levels are not read."),
     // YAML (read by `xmlcraft-yaml-syntax`)
     YamlSyntax => ("yaml.syntax-error", Error, "{0}"),
-    YamlUnknownAlias => ("yaml.unknown-alias", Error, "The alias '*{0}' refers to an anchor that is not defined before it."),
     YamlAliasTooLarge => ("yaml.alias-too-large", Error, "The aliases expand to more than {0} values; the rest is not expanded."),
     YamlDuplicateKey => ("yaml.duplicate-key", Warning, "The key '{0}' is used more than once in the mapping."),
     YamlTooDeep => ("yaml.too-deep", Error, "Values nested deeper than {0} levels are not read."),

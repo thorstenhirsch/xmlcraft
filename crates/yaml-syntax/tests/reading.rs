@@ -52,6 +52,7 @@ fn scalars_follow_the_core_schema() {
     assert_eq!(get("n"), Data::String("1_000".into()));
     assert_eq!(get("o"), Data::Number("1.".into()));
     assert_eq!(get("p"), Data::Number("5".into()));
+    assert_eq!(get("q"), Data::Number("12".into()), "012 is twelve in the core schema, written as JSON writes it");
 }
 
 #[test]
@@ -87,6 +88,30 @@ fn what_cannot_be_read_is_reported_and_the_readable_part_stays() {
 }
 
 #[test]
+fn places_are_right_whatever_the_line_breaks_are() {
+    for text in ["a: 1\nb: 2\nc: é\n", "a: 1\r\nb: 2\r\nc: é\r\n", "a: 1\rb: 2\rc: é\r"] {
+        let read = parse(text, &Options::default());
+        let root = &read.documents[0];
+        for (key, shown) in [("a", "a"), ("b", "b"), ("c", "c")] {
+            assert_eq!(&text[root.span_of_pointer(&format!("/{key}")).expect("a place")], shown, "{text:?}");
+        }
+    }
+    // Far into a long text, with characters of several bytes before it.
+    let long = format!("{}k: v\n", "é: 1\n".repeat(3000));
+    let read = parse(&long, &Options::default());
+    let root = &read.documents[read.documents.len() - 1];
+    assert_eq!(&long[root.span_of_pointer("/k").expect("a place")], "k");
+}
+
+#[test]
+fn an_alias_to_a_value_dropped_for_being_too_deep_is_not_called_unknown() {
+    let text = "a: [[[[&deep x]]]]\nb: *deep\n";
+    let read = parse(text, &Options { max_depth: 2, ..Options::default() });
+    assert!(read.diagnostics.iter().any(|d| d.code == Code::YamlTooDeep));
+    assert!(read.diagnostics.iter().all(|d| !d.message().contains("not available")), "{:?}", read.diagnostics);
+}
+
+#[test]
 fn a_stream_may_have_several_documents() {
     let read = parse("a: 1\n---\nb: 2\n...\n---\n- 3\n", &Options::default());
     assert_eq!(read.documents.len(), 3);
@@ -102,6 +127,9 @@ fn aliases_cannot_blow_up_and_nesting_and_problems_are_bounded() {
         text.push_str(&format!("a{i}: &a{i} [{}]\n", vec![prev; 10].join(", ")));
     }
     let read = parse(&text, &Options { max_nodes: 5_000, ..Options::default() });
+    // The values the text spells out do not use the budget: one alias of one value fits in a budget of one.
+    let small = parse("a: &x 1\nb: *x\n", &Options { max_nodes: 1, ..Options::default() });
+    assert!(small.diagnostics.is_empty(), "{:?}", small.diagnostics);
     assert!(read.diagnostics.iter().any(|d| d.code == Code::YamlAliasTooLarge), "{:?}", read.diagnostics);
     fn size(v: &Value) -> usize {
         1 + match &v.data {

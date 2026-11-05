@@ -113,7 +113,7 @@ fn block_line(line: &str, mut at: usize, indent: usize, push: &mut impl FnMut(Ra
                 node = at;
                 at += 1;
             }
-            ':' if is_break(after) => {
+            ':' if is_break(after) || flow > 0 => {
                 push(at..at + 1, JsonClass::Punctuation);
                 at += 1;
             }
@@ -141,9 +141,9 @@ fn block_line(line: &str, mut at: usize, indent: usize, push: &mut impl FnMut(Ra
             '"' | '\'' => {
                 let start_col = at;
                 let (end, closed) = quoted_end(line, at + 1, first);
-                let is_key = closed
-                    && rest_of(end).trim_start_matches([' ', '\t']).starts_with(':')
-                    && is_key_colon(rest_of(end).trim_start_matches([' ', '\t']));
+                let after = rest_of(end).trim_start_matches([' ', '\t']);
+                // (In a flow collection a quoted key may be followed at once by its colon: `{"a":1}`.)
+                let is_key = closed && (is_key_colon(after) || (flow > 0 && after.starts_with(':')));
                 push(
                     at..end,
                     if !closed {
@@ -201,13 +201,10 @@ fn plain_scalar(rest: &str, in_flow: bool) -> (usize, bool) {
 }
 
 fn scalar_class(text: &str) -> JsonClass {
-    match text {
-        "" => JsonClass::String,
-        "~" | "null" | "Null" | "NULL" | "true" | "True" | "TRUE" | "false" | "False" | "FALSE" | ".inf" | "-.inf" | "+.inf" | ".nan" | ".NaN" => {
-            JsonClass::Keyword
-        }
-        t if t.parse::<f64>().is_ok() && t.bytes().next().is_some_and(|b| b.is_ascii_digit() || matches!(b, b'-' | b'+' | b'.')) => JsonClass::Number,
-        t if t.starts_with("0x") && t.len() > 2 && t.bytes().skip(2).all(|b| b.is_ascii_hexdigit()) => JsonClass::Number,
+    // Exactly what the reader makes of a plain scalar: null and booleans are keywords, numbers are numbers.
+    match crate::parser::plain(text) {
+        Some(xmlcraft_json_syntax::Data::Null | xmlcraft_json_syntax::Data::Bool(_)) => JsonClass::Keyword,
+        Some(xmlcraft_json_syntax::Data::Number(_)) => JsonClass::Number,
         _ => JsonClass::String,
     }
 }

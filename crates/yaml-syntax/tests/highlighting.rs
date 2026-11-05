@@ -29,6 +29,30 @@ fn keys_values_dashes_and_comments_have_their_classes() {
 }
 
 #[test]
+fn flow_mappings_of_json_style_and_the_values_the_reader_knows() {
+    use JsonClass::*;
+    let shown = |line: &str| classes(line).iter().map(|(t, c)| (t.clone(), *c)).collect::<Vec<_>>();
+    assert_eq!(
+        shown("{\"a\":1}"),
+        [
+            ("{".to_owned(), Punctuation),
+            ("\"a\"".to_owned(), Key),
+            (":".to_owned(), Punctuation),
+            ("1".to_owned(), Number),
+            ("}".to_owned(), Punctuation)
+        ]
+    );
+    assert_eq!(classes("a: 0o17")[2].1, Number);
+    for keyword in ["True", "FALSE", "Null"] {
+        assert_eq!(classes(&format!("a: {keyword}"))[2].1, Keyword, "{keyword}");
+    }
+    for number in [".Inf", ".INF", "-.INF", ".NaN", "+.inf", "0x1F"] {
+        assert_eq!(classes(&format!("a: {number}"))[2].1, Number, "{number}: the reader reads a number");
+    }
+    assert_eq!(classes("a: 1 # c\n").last().map(|(t, _)| t.as_str()), Some("# c"), "a comment does not take the line break");
+}
+
+#[test]
 fn block_scalars_and_multi_line_quotes_carry_over_the_end_of_a_line() {
     use JsonClass::*;
     let (spans, mode) = highlight_line("text: |\n", Mode::Normal);
