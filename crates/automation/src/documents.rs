@@ -1219,10 +1219,11 @@ fn doc_save(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         }
     }
     let prep = doc.prepare_save_as(&target);
-    let bytes = match doc.to_bytes_for(&target) {
+    let now = xmlcraft_resolve::Clock::now(&xmlcraft_platform::network::SystemClock);
+    let bytes = match doc.to_bytes_for(&target, now) {
         Ok(bytes) => bytes,
         Err(SaveError::Unmappable(e)) if text_arg(args, "unmappable") == Some("references") => {
-            let written = doc.apply_character_references().and_then(|_| doc.to_bytes_for(&target));
+            let written = doc.apply_character_references().and_then(|_| doc.to_bytes_for(&target, now));
             match written {
                 Ok(bytes) => bytes,
                 Err(_) => {
@@ -1251,7 +1252,7 @@ fn doc_save(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
             return Err(ToolError::Failed(format!("{}: {e}", target.display())));
         }
     };
-    doc.mark_saved(target.clone(), Some(stamp));
+    doc.mark_saved_bytes(target.clone(), Some(stamp), Some(&bytes));
     let described = describe(doc);
     a.session.remember_recent(target.clone());
     json_result(json!({ "saved": target.display().to_string(), "bytes": bytes.len(), "document": described }))
