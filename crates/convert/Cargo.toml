@@ -1,0 +1,23 @@
+[package]
+name = "xmlcraft-convert"
+description = "XmlCraft's conversions between XML, JSON, YAML and BSON (as Extended JSON), with the mappings spelled out"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-syntax = { workspace = true }
+xmlcraft-json-syntax = { workspace = true }
+xmlcraft-yaml-syntax = { workspace = true }
+xmlcraft-bson = { workspace = true }
+chrono = { workspace = true }
+rowan = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+serde_json = { workspace = true }
