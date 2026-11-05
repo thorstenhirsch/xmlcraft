@@ -1,7 +1,9 @@
 //! Conversions between the formats: the mappings, and that what can be converted back comes back.
 
 use proptest::prelude::*;
-use xmlcraft_convert::{ConvertOptions, Format, convert, extended_to_plain, json_text, read_value, yaml_text};
+use xmlcraft_convert::{
+    ConvertOptions, DataToXml, Format, convert, extended_to_plain, json_text, read_value, standard_to_xml, value_to_xml, yaml_text,
+};
 use xmlcraft_json_syntax::{Data, Options, Value, parse};
 
 fn to(text: &str, from: Format, to: Format) -> String {
@@ -242,10 +244,229 @@ proptest! {
 
     #[test]
     fn data_of_any_shape_becomes_xml_that_is_well_formed(json in arb_value()) {
-        let xml = convert(&json, Format::Json, Format::Xml, &ConvertOptions::default());
-        if let Ok(done) = xml {
-            let parsed = xmlcraft_syntax::parse(&done.text);
-            prop_assert!(parsed.diagnostics().iter().all(|d| d.severity() != xmlcraft_syntax::Severity::Error), "{json} -> {}", done.text);
+        match convert(&json, Format::Json, Format::Xml, &ConvertOptions::default()) {
+            Ok(done) => {
+                let parsed = xmlcraft_syntax::parse(&done.text);
+                prop_assert!(parsed.diagnostics().iter().all(|d| d.severity() != xmlcraft_syntax::Severity::Error), "{json} -> {}", done.text);
+            }
+            // The only data XML cannot take: a list or an object where the text or an attribute goes.
+            Err(e) => prop_assert!(e.message.contains("list or an object"), "{json}: {e}"),
         }
     }
+}
+
+fn convert_to(text: &str, from: Format, to: Format, options: &ConvertOptions) -> Result<xmlcraft_convert::Converted, xmlcraft_convert::ConvertError> {
+    convert(text, from, to, options)
+}
+
+#[test]
+fn lists_and_several_documents_become_one_bson_document_to_a_line() {
+    let o = ConvertOptions::default();
+    let two = convert_to("[{\"a\":1},{\"b\":2}]", Format::Json, Format::Bson, &o).expect("converts").text;
+    assert_eq!(two.lines().count(), 2, "{two}");
+    let yaml = convert_to("a: 1\n---\nb: 2\n", Format::Yaml, Format::Bson, &o).expect("converts").text;
+    assert_eq!(yaml, two, "the same documents");
+    let again = convert_to(&two, Format::Bson, Format::Bson, &o).expect("converts").text;
+    assert_eq!(again, two);
+    assert_eq!(
+        convert_to("[{\"a\":1}]", Format::Json, Format::Bson, &o).expect("converts").text,
+        convert_to("{\"a\":1}", Format::Json, Format::Bson, &o).expect("converts").text
+    );
+    // A document that is not a document is refused, without a place in text that was not the input.
+    let e = convert_to("[1, 2]", Format::Json, Format::Bson, &o).expect_err("not documents");
+    assert_eq!(e.offset, None);
+    // Repeated names are kept (BSON allows them) where JSON would keep the first only.
+    let repeated = convert_to("{\"a\":1,\"a\":2}", Format::Json, Format::Bson, &o).expect("converts");
+    assert_eq!(repeated.text.matches("\"a\"").count(), 2, "{}", repeated.text);
+    let json = convert_to("{\"a\":1,\"a\":2}", Format::Json, Format::Json, &o).expect("converts");
+    assert!(json.text.matches("\"a\"").count() == 1 && json.warnings.iter().any(|w| w.contains("more than once")), "{json:?}");
+}
+
+#[test]
+fn quotes_that_belong_to_values_and_keys_are_kept() {
+    let o = ConvertOptions::default();
+    let attribute =
+        convert_to("<r t='\"q\"' u=\"it's\"/>", Format::Xml, Format::Json, &ConvertOptions { indent: None, ..o.clone() }).expect("converts").text;
+    assert_eq!(attribute, r#"{"r":{"@t":"\"q\"","@u":"it's"}}"#);
+    let standard = ConvertOptions { standard_mapping: true, indent: None, ..o };
+    for key in ["a'", "'a", "\"q\"", "a'b", "tab\there", "line\nbreak", "cr\rhere"] {
+        let json = format!("{{{}:1}}", serde_json::to_string(key).expect("json"));
+        let xml = convert_to(&json, Format::Json, Format::Xml, &standard).expect("converts").text;
+        let back = convert_to(&xml, Format::Xml, Format::Json, &standard).expect("converts").text;
+        assert_eq!(back, format!("{{{}:1}}", serde_json::to_string(key).expect("json")), "{key:?} -> {xml}");
+    }
+}
+
+#[test]
+fn the_standard_mapping_refuses_what_is_not_it() {
+    let o = ConvertOptions { standard_mapping: true, ..ConvertOptions::default() };
+    let ns = "xmlns=\"http://www.w3.org/2005/xpath-functions\"";
+    let refused = [
+        (format!("<null {ns}>garbage</null>"), "must be empty"),
+        (format!("<null {ns}><x/></null>"), "cannot contain elements"),
+        (format!("<string {ns}><x/></string>"), "cannot contain elements"),
+        (format!("<number {ns}><x/></number>"), "cannot contain elements"),
+        (format!("<array {ns}>text<string>a</string></array>"), "cannot contain text"),
+        (format!("<map {ns}>text</map>"), "cannot contain text"),
+        ("<map xmlns=\"urn:other\"/>".to_owned(), "namespace"),
+        ("<map/>".to_owned(), "namespace"),
+        (format!("<number {ns}>01</number>"), "not a number"),
+        (format!("<number {ns}>NaN</number>"), "not a number"),
+        (format!("<number {ns}>.5</number>"), "not a number"),
+    ];
+    for (xml, why) in refused {
+        let e = convert_to(&xml, Format::Xml, Format::Json, &o).expect_err(&xml);
+        assert!(e.message.contains(why), "{xml}: {e}");
+    }
+    // A prefix works as the default namespace does, and white space between the elements of a container is fine.
+    let prefixed = "<f:array xmlns:f=\"http://www.w3.org/2005/xpath-functions\">\n <f:string>a</f:string>\n</f:array>";
+    assert_eq!(convert_to(prefixed, Format::Xml, Format::Json, &ConvertOptions { indent: None, ..o.clone() }).expect("converts").text, "[\"a\"]");
+    // A character XML cannot hold is not dropped: the mapping is lossless, so it is refused.
+    let e = convert_to("\"a\\u0001b\"", Format::Json, Format::Xml, &o).expect_err("U+0001");
+    assert!(e.message.contains("U+0001"), "{e}");
+    let repeated = convert_to("{\"a\":1,\"a\":2}", Format::Json, Format::Xml, &o).expect("converts");
+    assert!(repeated.warnings.iter().any(|w| w.contains("more than once")), "{repeated:?}");
+}
+
+#[test]
+fn numbers_are_written_the_json_way_and_never_rounded() {
+    let o = ConvertOptions { indent: None, ..ConvertOptions::default() };
+    for (from, text, expected) in [
+        (Format::Json, "{\"a\": .5}", "{\"a\":0.5}"),
+        (Format::Json, "{\"a\": 5.}", "{\"a\":5}"),
+        (Format::Json, "{\"a\": +1}", "{\"a\":1}"),
+        (Format::Json, "{\"a\": -.5e+3}", "{\"a\":-0.5e3}"),
+        (Format::Json, "{\"a\": 1e400}", "{\"a\":1e400}"),
+        (Format::Json, "{\"a\": 123456789012345678901234567890}", "{\"a\":123456789012345678901234567890}"),
+        (Format::Json, "{\"a\": 0x10}", "{\"a\":16}"),
+        (Format::Yaml, "a: 007\n", "{\"a\":7}"),
+        (Format::Yaml, "a: -0010\n", "{\"a\":-10}"),
+    ] {
+        assert_eq!(convert_to(text, from, Format::Json, &o).expect(text).text, expected, "{text}");
+    }
+    assert!(convert_to("{\"a\": NaN}", Format::Json, Format::Json, &o).is_err(), "JSON has no NaN");
+    // All the spellings of NaN are .nan in YAML, and read back as it.
+    for nan in ["NaN", "+NaN", "-NaN"] {
+        let yaml = convert_to(&format!("{{\"a\": {nan}}}"), Format::Json, Format::Yaml, &o).expect(nan).text;
+        assert_eq!(yaml, "a: .nan\n", "{nan}");
+    }
+}
+
+#[test]
+fn json_lines_are_a_list_and_indentation_is_bounded() {
+    let lines = ConvertOptions { json_lines: true, indent: None, ..ConvertOptions::default() };
+    assert_eq!(convert_to("{\"a\":1}\n\n{\"b\":2}\n", Format::Json, Format::Json, &lines).expect("converts").text, "[{\"a\":1},{\"b\":2}]");
+    assert!(convert_to("{\"a\":1}\n{\"b\":", Format::Json, Format::Json, &lines).is_err());
+    assert!(
+        convert_to("{\"a\":1}\n{\"b\":2}\n", Format::Json, Format::Json, &ConvertOptions::default()).is_err(),
+        "two values are not one JSON text"
+    );
+    // An enormous indentation is a bounded one.
+    let huge = ConvertOptions { indent: Some(usize::MAX), ..ConvertOptions::default() };
+    for to in [Format::Json, Format::Xml] {
+        for standard in [false, true] {
+            let o = ConvertOptions { standard_mapping: standard, ..huge.clone() };
+            let done = convert_to("{\"a\":{\"b\":[1,2]}}", Format::Json, to, &o).expect("converts").text;
+            assert!(done.len() < 1000, "{} bytes", done.len());
+        }
+    }
+}
+
+#[test]
+fn what_xml_cannot_hold_or_cannot_say_is_a_warning_or_a_refusal() {
+    let o = ConvertOptions::default();
+    let controls = convert_to("{\"a\": \"x\\u0001y\"}", Format::Json, Format::Xml, &o).expect("converts");
+    assert!(controls.text.contains("<a>xy</a>") && controls.warnings.iter().any(|w| w.contains("cannot hold")), "{controls:?}");
+    let attribute = convert_to("{\"a\": {\"@k\": \"x\\u0001y\"}}", Format::Json, Format::Xml, &o).expect("converts");
+    assert!(attribute.warnings.iter().any(|w| w.contains("cannot hold")), "{attribute:?}");
+    let e = convert_to("{\"a\": {\"#text\": [1]}}", Format::Json, Format::Xml, &o).expect_err("lost data");
+    assert!(e.message.contains("list or an object"), "{e}");
+    let repeated = convert_to("{\"a\": {\"@k\": 1, \"@k\": 2}}", Format::Json, Format::Xml, &o).expect("converts");
+    assert!(repeated.warnings.iter().any(|w| w.contains("more than once")), "{repeated:?}");
+    for lists in ["{\"a\": []}", "{\"a\": [1]}"] {
+        let w = convert_to(lists, Format::Json, Format::Xml, &o).expect("converts").warnings;
+        assert!(w.iter().any(|w| w.contains("fewer than two")), "{lists}: {w:?}");
+    }
+    assert!(!convert_to("{\"a\": [1, 2]}", Format::Json, Format::Xml, &o).expect("converts").warnings.iter().any(|w| w.contains("fewer")));
+    // `xmlns:a` is a declaration for attributes only; as the name of an element it is repaired.
+    let element = convert_to(
+        "{\"xmlns:a\": 1}",
+        Format::Json,
+        Format::Xml,
+        &ConvertOptions { data_to_xml: xmlcraft_convert::DataToXml { declaration: false, ..Default::default() }, ..o.clone() },
+    )
+    .expect("converts");
+    assert!(element.text.contains("<xmlns_a>") && element.warnings.iter().any(|w| w.contains("not a name")), "{element:?}");
+}
+
+#[test]
+fn bson_types_are_a_warning_only_when_there_were_some() {
+    let o = ConvertOptions::default();
+    assert!(convert_to("{\"a\": {\"b\": 1}}", Format::Bson, Format::Json, &o).expect("converts").warnings.is_empty());
+    let number = convert_to("{\"a\": {\"$numberInt\": \"1\"}}", Format::Bson, Format::Json, &o).expect("converts");
+    assert!(number.warnings.is_empty(), "a number is a number: {number:?}");
+    let typed = convert_to("{\"a\": {\"$oid\": \"0123456789abcdef01234567\"}}", Format::Bson, Format::Json, &o).expect("converts");
+    assert_eq!(typed.warnings.len(), 1, "{typed:?}");
+    // A decimal of any length is a number; a type marker with other members beside it is just an object.
+    let long = "1.2345678901234567890123";
+    assert_eq!(
+        convert_to(
+            &format!("{{\"a\": {{\"$numberDecimal\": \"{long}\"}}}}"),
+            Format::Bson,
+            Format::Json,
+            &ConvertOptions { indent: None, ..o.clone() }
+        )
+        .expect("converts")
+        .text,
+        format!("{{\"a\":{long}}}")
+    );
+    let kept = convert_to(
+        "{\"a\": {\"$undefined\": true, \"x\": 1}, \"b\": {\"$minKey\": 1, \"y\": 2}}",
+        Format::Json,
+        Format::Json,
+        &ConvertOptions { indent: None, ..o },
+    )
+    .expect("converts")
+    .text;
+    assert_eq!(kept, "{\"a\":{\"$undefined\":true,\"x\":1},\"b\":{\"$minKey\":1,\"y\":2}}");
+}
+
+#[test]
+fn writers_called_directly_bound_the_indentation_and_normalize_numbers() {
+    let parsed = parse("{\"a\":{\"b\":[1,2]}}", &Options::default()).root.expect("a value");
+    let mut warnings = Vec::new();
+    for indent in [Some(usize::MAX), Some(1_000_000)] {
+        assert!(json_text(&parsed, indent, &mut warnings).expect("writes").len() < 1000);
+        assert!(value_to_xml(&parsed, &DataToXml::default(), indent, &mut warnings).expect("writes").len() < 1000);
+        assert!(standard_to_xml(&parsed, indent, &mut warnings).expect("writes").len() < 1000);
+    }
+    // Numbers as the readers of YAML and JSON5 hand them over are written the JSON way.
+    let number = |text: &str| Value { span: 0..0, data: Data::Number(text.to_owned()) };
+    for (given, written) in [("007", "7"), ("-007", "-7"), ("000", "0"), ("0.50", "0.50"), ("00.5", "0.5"), ("+.5E+2", "0.5e2")] {
+        assert_eq!(json_text(&number(given), None, &mut warnings).expect(given), written, "{given}");
+    }
+    for bad in ["", "+", "-", ".", "e5", "1e", "1e+", "0x", "1.2.3", "1_000", "NaN", "Infinity"] {
+        assert!(json_text(&number(bad), None, &mut warnings).is_err(), "{bad:?}");
+    }
+}
+
+#[test]
+fn the_line_breaks_and_tabs_of_a_key_are_references_in_the_standard_mapping() {
+    let options = ConvertOptions { standard_mapping: true, indent: None, ..ConvertOptions::default() };
+    let xml = convert_to("{\"a\\nb\\tc\\rd\": 1}", Format::Json, Format::Xml, &options).expect("converts").text;
+    assert!(xml.contains("key=\"a&#10;b&#9;c&#13;d\""), "{xml}");
+}
+
+#[test]
+fn a_type_marker_with_other_members_beside_it_is_an_ordinary_object() {
+    let parsed =
+        parse("{\"a\": {\"$undefined\": true, \"x\": 1}, \"b\": {\"$minKey\": 1, \"y\": 2}, \"c\": {\"$undefined\": true}}", &Options::default())
+            .root
+            .expect("a value");
+    let plain = extended_to_plain(&parsed);
+    let mut warnings = Vec::new();
+    assert_eq!(
+        json_text(&plain, None, &mut warnings).expect("writes"),
+        "{\"a\":{\"$undefined\":true,\"x\":1},\"b\":{\"$minKey\":1,\"y\":2},\"c\":null}"
+    );
 }

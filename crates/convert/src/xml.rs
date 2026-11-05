@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use xmlcraft_json_syntax::{Data, Member, Value};
 use xmlcraft_syntax::{SyntaxKind, SyntaxNode, decode_references, is_name_char, is_name_start_char, parse};
 
-use crate::{ConvertError, error};
+use crate::{ConvertError, MAX_INDENT, error, unquote};
 
 /// Elements nested deeper than this are not read or written (the readers of XmlCraft stop long before).
 const MAX_DEPTH: usize = 256;
@@ -61,7 +61,7 @@ fn val(data: Data) -> Value {
 }
 
 /// `-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?`: the numbers JSON has.
-fn is_json_number(t: &str) -> bool {
+pub(crate) fn is_json_number(t: &str) -> bool {
     let body = t.strip_prefix('-').unwrap_or(t);
     let (mantissa, exponent) = match body.find(['e', 'E']) {
         Some(at) => (body.get(..at).unwrap_or_default(), body.get(at + 1..)),
@@ -114,7 +114,7 @@ impl Read<'_> {
             for attribute in tag.children().filter(|n| n.kind() == SyntaxKind::Attribute) {
                 let Some(attr_name) = name_of(&attribute) else { continue };
                 let raw = attribute.children().find(|n| n.kind() == SyntaxKind::AttrValue).map(|v| v.text().to_string()).unwrap_or_default();
-                let inner = raw.trim_matches(|c| c == '"' || c == '\'');
+                let inner = unquote(&raw);
                 members.push(Member {
                     key: format!("{}{attr_name}", self.options.attribute_prefix),
                     key_span: 0..0,
@@ -184,7 +184,8 @@ pub fn xml_to_value(text: &str, options: &XmlToData) -> Result<Value, ConvertErr
 
 // --- data to XML -------------------------------------------------------------------------------------------------------------
 
-fn escape(s: &str, attribute: bool) -> String {
+/// `s` as XML text (or an attribute value); a character XML cannot hold is left out and `dropped` set.
+fn escape(s: &str, attribute: bool, dropped: &mut bool) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
@@ -195,7 +196,7 @@ fn escape(s: &str, attribute: bool) -> String {
             '\n' if attribute => out.push_str("&#10;"),
             '\t' if attribute => out.push_str("&#9;"),
             '\r' => out.push_str("&#13;"),
-            c if !xmlcraft_syntax::is_xml_char(c) => {}
+            c if !xmlcraft_syntax::is_xml_char(c) => *dropped = true,
             c => out.push(c),
         }
     }
@@ -239,17 +240,20 @@ struct Write<'a> {
     out: String,
     /// The namespace prefixes declared by the elements around (`@xmlns:p`): a name may use only these, `xml` and `xmlns`.
     prefixes: Vec<String>,
+    /// A character XML cannot hold was left out.
+    dropped: bool,
 }
 
 impl Write<'_> {
     /// A name XML accepts: a prefix is kept only where it is declared; the rest is repaired, and said so once.
-    fn name(&mut self, name: &str) -> String {
+    fn name(&mut self, name: &str, attribute: bool) -> String {
         let out = match name.split_once(':') {
             Some((prefix, local))
                 if !prefix.is_empty()
                     && !local.is_empty()
                     && ncname(prefix) == prefix
-                    && (prefix == "xml" || prefix == "xmlns" || self.prefixes.iter().any(|p| p == prefix)) =>
+                    // (`xmlns:p` declares a prefix: only an attribute does.)
+                    && (prefix == "xml" || (prefix == "xmlns" && attribute) || self.prefixes.iter().any(|p| p == prefix)) =>
             {
                 format!("{prefix}:{}", ncname(local))
             }
@@ -278,6 +282,13 @@ impl Write<'_> {
         }
         match &value.data {
             Data::Array(items) => {
+                if items.len() < 2 {
+                    let note = "a list of fewer than two items is written as no element or as one, which reads back as nothing or as a single value"
+                        .to_owned();
+                    if !self.warnings.contains(&note) {
+                        self.warnings.push(note);
+                    }
+                }
                 for item in items {
                     // An array inside an array has no name of its own: its items are `item` elements in an element called `name`.
                     if matches!(item.data, Data::Array(_)) {
@@ -299,7 +310,7 @@ impl Write<'_> {
                         self.prefixes.push(p.to_owned());
                     }
                 }
-                let tag = self.name(name);
+                let tag = self.name(name, false);
                 self.pad_if(depth);
                 self.out.push('<');
                 self.out.push_str(&tag);
@@ -311,11 +322,20 @@ impl Write<'_> {
                         if matches!(m.value.data, Data::Array(_) | Data::Object(_)) {
                             return Err(error(None, format!("the attribute '{attr}' has a list or an object for a value")));
                         }
-                        let attr = self.name(attr);
+                        let attr = self.name(attr, true);
                         if seen.insert(attr.clone()) {
-                            self.out.push_str(&format!(" {attr}=\"{}\"", escape(&scalar_text(&m.value), true)));
+                            let value = escape(&scalar_text(&m.value), true, &mut self.dropped);
+                            self.out.push_str(&format!(" {attr}=\"{value}\""));
+                        } else {
+                            let note = format!("the attribute '{attr}' was given more than once; only the first is written");
+                            if !self.warnings.contains(&note) {
+                                self.warnings.push(note);
+                            }
                         }
                     } else if m.key == self.options.text_key {
+                        if matches!(m.value.data, Data::Array(_) | Data::Object(_)) {
+                            return Err(error(None, format!("the text '{}' has a list or an object for a value", m.key)));
+                        }
                         text.push_str(&scalar_text(&m.value));
                     } else {
                         children.push(m);
@@ -327,7 +347,8 @@ impl Write<'_> {
                     return Ok(());
                 }
                 self.out.push('>');
-                self.out.push_str(&escape(&text, false));
+                let escaped = escape(&text, false, &mut self.dropped);
+                self.out.push_str(&escaped);
                 let before = self.out.len();
                 for m in &children {
                     self.element(&m.key, &m.value, depth + 1)?;
@@ -340,13 +361,14 @@ impl Write<'_> {
                 Ok(())
             }
             scalar => {
-                let tag = self.name(name);
+                let tag = self.name(name, false);
                 self.pad_if(depth);
                 let text = scalar_text(&Value { span: 0..0, data: scalar.clone() });
                 if text.is_empty() {
                     self.out.push_str(&format!("<{tag}/>"));
                 } else {
-                    self.out.push_str(&format!("<{tag}>{}</{tag}>", escape(&text, false)));
+                    let escaped = escape(&text, false, &mut self.dropped);
+                    self.out.push_str(&format!("<{tag}>{escaped}</{tag}>"));
                 }
                 Ok(())
             }
@@ -364,7 +386,8 @@ impl Write<'_> {
 /// XML for data: an object with one member is that element; anything else is the content of `options.root`. `indent` is the spaces for
 /// each level (none: one line). Names XML does not accept are changed and said so in `warnings`.
 pub fn value_to_xml(value: &Value, options: &DataToXml, indent: Option<usize>, warnings: &mut Vec<String>) -> Result<String, ConvertError> {
-    let mut w = Write { options, indent, warnings, out: String::new(), prefixes: Vec::new() };
+    let indent = indent.map(|n| n.min(MAX_INDENT));
+    let mut w = Write { options, indent, warnings, out: String::new(), prefixes: Vec::new(), dropped: false };
     if options.declaration {
         w.out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     }
@@ -400,6 +423,9 @@ pub fn value_to_xml(value: &Value, options: &DataToXml, indent: Option<usize>, w
     }
     if indent.is_some() {
         w.out.push('\n');
+    }
+    if w.dropped {
+        w.warnings.push("characters that XML cannot hold (such as most control characters) were left out".to_owned());
     }
     Ok(w.out)
 }

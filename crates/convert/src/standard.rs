@@ -6,7 +6,8 @@
 use xmlcraft_json_syntax::{Data, Member, Value};
 use xmlcraft_syntax::{SyntaxKind, SyntaxNode, decode_references, parse};
 
-use crate::{ConvertError, error};
+use crate::xml::is_json_number;
+use crate::{ConvertError, MAX_INDENT, error, unquote};
 
 const NS: &str = "http://www.w3.org/2005/xpath-functions";
 const MAX_DEPTH: usize = 256;
@@ -15,7 +16,9 @@ fn val(data: Data) -> Value {
     Value { span: 0..0, data }
 }
 
-fn escape(s: &str, attribute: bool) -> String {
+/// `s` as XML text or attribute value. The mapping is lossless, so a character XML cannot hold is refused, and the line breaks and tabs
+/// of an attribute value are written as references (a parser would make spaces of them).
+fn escape(s: &str, attribute: bool) -> Result<String, ConvertError> {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
@@ -23,14 +26,30 @@ fn escape(s: &str, attribute: bool) -> String {
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '"' if attribute => out.push_str("&quot;"),
-            c if !xmlcraft_syntax::is_xml_char(c) => {}
+            '\n' if attribute => out.push_str("&#10;"),
+            '\t' if attribute => out.push_str("&#9;"),
+            '\r' => out.push_str("&#13;"),
+            c if !xmlcraft_syntax::is_xml_char(c) => {
+                return Err(error(
+                    None,
+                    format!("U+{:04X} cannot be written in XML, so the text cannot be converted without losing it", u32::from(c)),
+                ));
+            }
             c => out.push(c),
         }
     }
-    out
+    Ok(out)
 }
 
-fn write(value: &Value, key: Option<&str>, depth: usize, indent: Option<usize>, out: &mut String, root: bool) -> Result<(), ConvertError> {
+fn write(
+    value: &Value,
+    key: Option<&str>,
+    depth: usize,
+    indent: Option<usize>,
+    out: &mut String,
+    root: bool,
+    warnings: &mut Vec<String>,
+) -> Result<(), ConvertError> {
     if depth > MAX_DEPTH {
         return Err(error(None, "the data is nested too deeply"));
     }
@@ -40,27 +59,22 @@ fn write(value: &Value, key: Option<&str>, depth: usize, indent: Option<usize>, 
         }
         out.push_str(&" ".repeat(n.saturating_mul(depth)));
     }
-    let attrs = |key: Option<&str>| -> String {
-        let mut s = String::new();
-        if root {
-            s.push_str(&format!(" xmlns=\"{NS}\""));
-        }
-        if let Some(k) = key {
-            s.push_str(&format!(" key=\"{}\"", escape(k, true)));
-        }
-        s
-    };
-    let a = attrs(key);
+    let mut a = String::new();
+    if root {
+        a.push_str(&format!(" xmlns=\"{NS}\""));
+    }
+    if let Some(k) = key {
+        a.push_str(&format!(" key=\"{}\"", escape(k, true)?));
+    }
     match &value.data {
         Data::Null => out.push_str(&format!("<null{a}/>")),
         Data::Bool(b) => out.push_str(&format!("<boolean{a}>{b}</boolean>")),
         Data::Number(n) => {
-            if !n.parse::<f64>().is_ok_and(f64::is_finite) {
-                return Err(error(None, format!("{n} is a number JSON cannot hold")));
-            }
-            out.push_str(&format!("<number{a}>{}</number>", n.strip_prefix('+').unwrap_or(n)));
+            // The number is written the JSON way (what JSON5 and YAML allow beyond JSON is not XML Schema's either).
+            let text = crate::write::json_number(n).ok_or_else(|| error(None, format!("{n} is a number JSON cannot hold")))?;
+            out.push_str(&format!("<number{a}>{text}</number>"));
         }
-        Data::String(s) => out.push_str(&format!("<string{a}>{}</string>", escape(s, false))),
+        Data::String(s) => out.push_str(&format!("<string{a}>{}</string>", escape(s, false)?)),
         Data::Array(items) => {
             if items.is_empty() {
                 out.push_str(&format!("<array{a}/>"));
@@ -68,7 +82,7 @@ fn write(value: &Value, key: Option<&str>, depth: usize, indent: Option<usize>, 
             }
             out.push_str(&format!("<array{a}>"));
             for item in items {
-                write(item, None, depth + 1, indent, out, false)?;
+                write(item, None, depth + 1, indent, out, false, warnings)?;
             }
             if let Some(n) = indent {
                 out.push('\n');
@@ -85,7 +99,12 @@ fn write(value: &Value, key: Option<&str>, depth: usize, indent: Option<usize>, 
             let mut seen = std::collections::HashSet::new();
             for m in members {
                 if seen.insert(m.key.as_str()) {
-                    write(&m.value, Some(&m.key), depth + 1, indent, out, false)?;
+                    write(&m.value, Some(&m.key), depth + 1, indent, out, false, warnings)?;
+                } else {
+                    let note = format!("the name '{}' was used more than once in an object; only the first is written", m.key);
+                    if !warnings.contains(&note) {
+                        warnings.push(note);
+                    }
                 }
             }
             if let Some(n) = indent {
@@ -100,9 +119,10 @@ fn write(value: &Value, key: Option<&str>, depth: usize, indent: Option<usize>, 
 
 /// The standard XML for a JSON value: the element in the namespace of the XPath functions, with `key` attributes. Duplicate names in an
 /// object are not allowed by the mapping: the first stays.
-pub fn standard_to_xml(value: &Value, indent: Option<usize>, _warnings: &mut Vec<String>) -> Result<String, ConvertError> {
+pub fn standard_to_xml(value: &Value, indent: Option<usize>, warnings: &mut Vec<String>) -> Result<String, ConvertError> {
+    let indent = indent.map(|n| n.min(MAX_INDENT));
     let mut out = String::new();
-    write(value, None, 0, indent, &mut out, true)?;
+    write(value, None, 0, indent, &mut out, true, warnings)?;
     if indent.is_some() {
         out.push('\n');
     }
@@ -114,7 +134,7 @@ fn attribute(tag: &SyntaxNode, name: &str) -> Option<String> {
         let attr_name = a.children_with_tokens().filter_map(|c| c.into_token()).find(|t| t.kind() == SyntaxKind::Name)?;
         (attr_name.text() == name).then(|| {
             let raw = a.children().find(|n| n.kind() == SyntaxKind::AttrValue).map(|v| v.text().to_string()).unwrap_or_default();
-            decode_references(raw.trim_matches(|c| c == '"' || c == '\''))
+            decode_references(unquote(&raw))
         })
     })
 }
@@ -126,12 +146,29 @@ fn local(element: &SyntaxNode) -> Option<(String, SyntaxNode)> {
     Some((text.rsplit_once(':').map_or(text, |(_, l)| l).to_owned(), tag))
 }
 
+/// The namespace the name of `element` is in, by the declarations of the element and those around it.
+fn namespace_of(element: &SyntaxNode) -> Option<String> {
+    let tag = element.children().find(|n| n.kind() == SyntaxKind::StartTag)?;
+    let name = tag.children_with_tokens().filter_map(|c| c.into_token()).find(|t| t.kind() == SyntaxKind::Name)?;
+    let declaration = match name.text().split_once(':') {
+        Some((prefix, _)) => format!("xmlns:{prefix}"),
+        None => "xmlns".to_owned(),
+    };
+    element
+        .ancestors()
+        .filter(|n| n.kind() == SyntaxKind::Element)
+        .find_map(|e| attribute(&e.children().find(|n| n.kind() == SyntaxKind::StartTag)?, &declaration))
+}
+
 fn read(element: &SyntaxNode, depth: usize) -> Result<Value, ConvertError> {
     let at = Some(usize::from(element.text_range().start()));
     if depth > MAX_DEPTH {
         return Err(error(at, "elements are nested too deeply"));
     }
     let (name, _) = local(element).ok_or_else(|| error(at, "an element has no name"))?;
+    if namespace_of(element).as_deref() != Some(NS) {
+        return Err(error(at, format!("<{name}> is not in the namespace {NS} of the XPath 3.1 JSON mapping")));
+    }
     let text: String = element
         .children_with_tokens()
         .filter_map(|c| match c {
@@ -149,6 +186,17 @@ fn read(element: &SyntaxNode, depth: usize) -> Result<Value, ConvertError> {
         })
         .collect();
     let children: Vec<SyntaxNode> = element.children().filter(|n| n.kind() == SyntaxKind::Element).collect();
+    // The leaves have text and no elements (a null has neither); the containers have elements and no text but white space.
+    let is_container = matches!(name.as_str(), "array" | "map");
+    if !is_container && let Some(child) = children.first() {
+        return Err(error(Some(usize::from(child.text_range().start())), format!("<{name}> cannot contain elements")));
+    }
+    if is_container && !text.trim().is_empty() {
+        return Err(error(at, format!("<{name}> cannot contain text")));
+    }
+    if name == "null" && !text.trim().is_empty() {
+        return Err(error(at, "<null> must be empty"));
+    }
     match name.as_str() {
         "null" => Ok(val(Data::Null)),
         "boolean" => match text.trim() {
@@ -158,11 +206,7 @@ fn read(element: &SyntaxNode, depth: usize) -> Result<Value, ConvertError> {
         },
         "number" => {
             let t = text.trim();
-            if t.parse::<f64>().is_ok_and(f64::is_finite) {
-                Ok(val(Data::Number(t.to_owned())))
-            } else {
-                Err(error(at, format!("'{t}' is not a number")))
-            }
+            if is_json_number(t) { Ok(val(Data::Number(t.to_owned()))) } else { Err(error(at, format!("'{t}' is not a number"))) }
         }
         "string" => Ok(val(Data::String(text))),
         "array" => children.iter().map(|c| read(c, depth + 1)).collect::<Result<Vec<_>, _>>().map(|items| val(Data::Array(items))),

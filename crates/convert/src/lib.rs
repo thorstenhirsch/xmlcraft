@@ -79,6 +79,20 @@ fn error(offset: Option<usize>, message: impl Into<String>) -> ConvertError {
     ConvertError { offset, message: message.into() }
 }
 
+/// The most spaces of indentation a writer uses for a level (more is no more readable, and an input-sized number must not decide how
+/// much is allocated).
+pub(crate) const MAX_INDENT: usize = 16;
+
+/// The value of a quoted attribute value as the syntax tree keeps it (quotes included): without the one pair of quotes around it, and
+/// not without the quotes that belong to the value.
+pub(crate) fn unquote(raw: &str) -> &str {
+    let mut chars = raw.chars();
+    match (chars.next(), chars.next_back()) {
+        (Some(first), Some(last)) if (first == '"' || first == '\'') && first == last => raw.get(1..raw.len() - 1).unwrap_or_default(),
+        _ => raw,
+    }
+}
+
 /// How to convert.
 #[derive(Clone, Debug)]
 pub struct ConvertOptions {
@@ -86,15 +100,17 @@ pub struct ConvertOptions {
     pub xml_to_data: XmlToData,
     /// Data written as XML.
     pub data_to_xml: DataToXml,
-    /// Spaces of indentation in the output (`None`: compact JSON; YAML and XML are always indented).
+    /// Spaces of indentation in the output, at most 16 (`None`: JSON and XML on one line; YAML is always indented).
     pub indent: Option<usize>,
+    /// JSON is read as JSON Lines: one value to a line, together an array.
+    pub json_lines: bool,
     /// Use the standard `fn:json-to-xml` mapping for XML to and from JSON instead of the natural one.
     pub standard_mapping: bool,
 }
 
 impl Default for ConvertOptions {
     fn default() -> Self {
-        Self { xml_to_data: XmlToData::default(), data_to_xml: DataToXml::default(), indent: Some(2), standard_mapping: false }
+        Self { xml_to_data: XmlToData::default(), data_to_xml: DataToXml::default(), indent: Some(2), json_lines: false, standard_mapping: false }
     }
 }
 
@@ -111,6 +127,16 @@ pub fn read_value(text: &str, from: Format, options: &ConvertOptions) -> Result<
     match from {
         Format::Xml if options.standard_mapping => standard_to_value(text),
         Format::Xml => xml_to_value(text, &options.xml_to_data),
+        Format::Json if options.json_lines => {
+            let mut items = Vec::new();
+            for (_, read) in xmlcraft_json_syntax::parse_lines(text, &JsonOptions { dialect: Dialect::Json5, ..JsonOptions::default() }) {
+                if let Some(d) = read.diagnostics.iter().find(|d| d.severity() == Severity::Error) {
+                    return Err(error(Some(d.span.start), d.message()));
+                }
+                items.extend(read.root);
+            }
+            Ok(Value { span: 0..0, data: xmlcraft_json_syntax::Data::Array(items) })
+        }
         Format::Json => {
             let read = parse(text, &JsonOptions { dialect: Dialect::Json5, ..JsonOptions::default() });
             if let Some(d) = read.diagnostics.iter().find(|d| d.severity() == Severity::Error) {
@@ -158,22 +184,35 @@ fn one_or_all(mut documents: Vec<Value>) -> Value {
 /// Convert `text` from one format to another.
 pub fn convert(text: &str, from: Format, to: Format, options: &ConvertOptions) -> Result<Converted, ConvertError> {
     let mut value = read_value(text, from, options)?;
+    let indent = options.indent.map(|n| n.min(MAX_INDENT));
     let mut warnings = Vec::new();
     // Out of BSON's text into a format that has no such types, the typed values become plain ones.
     if from == Format::Bson && to != Format::Bson {
-        value = extended_to_plain(&value);
-        warnings.push("BSON types such as ObjectId, dates and 64-bit integers were written as plain values".to_owned());
+        let (plain, changed) = extended::extended_to_plain_noting(&value);
+        if changed {
+            warnings.push("BSON types such as ObjectId, dates and 64-bit integers were written as plain values".to_owned());
+        }
+        value = plain;
     }
     let out = match to {
-        Format::Json => json_text(&value, options.indent, &mut warnings)?,
+        Format::Json => json_text(&value, indent, &mut warnings)?,
         Format::Yaml => yaml_text(&value, &mut warnings),
-        Format::Xml if options.standard_mapping => standard_to_xml(&value, options.indent, &mut warnings)?,
-        Format::Xml => value_to_xml(&value, &options.data_to_xml, options.indent, &mut warnings)?,
-        // The text of BSON: the data as Extended JSON, which any JSON is (plain numbers are int32, int64 or double by their size).
+        Format::Xml if options.standard_mapping => standard_to_xml(&value, indent, &mut warnings)?,
+        Format::Xml => value_to_xml(&value, &options.data_to_xml, indent, &mut warnings)?,
+        // The text of BSON: the data as Extended JSON, which any JSON is (plain numbers are int32, int64 or double by their size). A list
+        // is several documents, one to a line; repeated names stay (BSON documents may have them).
         Format::Bson => {
-            let json = json_text(&value, None, &mut warnings)?;
-            let documents = xmlcraft_bson::from_text(&json)
-                .map_err(|errors| error(errors.first().map(|e| e.offset), errors.first().map(|e| e.message.clone()).unwrap_or_default()))?;
+            let documents: Vec<&Value> = match &value.data {
+                xmlcraft_json_syntax::Data::Array(items) => items.iter().collect(),
+                _ => vec![&value],
+            };
+            let mut lines = Vec::with_capacity(documents.len());
+            for document in documents {
+                lines.push(write::json_text_all(document, None, &mut warnings)?);
+            }
+            // (The offsets of a refusal are those of the text just written, not of the input: they are not given.)
+            let documents = xmlcraft_bson::from_text(&lines.join("\n"))
+                .map_err(|errors| error(None, errors.first().map(|e| e.message.clone()).unwrap_or_default()))?;
             xmlcraft_bson::to_text(&documents, true).map_err(|e| error(None, e.message))?.0
         }
     };

@@ -5,22 +5,29 @@
 
 use serde_json::{Value, json};
 use xmlcraft_convert::{ConvertOptions, Format, convert};
-use xmlcraft_engine::language::Language;
+use xmlcraft_engine::language::{JsonFlavor, Language};
 
-use crate::documents::{fail, json_result, source, source_properties};
+use crate::documents::{Source, fail, json_result, source, source_properties};
 use crate::tools::ToolDef;
 use crate::{Automation, Content, Result, ToolError};
+
+/// The most bytes of a document this tool converts, and of the text it returns.
+const MAX_BYTES: usize = 16 * 1024 * 1024;
 
 pub(crate) fn tools() -> Vec<ToolDef> {
     let mut properties = source_properties();
     if let Some(map) = properties.as_object_mut() {
         let formats = json!(["xml", "json", "yaml", "bson"]);
         map.insert(
+            "text".into(),
+            json!({ "type": "string", "description": "The text itself, written in the format `from` says (`from` is then required)" }),
+        );
+        map.insert(
             "from".into(),
-            json!({ "type": "string", "enum": formats, "description": "What the source is written in. Optional for an open document or a file (its name tells), required for `text`" }),
+            json!({ "type": "string", "enum": ["xml", "json", "jsonl", "yaml", "bson"], "description": "What the source is written in (jsonl: JSON Lines, read as a list). Optional for an open document or a file (its name tells), required for `text`" }),
         );
         map.insert("to".into(), json!({ "type": "string", "enum": formats, "description": "What to convert to" }));
-        map.insert("indent".into(), json!({ "type": "integer", "minimum": 0, "maximum": 16, "description": "Spaces of indentation (default 2; 0 writes compact JSON; YAML and XML are always indented)" }));
+        map.insert("indent".into(), json!({ "type": "integer", "minimum": 0, "maximum": 16, "description": "Spaces of indentation, up to 16 (default 2; 0 writes JSON and XML on one line; YAML is always indented)" }));
         map.insert(
             "standard_mapping".into(),
             json!({ "type": "boolean", "description": "Use the XPath 3.1 `fn:json-to-xml` mapping between XML and JSON (lossless for JSON) instead of the natural one (elements as members, attributes as `@name`, text as `#text`)" }),
@@ -39,14 +46,14 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             "item".into(),
             json!({ "type": "string", "description": "Data to XML: the element of array items that need a name (default item)" }),
         );
-        map.insert("declaration".into(), json!({ "type": "boolean", "description": "Data to XML: write the XML declaration (default true)" }));
+        map.insert("declaration".into(), json!({ "type": "boolean", "description": "Data to XML, natural mapping: write the XML declaration (default true; the standard mapping writes none)" }));
     }
     vec![ToolDef {
         name: "data_convert",
         title: "Convert between XML, JSON, YAML and BSON",
         description: "Convert a document to another of the formats XML, JSON, YAML and BSON (the Extended JSON text). Give an open document (`id`), a file \
                       (`path`) or `text` (with `from`), and `to`. Returns `text` and `warnings`: what the target could not hold exactly (NaN in JSON, the \
-                      types of BSON in other formats, YAML anchors that were expanded). Between data formats the value tree is kept; XML becomes data by \
+                      types of BSON in other formats, repeated names, characters XML cannot hold). A JSON Lines file is read as a list of its values. Between data formats the value tree is kept; XML becomes data by \
                       the natural mapping or, with `standard_mapping`, by the XPath 3.1 one. Nothing is written to disk: open the text with doc_new or \
                       save it with doc_save.",
         input_schema: json!({ "type": "object", "properties": properties, "required": ["to"], "additionalProperties": false }),
@@ -70,6 +77,19 @@ fn format_of(language: Language) -> Format {
     match language {
         Language::Xml => Format::Xml,
         Language::Json(_) => Format::Json,
+        Language::Yaml => Format::Yaml,
+        Language::Bson => Format::Bson,
+    }
+}
+
+/// What a source is written in when `from` does not say: a file by its extension (the editor's language does not know every one:
+/// a file that is not any other language is XML there), an open document by its language.
+fn format_of_source(s: &Source) -> Format {
+    let extension = s.path.as_ref().and_then(|p| p.extension()).map(|e| e.to_string_lossy().to_ascii_lowercase());
+    match extension.as_deref() {
+        Some("yaml" | "yml") => Format::Yaml,
+        Some("bson") => Format::Bson,
+        _ => format_of(s.language),
     }
 }
 
@@ -124,12 +144,20 @@ fn data_convert(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let Some(to) = format_arg(args, "to")? else { return Err(ToolError::InvalidArgs("`to` is required".into())) };
     let options = options_of(args)?;
     let s = source(a, args)?;
-    let from = match (format_arg(args, "from")?, args.get("text").is_some()) {
+    if s.text.len() > MAX_BYTES {
+        return fail(format!("the document is {} bytes; at most {MAX_BYTES} are converted", s.text.len()));
+    }
+    let jsonl = args.get("from").and_then(Value::as_str) == Some("jsonl");
+    let from = match (if jsonl { Some(Format::Json) } else { format_arg(args, "from")? }, args.get("text").is_some()) {
         (Some(from), _) => from,
-        (None, false) => format_of(s.language),
+        (None, false) => format_of_source(&s),
         (None, true) => return Err(ToolError::InvalidArgs("`from` is required with `text`".into())),
     };
+    // JSON Lines (a file or an open document of that language) are read as a list of values.
+    let mut options = options;
+    options.json_lines = from == Format::Json && (jsonl || (args.get("text").is_none() && s.language == Language::Json(JsonFlavor::Lines)));
     match convert(&s.text, from, to, &options) {
+        Ok(done) if done.text.len() > MAX_BYTES => fail(format!("the result is {} bytes; at most {MAX_BYTES} are returned", done.text.len())),
         Ok(done) => json_result(json!({ "text": done.text, "warnings": done.warnings, "from": from.name(), "to": to.name(), "lossy": s.lossy })),
         Err(e) => fail(format!("the {} text cannot be read or written as {}: {e}", from.name(), to.name())),
     }

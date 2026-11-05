@@ -2,7 +2,7 @@
 
 use xmlcraft_json_syntax::{Data, Value};
 
-use crate::{ConvertError, error};
+use crate::{ConvertError, MAX_INDENT, error};
 
 fn quote(s: &str, out: &mut String) {
     out.push('"');
@@ -23,25 +23,73 @@ fn quote(s: &str, out: &mut String) {
 /// JSON text. `indent` is the spaces for each level, or none for one compact line. A number JSON cannot hold (`NaN`, `Infinity`) is an
 /// error; a JSON5 number such as `+1` or `0x10` is written the way JSON writes it.
 pub fn json_text(value: &Value, indent: Option<usize>, warnings: &mut Vec<String>) -> Result<String, ConvertError> {
+    json_text_with(value, indent, warnings, false)
+}
+
+/// [`json_text`] that keeps every member of an object whose name is repeated (BSON documents may have such, and Extended JSON keeps
+/// them) instead of writing only the first.
+pub(crate) fn json_text_all(value: &Value, indent: Option<usize>, warnings: &mut Vec<String>) -> Result<String, ConvertError> {
+    json_text_with(value, indent, warnings, true)
+}
+
+fn json_text_with(value: &Value, indent: Option<usize>, warnings: &mut Vec<String>, keep_repeats: bool) -> Result<String, ConvertError> {
+    let indent = indent.map(|n| n.min(MAX_INDENT));
     let mut out = String::new();
-    json(value, indent, 0, &mut out, warnings)?;
+    json(value, indent, 0, &mut out, warnings, keep_repeats)?;
     if indent.is_some() {
         out.push('\n');
     }
     Ok(out)
 }
 
-/// A number as JSON writes it, or none for `NaN` and the infinities.
-fn json_number(text: &str) -> Option<String> {
-    if let Some(hex) = text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
-        return u128::from_str_radix(hex, 16).ok().map(|v| v.to_string());
+/// A number as JSON writes it, or none for `NaN`, the infinities and what is not a number. What JSON5 and YAML allow beyond JSON is
+/// written the JSON way: no `+`, `.5` as `0.5`, `5.` as `5`, no leading zeros, hexadecimal in decimal. The digits are never rounded: a
+/// number too large for a double stays as it is.
+pub(crate) fn json_number(text: &str) -> Option<String> {
+    let (negative, body) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text.strip_prefix('+').unwrap_or(text)),
+    };
+    let sign = if negative { "-" } else { "" };
+    if let Some(hex) = body.strip_prefix("0x").or_else(|| body.strip_prefix("0X")) {
+        return u128::from_str_radix(hex, 16).ok().map(|v| format!("{sign}{v}"));
     }
-    let body = text.strip_prefix('+').unwrap_or(text);
-    let valid = body.parse::<f64>().is_ok_and(f64::is_finite) && !body.starts_with('.') && !body.ends_with('.') && !body.starts_with("-.");
-    valid.then(|| body.to_owned())
+    let (mantissa, exponent) = match body.find(['e', 'E']) {
+        Some(at) => (body.get(..at)?, Some(body.get(at + 1..)?)),
+        None => (body, None),
+    };
+    let digits = |s: &str| s.bytes().all(|b| b.is_ascii_digit());
+    let (int, frac) = mantissa.split_once('.').map_or((mantissa, None), |(i, f)| (i, Some(f)));
+    if !digits(int) || !frac.is_none_or(digits) || (int.is_empty() && frac.is_none_or(str::is_empty)) {
+        return None;
+    }
+    let exponent = match exponent {
+        None => String::new(),
+        Some(e) => {
+            let (esign, edigits) = match e.strip_prefix('-') {
+                Some(rest) => ("-", rest),
+                None => ("", e.strip_prefix('+').unwrap_or(e)),
+            };
+            if edigits.is_empty() || !digits(edigits) {
+                return None;
+            }
+            format!("e{esign}{edigits}")
+        }
+    };
+    let int = int.trim_start_matches('0');
+    let int = if int.is_empty() { "0" } else { int };
+    let frac = frac.filter(|f| !f.is_empty()).map(|f| format!(".{f}")).unwrap_or_default();
+    Some(format!("{sign}{int}{frac}{exponent}"))
 }
 
-fn json(value: &Value, indent: Option<usize>, level: usize, out: &mut String, warnings: &mut Vec<String>) -> Result<(), ConvertError> {
+fn json(
+    value: &Value,
+    indent: Option<usize>,
+    level: usize,
+    out: &mut String,
+    warnings: &mut Vec<String>,
+    keep_repeats: bool,
+) -> Result<(), ConvertError> {
     let pad = |n: usize| " ".repeat(indent.unwrap_or(0).saturating_mul(n));
     match &value.data {
         Data::Null => out.push_str("null"),
@@ -62,7 +110,7 @@ fn json(value: &Value, indent: Option<usize>, level: usize, out: &mut String, wa
                     out.push('\n');
                     out.push_str(&pad(level + 1));
                 }
-                json(item, indent, level + 1, out, warnings)?;
+                json(item, indent, level + 1, out, warnings, keep_repeats)?;
             }
             if indent.is_some() {
                 out.push('\n');
@@ -76,7 +124,7 @@ fn json(value: &Value, indent: Option<usize>, level: usize, out: &mut String, wa
             let mut seen = std::collections::HashSet::new();
             let mut first = true;
             for m in members {
-                if !seen.insert(m.key.as_str()) {
+                if !seen.insert(m.key.as_str()) && !keep_repeats {
                     let note = format!("the name '{}' was used more than once in an object; only the first is written", m.key);
                     if !warnings.contains(&note) {
                         warnings.push(note);
@@ -93,7 +141,7 @@ fn json(value: &Value, indent: Option<usize>, level: usize, out: &mut String, wa
                 }
                 quote(&m.key, out);
                 out.push_str(if indent.is_some() { ": " } else { ":" });
-                json(&m.value, indent, level + 1, out, warnings)?;
+                json(&m.value, indent, level + 1, out, warnings, keep_repeats)?;
             }
             if indent.is_some() {
                 out.push('\n');
@@ -166,7 +214,7 @@ fn scalar(value: &Value) -> String {
         Data::Number(n) => match n.as_str() {
             "Infinity" | "+Infinity" => ".inf".to_owned(),
             "-Infinity" => "-.inf".to_owned(),
-            "NaN" => ".nan".to_owned(),
+            "NaN" | "+NaN" | "-NaN" => ".nan".to_owned(),
             other => json_number(other).unwrap_or_else(|| other.to_owned()),
         },
         Data::String(s) if plain_ok(s) => s.clone(),

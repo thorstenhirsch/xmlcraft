@@ -76,5 +76,39 @@ fn a_file_is_read_by_its_name_inside_the_root_only() {
     let r = convert(&mut a, json!({ "id": opened["id"], "to": "yaml" })).expect("runs");
     assert_eq!(r["text"], "k: true\n");
     let err = convert(&mut a, json!({ "path": outside.path().join("s.json").to_str().expect("utf-8"), "to": "yaml" })).expect_err("outside the root");
-    assert!(err.to_string().contains("outside") || err.to_string().contains("root"), "{err}");
+    assert!(err.to_string().contains("outside the root"), "{err}");
+}
+
+#[test]
+fn files_are_read_by_their_extension_and_json_lines_are_a_list() {
+    let dir = tempfile::tempdir().expect("dir");
+    std::fs::write(dir.path().join("d.yaml"), "k: [1, 2]\n").expect("writes");
+    std::fs::write(dir.path().join("d.yml"), "k: v\n").expect("writes");
+    std::fs::write(dir.path().join("d.jsonl"), "{\"a\":1}\n{\"a\":2}\n").expect("writes");
+    std::fs::write(
+        dir.path().join("d.bson"),
+        xmlcraft_bson::write_all(&[xmlcraft_bson::Document { fields: vec![("n".into(), xmlcraft_bson::Bson::Int32(5))] }]).expect("writes"),
+    )
+    .expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    let yaml = convert(&mut a, json!({ "path": "d.yaml", "to": "json", "indent": 0 })).expect("runs");
+    assert_eq!((yaml["from"].as_str(), yaml["text"].as_str()), (Some("yaml"), Some("{\"k\":[1,2]}")), "{yaml}");
+    assert_eq!(convert(&mut a, json!({ "path": "d.yml", "to": "json", "indent": 0 })).expect("runs")["from"], "yaml");
+    let lines = convert(&mut a, json!({ "path": "d.jsonl", "to": "json", "indent": 0 })).expect("runs");
+    assert_eq!(lines["text"], "[{\"a\":1},{\"a\":2}]", "{lines}");
+    let text = convert(&mut a, json!({ "text": "{\"a\":1}\n{\"a\":2}\n", "from": "jsonl", "to": "yaml" })).expect("runs");
+    assert_eq!(text["text"], "- a: 1\n- a: 2\n");
+    let bson = convert(&mut a, json!({ "path": "d.bson", "to": "json", "indent": 0 })).expect("runs");
+    assert_eq!((bson["from"].as_str(), bson["text"].as_str()), (Some("bson"), Some("{\"n\":5}")), "{bson}");
+    // XML is on one line with no indentation.
+    let xml = convert(&mut a, json!({ "text": "{\"a\":{\"b\":1}}", "from": "json", "to": "xml", "indent": 0, "declaration": false })).expect("runs");
+    assert_eq!(xml["text"], "<a><b>1</b></a>");
+}
+
+#[test]
+fn a_huge_document_is_refused_not_converted() {
+    let mut a = Automation::new();
+    let huge = format!("[{}0]", "0,".repeat(9 * 1024 * 1024));
+    let e = convert(&mut a, json!({ "text": huge, "from": "json", "to": "yaml" })).expect_err("too large");
+    assert!(e.to_string().contains("at most"), "{e}");
 }

@@ -23,12 +23,30 @@ fn only<'a>(members: &'a [Member], key: &str) -> Option<&'a Value> {
 /// years allow, else the milliseconds), `$binary` by its base64 text, `$regularExpression` by `/pattern/options`, `$timestamp` by an
 /// object, `$undefined` by null. Other objects keep their members.
 pub fn extended_to_plain(value: &Value) -> Value {
+    extended_to_plain_noting(value).0
+}
+
+/// [`extended_to_plain`], and whether a value was replaced by one that cannot say what it was (not a number).
+pub(crate) fn extended_to_plain_noting(value: &Value) -> (Value, bool) {
+    let mut changed = false;
+    let out = plain(value, &mut changed);
+    (out, changed)
+}
+
+fn plain(value: &Value, changed: &mut bool) -> Value {
     match &value.data {
-        Data::Array(items) => Value { span: 0..0, data: Data::Array(items.iter().map(extended_to_plain).collect()) },
-        Data::Object(members) => typed(members).unwrap_or_else(|| Value {
-            span: 0..0,
-            data: Data::Object(members.iter().map(|m| Member { key: m.key.clone(), key_span: 0..0, value: extended_to_plain(&m.value) }).collect()),
-        }),
+        Data::Array(items) => Value { span: 0..0, data: Data::Array(items.iter().map(|v| plain(v, changed)).collect()) },
+        Data::Object(members) => match typed(members) {
+            Some(v) => {
+                // (Numbers are what the number types are in the other formats too; the other types are what is lost.)
+                *changed |= !matches!(v.data, Data::Number(_));
+                v
+            }
+            None => Value {
+                span: 0..0,
+                data: Data::Object(members.iter().map(|m| Member { key: m.key.clone(), key_span: 0..0, value: plain(&m.value, changed) }).collect()),
+            },
+        },
         other => Value { span: 0..0, data: other.clone() },
     }
 }
@@ -45,7 +63,7 @@ fn typed(members: &[Member]) -> Option<Value> {
         }
         "$numberDecimal" => {
             let s = text(only(members, first)?)?;
-            if s.parse::<f64>().is_ok_and(f64::is_finite) && s.len() <= 17 { plain_number(s) } else { string(s) }
+            if s.parse::<f64>().is_ok_and(f64::is_finite) { plain_number(s) } else { string(s) }
         }
         "$date" => match &only(members, first)?.data {
             Data::String(s) => string(s.clone()),
@@ -82,10 +100,17 @@ fn typed(members: &[Member]) -> Option<Value> {
             },
             _ => return None,
         },
-        "$undefined" => Value { span: 0..0, data: Data::Null },
-        "$minKey" | "$maxKey" => string(first),
+        // (Only the object that is nothing but this member stands for the value; another keeps its members.)
+        "$undefined" => {
+            only(members, first)?;
+            Value { span: 0..0, data: Data::Null }
+        }
+        "$minKey" | "$maxKey" => {
+            only(members, first)?;
+            string(first)
+        }
         "$dbPointer" => match &only(members, first)?.data {
-            Data::Object(inner) => extended_to_plain(&Value { span: 0..0, data: Data::Object(inner.clone()) }),
+            Data::Object(inner) => plain(&Value { span: 0..0, data: Data::Object(inner.clone()) }, &mut false),
             _ => return None,
         },
         _ => return None,
