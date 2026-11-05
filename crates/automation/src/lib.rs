@@ -27,6 +27,7 @@ mod schema;
 mod script;
 mod tools;
 mod validate;
+mod wsdl;
 mod xpath;
 
 #[cfg(not(target_arch = "wasm32"))]

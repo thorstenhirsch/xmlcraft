@@ -52,6 +52,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("validate", Class::Layer(4)),
     ("query", Class::Layer(4)),
     ("diff", Class::Layer(4)),
+    ("wsdl", Class::Layer(4)),
     ("infer", Class::Layer(4)),
     ("sample", Class::Layer(4)),
     ("format", Class::Layer(4)),
@@ -99,6 +100,8 @@ pub const SIDEWAYS: &[(&str, &str)] = &[
     // The YAML reader builds the value tree of the JSON reader (one tree for both) and reports with the shared diagnostics.
     ("yaml-syntax", "syntax"),
     ("yaml-syntax", "json-syntax"),
+    // A SOAP request is a sample made from the schemas of the description.
+    ("wsdl", "sample"),
     // Completion asks the validator for the context at the cursor.
     ("complete", "validate"),
     // Generators write their output through the formatter, and their tests validate it.
