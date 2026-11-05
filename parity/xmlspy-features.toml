@@ -1587,11 +1587,11 @@ title = "YAML editing with colouring and folding"
 area = "I"
 tier = "P1"
 milestone = "M5"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["xml_wellformed", "xml_outline", "xml_folds"]
+evidence = ["crates/engine/src/yaml_analysis.rs::the_outline_lists_keys_and_containers_and_the_folds_cover_their_lines", "crates/ui-egui/tests/yaml.rs::yaml_is_checked_as_yaml_outlined_and_offered_no_xml_tools", "crates/yaml-syntax/tests/reading.rs::aliases_become_copies_placed_at_the_alias_and_merge_keys_are_applied", "crates/yaml-syntax/tests/highlighting.rs::keys_values_dashes_and_comments_have_their_classes", "crates/yaml-syntax/tests/highlighting.rs::block_scalars_and_multi_line_quotes_carry_over_the_end_of_a_line", "crates/engine/src/yaml_analysis.rs::problems_are_the_readers_and_a_stream_of_documents_has_an_item_each", "crates/ui-egui/tests/yaml.rs::f8_on_yaml_checks_the_syntax_and_says_so", "crates/editor/src/typing.rs::yaml_gets_no_typing_aids", "crates/automation/tests/documents.rs::yaml_is_read_by_the_same_tools_as_xml_and_json"]
+notes = "`.yaml` and `.yml` documents are read by YAML 1.2 rules (`saphyr-parser`; aliases expanded under a bound, merge keys applied, core-schema scalars), with problems at their places, coloured (keys, strings, numbers, keywords, anchors and aliases, comments; block scalars and quoted scalars that go over lines), outlined (keys and the entries of lists that are containers, with a look at scalar values; a stream of documents has an item each) and folded (blocks and multi-line scalars). Nothing is typed for you and nothing is reformatted: YAML's white space is its structure. The tools xml_wellformed, xml_outline and xml_folds read it (`language` yaml for text). Still missing: completion and hover, validation against a schema in the window, formatting that keeps comments, key sorting."
 
 [[feature]]
 id = "json.yaml-validate"
