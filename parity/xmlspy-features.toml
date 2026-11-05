@@ -1689,10 +1689,10 @@ area = "J"
 tier = "P1"
 milestone = "M6"
 status = "partial"
-commands = []
+commands = ["file.compare"]
 tools = ["diff_compare"]
-evidence = ["crates/diff/tests/diff.rs::xml_differences_are_found_by_element_attribute_and_text", "crates/diff/tests/diff.rs::json_and_yaml_differences_are_json_pointers", "crates/diff/tests/diff.rs::lines_are_split_on_all_three_breaks_and_compared", "crates/diff/tests/diff.rs::a_unified_diff_has_hunks_with_context", "crates/diff/src/seq.rs::matches_are_a_longest_common_subsequence", "crates/automation/tests/diff.rs::files_and_open_documents_are_compared_inside_the_root_only"]
-notes = "The `xmlcraft-diff` crate and the `diff_compare` tool compare two documents (open, files inside the root, or text) line by line (with the words that differ in a changed line and a unified diff) or as trees: XML by element, attribute, text, comment and processing instruction, JSON and YAML by object, array and value, each difference with an XPath-like path or a JSON Pointer and its place in both texts. A JSON file can be compared with a YAML file. A text that cannot be read as a tree falls back to lines. Missing: the Compare window with the two texts side by side, moves are shown as a removal and an addition, and detection of a changed key attribute."
+evidence = ["crates/diff/tests/diff.rs::xml_differences_are_found_by_element_attribute_and_text", "crates/diff/tests/diff.rs::json_and_yaml_differences_are_json_pointers", "crates/diff/tests/diff.rs::lines_are_split_on_all_three_breaks_and_compared", "crates/diff/tests/diff.rs::a_unified_diff_has_hunks_with_context", "crates/diff/src/seq.rs::matches_are_a_longest_common_subsequence", "crates/automation/tests/diff.rs::files_and_open_documents_are_compared_inside_the_root_only", "crates/ui-egui/tests/compare.rs::two_documents_are_compared_and_a_click_selects_the_difference_in_the_first", "crates/ui-egui/tests/compare.rs::a_right_click_goes_to_the_place_in_the_second_document", "crates/engine/src/compare.rs::what_cannot_be_read_as_a_tree_is_compared_by_lines_and_says_so"]
+notes = "The `xmlcraft-diff` crate and the `diff_compare` tool compare two documents (open, files inside the root, or text) line by line (with the words that differ in a changed line and a unified diff) or as trees: XML by element, attribute, text, comment and processing instruction, JSON and YAML by object, array and value, each difference with an XPath-like path or a JSON Pointer and its place in both texts. A JSON file can be compared with a YAML file. A text that cannot be read as a tree falls back to lines. File > Compare Documents… compares the document being shown with another open one (as trees or by lines, with the ignore options, on a worker thread), lists the differences and takes a click to the place in the first document and a right click to the place in the second. Missing: the two texts side by side with the differences marked, files that are not open, moves are shown as a removal and an addition, and detection of a changed key attribute."
 
 [[feature]]
 id = "project.diff-directories"
@@ -2082,9 +2082,9 @@ area = "J"
 tier = "P2"
 milestone = "M6"
 status = "partial"
-commands = []
+commands = ["file.compare"]
 tools = ["diff_compare"]
-evidence = ["crates/diff/tests/diff.rs::white_space_case_and_blank_lines_can_be_ignored", "crates/diff/tests/diff.rs::white_space_comments_order_and_prefixes_are_options_in_xml", "crates/diff/tests/diff.rs::equal_elements_are_found_wherever_they_are_when_the_order_does_not_matter"]
+evidence = ["crates/diff/tests/diff.rs::white_space_case_and_blank_lines_can_be_ignored", "crates/diff/tests/diff.rs::white_space_comments_order_and_prefixes_are_options_in_xml", "crates/diff/tests/diff.rs::equal_elements_are_found_wherever_they_are_when_the_order_does_not_matter", "crates/ui-egui/tests/compare.rs::the_same_documents_say_so_and_an_ignore_option_makes_a_difference_go_away"]
 notes = "Options for lines (white space exact, at the ends, collapsed or none; case; blank lines) and for trees (the same white space and case for text, comments, processing instructions, the order of the children of an element, numbers by value, namespace prefixes with the namespaces still compared). The order of the members of an object never matters. Missing: ignoring chosen attributes or elements by name, and XML declarations and DOCTYPEs (not part of the tree)."
 
 [[feature]]
