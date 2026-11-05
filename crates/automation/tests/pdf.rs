@@ -98,3 +98,90 @@ fn text_is_returned_for_text_files_only_and_not_beyond_the_size_a_response_can_c
     assert!(big.get("text").is_none() && big["text_omitted"].as_str().is_some_and(|m| m.contains("larger")), "{big}");
     assert_eq!(big["bytes"].as_u64(), Some(huge.len() as u64));
 }
+
+fn replace(a: &mut Automation, args: Value) -> Result<Value, ToolError> {
+    a.call("pdf_replace_file", &args).map(|content| match content.into_iter().next() {
+        Some(Content::Json(v)) => v,
+        None => Value::Null,
+    })
+}
+
+#[test]
+fn the_embedded_xml_is_replaced_in_a_copy_and_the_original_is_not_touched() {
+    let dir = tempfile::tempdir().expect("dir");
+    let original = pdf("factur-x.xml", "text#2Fxml", b"<old/>");
+    std::fs::write(dir.path().join("i.pdf"), &original).expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    let r = replace(&mut a, json!({ "path": "i.pdf", "text": "<new>ä</new>", "output": "o.pdf" })).expect("runs");
+    assert_eq!((r["file"].as_str(), r["added"].as_u64().is_some_and(|n| n > 0)), (Some("factur-x.xml"), true), "{r}");
+    assert_eq!(std::fs::read(dir.path().join("i.pdf")).expect("reads"), original, "the input is as it was");
+    let written = std::fs::read(dir.path().join("o.pdf")).expect("reads");
+    assert_eq!(&written[..original.len()], &original[..], "the original bytes are the beginning of the copy");
+    let read = files(&mut a, json!({ "path": "o.pdf", "extract": 0 })).expect("runs");
+    assert_eq!(read["extracted"]["text"], "<new>ä</new>", "{read}");
+    assert_eq!(read["files"][0]["size"].as_u64(), Some("<new>ä</new>".len() as u64), "the declared size is the new one");
+    // An existing output is not replaced unless asked; the input may be replaced in place when asked.
+    let e = replace(&mut a, json!({ "path": "i.pdf", "text": "<x/>", "output": "o.pdf" })).expect_err("exists");
+    assert!(e.to_string().contains("overwrite"), "{e}");
+    replace(&mut a, json!({ "path": "i.pdf", "text": "<x/>", "output": "i.pdf", "overwrite": true })).expect("runs");
+    assert_eq!(files(&mut a, json!({ "path": "i.pdf", "extract": "factur-x.xml" })).expect("runs")["extracted"]["text"], "<x/>");
+}
+
+#[test]
+fn what_cannot_be_written_is_refused_and_nothing_is_written() {
+    let dir = tempfile::tempdir().expect("dir");
+    let outside = tempfile::tempdir().expect("dir");
+    std::fs::write(dir.path().join("i.pdf"), pdf("a.xml", "text#2Fxml", b"<old/>")).expect("writes");
+    std::fs::write(dir.path().join("x.pdf"), b"hello").expect("writes");
+    std::fs::write(outside.path().join("in.pdf"), pdf("a.xml", "text#2Fxml", b"<old/>")).expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    let refused = |a: &mut Automation, args: Value, why: &str| {
+        let e = replace(a, args.clone()).expect_err("refused");
+        assert!(e.to_string().contains(why), "{args}: {e}");
+    };
+    refused(&mut a, json!({ "path": "i.pdf", "text": "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><a/>", "output": "o.pdf" }), "ISO-8859-1");
+    refused(&mut a, json!({ "path": "i.pdf", "text": "<a/>", "output": "o.pdf", "file": "nope.xml" }), "no such embedded file");
+    refused(&mut a, json!({ "path": "x.pdf", "text": "<a/>", "output": "o.pdf" }), "not a PDF");
+    refused(&mut a, json!({ "path": outside.path().join("in.pdf").to_str().expect("utf-8"), "text": "<a/>", "output": "o.pdf" }), "outside the root");
+    refused(&mut a, json!({ "path": "i.pdf", "text": "<a/>", "output": outside.path().join("o.pdf").to_str().expect("utf-8") }), "outside the root");
+    assert!(!dir.path().join("o.pdf").exists() && !outside.path().join("o.pdf").exists(), "nothing was written");
+    // UTF-8 declarations are fine, and so is no declaration.
+    replace(&mut a, json!({ "path": "i.pdf", "text": "<?xml version='1.0' encoding='utf-8'?><a/>", "output": "o.pdf" })).expect("runs");
+    for bad in [
+        json!({ "path": "i.pdf", "text": "<a/>" }),
+        json!({ "path": "i.pdf", "text": "<a/>", "output": "p.pdf", "overwrite": "yes" }),
+        json!({ "path": "i.pdf", "text": "<a/>", "output": "p.pdf", "file": 1.5 }),
+    ] {
+        assert!(matches!(replace(&mut a, bad.clone()), Err(ToolError::InvalidArgs(_))), "{bad}");
+    }
+}
+
+#[test]
+fn only_a_real_xml_declaration_can_name_the_encoding_and_a_link_is_not_written_through() {
+    let dir = tempfile::tempdir().expect("dir");
+    std::fs::write(dir.path().join("i.pdf"), pdf("a.xml", "text#2Fxml", b"<old/>")).expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    // A stylesheet instruction that mentions an encoding is not a declaration; neither is a comment or an attribute of an element.
+    for fine in [
+        "<?xml-stylesheet href=\"a.xsl\" encoding=\"ISO-8859-1\"?><a/>",
+        "<a note=\"<?xml version='1.0' encoding='latin1'?>\"/>",
+        "<?xml version=\"1.0\" standalone=\"yes\"?><a/>",
+        "<?xml version='1.0' encoding='UTF-8' standalone='no'?><a/>",
+        "<?xmlencoding=\"latin1\"?><a/>",
+    ] {
+        replace(&mut a, json!({ "path": "i.pdf", "text": fine, "output": "o.pdf", "overwrite": true })).unwrap_or_else(|e| panic!("{fine}: {e}"));
+    }
+    for refused in ["<?xml version=\"1.0\" encoding=\"windows-1252\"?><a/>", "<?xml\tversion='1.0'\nencoding = 'UTF-16'?><a/>"] {
+        let e = replace(&mut a, json!({ "path": "i.pdf", "text": refused, "output": "p.pdf" })).expect_err(refused);
+        assert!(e.to_string().contains("declares the encoding"), "{refused}: {e}");
+    }
+    #[cfg(unix)]
+    {
+        // A link at the output, even one that leads nowhere (yet) and out of the root, is not written through.
+        let outside = tempfile::tempdir().expect("dir");
+        std::os::unix::fs::symlink(outside.path().join("target.pdf"), dir.path().join("link.pdf")).expect("links");
+        let e = replace(&mut a, json!({ "path": "i.pdf", "text": "<a/>", "output": "link.pdf", "overwrite": true })).expect_err("a link");
+        assert!(e.to_string().contains("symbolic link"), "{e}");
+        assert!(!outside.path().join("target.pdf").exists(), "nothing was written outside the root");
+    }
+}

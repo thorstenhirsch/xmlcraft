@@ -1,6 +1,6 @@
 [package]
 name = "xmlcraft-pdf"
-description = "XmlCraft's minimal PDF reader (and, later, incremental writer) for the XML a PDF carries: cross-references, objects, filters, embedded files"
+description = "XmlCraft's minimal PDF reader and incremental writer for the XML a PDF carries: cross-references, objects, filters, embedded files"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 miniz_oxide = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

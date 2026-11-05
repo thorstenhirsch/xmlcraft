@@ -56,6 +56,9 @@ pub struct Pdf {
     entries: HashMap<u32, Entry>,
     trailer: Dict,
     recovered: bool,
+    /// Where the newest cross-reference section starts, and whether it is a stream.
+    startxref: Option<usize>,
+    last_is_stream: bool,
     /// The objects of the object streams read so far, by the number of the stream.
     streams: Mutex<StreamCache>,
     /// The object streams being read now (an object stream whose own filters are in itself would otherwise be read forever).
@@ -77,6 +80,8 @@ impl Pdf {
             entries: HashMap::new(),
             trailer: Dict::default(),
             recovered: false,
+            startxref: None,
+            last_is_stream: false,
             streams: Mutex::new(HashMap::new()),
             reading: Mutex::new(HashSet::new()),
             marks,
@@ -115,6 +120,16 @@ impl Pdf {
         let from_entries = self.entries.keys().max().map_or(0, |n| n.saturating_add(1));
         let size = self.trailer.get("Size").and_then(Object::as_int).and_then(|n| u32::try_from(n).ok()).unwrap_or(0);
         from_entries.max(size)
+    }
+
+    /// Where the newest cross-reference section starts (`startxref`), when the file was read by following it.
+    pub fn startxref(&self) -> Option<usize> {
+        if self.recovered { None } else { self.startxref }
+    }
+
+    /// Whether the newest cross-reference section is a stream.
+    pub(crate) fn previous_is_stream(&self) -> bool {
+        self.last_is_stream
     }
 
     pub(crate) fn catalog_ref(&self) -> Option<ObjRef> {
@@ -276,6 +291,8 @@ impl Pdf {
         let mut parser = Parser::new(&self.data, at + "startxref".len());
         let start = usize::try_from(parser.unsigned().ok_or_else(|| PdfError::Corrupt("startxref has no offset".to_owned()))?)
             .map_err(|_| PdfError::Corrupt("startxref is out of range".to_owned()))?;
+        self.startxref = Some(start);
+        self.last_is_stream = !Parser::new(&self.data, start).keyword("xref");
         let mut next = Some(start);
         let mut seen: HashSet<usize> = HashSet::new();
         let mut first = true;

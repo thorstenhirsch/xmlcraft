@@ -2417,9 +2417,9 @@ title = "PDF incremental update that never changes the original bytes"
 area = "J"
 tier = "P2"
 milestone = "M9"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "Encrypted and certified (DocMDP) files are refused; Params, XMP and trailer ID are updated together."
+tools = ["pdf_replace_file"]
+evidence = ["crates/pdf/tests/update.rs::a_classic_pdf_is_updated_by_appending_and_everything_before_stays_byte_for_byte", "crates/pdf/tests/update.rs::a_file_with_a_cross_reference_stream_is_updated_with_one_and_keeps_its_object_streams", "crates/pdf/tests/update.rs::documents_that_would_be_broken_by_a_change_are_not_changed", "crates/pdf/tests/update.rs::any_data_reads_back_and_the_original_stays", "crates/automation/tests/pdf.rs::the_embedded_xml_is_replaced_in_a_copy_and_the_original_is_not_touched"]
+notes = "`Pdf::replace_embedded` and the tool `pdf_replace_file` change the data of an embedded file by appending an incremental update: the new stream (deflated again if it was) with `/Size`, `/ModDate` and the MD5 `/CheckSum` of its `/Params` made right, the second half of the trailer `/ID` renewed (when the file has an `/ID`; a file without one gets none), and a new cross-reference section, as a table or as a stream like the file had (`/Prev` chains them); every byte of the original is kept (property test). Checked with poppler (`pdfinfo`, `pdfdetach`) and Ghostscript as black-box oracles. Refused with a reason: encrypted PDFs, signed ones (`/SigFlags`), certified ones (`/Perms`), a file whose cross-reference is damaged, a stream inside an object stream. Missing: the XMP metadata (`ModifyDate`, the Factur-X conformance level) is not updated, adding an embedded file to a PDF that has none, a file whose cross-reference is a stream and whose entries are in a hybrid layout beyond what the tests build, and the PDF/A-3 conformance checks."
 

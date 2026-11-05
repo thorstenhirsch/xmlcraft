@@ -35,7 +35,7 @@ fn looks_textual(file: &EmbeddedFile) -> bool {
     )
 }
 
-/// The largest PDF the tool reads.
+/// The largest PDF the tool writes (what `read_file` reads back: it refuses more).
 const MAX_BYTES: usize = 256 * 1024 * 1024;
 
 pub(crate) fn tools() -> Vec<ToolDef> {
@@ -78,9 +78,6 @@ fn pdf_files(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let path = args.get("path").and_then(Value::as_str).ok_or_else(|| ToolError::InvalidArgs("`path` is required".into()))?;
     let path = a.confinement.resolve_read(path)?;
     let loaded = xmlcraft_platform::files::read_file(&path).map_err(|e| ToolError::Failed(format!("{}: {e}", path.display())))?;
-    if loaded.bytes.len() > MAX_BYTES {
-        return fail(format!("the file is larger than {} MB", MAX_BYTES / (1024 * 1024)));
-    }
     let pdf = match Pdf::open(loaded.bytes) {
         Ok(pdf) => pdf,
         Err(e) => return fail(format!("{}: {e}", path.display())),
@@ -119,4 +116,107 @@ fn pdf_files(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         }
     }
     json_result(result)
+}
+
+pub(crate) fn replace_tools() -> Vec<ToolDef> {
+    vec![ToolDef {
+        name: "pdf_replace_file",
+        title: "Replace the XML embedded in a PDF",
+        description: "Write a copy of a PDF in which an embedded file (the XML of an invoice, say) has new content. The change is an incremental update appended after \
+                      the original bytes: every byte of the original stays, the file's `/Params` (size, modification date, MD5 checksum) and the second half of the file \
+                      identifier are made right, and a new cross-reference section is added, as a table or a stream like the one the file had. Refused (and nothing \
+                      written): encrypted, signed or certified PDFs, a PDF whose cross-reference is damaged, a file inside an object stream. `file` is the file's name or \
+                      index (default 0); `text` is the new content, written as UTF-8 (an XML declaration for another encoding is refused). `output` is the new PDF; it must \
+                      not exist unless `overwrite` is true (which may name the input itself).",
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string", "description": "The PDF (inside the root)" },
+                "file": { "description": "The name of the embedded file, or its index from 0 (default 0)", "oneOf": [{ "type": "string" }, { "type": "integer", "minimum": 0 }] },
+                "text": { "type": "string", "description": "The new content of the embedded file" },
+                "output": { "type": "string", "description": "Where to write the changed PDF (inside the root)" },
+                "overwrite": { "type": "boolean", "description": "Replace `output` if it exists (default false)" }
+            },
+            "required": ["path", "text", "output"],
+            "additionalProperties": false
+        }),
+        read_only: false,
+        destructive: true,
+        handler: pdf_replace_file,
+    }]
+}
+
+/// The encoding an XML declaration at the start of `text` names, if it has one (`<?xml`, white space, then the pseudo-attributes
+/// `version`, `encoding` and `standalone`; a processing instruction that only starts alike, `<?xml-stylesheet`, is not one).
+fn declared_encoding(text: &str) -> Option<String> {
+    let head = text.trim_start_matches('\u{feff}').strip_prefix("<?xml")?;
+    if !head.starts_with([' ', '\t', '\r', '\n']) {
+        return None;
+    }
+    let mut rest = head.get(..head.find("?>")?)?;
+    // name = "value" pairs, in order.
+    loop {
+        rest = rest.trim_start();
+        if rest.is_empty() {
+            return None;
+        }
+        let name_end = rest.find(|c: char| c == '=' || c.is_whitespace())?;
+        let (name, after_name) = rest.split_at_checked(name_end)?;
+        let value_part = after_name.trim_start().strip_prefix('=')?.trim_start();
+        let quote = value_part.chars().next().filter(|c| matches!(c, '"' | '\''))?;
+        let inner = value_part.get(1..)?;
+        let (value, remainder) = inner.split_once(quote)?;
+        if name == "encoding" {
+            return Some(value.to_owned());
+        }
+        rest = remainder;
+    }
+}
+
+fn pdf_replace_file(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let text_arg = |key: &str| args.get(key).and_then(Value::as_str).ok_or_else(|| ToolError::InvalidArgs(format!("`{key}` is required")));
+    let (path, text, output) = (text_arg("path")?, text_arg("text")?, text_arg("output")?);
+    let overwrite = match args.get("overwrite") {
+        None => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(ToolError::InvalidArgs("overwrite is true or false".into())),
+    };
+    if let Some(encoding) = declared_encoding(text)
+        && !encoding.eq_ignore_ascii_case("utf-8")
+        && !encoding.eq_ignore_ascii_case("utf8")
+    {
+        return fail(format!("the text declares the encoding {encoding}; it is written as UTF-8, so change the declaration or remove it"));
+    }
+    let input = a.confinement.resolve_read(path)?;
+    let target = a.confinement.resolve_write(output)?;
+    // A symbolic link (even one that leads nowhere yet) could lead out of the root when written through.
+    if std::fs::symlink_metadata(&target).is_ok_and(|m| m.file_type().is_symlink()) {
+        return fail(format!("{} is a symbolic link, and is not written through", target.display()));
+    }
+    if target.exists() && !overwrite {
+        return fail(format!("{} exists: pass overwrite: true to replace it", target.display()));
+    }
+    let loaded = xmlcraft_platform::files::read_file(&input).map_err(|e| ToolError::Failed(format!("{}: {e}", input.display())))?;
+    let pdf = Pdf::open(loaded.bytes).map_err(|e| ToolError::Failed(format!("{}: {e}", input.display())))?;
+    let files = pdf.embedded_files();
+    let file = match args.get("file") {
+        None => files.first(),
+        Some(Value::Number(n)) => {
+            let index =
+                n.as_u64().and_then(|i| usize::try_from(i).ok()).ok_or_else(|| ToolError::InvalidArgs("file is a name or an index from 0".into()))?;
+            files.get(index)
+        }
+        Some(Value::String(name)) => files.iter().find(|f| &f.name == name),
+        Some(_) => return Err(ToolError::InvalidArgs("file is a name or an index".into())),
+    };
+    let Some(file) = file else { return fail("the PDF has no such embedded file".to_owned()) };
+    let now = xmlcraft_resolve::Clock::now(&xmlcraft_platform::network::SystemClock);
+    let changed = pdf.replace_embedded(file, text.as_bytes(), &xmlcraft_pdf::pdf_date(now)).map_err(|e| ToolError::Failed(e.to_string()))?;
+    if changed.len() > MAX_BYTES {
+        return fail(format!("the changed PDF would be larger than {} MB, which is more than is read back", MAX_BYTES / (1024 * 1024)));
+    }
+    xmlcraft_platform::files::write_file(&target, &changed).map_err(|e| ToolError::Failed(format!("{}: {e}", target.display())))?;
+    json_result(
+        json!({ "written": target.display().to_string(), "bytes": changed.len(), "added": changed.len().saturating_sub(pdf.bytes().len()), "file": file.name }),
+    )
 }
