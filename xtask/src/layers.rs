@@ -54,7 +54,6 @@ pub const TABLE: &[(&str, Class)] = &[
     ("schematron", Class::Layer(4)),
     ("diff", Class::Layer(4)),
     ("xbrl", Class::Layer(4)),
-    ("grid", Class::Layer(4)),
     ("openapi", Class::Layer(4)),
     ("wsdl", Class::Layer(4)),
     ("grid", Class::Layer(4)),
