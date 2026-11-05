@@ -37,6 +37,7 @@ mod structure;
 pub mod theme;
 pub use control::{ControlClient, Reply as ControlReply};
 mod widgets;
+mod xpath_dialog;
 pub mod zoom;
 
 use std::collections::HashMap;
@@ -146,6 +147,10 @@ pub struct XmlCraftApp {
     /// Make schemas and sample documents in the background, when the Generate dialogs ask.
     schema_generator: xmlcraft_engine::generate::SchemaGenerator,
     sample_generator: xmlcraft_engine::generate::SampleGenerator,
+    /// Evaluates the expressions of the XPath window.
+    xpath: xmlcraft_engine::xpath::XPathRunner,
+    /// The expression last typed in the XPath window, put back when it is opened again.
+    xpath_last: String,
     /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
     generate_serial: u64,
     /// Fetches the schema a document names (Load Schema), and the request being waited for.
@@ -259,6 +264,10 @@ impl XmlCraftApp {
             let repaint = repaint.clone();
             move || repaint.request_repaint()
         });
+        app.xpath.on_done({
+            let repaint = repaint.clone();
+            move || repaint.request_repaint()
+        });
         app.schema_fetcher.on_done({
             let repaint = repaint.clone();
             move || repaint.request_repaint()
@@ -304,6 +313,8 @@ impl XmlCraftApp {
             validator: Validator::new(resolvers()),
             schema_generator: xmlcraft_engine::generate::SchemaGenerator::new(),
             sample_generator: xmlcraft_engine::generate::SampleGenerator::new(resolvers()),
+            xpath: xmlcraft_engine::xpath::XPathRunner::new(),
+            xpath_last: String::new(),
             generate_serial: 0,
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
             loading_schema: None,
@@ -432,6 +443,7 @@ impl eframe::App for XmlCraftApp {
         // After everything above that can change a text, so that this frame asks for the analysis of the text it will draw.
         self.pump_analysis();
         self.pump_generate();
+        self.pump_xpath();
         self.pump_schema_fetch();
         for command in self.viewport_commands.drain(..) {
             ctx.send_viewport_cmd(command);
