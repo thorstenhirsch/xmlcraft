@@ -51,6 +51,10 @@ pub fn run(fetch: bool, write: bool, verbose: bool) -> Result<()> {
     }
     let remotes = suite.join("remotes");
     let loader = |uri: &str| -> Option<String> {
+        // The meta-schemas are the bundled ones (what the tests that check a schema against its meta-schema ask for).
+        if let Some(bundled) = xmlcraft_schemas::json_schema(uri) {
+            return Some(bundled);
+        }
         let relative = Path::new(uri.strip_prefix(REMOTE_BASE)?);
         // Only names below the folder: no root, no drive, no `..`.
         if !relative.components().all(|c| matches!(c, Component::Normal(_))) {
