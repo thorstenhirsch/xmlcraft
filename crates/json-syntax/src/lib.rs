@@ -1,3 +1,5 @@
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+
 //! JSON as XmlCraft reads it: JSON, JSON with comments (JSONC), JSON5 and JSON Lines.
 //!
 //! The text is the model: nothing here rewrites a document. [`parse`] reads a text, even a broken one, into a tree of [`Value`]s that

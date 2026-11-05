@@ -69,7 +69,8 @@ pub const TABLE: &[(&str, Class)] = &[
     ("xtask", Class::Exempt),
 ];
 
-/// Workspace crates a standalone crate may use: `datatypes` compiles XSD patterns, and `syntax` sits on the text buffer.
+/// Workspace crates a standalone crate may use: `datatypes` compiles XSD patterns, `syntax` sits on the text buffer, and `json-syntax`
+/// reports its problems with the shared diagnostics of `syntax`.
 pub const STANDALONE_DEPS: &[(&str, &[&str])] = &[("datatypes", &["pattern"]), ("syntax", &["text"]), ("json-syntax", &["syntax"])];
 
 /// Allowed same-layer edges.

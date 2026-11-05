@@ -235,7 +235,7 @@ codes! {
     JsonControlCharacter => ("json.control-character", Error, "A control character in a string must be written as an escape."),
     JsonInvalidNumber => ("json.invalid-number", Error, "'{0}' is not a valid number."),
     JsonTrailingComma => ("json.trailing-comma", Error, "A ',' before the closing bracket is not allowed here."),
-    JsonCommentNotAllowed => ("json.comment-not-allowed", Error, "Comments are not allowed in JSON; this document is read as JSON with comments or JSON5 only when its name says so."),
+    JsonCommentNotAllowed => ("json.comment-not-allowed", Error, "Comments are not allowed in JSON; use JSON with comments (JSONC) or JSON5 for a document that has them."),
     JsonSingleQuotes => ("json.single-quotes", Error, "Strings are written in double quotes in JSON."),
     JsonUnquotedKey => ("json.unquoted-key", Error, "The name must be in double quotes in JSON."),
     JsonDuplicateKey => ("json.duplicate-key", Warning, "The name '{0}' is used more than once in the object."),

@@ -35,6 +35,8 @@ pub(crate) struct Token {
 pub(crate) struct Lexer<'a> {
     text: &'a str,
     pos: usize,
+    /// JSON5 counts every Unicode space as white space; JSON and JSONC only the four of RFC 8259.
+    unicode_space: bool,
 }
 
 fn is_punctuation(c: char) -> bool {
@@ -42,8 +44,14 @@ fn is_punctuation(c: char) -> bool {
 }
 
 impl<'a> Lexer<'a> {
-    pub(crate) fn new(text: &'a str) -> Self {
-        Self { text, pos: 0 }
+    pub(crate) fn new(text: &'a str, unicode_space: bool) -> Self {
+        // A byte-order mark at the very start (some editors leave one) is not part of the text.
+        let pos = if text.starts_with('\u{FEFF}') { '\u{FEFF}'.len_utf8() } else { 0 };
+        Self { text, pos, unicode_space }
+    }
+
+    fn is_space(&self, c: char) -> bool {
+        matches!(c, ' ' | '\t' | '\n' | '\r') || (self.unicode_space && c.is_whitespace())
     }
 
     pub(crate) fn text(&self) -> &'a str {
@@ -56,7 +64,7 @@ impl<'a> Lexer<'a> {
 
     pub(crate) fn next_token(&mut self) -> Option<Token> {
         // White space (and the byte-order mark some editors leave) between tokens.
-        let skipped = self.rest().len() - self.rest().trim_start_matches(|c: char| c.is_whitespace() || c == '\u{FEFF}').len();
+        let skipped: usize = self.rest().chars().take_while(|c| self.is_space(*c)).map(char::len_utf8).sum();
         self.pos += skipped;
         let start = self.pos;
         let c = self.rest().chars().next()?;
@@ -89,7 +97,7 @@ impl<'a> Lexer<'a> {
                 let mut len = 0;
                 for (i, ch) in self.rest().char_indices() {
                     let comment = ch == '/' && i > 0 && (self.rest().get(i..).is_some_and(|r| r.starts_with("//") || r.starts_with("/*")));
-                    if ch.is_whitespace() || is_punctuation(ch) || comment {
+                    if self.is_space(ch) || is_punctuation(ch) || comment {
                         break;
                     }
                     len = i + ch.len_utf8();

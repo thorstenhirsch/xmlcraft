@@ -28,7 +28,7 @@ pub enum Mode {
 /// A part of a line: a byte range of the line and its class.
 pub type Span = (Range<usize>, JsonClass);
 
-/// Classify one line (its break may be included). Returns the spans, adjacent ones of the same class joined and plain text left out, and
+/// Classify one line (its break may be included). Returns the spans, adjacent ones of the same class joined (punctuation is not: each bracket and comma is its own) and plain text left out, and
 /// the mode at the end of the line. Total: any text gives some answer.
 pub fn highlight_line(line: &str, start: Mode) -> (Vec<Span>, Mode) {
     let mut spans: Vec<Span> = Vec::new();
@@ -117,10 +117,12 @@ pub fn highlight_line(line: &str, start: Mode) -> (Vec<Span>, Mode) {
                 let len = len.max(c.len_utf8());
                 let word = rest.get(..len).unwrap_or_default();
                 let after = rest.get(len..).unwrap_or_default().trim_start_matches([' ', '\t']);
+                // (A bare name before a `:` is a key even when it is spelt like a keyword.)
                 let class = match word {
-                    "true" | "false" | "null" | "Infinity" | "-Infinity" | "+Infinity" | "NaN" => JsonClass::Keyword,
                     w if after.starts_with(':') && w.chars().next().is_some_and(|f| f.is_alphabetic() || f == '_' || f == '$') => JsonClass::Key,
-                    w if w.chars().next().is_some_and(|f| f.is_ascii_digit() || matches!(f, '-' | '+' | '.')) => JsonClass::Number,
+                    "true" | "false" | "null" | "Infinity" | "-Infinity" | "+Infinity" | "NaN" => JsonClass::Keyword,
+                    // The most lenient grammar (JSON5's): a word that is no number in any dialect is an error.
+                    w if crate::parser::number_ok(w, crate::Dialect::Json5) => JsonClass::Number,
                     _ => JsonClass::Error,
                 };
                 push(&mut spans, i..i + len, class);

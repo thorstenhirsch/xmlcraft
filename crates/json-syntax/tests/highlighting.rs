@@ -36,6 +36,18 @@ fn names_strings_numbers_and_keywords_have_their_own_classes() {
 }
 
 #[test]
+fn a_word_is_a_number_only_if_it_is_one_and_a_key_before_a_colon_is_a_key_whatever_it_is_spelt_like() {
+    use JsonClass::*;
+    for (word, class) in [("-", Error), ("+", Error), ("1abc", Error), ("1.2.3", Error), ("-1.5e3", Number), ("0x1F", Number), (".5", Number)] {
+        assert_eq!(classes(word), [(word.to_owned(), class)], "{word}");
+    }
+    assert_eq!(classes("true: 1")[0], ("true".to_owned(), Key));
+    assert_eq!(classes("null :")[0], ("null".to_owned(), Key));
+    assert_eq!(classes("true")[0], ("true".to_owned(), Keyword));
+    assert_eq!(classes("[1,2]").iter().filter(|(t, _)| t == ",").count(), 1, "punctuation is not joined");
+}
+
+#[test]
 fn a_string_that_is_not_closed_and_a_stray_word_are_errors() {
     assert_eq!(classes("\"abc"), [("\"abc".to_owned(), JsonClass::Error)]);
     assert_eq!(classes("hello"), [("hello".to_owned(), JsonClass::Error)]);

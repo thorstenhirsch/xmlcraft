@@ -56,8 +56,15 @@ struct Reader<'a> {
 
 /// Read a text that holds one value.
 pub fn parse(text: &str, options: &Options) -> Parse {
-    let mut reader =
-        Reader { lexer: Lexer::new(text), peeked: None, options: *options, diagnostics: Vec::new(), full: false, depth: 0, commented: false };
+    let mut reader = Reader {
+        lexer: Lexer::new(text, options.dialect == Dialect::Json5),
+        peeked: None,
+        options: *options,
+        diagnostics: Vec::new(),
+        full: false,
+        depth: 0,
+        commented: false,
+    };
     let root = reader.value();
     if root.is_none() {
         if let Some(token) = reader.peek().cloned() {
@@ -126,6 +133,10 @@ impl Reader<'_> {
         self.options.dialect != Dialect::Json
     }
 
+    fn json5(&self) -> bool {
+        self.options.dialect == Dialect::Json5
+    }
+
     /// The next token that is not a comment (comments are reported when the dialect has none), without taking it.
     fn peek(&mut self) -> Option<&Token> {
         while self.peeked.is_none() {
@@ -190,7 +201,7 @@ impl Reader<'_> {
         if !closed {
             self.report(Code::JsonUnterminatedString, token.span.clone(), vec![quote.to_string()]);
         }
-        if quote == '\'' && !self.lenient() || (quote == '\'' && self.options.dialect == Dialect::Jsonc) {
+        if quote == '\'' && !self.json5() {
             self.report(Code::JsonSingleQuotes, token.span.clone(), vec![]);
         }
         let text = self.lexer.text().get(token.span.clone()).unwrap_or_default();
@@ -220,7 +231,8 @@ impl Reader<'_> {
             };
             let at = base + i..base + i + 1 + e.len_utf8();
             match e {
-                '"' | '\\' | '/' | '\'' => out.push(e),
+                '"' | '\\' | '/' => out.push(e),
+                '\'' if self.json5() => out.push(e),
                 'b' => out.push('\u{8}'),
                 'f' => out.push('\u{c}'),
                 'n' => out.push('\n'),
@@ -247,17 +259,27 @@ impl Reader<'_> {
                             }
                             match low.and_then(|l| char::from_u32(0x10000 + ((unit - 0xD800) << 10) + (l - 0xDC00))) {
                                 Some(ch) => out.push(ch),
-                                None => out.push('\u{FFFD}'),
+                                None => {
+                                    out.push('\u{FFFD}');
+                                    self.report(Code::JsonInvalidEscape, at, vec![format!("\\u{code}")]);
+                                }
                             }
                         }
-                        Some(unit) => out.push(char::from_u32(unit).unwrap_or('\u{FFFD}')),
+                        Some(unit) => match char::from_u32(unit) {
+                            Some(ch) => out.push(ch),
+                            // A low surrogate with no high one before it.
+                            None => {
+                                out.push('\u{FFFD}');
+                                self.report(Code::JsonInvalidEscape, at, vec![format!("\\u{code}")]);
+                            }
+                        },
                         None => {
                             self.report(Code::JsonInvalidEscape, at, vec![format!("\\u{code}")]);
                         }
                     }
                 }
-                '\n' if self.lenient() => {}
-                '\r' if self.lenient() => {
+                '\n' if self.json5() => {}
+                '\r' if self.json5() => {
                     chars.next_if(|(_, n)| *n == '\n');
                 }
                 'v' | '0' | 'x' if self.options.dialect == Dialect::Json5 => match e {
@@ -381,7 +403,7 @@ impl Reader<'_> {
             Kind::Word => {
                 self.bump();
                 let word = self.lexer.text().get(token.span.clone()).unwrap_or_default().to_owned();
-                if self.options.dialect != Dialect::Json5 {
+                if !self.json5() || !is_identifier_name(&word) {
                     self.report(Code::JsonUnquotedKey, token.span.clone(), vec![]);
                 }
                 (word, token.span.clone())
@@ -501,7 +523,14 @@ impl Reader<'_> {
 
 /// Whether `word` is a number in the dialect: `-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?`; JSON5 also allows a leading `+`,
 /// `.5`, `5.`, `0x1F` and (handled by the caller) `Infinity` and `NaN`.
-fn number_ok(word: &str, dialect: Dialect) -> bool {
+/// A bare name JSON5 allows as a key: letters, `$` and `_` first, then also digits (the ECMAScript IdentifierName, without `\u` escapes).
+fn is_identifier_name(word: &str) -> bool {
+    let mut chars = word.chars();
+    chars.next().is_some_and(|c| c.is_alphabetic() || c == '$' || c == '_')
+        && chars.all(|c| c.is_alphanumeric() || c == '$' || c == '_' || c == '\u{200C}' || c == '\u{200D}')
+}
+
+pub(crate) fn number_ok(word: &str, dialect: Dialect) -> bool {
     let json5 = dialect == Dialect::Json5;
     let body = match word.strip_prefix('-') {
         Some(b) => b,

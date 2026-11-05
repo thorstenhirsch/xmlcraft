@@ -26,6 +26,13 @@ fn a_document_is_read_into_values_that_know_their_places() {
     assert_eq!(root.pointer("/n/9"), None);
     assert_eq!(root.pointer("/n/01"), None, "an index has no leading zero");
     assert_eq!(&text[root.span_of_pointer("/name").expect("a place")], "\"name\"", "a member is shown at its name");
+    for bad in ["/n/01", "/n/+1", "/n/-1", "/n/1.0", "/na~2me", "/name~", "/~"] {
+        assert_eq!(root.pointer(bad), None, "{bad}");
+        assert_eq!(root.span_of_pointer(bad), None, "{bad}");
+    }
+    let escaped = parse(r#"{"a/b": {"c~d": 1}}"#, &Options::default()).root.expect("a value");
+    assert_eq!(escaped.pointer("/a~1b/c~0d").map(|v| v.data.clone()), Some(Data::Number("1".to_owned())));
+    assert!(escaped.span_of_pointer("/a~1b/c~0d").is_some());
     assert_eq!(&text[root.span_of_pointer("/n/2").expect("a place")], "true");
     let at = text.find("-2.5").expect("there") + 1;
     assert_eq!(root.path_at(at), Some(vec![Segment::Key("n".into()), Segment::Index(1)]));
@@ -40,9 +47,18 @@ fn escapes_and_surrogate_pairs_are_decoded_and_bad_ones_are_reported() {
     assert_eq!(codes(r#""\x""#, Dialect::Json), ["json.invalid-escape"]);
     assert_eq!(codes(r#""\u12""#, Dialect::Json), ["json.invalid-escape"]);
     assert_eq!(codes("\"a\u{1}b\"", Dialect::Json), ["json.control-character"]);
-    // A lone surrogate is a replacement character, not a crash.
-    let lone = parse(r#""\ud83d""#, &Options::default());
-    assert_eq!(lone.root.map(|v| v.data), Some(Data::String("\u{FFFD}".to_owned())));
+    // A lone surrogate is a replacement character and a reported escape, not a crash.
+    for lone in [r#""\ud83d""#, r#""\ud83dx""#, r#""\ude00""#] {
+        let read = parse(lone, &Options::default());
+        assert!(read.root.is_some_and(|v| matches!(&v.data, Data::String(s) if s.contains('\u{FFFD}'))), "{lone}");
+        assert_eq!(read.diagnostics.iter().map(|d| d.code.key()).collect::<Vec<_>>(), ["json.invalid-escape"], "{lone}");
+    }
+    // `\'` and a line continuation are JSON5's only.
+    assert_eq!(codes(r#""\'""#, Dialect::Json), ["json.invalid-escape"]);
+    assert_eq!(codes(r#""\'""#, Dialect::Jsonc), ["json.invalid-escape"]);
+    assert!(codes(r#""\'""#, Dialect::Json5).is_empty());
+    assert_eq!(codes("\"a\\\nb\"", Dialect::Jsonc), ["json.invalid-escape"]);
+    assert!(codes("\"a\\\nb\"", Dialect::Json5).is_empty());
     // JSON5 allows more escapes.
     assert_eq!(codes(r#"'\x41\v\0\q'"#, Dialect::Json5), Vec::<&str>::new());
     assert_eq!(parse(r#"'\x41'"#, &opts(Dialect::Json5)).root.map(|v| v.data), Some(Data::String("A".to_owned())));
@@ -75,7 +91,15 @@ fn what_json_does_not_allow_is_reported_and_the_relatives_allow_it() {
     assert_eq!(codes("{'a': 'b'}", Dialect::Json), ["json.single-quotes", "json.single-quotes"]);
     assert!(codes("{'a': 'b'}", Dialect::Json5).is_empty());
     assert_eq!(codes("{a: 1}", Dialect::Json), ["json.unquoted-key"]);
-    assert!(codes("{a: 1, $b: 2, _c: 3}", Dialect::Json5).is_empty());
+    assert!(codes("{a: 1, $b: 2, _c: 3, d4: 4}", Dialect::Json5).is_empty());
+    assert_eq!(codes("{1: 2}", Dialect::Json5), ["json.unquoted-key"], "a bare key is a name, not a number");
+    assert_eq!(codes("{a-b: 2}", Dialect::Json5), ["json.unquoted-key"]);
+    assert_eq!(codes("\"x\" // c", Dialect::Json), ["json.comment-not-allowed"]);
+    // White space: the four of RFC 8259 in JSON and JSONC, every Unicode space in JSON5; a leading byte-order mark is skipped.
+    assert!(codes("[1,\u{a0}2]", Dialect::Json5).is_empty());
+    assert!(!codes("[1,\u{a0}2]", Dialect::Json).is_empty());
+    assert!(!codes("[1,\u{a0}2]", Dialect::Jsonc).is_empty());
+    assert!(codes("\u{FEFF}[1]", Dialect::Json).is_empty());
 }
 
 #[test]

@@ -50,27 +50,14 @@ impl Value {
         }
     }
 
-    /// The value a JSON Pointer (RFC 6901, `/a/0/b`; the empty pointer is this value) names.
+    /// The value a JSON Pointer (RFC 6901, `/a/0/b`; the empty pointer is this value) names. A pointer that is not valid (a `~` not
+    /// followed by `0` or `1`, an array index with a leading zero or a sign) names nothing.
     pub fn pointer(&self, pointer: &str) -> Option<&Value> {
-        if pointer.is_empty() {
-            return Some(self);
-        }
-        let mut current = self;
-        for raw in pointer.strip_prefix('/')?.split('/') {
-            let token = raw.replace("~1", "/").replace("~0", "~");
-            current = match &current.data {
-                Data::Object(members) => &members.iter().find(|m| m.key == token)?.value,
-                Data::Array(items) => {
-                    items.get(token.parse::<usize>().ok().filter(|_| !token.starts_with('+') && (token == "0" || !token.starts_with('0')))?)?
-                }
-                _ => return None,
-            };
-        }
-        Some(current)
+        self.locate(pointer).map(|(_, value)| value)
     }
 
     /// The path to the innermost value that holds `offset`, from this value down (the empty path when only this value does); none when
-    /// `offset` is outside it. A place in the name of a member is the member's value's path.
+    /// `offset` is outside it. A place in the name of a member is the member's value's path. In an object that repeats a name, the path names the member, but a pointer resolves a repeated name to its first member.
     pub fn path_at(&self, offset: usize) -> Option<Vec<Segment>> {
         if !(self.span.start <= offset && offset <= self.span.end) {
             return None;
@@ -99,15 +86,20 @@ impl Value {
     }
 
     /// The span of the value a JSON Pointer names, and of its name when it is a member of an object: what a problem about it is shown
-    /// at (the name is the better place).
+    /// at (the name is the better place). Invalid pointers name nothing, as for [`Value::pointer`].
     pub fn span_of_pointer(&self, pointer: &str) -> Option<Range<usize>> {
+        self.locate(pointer).map(|(place, _)| place)
+    }
+
+    /// The value a pointer names and the place to show it at.
+    fn locate(&self, pointer: &str) -> Option<(Range<usize>, &Value)> {
         if pointer.is_empty() {
-            return Some(self.span.clone());
+            return Some((self.span.clone(), self));
         }
         let mut current = self;
         let mut place = self.span.clone();
         for raw in pointer.strip_prefix('/')?.split('/') {
-            let token = raw.replace("~1", "/").replace("~0", "~");
+            let token = unescape_token(raw)?;
             match &current.data {
                 Data::Object(members) => {
                     let m = members.iter().find(|m| m.key == token)?;
@@ -115,13 +107,35 @@ impl Value {
                     current = &m.value;
                 }
                 Data::Array(items) => {
-                    let v = items.get(token.parse::<usize>().ok()?)?;
+                    let index = (token == "0" || !token.starts_with('0'))
+                        .then(|| token.parse::<usize>().ok())
+                        .flatten()
+                        .filter(|_| token.bytes().all(|b| b.is_ascii_digit()))?;
+                    let v = items.get(index)?;
                     place = v.span.clone();
                     current = v;
                 }
                 _ => return None,
             }
         }
-        Some(place)
+        Some((place, current))
     }
+}
+
+/// A pointer token with `~1` and `~0` decoded; any other `~` makes the pointer invalid.
+fn unescape_token(raw: &str) -> Option<String> {
+    let mut out = String::with_capacity(raw.len());
+    let mut chars = raw.chars();
+    while let Some(c) = chars.next() {
+        if c == '~' {
+            match chars.next()? {
+                '0' => out.push('~'),
+                '1' => out.push('/'),
+                _ => return None,
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    Some(out)
 }
