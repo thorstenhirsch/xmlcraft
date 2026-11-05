@@ -70,7 +70,21 @@ pub fn invoice_pdf(name: &str, xml: &str) -> Vec<u8> {
 
 /// A PDF 1.5 file: the catalog and the filespec are in an object stream, the cross-reference is a stream with a PNG predictor, and the
 /// embedded file is deflated.
+/// How `compressed_pdf_with` differs from `compressed_pdf`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Variant {
+    Plain,
+    /// The cross-reference stream puts the object stream inside itself.
+    NestedObjectStream,
+    /// `/Index` asks for more rows than the stream has.
+    MissingRows,
+}
+
 pub fn compressed_pdf(xml: &str) -> Vec<u8> {
+    compressed_pdf_with(xml, Variant::Plain)
+}
+
+pub fn compressed_pdf_with(xml: &str, variant: Variant) -> Vec<u8> {
     use miniz_oxide::deflate::compress_to_vec_zlib;
     let mut out = b"%PDF-1.7\n".to_vec();
     // The object stream (object 10) holds objects 1 (catalog) and 4 (filespec).
@@ -101,6 +115,7 @@ pub fn compressed_pdf(xml: &str) -> Vec<u8> {
             1 => (2, 10, 0),
             4 => (2, 10, 7), // (the index is wrong: the number decides)
             5 => (1, u32::try_from(stream_at).expect("fits"), 0),
+            10 if variant == Variant::NestedObjectStream => (2, 10, 0),
             10 => (1, u32::try_from(objstm_at).expect("fits"), 0),
             11 => (1, u32::try_from(table_at).expect("fits"), 0),
             _ => (0, 0, 0),
@@ -118,9 +133,10 @@ pub fn compressed_pdf(xml: &str) -> Vec<u8> {
         previous = *row;
     }
     let packed = compress_to_vec_zlib(&predicted, 6);
+    let index = if variant == Variant::MissingRows { "/Index [0 13]" } else { "" };
     out.extend_from_slice(
         format!(
-            "11 0 obj\n<< /Type /XRef /Size 12 /W [1 4 1] /Root 1 0 R /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 6 >> /Length {} >>\nstream\n",
+            "11 0 obj\n<< /Type /XRef /Size 12 /W [1 4 1] {index} /Root 1 0 R /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 6 >> /Length {} >>\nstream\n",
             packed.len()
         )
         .as_bytes(),

@@ -109,8 +109,9 @@ impl Pdf {
         let embedded = dict.get("EF").map(|o| self.resolve(o))?;
         let embedded = embedded.as_dict()?;
         let stream_ref = embedded.get("UF").or_else(|| embedded.get("F")).and_then(Object::as_ref)?;
-        let stream = self.get(stream_ref)?;
-        let stream_dict = stream.as_dict()?;
+        // (A stream: a dictionary that is not one has no data.)
+        let Object::Stream(stream) = self.get(stream_ref)? else { return None };
+        let stream_dict = &stream.dict;
         let mime = stream_dict.get("Subtype").map(|s| self.resolve(s)).and_then(|s| s.as_name().map(str::to_owned));
         let size = stream_dict
             .get("Params")

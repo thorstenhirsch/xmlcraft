@@ -197,7 +197,10 @@ impl Pdf {
         if let Some(found) = self.streams.lock().ok()?.get(&number) {
             return Some(Arc::clone(found));
         }
-        let Object::Stream(stream) = self.get(ObjRef { number, generation: 0 })? else { return None };
+        // An object stream is an ordinary object of the file: one that a cross-reference entry puts inside another stream (or itself)
+        // is not one, and following it would never end.
+        let Entry::InFile { offset } = *self.entries.get(&number)? else { return None };
+        let Object::Stream(stream) = self.object_at(offset, Some(number))? else { return None };
         let count = usize::try_from(stream.dict.get("N").and_then(|n| self.resolve(n).as_int())?).ok().filter(|n| *n <= MAX_IN_STREAM)?;
         let first = usize::try_from(stream.dict.get("First").and_then(|n| self.resolve(n).as_int())?).ok()?;
         let data = self.stream_data(&stream).ok()?;
@@ -235,12 +238,13 @@ impl Pdf {
             if !seen.insert(offset) || seen.len() > MAX_SECTIONS {
                 break;
             }
-            let (trailer, hybrid) = self.read_section(offset)?;
-            // A hybrid file's table is followed by the entries of its cross-reference stream before the older sections.
+            let (trailer, hybrid, freed) = self.read_section(offset, &HashSet::new())?;
+            // A hybrid file's table is followed by the entries of its cross-reference stream before the older sections. The table lists
+            // the objects the stream holds as free: for those, the stream says what they are.
             if let Some(h) = hybrid
                 && seen.insert(h)
             {
-                self.read_section(h)?;
+                self.read_section(h, &freed)?;
             }
             next = trailer.get("Prev").and_then(Object::as_int).and_then(|n| usize::try_from(n).ok());
             if first {
@@ -256,7 +260,7 @@ impl Pdf {
 
     /// Read the cross-reference section at `offset`: add its entries (those already known are newer and stay) and return its trailer and
     /// the offset of a hybrid file's `/XRefStm`.
-    fn read_section(&mut self, offset: usize) -> Result<(Dict, Option<usize>), PdfError> {
+    fn read_section(&mut self, offset: usize, replaces_free: &HashSet<u32>) -> Result<(Dict, Option<usize>, HashSet<u32>), PdfError> {
         let bad = |why: &str| PdfError::Corrupt(format!("the cross-reference at {offset} {why}"));
         let mut parser = Parser::new(&self.data, offset);
         if parser.keyword("xref") {
@@ -302,11 +306,18 @@ impl Pdf {
                 Some(Object::Dict(d)) => d,
                 _ => return Err(bad("has a bad trailer")),
             };
+            let mut freed = HashSet::new();
             for (number, entry) in added {
-                self.entries.entry(number).or_insert(entry);
+                if self.entries.contains_key(&number) {
+                    continue;
+                }
+                if matches!(entry, Entry::Free) {
+                    freed.insert(number);
+                }
+                self.entries.insert(number, entry);
             }
             let hybrid = trailer.get("XRefStm").and_then(Object::as_int).and_then(|n| usize::try_from(n).ok());
-            return Ok((trailer, hybrid));
+            return Ok((trailer, hybrid, freed));
         }
         // A cross-reference stream.
         let mut parser = Parser::new(&self.data, offset);
@@ -338,7 +349,7 @@ impl Pdf {
         let field = |bytes: &[u8]| bytes.iter().fold(0u64, |acc, b| (acc << 8) | u64::from(*b));
         for [first, count] in index.as_chunks::<2>().0.iter().copied() {
             for i in 0..count {
-                let Some(r) = rows.next() else { break };
+                let Some(r) = rows.next() else { return Err(bad("has fewer entries than its /Index says")) };
                 let (kind, f1, f2) = (
                     if w0 == 0 { 1 } else { field(r.get(..w0).unwrap_or_default()) },
                     field(r.get(w0..w0 + w1).unwrap_or_default()),
@@ -357,10 +368,19 @@ impl Pdf {
                 if self.entries.len() > MAX_OBJECTS {
                     return Err(bad("has too many entries"));
                 }
-                self.entries.entry(number).or_insert(entry);
+                match self.entries.get(&number) {
+                    None => {
+                        self.entries.insert(number, entry);
+                    }
+                    // An object the table of a hybrid file lists as free and this stream holds.
+                    Some(Entry::Free) if replaces_free.contains(&number) => {
+                        self.entries.insert(number, entry);
+                    }
+                    Some(_) => {}
+                }
             }
         }
-        Ok((stream.dict, None))
+        Ok((stream.dict, None, HashSet::new()))
     }
 
     // --- recovery --------------------------------------------------------------------------------------------------------------
