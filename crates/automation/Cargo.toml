@@ -27,6 +27,8 @@ xmlcraft-xsd = { workspace = true }
 xmlcraft-engine = { workspace = true }
 xmlcraft-editor = { workspace = true }
 xmlcraft-platform = { workspace = true }
+xmlcraft-json = { workspace = true }
+xmlcraft-json-syntax = { workspace = true }
 xmlcraft-bson = { workspace = true }
 xmlcraft-format = { workspace = true }
 xmlcraft-syntax = { workspace = true }

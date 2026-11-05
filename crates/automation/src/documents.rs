@@ -543,7 +543,7 @@ fn id_arg(args: &Value) -> Result<u64> {
     args.get("id").and_then(Value::as_u64).ok_or_else(|| ToolError::InvalidArgs("id is required".into()))
 }
 
-fn text_arg<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
+pub(crate) fn text_arg<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
     args.get(key).and_then(Value::as_str)
 }
 
