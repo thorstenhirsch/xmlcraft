@@ -71,7 +71,8 @@ pub(crate) fn analyze_json(text: &str, version: u64, flavor: JsonFlavor) -> Anal
 pub(crate) fn label_of(value: &Value) -> Option<String> {
     let shown = match &value.data {
         Data::String(s) => {
-            let one_line: String = s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect::<String>().trim().to_owned();
+            // (Line breaks at the ends are not part of what is shown; the spaces of the text are.)
+            let one_line: String = s.trim_matches(['\n', '\r']).chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
             let mut shown: String = one_line.chars().take(MAX_LABEL).collect();
             if one_line.chars().count() > MAX_LABEL {
                 shown.push('…');

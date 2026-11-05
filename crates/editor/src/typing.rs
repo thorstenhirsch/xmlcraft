@@ -842,4 +842,14 @@ mod tests {
         e.backspace();
         assert_eq!(shown(&e), "a: |\"", "Backspace takes one character");
     }
+
+    #[test]
+    fn enter_after_something_that_looks_like_a_start_tag_indents_only_in_xml() {
+        for (syntax, expected) in [(Syntax::Xml, "<a>\n  |"), (Syntax::Yaml, "<a>\n|"), (Syntax::Json, "<a>\n|")] {
+            let mut e = at("<a>|");
+            e.set_syntax(syntax);
+            e.insert_newline();
+            assert_eq!(shown(&e), expected, "{syntax:?}");
+        }
+    }
 }

@@ -91,7 +91,7 @@ impl Walk<'_> {
                         end_name_range: None,
                     });
                     // The members of a block mapping are folded from their key; so are multi-line scalars.
-                    self.fold(m.key_span.start, end, level, &m.value, container);
+                    self.fold(m.key_span.start, end, level, &m.value, container, false);
                     self.value(&m.value, depth + 1, level + 1);
                 }
             }
@@ -99,7 +99,8 @@ impl Walk<'_> {
                 for (i, v) in items.iter().enumerate() {
                     let end = self.content_end(v);
                     // Only the entries that are containers are listed; the entries of a list of scalars would drown the outline.
-                    if matches!(v.data, Data::Object(_) | Data::Array(_)) {
+                    let container = matches!(v.data, Data::Object(_) | Data::Array(_));
+                    if container {
                         self.push_item(OutlineItem {
                             depth,
                             name: format!("[{i}]"),
@@ -110,8 +111,9 @@ impl Walk<'_> {
                             end_tag: None,
                             end_name_range: None,
                         });
-                        self.fold(v.span.start, end, level, v, true);
                     }
+                    // (An entry that is a block scalar over several lines folds too.)
+                    self.fold(v.span.start, end, level, v, container, true);
                     self.value(v, depth + 1, level + 1);
                 }
             }
@@ -120,14 +122,22 @@ impl Walk<'_> {
     }
 
     /// A fold from the line that `start` is on to the line the content ends on, when that is another line.
-    fn fold(&mut self, start: usize, end: usize, level: usize, value: &Value, container: bool) {
+    fn fold(&mut self, start: usize, end: usize, level: usize, value: &Value, container: bool, value_start: bool) {
         let multi_line_scalar =
             matches!(&value.data, Data::String(_)) && self.text.get(value.span.clone()).is_some_and(|t| t.trim_end().contains('\n'));
         if !container && !multi_line_scalar {
             return;
         }
         let kind = if matches!(value.data, Data::Array(_)) { FoldKind::Array } else { FoldKind::Object };
-        let first = self.lines.line_of(start);
+        let mut first = self.lines.line_of(start);
+        // A block scalar of a list entry starts on the line after its header (`- |`): the fold is of the entry.
+        if multi_line_scalar
+            && value_start
+            && let Some(line) = self.lines.text_of(first)
+            && self.text.get(line.start..start).is_some_and(|before| before.trim().is_empty())
+        {
+            first = first.saturating_sub(1);
+        }
         let last = self.lines.line_of(end.max(start));
         if last <= first {
             return;
@@ -189,6 +199,15 @@ mod tests {
         let a = analysis("- k:\n    x: 1\n    y: 2\n- z: 3\n");
         let folds: Vec<_> = a.folds.iter().map(|f| (f.first_line, f.last_line, f.level)).collect();
         assert_eq!(folds, [(0, 2, 1)], "the entry and its first key both start on line 0");
+    }
+
+    #[test]
+    fn block_scalars_in_a_list_and_multi_line_ones_fold_and_the_label_keeps_its_spaces() {
+        let a = analysis("- |\n  one\n  two\n- plain\nk: \" pad \"\n");
+        let folds: Vec<_> = a.folds.iter().map(|f| (f.first_line, f.last_line)).collect();
+        assert_eq!(folds, [(0, 2)], "{folds:?}");
+        let a = analysis("k: \"  pad  \"\n");
+        assert_eq!(a.outline[0].label.as_deref(), Some("\"  pad  \""));
     }
 
     #[test]

@@ -1,5 +1,5 @@
-//! What a document is: an XML document, an XML Schema, a DTD or a JSON document. The command bar offers Schema… for an XML document and
-//! XML… for a schema or a DTD, and neither for JSON.
+//! What a document is: an XML document, an XML Schema, a DTD, or a JSON or YAML document. The command bar offers Schema… for an XML
+//! document and XML… for a schema or a DTD, and neither for JSON or YAML.
 
 use xmlcraft_xsd::XSD_NAMESPACE;
 
@@ -13,10 +13,11 @@ pub enum DocKind {
     Dtd,
     /// JSON, JSONC, JSON5 or JSON Lines.
     Json,
+    /// YAML (`.yaml`, `.yml`).
     Yaml,
 }
 
-/// What the document called `name` is: a JSON name (see [`crate::language::Language::of_name`]) is JSON; otherwise by its extension (`.xsd` is a schema; `.dtd`, `.ent` and `.mod` are DTDs), else by its
+/// What the document called `name` is: a JSON name or a YAML name (see [`crate::language::Language::of_name`]) is that; otherwise by its extension (`.xsd` is a schema; `.dtd`, `.ent` and `.mod` are DTDs), else by its
 /// text (a root element `schema` of the XML Schema namespace is a schema), else XML. `analysis` is the analysis of its text, when there
 /// is one; without it only the name decides.
 pub fn doc_kind(name: &str, analysis: Option<&Analysis>) -> DocKind {

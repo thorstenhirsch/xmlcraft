@@ -47,11 +47,29 @@ fn yaml_is_checked_as_yaml_outlined_and_offered_no_xml_tools() {
 }
 
 #[test]
-fn f8_on_yaml_checks_the_syntax() {
+fn f8_on_yaml_checks_the_syntax_and_says_so() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell();
     open(&mut h, &file(dir.path(), "f.yaml", "a: 1\na: 2\n"));
+    h.state_mut().status = String::new();
+    assert!(h.state_mut().execute("xml.validate"));
+    let started = Instant::now();
+    while h.state().status.is_empty() {
+        assert!(started.elapsed() < Duration::from_secs(10), "waiting for the answer");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(h.state().status, "f.yaml is well-formed", "the syntax was checked (a repeated key is only a warning)");
+    assert_eq!(h.state().problems(), Some((0, 1)));
+    // And an error is counted.
+    open(&mut h, &file(dir.path(), "g.yaml", "a: [1\n"));
+    h.state_mut().status = String::new();
     h.state_mut().execute("xml.validate");
-    h.run_steps(4);
-    assert_eq!(h.state().problems(), Some((0, 1)), "a repeated key is a warning");
+    let started = Instant::now();
+    while h.state().status.is_empty() {
+        assert!(started.elapsed() < Duration::from_secs(10), "waiting for the answer");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(h.state().status.starts_with("g.yaml: "), "{}", h.state().status);
 }

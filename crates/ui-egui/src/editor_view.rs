@@ -184,6 +184,14 @@ pub struct XmlStyler {
     yaml_modes: Vec<YamlMode>,
 }
 
+/// Whose rules colour a text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Colouring {
+    Xml,
+    Json,
+    Yaml,
+}
+
 /// A line this many lines past the lines whose mode is known is coloured as if no comment were open, instead of reading all that is
 /// between (a block comment that long is rare, and an estimate is better than a pause).
 const MAX_JSON_MODE_WALK: usize = 100_000;
@@ -208,11 +216,12 @@ impl XmlStyler {
 
     /// Colour the text as JSON (or as XML again). Returns whether that changed: the caller then bumps the view's `highlight_version`.
     pub fn set_json(&mut self, json: bool) -> bool {
-        self.set_data(json, false)
+        self.set_syntax(if json { Colouring::Json } else { Colouring::Xml })
     }
 
-    /// Colour the text as JSON, as YAML, or (neither) as XML. Returns whether that changed.
-    pub fn set_data(&mut self, json: bool, yaml: bool) -> bool {
+    /// Colour the text by the rules of one language. Returns whether that changed.
+    pub fn set_syntax(&mut self, colouring: Colouring) -> bool {
+        let (json, yaml) = (colouring == Colouring::Json, colouring == Colouring::Yaml);
         if self.json == json && self.yaml == yaml {
             return false;
         }

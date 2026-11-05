@@ -653,7 +653,11 @@ impl XmlCraftApp {
         let (id, version) = (doc.id(), doc.editor().version());
         let matches = self.find.shown_matches(id, version);
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
-        if view.styler.set_data(doc.language().is_json(), doc.language().is_yaml()) {
+        if view.styler.set_syntax(match doc.language() {
+            l if l.is_json() => crate::editor_view::Colouring::Json,
+            l if l.is_yaml() => crate::editor_view::Colouring::Yaml,
+            _ => crate::editor_view::Colouring::Xml,
+        }) {
             view.view.highlight_version += 1;
         }
         view.styler.set_matches(matches);

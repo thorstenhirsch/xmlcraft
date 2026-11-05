@@ -465,8 +465,8 @@ pub(crate) fn tools() -> Vec<ToolDef> {
         ToolDef {
             name: "xml_wellformed",
             title: "Check well-formedness",
-            description: "Check XML 1.0 well-formedness and Namespaces, of an open document (`id`), a file (`path`) or text. Returns the counts and the problems with \
-                          their position and message.",
+            description: "Check XML 1.0 well-formedness and Namespaces, of an open document (`id`), a file (`path`) or text; for JSON, JSON with comments, JSON5, JSON Lines and \
+                          YAML (by name, or `language` for text) the syntax of that language. Returns the counts and the problems with their position and message.",
             input_schema: object(language_source_properties(), &[]),
             read_only: true,
             destructive: false,
@@ -493,7 +493,8 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             title: "What can be folded",
             description: "The stretches of lines that can be folded in an open document (`id`), a file (`path`) or text: elements whose content is on lines of their own, \
                           and comments, CDATA sections, processing instructions and DOCTYPEs over several lines. Each has the line that stands for it (`first_line`), the \
-                          last line it hides (`last_line`), the line it ends on, its level (1 is the root element) and its kind. Lines count from 1.",
+                          last line it hides (`last_line`), the line it ends on, its level (1 is the root element) and its kind. In JSON, JSON with comments, JSON5, JSON Lines and \
+                          YAML (by name, or `language` for text): the objects and arrays (YAML: blocks and multi-line scalars) over several lines. Lines count from 1.",
             input_schema: object(language_source_properties(), &[]),
             read_only: true,
             destructive: false,
@@ -503,7 +504,8 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             name: "xml_outline",
             title: "Outline of the elements",
             description: "The element tree of an open document (`id`), a file (`path`) or text: each element with its depth, name, a hint from its id, name or key \
-                          attribute, and where it starts and ends.",
+                          attribute, and where it starts and ends. For JSON, JSON Lines and YAML (by name, or `language` for text): each member (and each list entry that is an \
+                          object or list) with its depth, its name and a look at its value.",
             input_schema: object(language_source_properties(), &[]),
             read_only: true,
             destructive: false,
@@ -513,7 +515,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             name: "xml_format",
             title: "Pretty-print or minify",
             description: "Change only the white space between nodes (XML) or tokens (JSON, JSONC, JSON5): pretty-print (one node or member per line, indented) or minify. XML text with mixed content and elements with \
-                          xml:space=\"preserve\" are left alone, JSON Lines can only be minified, and a document that is not well-formed is refused. On an open document (`id`) it is one undoable edit; \
+                          xml:space=\"preserve\" are left alone, JSON Lines can only be minified, YAML is never reformatted (its white space is its structure: the tool refuses), and a document that is not well-formed is refused. On an open document (`id`) it is one undoable edit; \
                           for a file or text the formatted text is returned and nothing is written.",
             input_schema: {
                 let mut properties = language_source_properties();
@@ -673,7 +675,7 @@ fn language_arg(args: &Value) -> Result<Language> {
         Some("json5") => Language::Json(JsonFlavor::Json5),
         Some("jsonl") => Language::Json(JsonFlavor::Lines),
         Some("yaml") => Language::Yaml,
-        Some(other) => return Err(ToolError::InvalidArgs(format!("language is xml, json, jsonc, json5 or jsonl, not {other:?}"))),
+        Some(other) => return Err(ToolError::InvalidArgs(format!("language is xml, json, jsonc, json5, jsonl or yaml, not {other:?}"))),
     })
 }
 
