@@ -82,7 +82,8 @@ fn a_file_with_a_cross_reference_stream_is_updated_with_one_and_keeps_its_object
     // The stream was deflated and stays deflated.
     let Some(Object::Stream(s)) = after.get(r(5)) else { panic!("a stream") };
     assert_eq!(s.dict.get("Filter").and_then(Object::as_name), Some("FlateDecode"));
-    assert!(after.next_object_number() > pdf.next_object_number() - 1);
+    // The old file has objects 0 to 11; the update's cross-reference stream is object 12, so the next number is 13.
+    assert_eq!((pdf.next_object_number(), after.next_object_number()), (12, 13));
 }
 
 #[test]
@@ -176,4 +177,113 @@ fn dump_for_other_programs() {
     let updated = pdf.replace_embedded(&pdf.embedded_files()[0], b"<Invoice>changed</Invoice>", WHEN).expect("updates");
     std::fs::write(format!("{dir}/original.pdf"), original).expect("writes");
     std::fs::write(format!("{dir}/updated.pdf"), updated).expect("writes");
+}
+
+#[test]
+fn a_signature_that_the_flags_do_not_announce_is_found_in_the_fields() {
+    let build = |fields: &str| {
+        let mut b = Builder::new();
+        b.object(1, &format!("<< /Type /Catalog /Names << /EmbeddedFiles << /Names [(a) 2 0 R] >> >> /AcroForm << /Fields [{fields}] >> >>"));
+        b.object(2, "<< /F (a.xml) /EF << /F 3 0 R >> >>");
+        b.stream(3, "/Subtype /text#2Fxml", b"<a/>");
+        b.object(4, "<< /FT /Sig /T (s) /V 5 0 R >>");
+        b.object(5, "<< /Type /Sig /Filter /Adobe.PPKLite >>");
+        b.object(6, "<< /FT /Sig /T (empty) >>");
+        b.object(7, "<< /FT /Tx /Kids [4 0 R] >>");
+        b.finish(8, "")
+    };
+    for (fields, signed) in [("4 0 R", true), ("7 0 R", true), ("6 0 R", false), ("", false)] {
+        let pdf = Pdf::open(build(fields)).expect("opens");
+        assert_eq!(pdf.why_not_editable().is_some(), signed, "{fields:?}: {:?}", pdf.why_not_editable());
+    }
+}
+
+#[test]
+fn a_replaced_stream_of_a_later_generation_is_recorded_with_it() {
+    // The embedded stream is object 3 generation 2, in a file whose cross-reference is a table; the update's table says generation 2 too.
+    let mut b = Builder::new();
+    b.object(1, "<< /Type /Catalog /Names << /EmbeddedFiles << /Names [(a) 2 0 R] >> >> >>");
+    b.object(2, "<< /F (a.xml) /EF << /F 3 2 R >> >>");
+    b.offsets.push((3, b.out.len()));
+    b.out.extend_from_slice(b"3 2 obj\n<< /Subtype /text#2Fxml /Length 5 >>\nstream\n<old/>\nendstream\nendobj\n");
+    let mut bytes = b.finish(4, "");
+    // The table is one subsection, `1 3`, of three lines of twenty bytes; the third is object 3. (Searched as bytes: the header of the
+    // file has some that are not text.)
+    let at = bytes.windows(4).rposition(|w| w == b"1 3\n").expect("the subsection") + 4 + 2 * 20;
+    bytes[at + 11..at + 16].copy_from_slice(b"00002");
+    let pdf = Pdf::open(bytes).expect("opens");
+    assert!(!pdf.recovered(), "the patched table is read");
+    let file = pdf.embedded_files().remove(0);
+    assert_eq!(file.stream.generation, 2);
+    let updated = pdf.replace_embedded(&file, b"<new/>", WHEN).expect("updates");
+    let after = Pdf::open(updated.clone()).expect("opens");
+    assert_eq!(after.embedded_data(&after.embedded_files()[0]).expect("data"), b"<new/>");
+    assert!(text_of(&updated).contains("xref\n3 1\n") && text_of(&updated).contains(" 00002 n "), "{}", text_of(&updated));
+}
+
+fn text_of(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
+#[test]
+fn only_real_pdf_dates_are_written_and_reals_of_the_old_dictionary_are_kept_as_they_were() {
+    let pdf = Pdf::open(invoice_pdf("a.xml", XML)).expect("opens");
+    let file = pdf.embedded_files().remove(0);
+    for good in [
+        "D:2026",
+        "D:202611",
+        "D:20261105",
+        "D:2026110512",
+        "D:202611051230",
+        "D:20261105123000",
+        "D:20261105123000Z",
+        "D:20261105123000+01'00'",
+        "D:20261105123000-05'30",
+        "D:20261105123000+01",
+        "D:20261105123000Z00'00'",
+    ] {
+        assert!(pdf.replace_embedded(&file, b"x", good).is_ok(), "{good}");
+    }
+    for bad in [
+        "D:",
+        "D:garbage",
+        "D:202",
+        "D:20261305",
+        "D:20261132",
+        "D:2026110525",
+        "D:202611051260",
+        "D:20261105123060",
+        "D:20261105123000X",
+        "D:20261105123000+25'00'",
+        "D:20261105123000+01'60'",
+        "D:2026110",
+        "d:2026",
+        "D:20261105123000Zjunk",
+        "D:20261105123000Z0",
+    ] {
+        assert!(pdf.replace_embedded(&file, b"x", bad).is_err(), "{bad}");
+    }
+    // A real in the stream's dictionary is written the way it reads back.
+    let mut b = Builder::new();
+    b.object(1, "<< /Type /Catalog /Names << /EmbeddedFiles << /Names [(a) 2 0 R] >> >> >>");
+    b.object(2, "<< /F (a.xml) /EF << /F 3 0 R >> >>");
+    b.stream(3, "/Subtype /text#2Fxml /Scale 0.1234567891 /Tiny 0.0000001", b"<a/>");
+    let pdf = Pdf::open(b.finish(4, "")).expect("opens");
+    let updated = pdf.replace_embedded(&pdf.embedded_files()[0], b"<b/>", WHEN).expect("updates");
+    let tail = text_of(&updated[pdf.bytes().len()..]);
+    assert!(tail.contains("/Scale 0.1234567891") && tail.contains("/Tiny 0.0000001"), "{tail}");
+}
+
+#[test]
+fn the_row_of_a_replaced_stream_in_a_cross_reference_stream_has_its_generation() {
+    let original = common::compressed_pdf_with(XML, common::Variant::LaterGeneration);
+    let pdf = Pdf::open(original.clone()).expect("opens");
+    assert!(!pdf.recovered());
+    let file = pdf.embedded_files().remove(0);
+    assert_eq!(file.stream.generation, 1);
+    let updated = pdf.replace_embedded(&file, b"<g/>", WHEN).expect("updates");
+    let after = Pdf::open(updated.clone()).expect("opens");
+    assert!(!after.recovered(), "the update's own stream is read");
+    assert_eq!(after.embedded_data(&after.embedded_files()[0]).expect("data"), b"<g/>", "the reference `5 1 R` finds the new stream");
+    assert!(text_of(&updated[original.len()..]).contains("5 1 obj"));
 }

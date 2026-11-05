@@ -283,10 +283,10 @@ fn a_reference_with_the_wrong_generation_names_nothing() {
     b.out.extend_from_slice(b"7 1 obj\n(reused)\nendobj\n");
     let mut bytes = b.finish(8, "");
     // The table says object 7 is generation 1 (the builder writes 0 for all): patch its line.
-    let text = String::from_utf8_lossy(&bytes).into_owned();
-    let at = text.rfind("7 1\n").expect("the subsection of object 7") + 4;
+    let at = bytes.windows(4).rposition(|w| w == b"7 1\n").expect("the subsection of object 7") + 4;
     bytes[at + 11..at + 16].copy_from_slice(b"00001");
     let pdf = Pdf::open(bytes).expect("opens");
+    assert!(!pdf.recovered(), "the table is read, not recovered from");
     assert_eq!(pdf.get(ObjRef { number: 7, generation: 1 }).and_then(|o| o.as_string().map(<[u8]>::to_vec)), Some(b"reused".to_vec()));
     assert_eq!(pdf.get(r(7)), None, "the old generation of a number that was reused");
     assert!(pdf.get(r(1)).is_some());

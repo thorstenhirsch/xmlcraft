@@ -111,5 +111,5 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 - 2026-11-05: M5.2: `json.editor`, `json.jsonc`, `json.lines` and `json.language-abstraction` planned → partial; 10 shipped and 75 partial of 188 counted features, 25.3% weighted.
 - 2026-11-05: M5.4: `json.schema-validate` planned → partial; the JSON Schema Test Suite is measured (4938 of 4950 required tests); 10 shipped and 76 partial of 188 counted features, 25.5% weighted.
 - 2026-11-05: M6.3: `project.diff-files`, `project.diff-three-way` and `project.diff-ignore-options` planned → partial (the `xmlcraft-diff` crate and the tools `diff_compare` and `diff_merge`; no window yet); with the YAML (M5.6), BSON (M5.8) and JSON Schema (M5.4) entries that moved before it, 10 shipped and 81 partial of 188 counted features, 26.9% weighted.
-- 2026-11-05: M9.1: `pdf.embedded-xml` planned → partial (`xmlcraft-pdf`, `pdf_files`).
-- 2026-11-05: M9.2: `pdf.incremental-update` planned → partial (`Pdf::replace_embedded`, `pdf_replace_file`).
+- 2026-11-05: M9.1: `pdf.embedded-xml` planned → partial (`xmlcraft-pdf`, `pdf_files`); 10 shipped and 82 partial of 188 counted features, 27.1% weighted.
+- 2026-11-05: M9.2: `pdf.incremental-update` planned → partial (`Pdf::replace_embedded`, `pdf_replace_file`); 10 shipped and 83 partial of 188 counted features, 27.4% weighted.

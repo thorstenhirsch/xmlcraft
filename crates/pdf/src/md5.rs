@@ -10,44 +10,55 @@ const S: [u32; 64] = [
 pub fn md5(data: &[u8]) -> [u8; 16] {
     // K[i] = floor(2^32 * abs(sin(i + 1))).
     let k: Vec<u32> = (0..64).map(|i| ((f64::from(i + 1)).sin().abs() * 4_294_967_296.0) as u32).collect();
-    let (mut a0, mut b0, mut c0, mut d0) = (0x6745_2301u32, 0xefcd_ab89u32, 0x98ba_dcfeu32, 0x1032_5476u32);
-    let mut message = data.to_vec();
-    message.push(0x80);
-    while message.len() % 64 != 56 {
-        message.push(0);
+    let mut state = [0x6745_2301u32, 0xefcd_ab89u32, 0x98ba_dcfeu32, 0x1032_5476u32];
+    // The whole blocks of the data are hashed where they are; only the end (at most two blocks, with the padding) is copied.
+    let (blocks, rest) = data.as_chunks::<64>();
+    for block in blocks {
+        compress(&mut state, block, &k);
     }
-    message.extend_from_slice(&(u64::try_from(data.len()).unwrap_or(u64::MAX).wrapping_mul(8)).to_le_bytes());
-    for chunk in message.as_chunks::<64>().0 {
-        let words: Vec<u32> = chunk.as_chunks::<4>().0.iter().map(|w| u32::from_le_bytes(*w)).collect();
-        let (mut a, mut b, mut c, mut d) = (a0, b0, c0, d0);
-        for i in 0..64usize {
-            let (f, g) = match i / 16 {
-                0 => ((b & c) | (!b & d), i),
-                1 => ((d & b) | (!d & c), (5 * i + 1) % 16),
-                2 => (b ^ c ^ d, (3 * i + 5) % 16),
-                _ => (c ^ (b | !d), (7 * i) % 16),
-            };
-            let word = words.get(g).copied().unwrap_or(0);
-            let rotated =
-                a.wrapping_add(f).wrapping_add(k.get(i).copied().unwrap_or(0)).wrapping_add(word).rotate_left(S.get(i).copied().unwrap_or(0));
-            let next = b.wrapping_add(rotated);
-            a = d;
-            d = c;
-            c = b;
-            b = next;
-        }
-        a0 = a0.wrapping_add(a);
-        b0 = b0.wrapping_add(b);
-        c0 = c0.wrapping_add(c);
-        d0 = d0.wrapping_add(d);
+    let mut tail = rest.to_vec();
+    tail.push(0x80);
+    while tail.len() % 64 != 56 {
+        tail.push(0);
+    }
+    tail.extend_from_slice(&(u64::try_from(data.len()).unwrap_or(u64::MAX).wrapping_mul(8)).to_le_bytes());
+    for block in tail.as_chunks::<64>().0 {
+        compress(&mut state, block, &k);
     }
     let mut out = [0u8; 16];
-    for (i, word) in [a0, b0, c0, d0].iter().enumerate() {
+    for (i, word) in state.iter().enumerate() {
         if let Some(slot) = out.get_mut(i * 4..i * 4 + 4) {
             slot.copy_from_slice(&word.to_le_bytes());
         }
     }
     out
+}
+
+/// One block of 64 bytes into the state.
+fn compress(state: &mut [u32; 4], block: &[u8; 64], k: &[u32]) {
+    let mut words = [0u32; 16];
+    for (word, bytes) in words.iter_mut().zip(block.as_chunks::<4>().0) {
+        *word = u32::from_le_bytes(*bytes);
+    }
+    let [mut a, mut b, mut c, mut d] = *state;
+    for i in 0..64usize {
+        let (f, g) = match i / 16 {
+            0 => ((b & c) | (!b & d), i),
+            1 => ((d & b) | (!d & c), (5 * i + 1) % 16),
+            2 => (b ^ c ^ d, (3 * i + 5) % 16),
+            _ => (c ^ (b | !d), (7 * i) % 16),
+        };
+        let word = words.get(g).copied().unwrap_or(0);
+        let rotated = a.wrapping_add(f).wrapping_add(k.get(i).copied().unwrap_or(0)).wrapping_add(word).rotate_left(S.get(i).copied().unwrap_or(0));
+        let next = b.wrapping_add(rotated);
+        a = d;
+        d = c;
+        c = b;
+        b = next;
+    }
+    for (slot, value) in state.iter_mut().zip([a, b, c, d]) {
+        *slot = slot.wrapping_add(value);
+    }
 }
 
 /// The 32 lower-case hexadecimal digits of the MD5 of `data`.

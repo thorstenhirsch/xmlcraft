@@ -68,7 +68,7 @@ pub fn invoice_pdf(name: &str, xml: &str) -> Vec<u8> {
     b.finish(6, "")
 }
 
-/// A PDF 1.5 file: the catalog and the filespec are in an object stream, the cross-reference is a stream with a PNG predictor, and the
+/// A PDF 1.7 file that uses what PDF 1.5 added: the catalog and the filespec are in an object stream, the cross-reference is a stream with a PNG predictor, and the
 /// embedded file is deflated.
 /// How `compressed_pdf_with` differs from `compressed_pdf`.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -80,6 +80,8 @@ pub enum Variant {
     MissingRows,
     /// The entry for the filespec has the wrong index in its object stream.
     WrongIndex,
+    /// The embedded stream (object 5) is generation 1.
+    LaterGeneration,
 }
 
 pub fn compressed_pdf(xml: &str) -> Vec<u8> {
@@ -91,7 +93,8 @@ pub fn compressed_pdf_with(xml: &str, variant: Variant) -> Vec<u8> {
     let mut out = b"%PDF-1.7\n".to_vec();
     // The object stream (object 10) holds objects 1 (catalog) and 4 (filespec).
     let one = "<< /Type /Catalog /Names << /EmbeddedFiles << /Names [(i) 4 0 R] >> >> >>";
-    let four = "<< /F (z.xml) /EF << /UF 5 0 R >> /AFRelationship /Source >>";
+    let generation: u8 = if variant == Variant::LaterGeneration { 1 } else { 0 };
+    let four = format!("<< /F (z.xml) /EF << /UF 5 {generation} R >> /AFRelationship /Source >>");
     let header = format!("1 0 4 {} ", one.len() + 1);
     let body = format!("{header}{one} {four}");
     let packed = compress_to_vec_zlib(body.as_bytes(), 6);
@@ -104,7 +107,8 @@ pub fn compressed_pdf_with(xml: &str, variant: Variant) -> Vec<u8> {
     let file = compress_to_vec_zlib(xml.as_bytes(), 6);
     let stream_at = out.len();
     out.extend_from_slice(
-        format!("5 0 obj\n<< /Type /EmbeddedFile /Subtype /application#2Fxml /Filter /FlateDecode /Length {} >>\nstream\n", file.len()).as_bytes(),
+        format!("5 {generation} obj\n<< /Type /EmbeddedFile /Subtype /application#2Fxml /Filter /FlateDecode /Length {} >>\nstream\n", file.len())
+            .as_bytes(),
     );
     out.extend_from_slice(&file);
     out.extend_from_slice(b"\nendstream\nendobj\n");
@@ -117,7 +121,7 @@ pub fn compressed_pdf_with(xml: &str, variant: Variant) -> Vec<u8> {
             1 => (2, 10, 0),
             4 if variant == Variant::WrongIndex => (2, 10, 7),
             4 => (2, 10, 1),
-            5 => (1, u32::try_from(stream_at).expect("fits"), 0),
+            5 => (1, u32::try_from(stream_at).expect("fits"), generation),
             10 if variant == Variant::NestedObjectStream => (2, 10, 0),
             10 => (1, u32::try_from(objstm_at).expect("fits"), 0),
             11 => (1, u32::try_from(table_at).expect("fits"), 0),

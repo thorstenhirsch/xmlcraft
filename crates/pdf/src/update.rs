@@ -25,9 +25,9 @@ fn write_object(object: &Object, out: &mut Vec<u8>, depth: usize) {
         Object::Bool(b) => out.extend_from_slice(if *b { b"true" } else { b"false" }),
         Object::Int(i) => out.extend_from_slice(i.to_string().as_bytes()),
         Object::Real(r) => {
-            // Without an exponent (PDF has none); a number that is not finite cannot be written.
-            let text = if r.is_finite() { format!("{r:.6}").trim_end_matches('0').trim_end_matches('.').to_owned() } else { "0".to_owned() };
-            out.extend_from_slice(if text.is_empty() || text == "-" { b"0" } else { text.as_bytes() });
+            // The shortest text that reads back as the same number (Rust writes no exponent, which PDF does not have); a number that is
+            // not finite cannot be written.
+            out.extend_from_slice(if r.is_finite() { r.to_string() } else { "0".to_owned() }.as_bytes());
         }
         Object::String(bytes) => {
             out.push(b'<');
@@ -85,6 +85,24 @@ fn remove(dict: &mut Dict, key: &str) {
     dict.entries.retain(|(k, _)| k != key);
 }
 
+/// Whether a form field (or a node of the field tree) is a signature field that holds a signature.
+fn has_signature(pdf: &Pdf, field: &Object, depth: usize, budget: &mut usize) -> bool {
+    if depth > 16 || *budget == 0 {
+        return false;
+    }
+    *budget -= 1;
+    let field = pdf.resolve(field);
+    let Some(dict) = field.as_dict() else { return false };
+    let kind = dict.get("FT").map(|t| pdf.resolve(t));
+    if kind.as_ref().and_then(Object::as_name) == Some("Sig") && dict.get("V").map(|v| pdf.resolve(v)).is_some_and(|v| v != Object::Null) {
+        return true;
+    }
+    match dict.get("Kids").map(|k| pdf.resolve(k)) {
+        Some(Object::Array(kids)) => kids.iter().any(|k| has_signature(pdf, k, depth + 1, budget)),
+        _ => false,
+    }
+}
+
 /// Whether the document cannot be changed without breaking something: it is signed or certified.
 fn is_protected(pdf: &Pdf) -> Option<&'static str> {
     let catalog = pdf.catalog_ref().and_then(|r| pdf.get(r))?;
@@ -94,9 +112,17 @@ fn is_protected(pdf: &Pdf) -> Option<&'static str> {
     }
     if let Some(form) = catalog.get("AcroForm").map(|f| pdf.resolve(f))
         && let Some(form) = form.as_dict()
-        && form.get("SigFlags").map(|f| pdf.resolve(f)).and_then(|f| f.as_int()).is_some_and(|f| f != 0)
     {
-        return Some("it has digital signatures");
+        if form.get("SigFlags").map(|f| pdf.resolve(f)).and_then(|f| f.as_int()).is_some_and(|f| f != 0) {
+            return Some("it has digital signatures");
+        }
+        // A signature that the flags do not announce.
+        let mut budget = 10_000;
+        if let Some(Object::Array(fields)) = form.get("Fields").map(|f| pdf.resolve(f))
+            && fields.iter().any(|f| has_signature(pdf, f, 0, &mut budget))
+        {
+            return Some("it has a signature field that is signed");
+        }
     }
     None
 }
@@ -117,7 +143,7 @@ impl Pdf {
         if let Some(why) = self.why_not_editable() {
             return Err(PdfError::Unsupported(format!("this PDF is not changed: {why}")));
         }
-        if !modified.starts_with("D:") || !modified.is_ascii() || modified.contains(['(', ')', '\\']) || modified.len() > 40 {
+        if !is_pdf_date(modified) {
             return Err(PdfError::Corrupt("the modification date is not a PDF date".to_owned()));
         }
         let Some(Object::Stream(old)) = self.get(file.stream) else {
@@ -182,14 +208,15 @@ impl Pdf {
         if self.previous_is_stream() {
             // The previous section is a cross-reference stream: so is this one (its own entry is in it).
             let own = size;
-            let rows: [(u32, usize); 2] = [(stream_number, stream_at), (own, table_at)];
+            // (The row of the replaced object has its generation, which the reference to it names.)
+            let rows: [(usize, u16); 2] = [(stream_at, file.stream.generation), (table_at, 0)];
             let mut data_rows: Vec<u8> = Vec::new();
-            for (_, at) in rows {
+            for (at, generation) in rows {
                 data_rows.push(1);
                 data_rows.extend_from_slice(
                     &u32::try_from(at).map_err(|_| PdfError::Corrupt("the file is too large to update".to_owned()))?.to_be_bytes(),
                 );
-                data_rows.extend_from_slice(&0u16.to_be_bytes());
+                data_rows.extend_from_slice(&generation.to_be_bytes());
             }
             let mut xref = carried.clone();
             set(&mut xref, "Type", Object::Name("XRef".to_owned()));
@@ -222,6 +249,45 @@ impl Pdf {
 
     fn resolve_dict_value(&self, dict: &Dict, key: &str) -> Object {
         dict.get(key).map_or(Object::Null, |v| self.resolve(v))
+    }
+}
+
+/// Whether `text` is a PDF date (ISO 32000-1 §7.9.4): `D:YYYY` and then, each only after the one before, month (01–12), day (01–31), hour
+/// (00–23), minute (00–59) and second (00–59), and a time zone: `Z`, or `+` or `-` with hours and, after an apostrophe, minutes.
+pub(crate) fn is_pdf_date(text: &str) -> bool {
+    let Some(rest) = text.strip_prefix("D:") else { return false };
+    let bytes = rest.as_bytes();
+    let number = |from: usize, len: usize| -> Option<u32> {
+        let digits = bytes.get(from..from + len)?;
+        if !digits.iter().all(u8::is_ascii_digit) {
+            return None;
+        }
+        std::str::from_utf8(digits).ok()?.parse().ok()
+    };
+    if number(0, 4).is_none() {
+        return false;
+    }
+    let ranges: [(u32, u32); 5] = [(1, 12), (1, 31), (0, 23), (0, 59), (0, 59)];
+    let mut at = 4;
+    for (low, high) in ranges {
+        match number(at, 2) {
+            Some(n) if (low..=high).contains(&n) => at += 2,
+            Some(_) => return false,
+            None => break,
+        }
+    }
+    let zone = rest.get(at..).unwrap_or_default();
+    match zone.as_bytes().first() {
+        None => true,
+        Some(b'Z') => zone == "Z" || zone == "Z00'00'" || zone == "Z00'00" || zone == "Z00",
+        Some(b'+' | b'-') => {
+            let body = zone.get(1..).unwrap_or_default().trim_end_matches('\'');
+            let (hours, minutes) = body.split_once('\'').map_or((body, ""), |(h, m)| (h, m));
+            let ok =
+                |text: &str, max: u32| text.len() == 2 && text.bytes().all(|b| b.is_ascii_digit()) && text.parse::<u32>().is_ok_and(|n| n <= max);
+            ok(hours, 23) && (minutes.is_empty() || ok(minutes, 59))
+        }
+        Some(_) => false,
     }
 }
 

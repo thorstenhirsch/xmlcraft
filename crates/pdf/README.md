@@ -1,6 +1,6 @@
 # xmlcraft-pdf
 
-A minimal PDF reader for the XML a PDF carries (layer L1, no UI, no I/O, compiles for the web; one dependency, `miniz_oxide`, to inflate).
+A minimal PDF reader for the XML a PDF carries (layer L1, no UI, no I/O, compiles for the web; two dependencies: `miniz_oxide` to inflate and deflate, `chrono` for the PDF date).
 
 - **Structure** (`Pdf::open`): the cross-reference chain from `startxref` (classic tables, cross-reference streams with their `/W`, `/Index` and PNG predictors (TIFF predictor 2 on 8-bit samples only; other bit depths are refused), `/Prev` and hybrid `/XRefStm` sections, newest entry first), indirect objects by number (`Pdf::get`), object streams, and the filters Flate, ASCIIHex and ASCII85. The syntax of objects (`Parser`): names with `#xx`, literal strings with escapes and nesting, hexadecimal strings, numbers, references, comments, and streams whose `/Length` is direct, indirect or wrong (the `endstream` then decides).
 - **Embedded files** (`Pdf::embedded_files`, `embedded_data`): those of the `/EmbeddedFiles` name tree (with `/Kids` and `/Names`) and of the catalog's `/AF`, each once, with name (`/UF`, else `/F`; PDF text strings in UTF-16, UTF-8 or PDFDocEncoding), description, `/AFRelationship`, media type, declared size, the file specification and the stream. This is where the XML of a ZUGFeRD, Factur-X or XRechnung PDF is.

@@ -155,3 +155,33 @@ fn what_cannot_be_written_is_refused_and_nothing_is_written() {
         assert!(matches!(replace(&mut a, bad.clone()), Err(ToolError::InvalidArgs(_))), "{bad}");
     }
 }
+
+#[test]
+fn only_a_real_xml_declaration_can_name_the_encoding_and_a_link_is_not_written_through() {
+    let dir = tempfile::tempdir().expect("dir");
+    std::fs::write(dir.path().join("i.pdf"), pdf("a.xml", "text#2Fxml", b"<old/>")).expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    // A stylesheet instruction that mentions an encoding is not a declaration; neither is a comment or an attribute of an element.
+    for fine in [
+        "<?xml-stylesheet href=\"a.xsl\" encoding=\"ISO-8859-1\"?><a/>",
+        "<a note=\"<?xml version='1.0' encoding='latin1'?>\"/>",
+        "<?xml version=\"1.0\" standalone=\"yes\"?><a/>",
+        "<?xml version='1.0' encoding='UTF-8' standalone='no'?><a/>",
+        "<?xmlencoding=\"latin1\"?><a/>",
+    ] {
+        replace(&mut a, json!({ "path": "i.pdf", "text": fine, "output": "o.pdf", "overwrite": true })).unwrap_or_else(|e| panic!("{fine}: {e}"));
+    }
+    for refused in ["<?xml version=\"1.0\" encoding=\"windows-1252\"?><a/>", "<?xml\tversion='1.0'\nencoding = 'UTF-16'?><a/>"] {
+        let e = replace(&mut a, json!({ "path": "i.pdf", "text": refused, "output": "p.pdf" })).expect_err(refused);
+        assert!(e.to_string().contains("declares the encoding"), "{refused}: {e}");
+    }
+    #[cfg(unix)]
+    {
+        // A link at the output, even one that leads nowhere (yet) and out of the root, is not written through.
+        let outside = tempfile::tempdir().expect("dir");
+        std::os::unix::fs::symlink(outside.path().join("target.pdf"), dir.path().join("link.pdf")).expect("links");
+        let e = replace(&mut a, json!({ "path": "i.pdf", "text": "<a/>", "output": "link.pdf", "overwrite": true })).expect_err("a link");
+        assert!(e.to_string().contains("symbolic link"), "{e}");
+        assert!(!outside.path().join("target.pdf").exists(), "nothing was written outside the root");
+    }
+}
