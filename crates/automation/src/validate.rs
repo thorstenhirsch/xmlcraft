@@ -26,7 +26,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
         title: "Validate against a DTD or an XML Schema",
         description: "Check a document (an open document `id`, a file `path`, or `text`) for well-formedness and, when it is well-formed, validity. With `schema` (a path of a \
                       schema document, relative paths from the folder of the document) or, in a document with no DOCTYPE, the schema its root element names with \
-                      `xsi:schemaLocation` / `xsi:noNamespaceSchemaLocation`, it is validated against that XML Schema 1.0 (the schema documents it includes and imports \
+                      `xsi:schemaLocation` / `xsi:noNamespaceSchemaLocation`, it is validated against that XML Schema 1.0 (an electronic invoice in UBL 2.1 that names none is checked against the UBL schema that ships with the app; the schema documents it includes and imports \
                       are found as files, in the open documents, or among the schemas that ship with the app); otherwise against the DTD its DOCTYPE declares: the internal \
                       subset and the external subset and parameter entities that are files. Nothing is downloaded. A document with neither has nothing to be valid against. \
                       Returns the counts and the problems with their position and message; `kind` says whether a problem is about well-formedness, validity or the schema \
@@ -104,6 +104,10 @@ fn xml_validate(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let has_doctype = root.children().any(|c| c.kind() == SyntaxKind::Doctype);
     if schema.is_some() || (!has_doctype && !schema_hints(&root).is_empty()) {
         return validate_against_schema(a, &source, &root, parsed.diagnostics(), schema);
+    }
+    // An electronic invoice that names no grammar is checked against the schema that ships for its syntax (as the window does).
+    if !has_doctype && let Some(implicit) = xmlcraft_engine::validation::implicit_schema(&source.text) {
+        return validate_against_schema(a, &source, &root, parsed.diagnostics(), Some(&implicit));
     }
     // The external parts of the DTD are found the way a schema's documents are: open documents, the catalogs, the DTDs that ship with
     // the app, and files through the root confinement; nothing is downloaded.

@@ -2336,8 +2336,8 @@ milestone = "M9"
 status = "partial"
 commands = []
 tools = ["einvoice_detect"]
-evidence = ["crates/einvoice/src/lib.rs::xrechnung_in_ubl_is_recognised_with_its_version_and_an_extension_is_not_a_plain_xrechnung", "crates/automation/tests/einvoice.rs::text_an_open_document_and_a_file_are_recognised_the_same_way"]
-notes = "Recognised by the UBL Invoice or CreditNote root and the CustomizationID (XRechnung 2.x and 3.x, and its extension profile apart from plain XRechnung): `einvoice_detect` names the standard, version, UBL version and Peppol process. Missing: validation against the UBL schema and the XRechnung rules (Schematron), a status-bar chip."
+evidence = ["crates/einvoice/src/lib.rs::xrechnung_in_ubl_is_recognised_with_its_version_and_an_extension_is_not_a_plain_xrechnung", "crates/automation/tests/einvoice.rs::text_an_open_document_and_a_file_are_recognised_the_same_way", "crates/engine/src/validation.rs::a_ubl_invoice_that_names_no_schema_is_checked_against_the_bundled_one", "crates/automation/tests/einvoice.rs::xml_validate_checks_a_ubl_invoice_against_the_bundled_schema_without_being_told_which"]
+notes = "Recognised by the UBL Invoice or CreditNote root and the CustomizationID (XRechnung 2.x and 3.x, and its extension profile apart from plain XRechnung): `einvoice_detect` names the standard, version, UBL version and Peppol process. F8 and `xml_validate` check an invoice or credit note that names no grammar against the UBL 2.1 XML Schema that ships with the app (the OASIS files, unmodified, found by namespace). Missing: the XRechnung rules (Schematron: business rules, code lists), a status-bar chip."
 
 [[feature]]
 id = "einvoice.xrechnung-cii"
@@ -2360,8 +2360,8 @@ milestone = "M9"
 status = "partial"
 commands = []
 tools = ["einvoice_detect"]
-evidence = ["crates/einvoice/src/lib.rs::peppol_en16931_and_unknown_identifiers_are_told_apart"]
-notes = "The plain EN 16931 identifier is recognised in UBL and CII. Missing: the EN 16931 rules (Schematron)."
+evidence = ["crates/einvoice/src/lib.rs::peppol_en16931_and_unknown_identifiers_are_told_apart", "crates/engine/src/validation.rs::a_ubl_invoice_that_names_no_schema_is_checked_against_the_bundled_one"]
+notes = "The plain EN 16931 identifier is recognised in UBL and CII. The UBL 2.1 schema check applies to the UBL syntax. Missing: the EN 16931 rules (Schematron), and the CII schema check."
 
 [[feature]]
 id = "einvoice.peppol-bis3"
@@ -2372,8 +2372,8 @@ milestone = "M9"
 status = "partial"
 commands = []
 tools = ["einvoice_detect"]
-evidence = ["crates/einvoice/src/lib.rs::peppol_en16931_and_unknown_identifiers_are_told_apart"]
-notes = "Peppol BIS Billing 3.0 (and PINT) is recognised by its CustomizationID, with the process from ProfileID. Missing: the Peppol rules (Schematron)."
+evidence = ["crates/einvoice/src/lib.rs::peppol_en16931_and_unknown_identifiers_are_told_apart", "crates/engine/src/validation.rs::a_ubl_invoice_that_names_no_schema_is_checked_against_the_bundled_one"]
+notes = "Peppol BIS Billing 3.0 (and PINT) is recognised by its CustomizationID, with the process from ProfileID. The UBL 2.1 schema check applies to it. Missing: the Peppol rules (Schematron)."
 
 [[feature]]
 id = "einvoice.fatturapa"
