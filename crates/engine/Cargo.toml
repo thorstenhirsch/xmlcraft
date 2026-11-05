@@ -28,6 +28,7 @@ xmlcraft-bson = { workspace = true }
 xmlcraft-yaml-syntax = { workspace = true }
 xmlcraft-format = { workspace = true }
 xmlcraft-einvoice = { workspace = true }
+xmlcraft-schematron = { workspace = true }
 xmlcraft-diff = { workspace = true }
 xmlcraft-pdf = { workspace = true }
 xmlcraft-query = { workspace = true }

@@ -267,7 +267,23 @@ fn run(resolvers: &ResolverFactory, request: Request) -> Validation {
     }
     let mut subsets = ResolvingSubsetLoader::new(&resolver);
     let mut schemas = ResolvingLoader::new(&resolver);
-    validate_guarded(&request.text.text(), request.version, &request.location, &mut subsets, &mut schemas)
+    let text = request.text.text();
+    let mut validation = validate_guarded(&text, request.version, &request.location, &mut subsets, &mut schemas);
+    // Schematron rules the document names add to what the grammar found (a document that is not well-formed or was not read is left).
+    if matches!(validation.verdict, Verdict::Valid | Verdict::Invalid) && text.contains("xml-model") {
+        let extra = crate::guard(|| crate::schematron::problems(&text, &request.location, &resolver)).unwrap_or_else(|message| {
+            log::error!("the Schematron check failed: {message}");
+            Vec::new()
+        });
+        if !extra.is_empty() {
+            // (The rules are the grammar the document has: "it names none" is no longer true.)
+            let mut all: Vec<ValidityProblem> =
+                std::mem::take(&mut validation.problems).into_iter().filter(|p| p.diagnostic.code != Code::VcNoDtd).collect();
+            all.extend(extra);
+            validation = finish(request.version, all);
+        }
+    }
+    validation
 }
 
 #[cfg(test)]
@@ -469,6 +485,33 @@ mod tests {
         );
         let v = validator.poll().remove(0).1;
         assert_eq!(v.verdict, Verdict::Invalid, "its own schema is used, not the bundled one: {:?}", v.problems);
+    }
+
+    #[test]
+    fn schematron_rules_named_by_the_document_are_checked_and_found_among_the_open_documents() {
+        let rules = "<schema xmlns=\"http://purl.oclc.org/dsdl/schematron\"><pattern><rule context=\"item\"><assert test=\"@qty\" flag=\"warning\" id=\"Q-1\">Item <name/> needs a quantity.</assert><assert test=\"@n\">needs n</assert></rule></pattern></schema>";
+        let doc = "<?xml-model href=\"rules.sch\" schematypens=\"http://purl.oclc.org/dsdl/schematron\"?>\n<order><item n=\"1\" qty=\"2\"/><item n=\"2\"/><item/></order>";
+        let validator = Validator::inline(no_resolvers());
+        validator.submit(1, 1, &Buffer::from_text(doc), Some(Path::new("/w/doc.xml")), vec![("/w/rules.sch".to_owned(), Buffer::from_text(rules))]);
+        let v = validator.poll().remove(0).1;
+        assert_eq!(v.verdict, Verdict::Invalid, "{:?}", v.problems);
+        let got: Vec<(Code, String, usize)> =
+            v.problems.iter().map(|p| (p.diagnostic.code, p.diagnostic.message(), p.diagnostic.span.start)).collect();
+        let at = |needle: &str| doc.find(needle).expect("there");
+        assert_eq!(
+            got,
+            [
+                (Code::SchematronWarning, "[Q-1] Item item needs a quantity.".to_owned(), at("<item n=\"2\"/>")),
+                (Code::SchematronWarning, "[Q-1] Item item needs a quantity.".to_owned(), at("<item/>")),
+                (Code::SchematronError, "needs n".to_owned(), at("<item/>")),
+            ],
+            "the \"no DOCTYPE\" complaint is gone, the findings are at their elements"
+        );
+        // Rules that cannot be read are a warning at the instruction, and the verdict is not spoiled.
+        let validator = Validator::inline(no_resolvers());
+        validator.submit(2, 1, &Buffer::from_text(doc), Some(Path::new("/w/doc.xml")), vec![]);
+        let v = validator.poll().remove(0).1;
+        assert!(v.problems.iter().any(|p| p.diagnostic.code == Code::SchematronUnavailable), "{:?}", v.problems);
     }
 
     #[test]
