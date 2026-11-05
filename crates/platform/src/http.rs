@@ -67,14 +67,14 @@ fn is_public_v6(v6: Ipv6Addr) -> bool {
 
 /// The parts of a URL that a request is checked by.
 #[derive(Debug, PartialEq, Eq)]
-struct Target<'a> {
-    https: bool,
-    host: &'a str,
-    port: u16,
+pub(crate) struct Target<'a> {
+    pub(crate) https: bool,
+    pub(crate) host: &'a str,
+    pub(crate) port: u16,
 }
 
 /// The scheme, host and port of an `http` or `https` URL; why not, for anything else (another scheme, no host, a user name).
-fn target_of(url: &str) -> Result<Target<'_>, String> {
+pub(crate) fn target_of(url: &str) -> Result<Target<'_>, String> {
     let https = match scheme_of(url).as_deref() {
         Some("https") => true,
         Some("http") => false,
@@ -118,18 +118,18 @@ fn server_of(target: &Target<'_>) -> String {
 }
 
 /// Whether a host name stands for this computer whatever the name servers say (`localhost` and everything below it).
-fn is_local_name(host: &str) -> bool {
+pub(crate) fn is_local_name(host: &str) -> bool {
     let host = host.trim_end_matches('.').to_ascii_lowercase();
     host == "localhost" || host.ends_with(".localhost")
 }
 
 /// The first of the `addresses` a host leads to that is not on the internet.
-fn first_private(addresses: &[IpAddr]) -> Option<IpAddr> {
+pub(crate) fn first_private(addresses: &[IpAddr]) -> Option<IpAddr> {
     addresses.iter().copied().find(|address| !is_public_address(*address))
 }
 
 /// Looks the addresses of `host` up, giving up after [`LOOKUP_TIMEOUT`].
-fn lookup(host: &str, port: u16) -> Result<Vec<IpAddr>, String> {
+pub(crate) fn lookup(host: &str, port: u16) -> Result<Vec<IpAddr>, String> {
     let (sender, receiver) = mpsc::channel();
     let name = host.to_owned();
     std::thread::Builder::new()

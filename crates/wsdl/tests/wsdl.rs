@@ -150,3 +150,37 @@ proptest::proptest! {
         }
     }
 }
+
+#[test]
+fn a_response_is_read_with_its_version_headers_and_body_and_a_fault_with_its_code_reason_and_detail() {
+    use xmlcraft_wsdl::read_message;
+    let ok = "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Header><h:Auth xmlns:h=\"urn:h\">t</h:Auth></s:Header><s:Body><r:AddResponse xmlns:r=\"urn:c\"><r:result>3</r:result></r:AddResponse></s:Body></s:Envelope>";
+    let m = read_message(ok).expect("reads");
+    assert_eq!((m.version, m.fault.is_none(), m.headers.len()), (SoapVersion::V11, true, 1));
+    assert!(m.headers[0].starts_with("<h:Auth") && m.body.starts_with("<r:AddResponse") && m.body.ends_with("</r:AddResponse>"), "{m:?}");
+    let f11 = "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><s:Fault><faultcode>s:Server</faultcode><faultstring>Boom &amp; bust</faultstring><faultactor>urn:a</faultactor><detail><e:Why xmlns:e=\"urn:e\">x</e:Why></detail></s:Fault></s:Body></s:Envelope>";
+    let f = read_message(f11).expect("reads").fault.expect("a fault");
+    assert_eq!((f.code.as_str(), f.reason.as_str(), f.actor.as_deref()), ("s:Server", "Boom & bust", Some("urn:a")));
+    assert_eq!(f.detail.as_deref(), Some("<e:Why xmlns:e=\"urn:e\">x</e:Why>"));
+    let f12 = "<env:Envelope xmlns:env=\"http://www.w3.org/2003/05/soap-envelope\"><env:Body><env:Fault><env:Code><env:Value>env:Receiver</env:Value><env:Subcode><env:Value>m:Overflow</env:Value></env:Subcode></env:Code><env:Reason><env:Text xml:lang=\"en\">Too big</env:Text></env:Reason><env:Detail/></env:Fault></env:Body></env:Envelope>";
+    let m = read_message(f12).expect("reads");
+    assert_eq!(m.version, SoapVersion::V12);
+    let f = m.fault.expect("a fault");
+    assert_eq!((f.code.as_str(), f.subcode.as_deref(), f.reason.as_str(), f.detail), ("env:Receiver", Some("m:Overflow"), "Too big", None));
+    for (text, why) in [
+        ("<a/>", "not a SOAP message"),
+        ("<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"/>", "no Body"),
+        ("<s:Envelope", "not well-formed"),
+        ("", "not well-formed"),
+    ] {
+        let e = read_message(text).expect_err(text);
+        assert!(e.contains(why), "{text:?}: {e}");
+    }
+}
+
+proptest::proptest! {
+    #[test]
+    fn any_text_is_read_as_a_message_or_refused_without_a_panic(text in ".{0,300}") {
+        let _ = xmlcraft_wsdl::read_message(&text);
+    }
+}

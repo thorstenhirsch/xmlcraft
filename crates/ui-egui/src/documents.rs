@@ -44,6 +44,8 @@ pub(crate) struct DocView {
     auto: AutoValidation,
     /// What can be done about the problems of the text, worked out when it is asked for (see `quick_fix.rs`).
     pub(crate) fixes: Option<crate::quick_fix::FixCache>,
+    /// The document is shown as a grid (View ▸ Grid) when this is set.
+    pub(crate) grid: Option<crate::grid_view::GridState>,
 }
 
 /// What is known of validating a document while it is typed in.
@@ -68,6 +70,7 @@ impl DocView {
             helpers: Default::default(),
             auto: AutoValidation::default(),
             fixes: None,
+            grid: None,
         }
     }
 
@@ -659,6 +662,11 @@ impl XmlCraftApp {
         let tokens = Tokens::get(ui.ctx());
         let colors = editor_colors(&tokens);
         let zoom = self.editor_zoom;
+        // A document shown as a grid has no editor: the grid is the view of its text.
+        if self.views.get(&self.session.document(index).map_or(0, |d| d.id())).is_some_and(|v| v.grid.is_some()) {
+            self.show_grid(ui, index);
+            return;
+        }
         // The find bar is above the editor; what it looks for is shown in the text.
         self.find_bar(ui);
         // The keys of a completion popup that is open go to it, not to the editor.

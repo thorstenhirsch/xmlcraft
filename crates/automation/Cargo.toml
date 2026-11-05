@@ -20,9 +20,12 @@ xmlcraft-catalog = { workspace = true }
 xmlcraft-pdf = { workspace = true }
 xmlcraft-convert = { workspace = true }
 xmlcraft-query = { workspace = true }
+xmlcraft-xbrl = { workspace = true }
+xmlcraft-openapi = { workspace = true }
 xmlcraft-wsdl = { workspace = true }
 xmlcraft-schematron = { workspace = true }
 xmlcraft-diff = { workspace = true }
+xmlcraft-grid = { workspace = true }
 xmlcraft-einvoice = { workspace = true }
 xmlcraft-complete = { workspace = true }
 xmlcraft-dtd = { workspace = true }
