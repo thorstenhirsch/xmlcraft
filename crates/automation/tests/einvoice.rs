@@ -56,3 +56,40 @@ fn factur_x_in_cii_has_its_profile() {
         "{r}"
     );
 }
+
+const UBL_INVOICE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+         xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+  <cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0</cbc:CustomizationID>
+  <cbc:ID>RE-1</cbc:ID>
+  <cbc:IssueDate>2026-11-05</cbc:IssueDate>
+  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+  <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+  <cac:AccountingSupplierParty><cac:Party><cac:PartyName><cbc:Name>Seller</cbc:Name></cac:PartyName></cac:Party></cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty><cac:Party><cac:PartyName><cbc:Name>Buyer</cbc:Name></cac:PartyName></cac:Party></cac:AccountingCustomerParty>
+  <cac:LegalMonetaryTotal><cbc:PayableAmount currencyID="EUR">10.00</cbc:PayableAmount></cac:LegalMonetaryTotal>
+  <cac:InvoiceLine>
+    <cbc:ID>1</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="C62">1</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">10.00</cbc:LineExtensionAmount>
+    <cac:Item><cbc:Name>Tea</cbc:Name></cac:Item>
+  </cac:InvoiceLine>
+</Invoice>
+"#;
+
+#[test]
+fn xml_validate_checks_a_ubl_invoice_against_the_bundled_schema_without_being_told_which() {
+    let mut a = Automation::new();
+    let ok = {
+        let content = a.call("xml_validate", &json!({ "text": UBL_INVOICE })).expect("runs");
+        let Some(Content::Json(v)) = content.into_iter().next() else { panic!("json") };
+        v
+    };
+    assert_eq!((ok["valid"].clone(), ok["validated"].clone()), (json!(true), json!(true)), "{ok}");
+    let broken = UBL_INVOICE.replace("<cbc:ID>RE-1</cbc:ID>", "<cbc:ID>RE-1</cbc:ID><cbc:Bogus/>");
+    let content = a.call("xml_validate", &json!({ "text": broken })).expect("runs");
+    let Some(Content::Json(bad)) = content.into_iter().next() else { panic!("json") };
+    assert_eq!(bad["valid"], json!(false), "{bad}");
+    assert!(bad.to_string().contains("Bogus"), "{bad}");
+}

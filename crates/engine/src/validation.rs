@@ -92,7 +92,11 @@ pub fn validate(text: &str, version: u64, location: &str, loader: &mut dyn Subse
     // A DOCTYPE is the document's own say; a schema is looked for only when there is none.
     let has_doctype = root.children().any(|c| c.kind() == SyntaxKind::Doctype);
     if !has_doctype && !schema_hints(&root).is_empty() {
-        return validate_with_schema(&root, parsed.diagnostics(), version, location, schemas);
+        return validate_with_schema(&root, parsed.diagnostics(), version, location, None, schemas);
+    }
+    // A document that names no grammar but is an electronic invoice of a syntax whose schema ships with XmlCraft is checked against that.
+    if !has_doctype && let Some(schema) = implicit_schema(text) {
+        return validate_with_schema(&root, parsed.diagnostics(), version, location, Some(&schema), schemas);
     }
     let found = xmlcraft_validate::check(&root, text, parsed.diagnostics(), location, loader);
     let well_formed = found.well_formedness.iter().all(|p| p.diagnostic.severity() != Severity::Error);
@@ -109,9 +113,26 @@ pub fn validate(text: &str, version: u64, location: &str, loader: &mut dyn Subse
     finish(version, problems)
 }
 
-/// The check against the XML Schema the document names.
-fn validate_with_schema(root: &SyntaxNode, syntax: &[Diagnostic], version: u64, location: &str, schemas: &mut dyn SchemaLoader) -> Validation {
-    let found = check_against_schema(root, syntax, location, None, schemas);
+/// The bundled schema (as a `bundled:/` URI) of an electronic invoice that names none, if XmlCraft ships it.
+pub fn implicit_schema(text: &str) -> Option<String> {
+    // (Only UBL documents have a schema of their own to find; looking costs a second reading of the text, so the others are not read.)
+    if !text.contains("urn:oasis:names:specification:ubl:schema:xsd:") {
+        return None;
+    }
+    let detection = xmlcraft_einvoice::detect(text)?;
+    xmlcraft_einvoice::bundled_schema(&detection).map(|path| format!("bundled:/{path}"))
+}
+
+/// The check against the XML Schema the document names (or, where `explicit` is a location, that one).
+fn validate_with_schema(
+    root: &SyntaxNode,
+    syntax: &[Diagnostic],
+    version: u64,
+    location: &str,
+    explicit: Option<&str>,
+    schemas: &mut dyn SchemaLoader,
+) -> Validation {
+    let found = check_against_schema(root, syntax, location, explicit, schemas);
     match &found.outcome {
         SchemaOutcome::NotWellFormed => Validation { version, verdict: Verdict::NotWellFormed, problems: Vec::new(), truncated: false },
         SchemaOutcome::NoSchema(why) => {
@@ -405,6 +426,77 @@ mod tests {
         assert!(files.contains(&Some("mem:order.xsd")), "{files:?}");
         // The ones in the document (none, or first) come before those in the schema.
         assert!(files.windows(2).all(|w| w[0].is_none() || w[1].is_some()), "{files:?}");
+    }
+
+    /// A small invoice that xmllint accepts against the UBL 2.1 schema.
+    const UBL_INVOICE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+         xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+  <cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0</cbc:CustomizationID>
+  <cbc:ID>RE-1</cbc:ID>
+  <cbc:IssueDate>2026-11-05</cbc:IssueDate>
+  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+  <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+  <cac:AccountingSupplierParty><cac:Party><cac:PartyName><cbc:Name>Seller</cbc:Name></cac:PartyName></cac:Party></cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty><cac:Party><cac:PartyName><cbc:Name>Buyer</cbc:Name></cac:PartyName></cac:Party></cac:AccountingCustomerParty>
+  <cac:LegalMonetaryTotal><cbc:PayableAmount currencyID="EUR">10.00</cbc:PayableAmount></cac:LegalMonetaryTotal>
+  <cac:InvoiceLine>
+    <cbc:ID>1</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="C62">1</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">10.00</cbc:LineExtensionAmount>
+    <cac:Item><cbc:Name>Tea</cbc:Name></cac:Item>
+  </cac:InvoiceLine>
+</Invoice>
+"#;
+
+    fn validate_inline(text: &str) -> Validation {
+        let validator = Validator::inline(no_resolvers());
+        validator.submit(1, 1, &Buffer::from_text(text), None, vec![]);
+        validator.poll().remove(0).1
+    }
+
+    #[test]
+    fn a_ubl_invoice_that_names_no_schema_is_checked_against_the_bundled_one() {
+        let v = validate_inline(UBL_INVOICE);
+        assert_eq!((v.verdict, codes(&v)), (Verdict::Valid, vec![]), "{:?}", v.problems);
+        // An element the schema does not know is found, at that element.
+        let bad = UBL_INVOICE.replace("<cbc:ID>RE-1</cbc:ID>", "<cbc:ID>RE-1</cbc:ID><cbc:Bogus/>");
+        let v = validate_inline(&bad);
+        assert_eq!(v.verdict, Verdict::Invalid, "{:?}", v.problems);
+        let at = bad.find("<cbc:Bogus/>").expect("there") + 1;
+        assert!(v.in_document().any(|d| d.span.start <= at + 3 && d.span.end >= at), "{:?}", v.problems);
+        // A credit note has its own schema, and a required part left out is found.
+        let note =
+            UBL_INVOICE.replace("InvoicedQuantity", "CreditedQuantity").replace("InvoiceLine", "CreditNoteLine").replace("Invoice", "CreditNote");
+        let v = validate_inline(&note);
+        assert_eq!((v.verdict, codes(&v)), (Verdict::Valid, vec![]), "{:?}", v.problems);
+        assert_eq!(validate_inline(&note.replace("<cbc:IssueDate>2026-11-05</cbc:IssueDate>", "")).verdict, Verdict::Invalid);
+    }
+
+    #[test]
+    fn a_document_that_names_its_own_schema_or_is_not_an_invoice_is_not_given_the_ubl_one() {
+        let v = validate_inline("<order><id>1</id></order>");
+        assert_eq!(codes(&v), [Code::VcNoDtd], "plain XML with no grammar has none to be valid against");
+        // A schema of its own wins: this one allows an Invoice with nothing in it, which the document is not.
+        let own = format!(
+            "<xs:schema xmlns:xs=\"{XS}\" targetNamespace=\"urn:oasis:names:specification:ubl:schema:xsd:Invoice-2\"><xs:element name=\"Invoice\"><xs:complexType/></xs:element></xs:schema>"
+        );
+        let named_elsewhere = UBL_INVOICE.replacen(
+            "<Invoice ",
+            "<Invoice xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"urn:oasis:names:specification:ubl:schema:xsd:Invoice-2 own.xsd\" ",
+            1,
+        );
+        let validator = Validator::inline(no_resolvers());
+        validator.submit(
+            1,
+            1,
+            &Buffer::from_text(&named_elsewhere),
+            Some(Path::new("/w/doc.xml")),
+            vec![("/w/own.xsd".to_owned(), Buffer::from_text(&own))],
+        );
+        let v = validator.poll().remove(0).1;
+        assert_eq!(v.verdict, Verdict::Invalid, "its own schema is used, not the bundled one: {:?}", v.problems);
     }
 
     #[test]

@@ -37,6 +37,7 @@ xmlcraft-resolve = { path = "crates/resolve", version = "0.1.0" }
 xmlcraft-pattern = { path = "crates/pattern", version = "0.1.0" }
 xmlcraft-datatypes = { path = "crates/datatypes", version = "0.1.0" }
 xmlcraft-xbrl = { path = "crates/xbrl", version = "0.1.0" }
+xmlcraft-wsdl = { path = "crates/wsdl", version = "0.1.0" }
 xmlcraft-xsd = { path = "crates/xsd", version = "0.1.0" }
 xmlcraft-dtd = { path = "crates/dtd", version = "0.1.0" }
 xmlcraft-grammar = { path = "crates/grammar", version = "0.1.0" }
@@ -45,6 +46,7 @@ xmlcraft-validate = { path = "crates/validate", version = "0.1.0" }
 xmlcraft-query = { path = "crates/query", version = "0.1.0" }
 xmlcraft-schematron = { path = "crates/schematron", version = "0.1.0" }
 xmlcraft-diff = { path = "crates/diff", version = "0.1.0" }
+xmlcraft-grid = { path = "crates/grid", version = "0.1.0" }
 xmlcraft-einvoice = { path = "crates/einvoice", version = "0.1.0" }
 xmlcraft-pdf = { path = "crates/pdf", version = "0.1.0" }
 xmlcraft-infer = { path = "crates/infer", version = "0.1.0" }
