@@ -1183,11 +1183,11 @@ title = "Schematron validation"
 area = "E"
 tier = "P2"
 milestone = "M7"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.validate"]
+tools = ["schematron_validate"]
+evidence = ["crates/schematron/tests/schematron.rs::an_assert_that_is_false_and_a_report_that_is_true_are_findings_at_their_nodes", "crates/schematron/tests/schematron.rs::a_node_is_matched_by_the_first_rule_of_a_pattern_only_but_each_pattern_has_its_say", "crates/schematron/tests/schematron.rs::lets_namespaces_and_phases", "crates/schematron/tests/schematron.rs::abstract_rules_are_extended_and_abstract_patterns_take_parameters", "crates/engine/src/validation.rs::schematron_rules_named_by_the_document_are_checked_and_found_among_the_open_documents", "crates/automation/tests/schematron.rs::rules_named_by_the_document_are_found_next_to_it_and_includes_stay_inside_the_root"]
+notes = "`xmlcraft-schematron` reads ISO Schematron (ns, let, phase, pattern, rule with abstract rules and extends, abstract patterns with is-a and param, assert and report with id, flag, role, messages with name and value-of, include) and fires it with XPath 3.1 on the `xee` engine: a rule's context is a match pattern, a node is matched by the first rule of a pattern, findings have their path and place in the text and a severity from flag or role; a rule whose XPath fails is a problem and the others still run. F8 runs the rules a document names with `<?xml-model href=… schematypens=…?>` after the DTD or schema check and lists the findings in Problems; the tool `schematron_validate` takes rules by id, path or text. Missing: diagnostics shown beyond their text, `queryBinding`-specific behaviour (XPath 3.1 for all), SVRL output, Quick Fix, Assign Rules in the dialog, a Schematron editor with completion."
 
 
 # ==================================================================================================

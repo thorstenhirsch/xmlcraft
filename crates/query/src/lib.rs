@@ -109,42 +109,60 @@ fn span_of(span: Option<xee_xpath::error::SourceSpan>) -> Option<Range<usize>> {
     span.map(|s| s.range())
 }
 
+/// A document read once, to evaluate many expressions on (Schematron runs hundreds of them on one document).
+pub struct Prepared {
+    documents: Documents,
+    document: xee_xpath::DocumentHandle,
+    map: SourceMap,
+    source: String,
+}
+
+impl Prepared {
+    /// Read `xml`. The engine does not read a DOCTYPE: it is blanked, byte for byte, so that nothing else moves.
+    pub fn new(xml: &str) -> Result<Prepared, QueryError> {
+        let mut documents = Documents::new();
+        let readable = without_doctype(xml);
+        let document = documents.add_string_without_uri(&readable).map_err(|e| QueryError {
+            phase: Phase::Document,
+            code: String::new(),
+            message: format!("the document cannot be read: {e}"),
+            span: None,
+        })?;
+        Ok(Prepared { documents, document, map: SourceMap::of(xml), source: xml.to_owned() })
+    }
+
+    /// Evaluate `expression` with the document as the context item.
+    pub fn evaluate(&mut self, expression: &str, options: &Options) -> Result<Evaluated, QueryError> {
+        let mut builder = StaticContextBuilder::default();
+        for (prefix, uri) in &options.namespaces {
+            builder.add_namespace(prefix, uri);
+        }
+        let queries = Queries::new(builder);
+        let query = queries.sequence(expression).map_err(|e| error_of(Phase::Compile, &e))?;
+        let sequence = query.execute(&mut self.documents, self.document).map_err(|e| error_of(Phase::Run, &e))?;
+        let xot = self.documents.xot();
+        // (A context to write maps, arrays and functions with: the engine's writer wants one.)
+        let program = xee_xpath_compiler::parse(StaticContext::default(), "()").ok();
+        let builder = program.as_ref().map(|p| p.dynamic_context_builder());
+        let display = builder.as_ref().map(|b| b.build());
+        let mut items = Vec::new();
+        let mut count = 0;
+        let mut total = 0usize;
+        for item in sequence.iter() {
+            count += 1;
+            if items.len() < options.max_items && total < options.max_total_text {
+                let described = describe(&item, xot, &self.map, options, &self.source, display.as_ref());
+                total = total.saturating_add(described.text.chars().count());
+                items.push(described);
+            }
+        }
+        Ok(Evaluated { items, count })
+    }
+}
+
 /// Evaluate `expression` with the document `xml` as the context item.
 pub fn evaluate(xml: &str, expression: &str, options: &Options) -> Result<Evaluated, QueryError> {
-    let mut documents = Documents::new();
-    // The engine does not read a DOCTYPE: it is blanked, byte for byte, so that nothing else moves.
-    let readable = without_doctype(xml);
-    let document = documents.add_string_without_uri(&readable).map_err(|e| QueryError {
-        phase: Phase::Document,
-        code: String::new(),
-        message: format!("the document cannot be read: {e}"),
-        span: None,
-    })?;
-    let mut builder = StaticContextBuilder::default();
-    for (prefix, uri) in &options.namespaces {
-        builder.add_namespace(prefix, uri);
-    }
-    let queries = Queries::new(builder);
-    let query = queries.sequence(expression).map_err(|e| error_of(Phase::Compile, &e))?;
-    let sequence = query.execute(&mut documents, document).map_err(|e| error_of(Phase::Run, &e))?;
-    let map = SourceMap::of(xml);
-    let xot = documents.xot();
-    // (A context to write maps, arrays and functions with: the engine's writer wants one.)
-    let program = xee_xpath_compiler::parse(StaticContext::default(), "()").ok();
-    let builder = program.as_ref().map(|p| p.dynamic_context_builder());
-    let display = builder.as_ref().map(|b| b.build());
-    let mut items = Vec::new();
-    let mut count = 0;
-    let mut total = 0usize;
-    for item in sequence.iter() {
-        count += 1;
-        if items.len() < options.max_items && total < options.max_total_text {
-            let described = describe(&item, xot, &map, options, xml, display.as_ref());
-            total = total.saturating_add(described.text.chars().count());
-            items.push(described);
-        }
-    }
-    Ok(Evaluated { items, count })
+    Prepared::new(xml)?.evaluate(expression, options)
 }
 
 fn describe(item: &Item, xot: &Xot, map: &SourceMap, options: &Options, source: &str, display: Option<&DynamicContext>) -> ResultItem {

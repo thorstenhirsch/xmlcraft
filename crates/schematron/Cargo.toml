@@ -1,0 +1,19 @@
+[package]
+name = "xmlcraft-schematron"
+description = "XmlCraft's ISO Schematron: rules read from a .sch file and checked on a document with XPath 3.1, findings with their places"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-syntax = { workspace = true }
+xmlcraft-xsd = { workspace = true }
+xmlcraft-query = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

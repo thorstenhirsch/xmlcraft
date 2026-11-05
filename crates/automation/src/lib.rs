@@ -25,6 +25,7 @@ mod load_schema;
 mod pdf;
 mod sample;
 mod schema;
+mod schematron;
 mod script;
 mod tools;
 mod validate;
