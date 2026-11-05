@@ -186,6 +186,9 @@ fn extended_json_that_is_not_quite_a_wrapper_is_refused_not_trimmed() {
 fn what_cannot_be_written_or_shown_is_an_error_not_a_different_value() {
     let named = |name: &str| vec![doc(vec![(name, Bson::Null)])];
     assert!(write_all(&named("a\0b")).expect_err("a zero in a name").message.contains("zero character"));
+    let in_array =
+        write_all(&[doc(vec![("list", Bson::Array(vec![Bson::Null, Bson::Document(doc(vec![("x\0", Bson::Null)]))]))])]).expect_err("a name inside");
+    assert!(in_array.message.contains("list.1.x"), "the path says which element: {in_array}");
     assert!(write_all(&[doc(vec![("r", Bson::Regex { pattern: "a\0".into(), options: String::new() })])]).is_err());
     assert!(write_all(&[doc(vec![("b", Bson::Binary { subtype: 2, bytes: vec![1, 2, 3] })])]).is_err());
     let good = Bson::Binary { subtype: 2, bytes: vec![2, 0, 0, 0, 9, 9] };

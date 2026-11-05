@@ -261,7 +261,12 @@ fn writable(doc: &Document, path: &mut Vec<String>) -> Result<(), BsonError> {
         let bad = |message: &str, path: &Vec<String>| BsonError { offset: 0, length: 0, message: format!("{message} (in {})", path.join(".")) };
         match v {
             Bson::Document(d) => writable(d, path),
-            Bson::Array(items) => items.iter().try_for_each(|i| value(i, path)),
+            Bson::Array(items) => items.iter().enumerate().try_for_each(|(n, i)| {
+                path.push(n.to_string());
+                let result = value(i, path);
+                path.pop();
+                result
+            }),
             Bson::JavaScriptWithScope { scope, .. } => writable(scope, path),
             Bson::Regex { pattern, options } if pattern.contains('\0') || options.contains('\0') => {
                 Err(bad("a regular expression cannot hold a zero character", path))
@@ -289,7 +294,12 @@ pub fn write_all(documents: &[Document]) -> Result<Vec<u8>, BsonError> {
     }
     let mut out = Vec::new();
     for document in documents {
+        let start = out.len();
         put_document(&mut out, &document.fields);
+        // The length of a document is an int32.
+        if out.len() - start > i32::MAX as usize {
+            return Err(BsonError { offset: 0, length: 0, message: "a document is larger than 2 GiB, the most BSON can hold".to_owned() });
+        }
     }
     Ok(out)
 }

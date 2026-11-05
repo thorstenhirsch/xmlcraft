@@ -83,7 +83,8 @@ impl Bson {
 /// Why BSON could not be read or a projection could not be turned into BSON.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BsonError {
-    /// Where, as an offset into the bytes (reading, writing) or the text (a projection).
+    /// Where, as an offset into the bytes (reading) or the text (a projection); zero when the problem is in the model that was to be
+    /// written (the message names the field).
     pub offset: usize,
     /// How far the problem reaches in a text (a projection); zero for bytes.
     pub length: usize,
