@@ -16,6 +16,16 @@ use crate::motion::{
     clamp, display_column, first_non_blank, next_grapheme, offset_at_column, prev_grapheme, smart_home, word_left, word_range_at, word_right,
 };
 
+/// What a text is written in, as far as typing is concerned.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Syntax {
+    #[default]
+    Xml,
+    Json,
+    /// JSON5: single quotes make strings too.
+    Json5,
+}
+
 /// How text is indented and how new lines end.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Settings {
@@ -104,6 +114,7 @@ pub struct Editor {
     /// Where in the markup an offset is (inside a tag, a value, a comment…), for the typing aids. Knows the modes of the lines it has been
     /// asked about, and forgets those after a change.
     pub(crate) lexer: Highlighter,
+    syntax: Syntax,
     /// Stretches of lines that are hidden, in the order of the text (see [`crate::Fold`]).
     pub(crate) folds: Vec<Fold>,
     /// Which lines the folds hide, for the current text and folds.
@@ -142,6 +153,7 @@ impl Editor {
         Self {
             buffer: Buffer::from_text(text),
             lexer: Highlighter::new(),
+            syntax: Syntax::Xml,
             folds: Vec::new(),
             fold_map: FoldMap::default(),
             expansions: Vec::new(),
@@ -177,6 +189,18 @@ impl Editor {
     /// Counts up with every change of the text (including undo and redo), not with caret moves.
     pub fn version(&self) -> u64 {
         self.version
+    }
+
+    /// What the text is written in: it decides which typing aids apply.
+    pub fn syntax(&self) -> Syntax {
+        self.syntax
+    }
+
+    pub fn set_syntax(&mut self, syntax: Syntax) {
+        if syntax != self.syntax {
+            self.linked = None;
+        }
+        self.syntax = syntax;
     }
 
     pub fn settings(&self) -> &Settings {

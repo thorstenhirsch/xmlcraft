@@ -7,6 +7,7 @@ use std::sync::Arc;
 use xmlcraft_code_editor::{EditorColors, FoldRegion, Highlight, LineStyler, Mark, StyleSpan};
 use xmlcraft_editor::find::Matcher;
 use xmlcraft_engine::folding::FoldRange;
+use xmlcraft_json_syntax::{JsonClass, Mode as JsonMode, highlight_line as json_line};
 use xmlcraft_syntax::{FarJump, HighlightClass, Highlighter, Severity};
 use xmlcraft_text::Buffer;
 
@@ -87,7 +88,20 @@ impl SyntaxTokens {
         }
     }
 
-    /// The colour for a class, or `None` for plain text.
+    /// The colour for a part of a line of JSON.
+    pub fn json_color(&self, class: JsonClass) -> Color32 {
+        match class {
+            JsonClass::Punctuation => self.punctuation,
+            JsonClass::Key => self.element,
+            JsonClass::String => self.value,
+            JsonClass::Number => self.literal,
+            JsonClass::Keyword => self.declaration,
+            JsonClass::Comment => self.comment,
+            JsonClass::Error => self.error,
+        }
+    }
+
+    /// The colour for a class of XML, or `None` for plain text.
     pub fn color(&self, class: HighlightClass) -> Option<Color32> {
         Some(match class {
             HighlightClass::Plain => return None,
@@ -161,7 +175,14 @@ pub struct XmlStyler {
     /// about (the lines above the first that changed since).
     folds: Vec<FoldRange>,
     folds_valid_before: usize,
+    /// The text is JSON: coloured by its own line rules, with the mode each line starts in (known for the lines before `json_modes.len()`).
+    json: bool,
+    json_modes: Vec<JsonMode>,
 }
+
+/// A line this many lines past the lines whose mode is known is coloured as if no comment were open, instead of reading all that is
+/// between (a block comment that long is rare, and an estimate is better than a pause).
+const MAX_JSON_MODE_WALK: usize = 100_000;
 
 impl XmlStyler {
     pub fn new(kind: ThemeKind) -> Self {
@@ -174,7 +195,20 @@ impl XmlStyler {
             tag_match: None,
             folds: Vec::new(),
             folds_valid_before: 0,
+            json: false,
+            json_modes: Vec::new(),
         }
+    }
+
+    /// Colour the text as JSON (or as XML again). Returns whether that changed: the caller then bumps the view's `highlight_version`.
+    pub fn set_json(&mut self, json: bool) -> bool {
+        if self.json == json {
+            return false;
+        }
+        self.json = json;
+        self.json_modes.clear();
+        self.highlighter.reset();
+        true
     }
 
     /// Switch to another theme's colours. The caller bumps the view's `highlight_version` so cached lines are laid out again.
@@ -185,6 +219,7 @@ impl XmlStyler {
     /// Start over (another document was loaded).
     pub fn reset(&mut self) {
         self.highlighter.reset();
+        self.json_modes.clear();
         self.problems.clear();
         self.reach.clear();
         self.folds.clear();
@@ -238,12 +273,46 @@ impl XmlStyler {
     }
 }
 
+impl XmlStyler {
+    /// The mode line `line` starts in, worked out from the lines before it that are not known yet.
+    fn json_mode_at(&mut self, buffer: &Buffer, line: usize) -> JsonMode {
+        if self.json_modes.is_empty() {
+            self.json_modes.push(JsonMode::Normal);
+        }
+        if line.saturating_sub(self.json_modes.len()) > MAX_JSON_MODE_WALK {
+            return JsonMode::Normal;
+        }
+        while self.json_modes.len() <= line {
+            let at = self.json_modes.len() - 1;
+            let mode = self.json_modes.get(at).copied().unwrap_or_default();
+            let next = match buffer.line_range_with_break(at).and_then(|r| buffer.slice(r).ok()) {
+                Some(text) => json_line(&text, mode).1,
+                None => JsonMode::Normal,
+            };
+            self.json_modes.push(next);
+        }
+        self.json_modes.get(line).copied().unwrap_or_default()
+    }
+
+    fn style_json_line(&mut self, buffer: &Buffer, line: usize) -> Vec<StyleSpan> {
+        let mode = self.json_mode_at(buffer, line);
+        // The spans are of the line without its break (the break is read for the modes only).
+        let Some(text) = buffer.line_range(line).and_then(|r| buffer.slice(r).ok()) else { return Vec::new() };
+        let (spans, _) = json_line(&text, mode);
+        spans.into_iter().map(|(range, class)| StyleSpan { range, color: self.tokens.json_color(class) }).collect()
+    }
+}
+
 impl LineStyler for XmlStyler {
     fn text_changed(&mut self, first_line: usize) {
         self.highlighter.invalidate_from(first_line);
+        self.json_modes.truncate(first_line.saturating_add(1));
     }
 
     fn style_line(&mut self, buffer: &Buffer, line: usize, _text: &str) -> Vec<StyleSpan> {
+        if self.json {
+            return self.style_json_line(buffer, line);
+        }
         // A very large text is coloured at a place far from what has been looked at from an estimate, not by reading all that is before.
         self.highlighter.set_far_jump(FarJump::for_len(buffer.len()));
         self.highlighter

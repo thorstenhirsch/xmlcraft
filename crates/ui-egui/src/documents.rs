@@ -218,6 +218,10 @@ impl XmlCraftApp {
             if self.session.position_of(id).is_none() {
                 continue; // closed meanwhile
             }
+            // A reading in another language than the document has now (Save As under another extension) is about the wrong thing.
+            if self.session.position_of(id).and_then(|i| self.session.document(i)).is_some_and(|d| d.language() != analysis.language) {
+                continue;
+            }
             let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
             if view.analysis.as_ref().is_none_or(|current| current.version <= analysis.version) {
                 view.set_analysis(analysis);
@@ -226,9 +230,21 @@ impl XmlCraftApp {
         if let Some(doc) = self.session.active_document() {
             let (id, version) = (doc.id(), doc.editor().version());
             let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
+            // What was read in another language is dropped, and the text is read again whatever its version.
+            if view.analysis.as_ref().is_some_and(|a| a.language != doc.language()) {
+                view.analysis = None;
+                view.requested = None;
+                // And so is what the XML tools had worked out: the grammar, the helpers, the validation with its underlines.
+                view.helpers = Default::default();
+                view.validation = None;
+                view.auto = AutoValidation::default();
+                view.fixes = None;
+                view.styler.set_folds(Vec::new());
+                view.refresh_underlines();
+            }
             if view.requested != Some(version) {
                 view.requested = Some(version);
-                self.analyzer.submit(id, version, doc.editor().buffer());
+                self.analyzer.submit(id, version, doc.editor().buffer(), doc.language());
             }
         }
         self.request_schema();
@@ -400,13 +416,18 @@ impl XmlCraftApp {
     pub(crate) fn validate_now(&mut self) {
         let kind = self.applied.unwrap_or(ThemeKind::Light);
         let Some(doc) = self.session.active_document() else { return };
+        // The validators read XML; a JSON document is checked for its syntax (a schema for it comes with JSON Schema support).
+        if doc.language().is_json() {
+            self.check_now();
+            return;
+        }
         let (id, version) = (doc.id(), doc.editor().version());
         let name = doc.name().to_owned();
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
         // The well-formedness analysis of the same text is what Messages shows with it.
         if view.requested != Some(version) {
             view.requested = Some(version);
-            self.analyzer.submit(id, version, doc.editor().buffer());
+            self.analyzer.submit(id, version, doc.editor().buffer(), doc.language());
         }
         // F8 always checks again: what a document is checked against (a schema that is open and being edited, a DTD or a schema on
         // disk) can change with the text of the document the same. The answer to the last request would otherwise stand for it.
@@ -565,7 +586,7 @@ impl XmlCraftApp {
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
         if view.requested != Some(version) {
             view.requested = Some(version);
-            self.analyzer.submit(id, version, doc.editor().buffer());
+            self.analyzer.submit(id, version, doc.editor().buffer(), doc.language());
         }
         self.check_pending = Some((id, version));
         self.bottom_open = true;
@@ -631,6 +652,9 @@ impl XmlCraftApp {
         let (id, version) = (doc.id(), doc.editor().version());
         let matches = self.find.shown_matches(id, version);
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
+        if view.styler.set_json(doc.language().is_json()) {
+            view.view.highlight_version += 1;
+        }
         view.styler.set_matches(matches);
         view.styler.set_tag_match(Self::matching_tag_names(view, doc.editor()));
         Self::link_tag_names(view, doc.editor_mut());
@@ -767,13 +791,17 @@ impl XmlCraftApp {
             self.dialog = Some(Dialog::OverwriteChanged { id, path, then });
             return;
         }
+        let Some(doc) = self.session.document_mut(index) else { return };
+        let prep = doc.prepare_save_as(&path);
         let bytes = match doc.to_bytes() {
             Ok(bytes) => bytes,
             Err(SaveError::Unmappable(error)) => {
+                doc.undo_save_as(prep);
                 self.dialog = Some(Dialog::Unmappable { id, path, then, character: error.ch });
                 return;
             }
             Err(SaveError::Lossy) => {
+                doc.undo_save_as(prep);
                 self.dialog = Some(Dialog::Lossy { id, then });
                 return;
             }
@@ -789,6 +817,9 @@ impl XmlCraftApp {
                 self.after_save(ctx, id, then);
             }
             Err(e) => {
+                if let Some(doc) = self.session.document_mut(index) {
+                    doc.undo_save_as(prep);
+                }
                 self.quitting = false;
                 self.message(
                     tl!("Couldn't save the file"),

@@ -5284,6 +5284,7 @@ dependencies = [
  "rowan",
  "unicode-segmentation",
  "unicode-width",
+ "xmlcraft-json-syntax",
  "xmlcraft-syntax",
  "xmlcraft-text",
 ]
@@ -5300,6 +5301,7 @@ dependencies = [
  "xmlcraft-format",
  "xmlcraft-grammar",
  "xmlcraft-infer",
+ "xmlcraft-json-syntax",
  "xmlcraft-resolve",
  "xmlcraft-sample",
  "xmlcraft-syntax",
@@ -5448,6 +5450,7 @@ dependencies = [
  "xmlcraft-format",
  "xmlcraft-grammar",
  "xmlcraft-infer",
+ "xmlcraft-json-syntax",
  "xmlcraft-platform",
  "xmlcraft-resolve",
  "xmlcraft-sample",

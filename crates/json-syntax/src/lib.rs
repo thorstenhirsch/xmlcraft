@@ -12,9 +12,11 @@
 mod highlight;
 mod lexer;
 mod parser;
+mod tokens;
 mod value;
 
 pub use highlight::{JsonClass, Mode, Span, highlight_line};
 pub use parser::{Dialect, Options, Parse, parse, parse_lines};
+pub use tokens::{Token, TokenKind, inside_strings, tokens};
 pub use value::{Data, Member, Segment, Value};
 pub use xmlcraft_syntax::{Code, Diagnostic, Severity};

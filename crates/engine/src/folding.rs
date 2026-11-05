@@ -18,6 +18,9 @@ pub enum FoldKind {
     Cdata,
     ProcessingInstruction,
     Doctype,
+    /// A JSON object or array.
+    Object,
+    Array,
 }
 
 impl FoldKind {
@@ -29,6 +32,8 @@ impl FoldKind {
             FoldKind::Cdata => "cdata",
             FoldKind::ProcessingInstruction => "processing_instruction",
             FoldKind::Doctype => "doctype",
+            FoldKind::Object => "object",
+            FoldKind::Array => "array",
         }
     }
 }
@@ -93,21 +98,21 @@ pub fn fold_ranges(root: &SyntaxNode, text: &str) -> (Vec<FoldRange>, bool) {
 }
 
 /// Where the lines of a text begin: what the ranges need to turn offsets into lines, one pass over the text and a search for each.
-struct Lines<'a> {
+pub(crate) struct Lines<'a> {
     text: &'a str,
     /// The offset each line starts at (at least one: the first).
     starts: Vec<usize>,
 }
 
 impl<'a> Lines<'a> {
-    fn new(text: &'a str) -> Self {
+    pub(crate) fn new(text: &'a str) -> Self {
         let mut starts = vec![0];
         starts.extend(text.match_indices('\n').map(|(at, _)| at + 1));
         Self { text, starts }
     }
 
     /// The line `offset` is on (an offset past the end is on the last line).
-    fn line_of(&self, offset: usize) -> usize {
+    pub(crate) fn line_of(&self, offset: usize) -> usize {
         self.starts.partition_point(|start| *start <= offset).saturating_sub(1)
     }
 
@@ -121,7 +126,7 @@ impl<'a> Lines<'a> {
     }
 
     /// Where the text of `line` starts and ends: its line break is not in it.
-    fn text_of(&self, line: usize) -> Option<std::ops::Range<usize>> {
+    pub(crate) fn text_of(&self, line: usize) -> Option<std::ops::Range<usize>> {
         let start = *self.starts.get(line)?;
         let end = match self.starts.get(line + 1) {
             Some(next) => {
@@ -134,7 +139,7 @@ impl<'a> Lines<'a> {
     }
 
     /// Whether the text from `from` to `to` (a stretch of a line) is white space or nothing.
-    fn is_blank(&self, from: usize, to: usize) -> Option<bool> {
+    pub(crate) fn is_blank(&self, from: usize, to: usize) -> Option<bool> {
         Some(self.text.get(from..to)?.trim().is_empty())
     }
 }

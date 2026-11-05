@@ -9,6 +9,7 @@ use xmlcraft_syntax::{Diagnostic, Limits, Severity, SyntaxKind, parse_with};
 use xmlcraft_validate::SchemaHint;
 
 use crate::folding::{FoldRange, fold_ranges};
+use crate::language::Language;
 use crate::worker::Worker;
 use xmlcraft_text::Buffer;
 
@@ -61,6 +62,9 @@ pub struct DoctypeIds {
 pub struct Analysis {
     /// The version of the text this is about (`Editor::version`).
     pub version: u64,
+    /// The language it was read as: a result for another language than the document has now (after Save As under another extension)
+    /// is about the wrong reading and is dropped.
+    pub language: Language,
     pub diagnostics: Vec<Diagnostic>,
     pub outline: Vec<OutlineItem>,
     /// The outline stopped at [`MAX_OUTLINE_ITEMS`].
@@ -132,9 +136,10 @@ impl Analysis {
         (found.name.start <= offset && offset <= found.name.end).then_some([found.name, found.partner_name])
     }
 
-    fn skipped(version: u64, why: Skipped) -> Self {
+    fn skipped(version: u64, language: Language, why: Skipped) -> Self {
         Self {
             version,
+            language,
             diagnostics: Vec::new(),
             outline: Vec::new(),
             outline_truncated: false,
@@ -189,8 +194,16 @@ impl OutlineItem {
 
 /// Analyse `text`, which is version `version` of a document.
 pub fn analyze(text: &str, version: u64) -> Analysis {
+    analyze_as(Language::Xml, text, version)
+}
+
+/// [`analyze`] for a text of this language.
+pub fn analyze_as(language: Language, text: &str, version: u64) -> Analysis {
     if text.len() > MAX_ANALYSED_BYTES {
-        return Analysis::skipped(version, Skipped::TooLarge);
+        return Analysis::skipped(version, language, Skipped::TooLarge);
+    }
+    if let Language::Json(flavor) = language {
+        return crate::json_analysis::analyze_json(text, version, flavor);
     }
     let parsed = parse_with(text, &Limits::default());
     // The problems of the text and of the declarations of its internal subset (which the DTD reader reads); the external parts of the
@@ -206,6 +219,7 @@ pub fn analyze(text: &str, version: u64) -> Analysis {
     let root_namespace = xmlcraft_validate::root_namespace(&parsed.syntax());
     Analysis {
         version,
+        language,
         diagnostics,
         outline,
         outline_truncated,
@@ -283,7 +297,7 @@ const INLINE_LIMIT: usize = MAX_ANALYSED_BYTES;
 
 /// Runs [`analyze`] on a worker thread. `submit` returns at once; `poll` collects what has finished.
 pub struct Analyzer {
-    worker: Worker<(u64, Buffer), Analysis>,
+    worker: Worker<(u64, Buffer, Language), Analysis>,
 }
 
 impl Default for Analyzer {
@@ -292,8 +306,8 @@ impl Default for Analyzer {
     }
 }
 
-fn run((version, text): (u64, Buffer)) -> Analysis {
-    analyze_guarded(&text.text(), version)
+fn run((version, text, language): (u64, Buffer, Language)) -> Analysis {
+    analyze_guarded_as(language, &text.text(), version)
 }
 
 impl Analyzer {
@@ -313,12 +327,12 @@ impl Analyzer {
 
     /// Ask for `text` (version `version` of the document with this id) to be analysed. A request that has not started is replaced by a
     /// newer one for the same document, so a slow analysis never leaves a queue behind it.
-    pub fn submit(&self, document: u64, version: u64, text: &Buffer) {
+    pub fn submit(&self, document: u64, version: u64, text: &Buffer, language: Language) {
         if !self.worker.threaded() && text.len() > INLINE_LIMIT {
-            self.worker.finish(document, Analysis::skipped(version, Skipped::TooLarge));
+            self.worker.finish(document, Analysis::skipped(version, language, Skipped::TooLarge));
             return;
         }
-        self.worker.submit(document, (version, text.clone()));
+        self.worker.submit(document, (version, text.clone(), language));
     }
 
     /// The analyses that finished since the last call, oldest first.
@@ -329,9 +343,14 @@ impl Analyzer {
 
 /// [`analyze`], with a panic turned into a failed result (the last-resort guard: a bug in the analysis must not take the app down).
 pub fn analyze_guarded(text: &str, version: u64) -> Analysis {
-    crate::guard(|| analyze(text, version)).unwrap_or_else(|message| {
+    analyze_guarded_as(Language::Xml, text, version)
+}
+
+/// [`analyze_as`], guarded the same way.
+pub fn analyze_guarded_as(language: Language, text: &str, version: u64) -> Analysis {
+    crate::guard(|| analyze_as(language, text, version)).unwrap_or_else(|message| {
         log::error!("analysis failed: {message}");
-        Analysis::skipped(version, Skipped::Failed)
+        Analysis::skipped(version, language, Skipped::Failed)
     })
 }
 
@@ -606,9 +625,9 @@ mod tests {
             let _ = tx.send(());
         });
         let buffer = Buffer::from_text("<a><b></a>");
-        analyzer.submit(1, 1, &buffer);
-        analyzer.submit(1, 2, &Buffer::from_text("<a/>"));
-        analyzer.submit(2, 5, &buffer);
+        analyzer.submit(1, 1, &buffer, Language::Xml);
+        analyzer.submit(1, 2, &Buffer::from_text("<a/>"), Language::Xml);
+        analyzer.submit(2, 5, &buffer, Language::Xml);
         let mut results: Vec<(u64, Analysis)> = Vec::new();
         let have_everything =
             |results: &[(u64, Analysis)]| results.iter().any(|(d, a)| *d == 1 && a.version == 2) && results.iter().any(|(d, _)| *d == 2);

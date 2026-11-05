@@ -8,7 +8,9 @@ use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use xmlcraft_editor::{Editor, Settings};
+use xmlcraft_editor::{Editor, Settings, Syntax};
+
+use crate::language::Language;
 use xmlcraft_format::{BlankLines, FormatError, FormatOptions, Indent};
 use xmlcraft_syntax::{Lexer, TokenKind};
 use xmlcraft_text::Edit;
@@ -25,6 +27,14 @@ const DECLARATION_HEAD: usize = 4096;
 
 /// How many unmappable characters are collected; more than this is not a few stray characters.
 const MAX_UNMAPPABLE: usize = 100_000;
+
+fn syntax_of(language: Language) -> Syntax {
+    match language {
+        Language::Xml => Syntax::Xml,
+        Language::Json(crate::language::JsonFlavor::Json5) => Syntax::Json5,
+        Language::Json(_) => Syntax::Json,
+    }
+}
 
 /// What a file looked like when it was last read or written, to notice that something else changed it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,6 +82,12 @@ impl std::fmt::Display for SaveError {
 }
 
 impl std::error::Error for SaveError {}
+
+/// What [`Document::prepare_save_as`] did, to be taken back if the save fails.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SaveAsPrep {
+    edited: Option<u64>,
+}
 
 pub struct Document {
     id: u64,
@@ -121,6 +137,7 @@ impl Document {
         editor.load(&decoded.text);
         let name = path.as_deref().and_then(Path::file_name).map_or_else(|| "Untitled".to_owned(), |n| n.to_string_lossy().into_owned());
         let saved_encoding = (encoding.encoding, encoding.bom);
+        editor.set_syntax(syntax_of(Language::of_name(&name)));
         Ok(Self {
             id,
             name,
@@ -144,6 +161,11 @@ impl Document {
         &self.name
     }
 
+    /// What the document is written in, by its name.
+    pub fn language(&self) -> Language {
+        Language::of_name(&self.name)
+    }
+
     pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()
     }
@@ -153,6 +175,7 @@ impl Document {
     pub fn name_untitled(&mut self, name: &str) {
         if self.path.is_none() && !name.is_empty() {
             self.name = name.to_owned();
+            self.editor.set_syntax(syntax_of(self.language()));
         }
     }
 
@@ -258,6 +281,14 @@ impl Document {
 
     /// Make the XML declaration say what the encoding is (see [`Self::set_encoding`]).
     fn sync_declaration(&mut self) {
+        self.sync_declaration_for(self.language());
+    }
+
+    fn sync_declaration_for(&mut self, language: Language) {
+        // Only XML has a declaration; a JSON file's encoding is whatever its bytes are.
+        if language != Language::Xml {
+            return;
+        }
         let buffer = self.editor.buffer();
         let mut end = buffer.len().min(DECLARATION_HEAD);
         while end < buffer.len() && !buffer.is_boundary(end) {
@@ -332,6 +363,9 @@ impl Document {
             return Err(SaveError::Unmappable(*first)); // too many to be a few stray characters: another encoding is the answer
         }
         let text = self.editor.text();
+        if let Language::Json(flavor) = self.language() {
+            return self.apply_json_escapes(&text, &found, flavor.dialect());
+        }
         let mut tokens = Lexer::new(&text);
         let mut current = tokens.next();
         let mut edits = Vec::with_capacity(found.len());
@@ -346,6 +380,44 @@ impl Document {
             edits.push(Edit::replace(e.offset..e.offset + e.ch.len_utf8(), format!("&#x{:X};", u32::from(e.ch))));
         }
         if self.editor.apply_edits(&edits) { Ok(edits.len()) } else { Err(SaveError::Unmappable(*first)) }
+    }
+
+    /// [`Self::apply_character_references`] for JSON: a character in a string is written as a `\\uXXXX` escape (two for a character
+    /// outside the Basic Multilingual Plane); anywhere else (a comment, say) it cannot be, and is the error.
+    fn apply_json_escapes(&mut self, text: &str, found: &[EncodeError], dialect: xmlcraft_json_syntax::Dialect) -> Result<usize, SaveError> {
+        let Some(first) = found.first() else { return Ok(0) };
+        let offsets: Vec<usize> = found.iter().map(|e| e.offset).collect();
+        let inside = xmlcraft_json_syntax::inside_strings(text, dialect, &offsets);
+        let mut edits = Vec::with_capacity(found.len());
+        for (e, in_string) in found.iter().zip(inside) {
+            if !in_string {
+                return Err(SaveError::Unmappable(*e));
+            }
+            let mut units = [0u16; 2];
+            let escaped: String = e.ch.encode_utf16(&mut units).iter().map(|u| format!("\\u{u:04X}")).collect();
+            edits.push(Edit::replace(e.offset..e.offset + e.ch.len_utf8(), escaped));
+        }
+        if self.editor.apply_edits(&edits) { Ok(edits.len()) } else { Err(SaveError::Unmappable(*first)) }
+    }
+
+    /// Get ready to be written under `path`, which may be a name of another language (Save As): a JSON document that becomes XML in an
+    /// encoding the bytes do not tell gets the XML declaration that says so. Call it before [`Self::to_bytes`].
+    ///
+    /// Nothing is lost if the save then fails: pass the result to [`Self::undo_save_as`] and the edit is taken back.
+    pub fn prepare_save_as(&mut self, path: &Path) -> SaveAsPrep {
+        let target = path.file_name().map_or(Language::Xml, |n| Language::of_name(&n.to_string_lossy()));
+        let before = self.editor.version();
+        if target == Language::Xml && self.language() != Language::Xml {
+            self.sync_declaration_for(Language::Xml);
+        }
+        SaveAsPrep { edited: (self.editor.version() != before).then(|| self.editor.version()) }
+    }
+
+    /// The save that [`Self::prepare_save_as`] was for did not happen: take back what it wrote, if nothing has been edited since.
+    pub fn undo_save_as(&mut self, prep: SaveAsPrep) {
+        if prep.edited == Some(self.editor.version()) {
+            self.editor.undo();
+        }
     }
 
     /// The bytes of the file: the text in the document's encoding. A character the encoding cannot hold is an error (see
@@ -364,6 +436,7 @@ impl Document {
     pub fn mark_saved(&mut self, path: PathBuf, stamp: Option<FileStamp>) {
         self.name = path.file_name().map_or_else(|| self.name.clone(), |n| n.to_string_lossy().into_owned());
         self.path = Some(path);
+        self.editor.set_syntax(syntax_of(self.language()));
         self.stamp = stamp;
         self.saved_state = self.editor.state_id();
         self.saved_encoding = (self.encoding.encoding, self.encoding.bom);
@@ -770,5 +843,67 @@ mod tests {
     fn untitled_documents_are_numbered() {
         let d = Document::untitled(7, 3);
         assert_eq!((d.id(), d.name(), d.path().is_none(), d.is_dirty()), (7, "Untitled-3", true, false));
+    }
+
+    #[test]
+    fn the_name_of_a_document_decides_how_typing_and_tag_links_treat_it() {
+        let json = Document::from_bytes(1, Some(PathBuf::from("/d/a.json")), b"<a></a>", None).expect("opens");
+        assert_eq!((json.language(), json.editor().syntax()), (Language::Json(crate::language::JsonFlavor::Json), Syntax::Json));
+        let mut json = json;
+        json.editor_mut().set_selection(2, 2);
+        assert!(!json.link_tag_names(), "text that looks like a tag in a JSON file has no tag names to keep in step");
+        let mut d = Document::untitled(2, 1);
+        assert_eq!(d.editor().syntax(), Syntax::Xml);
+        d.name_untitled("x.jsonc");
+        assert_eq!(d.editor().syntax(), Syntax::Json, "a generated document called x.jsonc is JSON");
+        d.mark_saved(PathBuf::from("/d/y.xml"), None);
+        assert_eq!((d.language(), d.editor().syntax()), (Language::Xml, Syntax::Xml), "Save As under another extension changes how it is read");
+    }
+
+    #[test]
+    fn a_json_document_has_no_xml_declaration_and_its_unmappable_characters_become_escapes_in_strings_only() {
+        let json = |text: &str| Document::from_bytes(1, Some(PathBuf::from("/d/a.json")), text.as_bytes(), None).expect("opens");
+        let mut d = json("{\"a\": \"日 \u{1F600}\"}");
+        assert!(d.set_encoding(Encoding::WINDOWS_1252, false));
+        assert_eq!(d.editor().text(), "{\"a\": \"日 \u{1F600}\"}", "no declaration is written into JSON");
+        assert_eq!(d.apply_character_references(), Ok(2));
+        assert_eq!(d.editor().text(), "{\"a\": \"\\u65E5 \\uD83D\\uDE00\"}", "an escape per UTF-16 unit");
+        assert_eq!(d.to_bytes().expect("now it fits"), d.editor().text().into_bytes());
+        // Outside a string there is no way to write it: the character is the error.
+        let mut d = json("{ /* 日 */ \"a\": 1}");
+        d.set_encoding(Encoding::WINDOWS_1252, false);
+        assert!(matches!(d.apply_character_references(), Err(SaveError::Unmappable(_))));
+        assert_eq!(d.editor().text(), "{ /* 日 */ \"a\": 1}", "and nothing was changed");
+    }
+
+    #[test]
+    fn a_json_document_saved_as_xml_in_an_encoding_the_bytes_do_not_tell_gets_the_declaration() {
+        let mut d = Document::from_bytes(1, Some(PathBuf::from("/d/a.json")), b"{\"a\": 1}", None).expect("opens");
+        d.set_encoding(Encoding::WINDOWS_1252, false);
+        assert_eq!(d.editor().text(), "{\"a\": 1}");
+        d.prepare_save_as(Path::new("/d/b.json"));
+        assert_eq!(d.editor().text(), "{\"a\": 1}", "a name of the same language changes nothing");
+        d.prepare_save_as(Path::new("/d/b.xml"));
+        assert!(d.editor().text().starts_with("<?xml version=\"1.0\" encoding=\"windows-1252\"?>"), "{}", d.editor().text());
+    }
+
+    #[test]
+    fn a_save_as_that_does_not_happen_takes_back_the_declaration_it_wrote() {
+        let mut d = Document::from_bytes(1, Some(PathBuf::from("/d/a.json")), b"{\"a\": 1}", None).expect("opens");
+        d.set_encoding(Encoding::WINDOWS_1252, false);
+        let prep = d.prepare_save_as(Path::new("/d/b.xml"));
+        assert!(d.editor().text().starts_with("<?xml"));
+        d.undo_save_as(prep);
+        assert_eq!(d.editor().text(), "{\"a\": 1}", "as it was");
+        // Nothing to take back when nothing was written, and nothing is undone that the user did since.
+        let none = d.prepare_save_as(Path::new("/d/c.json"));
+        d.editor_mut().set_selection(0, 0);
+        d.editor_mut().type_text("x");
+        d.undo_save_as(none);
+        assert_eq!(d.editor().text(), "x{\"a\": 1}");
+        let prep = d.prepare_save_as(Path::new("/d/b.xml"));
+        d.editor_mut().type_text("y");
+        d.undo_save_as(prep);
+        assert!(d.editor().text().contains('y'), "an edit made since is not undone");
     }
 }

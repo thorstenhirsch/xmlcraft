@@ -1,4 +1,4 @@
-//! What typing does beyond inserting the characters: the quotes of an attribute value.
+//! What typing does beyond inserting the characters: the quotes of an attribute value (XML), the quotes and brackets of JSON.
 //!
 //! In a tag, a quote typed after `=` writes both quotes and leaves the caret between them; the closing quote typed next steps over the
 //! one that is there; and Backspace between an empty pair removes both. The place is read with the lexer, so a quote in text, in a
@@ -7,9 +7,9 @@
 use xmlcraft_syntax::{Mode, Quote, is_name_char};
 use xmlcraft_text::{Edit, EditKind};
 
-use crate::Editor;
 use crate::caret::Caret;
 use crate::editor::{Bias, coalesce, map_offset};
+use crate::{Editor, Syntax};
 
 /// What typing a key does at one caret.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -20,6 +20,14 @@ enum Plan {
     Write { text: String, caret: usize },
     /// The closing quote is already there: move over it.
     StepOver,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum JsonPlace {
+    Code,
+    /// Inside a string, opened by this quote.
+    String(char),
+    Comment,
 }
 
 /// The longest stretch before the caret that is looked at to find the tag it is in.
@@ -64,7 +72,9 @@ fn innermost_open_element(prefix: &str) -> Option<String> {
 }
 
 impl Editor {
-    /// What typing `text` on the keyboard does. It is [`Editor::type_text`], except for a few characters in XML:
+    /// What typing `text` on the keyboard does. It is [`Editor::type_text`], except for a few characters. In JSON and JSON5 (see
+    /// [`Editor::set_syntax`]): `"` (and `'` in JSON5) and `{` and `[` write the pair where a value can start and the closing quote or
+    /// bracket typed next is stepped over, never in a string or a comment (when [`crate::Settings::auto_pair`] is on). In XML:
     ///
     /// - A quote in a tag is paired (when [`crate::Settings::auto_pair`] is on): after `=` and before something that is not a name or a
     ///   quote, `"` writes `""` with the caret between; where the closing quote of that kind is next, typing it steps over it.
@@ -76,7 +86,13 @@ impl Editor {
     pub fn type_input(&mut self, text: &str) -> bool {
         let mut chars = text.chars();
         let (Some(key), None) = (chars.next(), chars.next()) else { return self.type_text(text) };
-        if !matches!(key, '"' | '\'' | '>' | '/') {
+        let json = self.syntax() != Syntax::Xml;
+        let aided = if json {
+            matches!(key, '"' | '{' | '[' | '}' | ']') || (key == '\'' && self.syntax() == Syntax::Json5)
+        } else {
+            matches!(key, '"' | '\'' | '>' | '/')
+        };
+        if !aided {
             return self.type_text(text);
         }
         let carets: Vec<Caret> = self.carets().to_vec();
@@ -111,6 +127,9 @@ impl Editor {
         if !caret.is_empty() {
             return Plan::Literal;
         }
+        if self.syntax() != Syntax::Xml {
+            return self.plan_json_key(caret.head(), key);
+        }
         match key {
             '>' if self.settings().auto_close => self.plan_close_tag(caret.head()),
             '/' if self.settings().auto_close => self.plan_end_tag(caret.head()),
@@ -118,6 +137,65 @@ impl Editor {
                 Some(quote) if self.settings().auto_pair => self.plan_quote(caret.head(), quote),
                 _ => Plan::Literal,
             },
+        }
+    }
+
+    /// A quote or a bracket typed in JSON: a quote pairs where a string can start and steps over its closing quote; `{` and `[` write
+    /// the pair where a value can start; a closing bracket that is next is stepped over. Nothing is aided in a comment.
+    fn plan_json_key(&self, head: usize, key: char) -> Plan {
+        if !self.settings().auto_pair {
+            return Plan::Literal;
+        }
+        let next = self.buffer.char_at(head);
+        let place = self.json_place(head);
+        match (key, place) {
+            (_, JsonPlace::Comment) => Plan::Literal,
+            ('"' | '\'', JsonPlace::String(open)) => {
+                if key == open && next == Some(key) {
+                    Plan::StepOver
+                } else {
+                    Plan::Literal
+                }
+            }
+            ('}' | ']', JsonPlace::Code) if next == Some(key) => Plan::StepOver,
+            ('"' | '\'' | '{' | '[', JsonPlace::Code) if next.is_none_or(|c| c.is_whitespace() || matches!(c, ',' | ':' | '}' | ']')) => {
+                let close = match key {
+                    '{' => '}',
+                    '[' => ']',
+                    other => other,
+                };
+                Plan::Write { text: format!("{key}{close}"), caret: 1 }
+            }
+            _ => Plan::Literal,
+        }
+    }
+
+    /// Where `offset` is: in code, in a string (opened by which quote) or in a comment. It is read with the lexer from a few hundred
+    /// lines above (a comment that opened further up is not known) to the start of its line, and then along the line.
+    fn json_place(&self, offset: usize) -> JsonPlace {
+        use xmlcraft_json_syntax::{JsonClass, Mode as JsonMode, highlight_line};
+        /// How many lines above are read to know whether the line starts inside a block comment.
+        const LOOK_BACK: usize = 500;
+        let line = self.buffer.line_of(offset);
+        let mut mode = JsonMode::Normal;
+        for l in line.saturating_sub(LOOK_BACK)..line {
+            let Some(text) = self.buffer.line_range_with_break(l).and_then(|r| self.buffer.slice(r).ok()) else { return JsonPlace::Code };
+            mode = highlight_line(&text, mode).1;
+        }
+        let line_start = self.buffer.line_start(line).unwrap_or(0);
+        let Ok(before) = self.buffer.slice(line_start..offset) else { return JsonPlace::Code };
+        let (spans, _) = highlight_line(&before, mode);
+        let Some((range, class)) = spans.last().filter(|(range, _)| range.end == before.len()) else { return JsonPlace::Code };
+        let text = before.get(range.clone()).unwrap_or_default();
+        match class {
+            // (A block comment that is closed right at the caret is behind it.)
+            JsonClass::Comment if text.starts_with("/*") && text.ends_with("*/") && text.len() >= 4 => JsonPlace::Code,
+            JsonClass::Comment => JsonPlace::Comment,
+            JsonClass::Error => match text.chars().next() {
+                Some(q @ ('"' | '\'')) => JsonPlace::String(q),
+                _ => JsonPlace::Code,
+            },
+            _ => JsonPlace::Code,
         }
     }
 
@@ -278,6 +356,20 @@ impl Editor {
             return Vec::new();
         }
         let heads: Vec<usize> = self.carets().iter().filter(|c| c.is_empty()).map(|c| c.head()).collect();
+        if self.syntax() != Syntax::Xml {
+            let single = self.syntax() == Syntax::Json5;
+            return heads
+                .into_iter()
+                .filter(|&head| {
+                    let Some(before) = head.checked_sub(1) else { return false };
+                    let pair = (self.buffer.char_at(before), self.buffer.char_at(head));
+                    let is_pair = matches!(pair, (Some('"'), Some('"')) | (Some('{'), Some('}')) | (Some('['), Some(']')))
+                        || (single && pair == (Some('\''), Some('\'')));
+                    // The first of the two must itself be code: in a string or a comment the pair is only two characters.
+                    is_pair && self.json_place(before) == JsonPlace::Code
+                })
+                .collect();
+        }
         heads
             .into_iter()
             .filter(|&head| {
@@ -616,5 +708,118 @@ mod tests {
         e.set_selection(3, 3);
         e.insert_newline();
         assert_eq!(e.text(), "<a>\n</a>", "the setting turns it off");
+    }
+
+    fn json(marked: &str) -> Editor {
+        let mut e = at(marked);
+        e.set_syntax(Syntax::Json);
+        e
+    }
+
+    #[test]
+    fn json_quotes_and_brackets_are_paired_and_stepped_over() {
+        let mut e = json("|");
+        e.type_input("{");
+        assert_eq!(shown(&e), "{|}");
+        e.type_input("\"");
+        assert_eq!(shown(&e), "{\"|\"}");
+        e.type_text("a");
+        e.type_input("\"");
+        assert_eq!(shown(&e), "{\"a\"|}", "the closing quote is stepped over");
+        e.type_input(":");
+        e.type_input("[");
+        assert_eq!(shown(&e), "{\"a\":[|]}");
+        e.type_input("]");
+        e.type_input("}");
+        assert_eq!(shown(&e), "{\"a\":[]}|", "closing brackets are stepped over");
+        // Not paired before something that continues a word, inside a string, or in a comment.
+        let mut e = json("|abc");
+        e.type_input("\"");
+        assert_eq!(shown(&e), "\"|abc");
+        let mut e = json("\"a|b\"");
+        e.type_input("{");
+        assert_eq!(shown(&e), "\"a{|b\"", "a bracket in a string is only a character");
+        let mut e = json("\"a|b\"");
+        e.type_input("\"");
+        assert_eq!(shown(&e), "\"a\"|b\"");
+        let mut e = json("// say |");
+        e.type_input("\"");
+        assert_eq!(shown(&e), "// say \"|");
+        let mut e = json("\"a\\\"|\"");
+        e.type_input("\"");
+        assert_eq!(shown(&e), "\"a\\\"\"|", "after an escaped quote the string goes on, so the quote that is next closes it");
+        // XML's aids do not apply: no end tag, no quote after '='.
+        let mut e = json("<a|");
+        e.type_input(">");
+        assert_eq!(shown(&e), "<a>|");
+    }
+
+    #[test]
+    fn json_pairs_are_taken_together_by_backspace_and_not_when_switched_off() {
+        let mut e = json("{|}");
+        e.backspace();
+        assert_eq!(shown(&e), "|");
+        let mut e = json("[\"|\"]");
+        e.backspace();
+        assert_eq!(shown(&e), "[|]");
+        let mut e = json("{|x}");
+        e.backspace();
+        assert_eq!(shown(&e), "|x}");
+        let mut e = Editor::with_settings("", Settings { auto_pair: false, ..Settings::default() });
+        e.set_syntax(Syntax::Json);
+        e.type_input("{");
+        assert_eq!(shown(&e), "{|");
+    }
+
+    #[test]
+    fn json_typing_aids_leave_block_comments_alone_even_ones_that_began_on_an_earlier_line() {
+        let mut e = json("/* | */");
+        e.type_input("{");
+        assert_eq!(shown(&e), "/* {| */");
+        let mut e = json("/* one\ntwo |\nthree */");
+        e.type_input("\"");
+        assert_eq!(shown(&e), "/* one\ntwo \"|\nthree */");
+        // Behind a comment that is closed, code goes on.
+        let mut e = json("/* c */|");
+        e.type_input("{");
+        assert_eq!(shown(&e), "/* c */{|}");
+        let mut e = json("/* c */ [|]");
+        e.type_input("]");
+        assert_eq!(shown(&e), "/* c */ []|");
+    }
+
+    #[test]
+    fn json_backspace_takes_a_pair_only_in_code_and_json5_pairs_single_quotes() {
+        // Two quotes inside a string, or brackets inside a comment, are just characters.
+        let mut e = json("\"a{|}b\"");
+        e.backspace();
+        assert_eq!(shown(&e), "\"a|}b\"");
+        let mut e = json("// [|]");
+        e.backspace();
+        assert_eq!(shown(&e), "// |]");
+        let mut e = json("\"x\": \"|\"");
+        e.backspace();
+        assert_eq!(shown(&e), "\"x\": |", "an empty string typed with the aid goes with its quotes");
+        // JSON5: a single quote is a string quote.
+        let mut e = at("|");
+        e.set_syntax(Syntax::Json5);
+        e.type_input("'");
+        assert_eq!(shown(&e), "'|'");
+        e.type_text("a");
+        e.type_input("'");
+        assert_eq!(shown(&e), "'a'|", "stepped over");
+        let mut e = at("'|'");
+        e.set_syntax(Syntax::Json5);
+        e.backspace();
+        assert_eq!(shown(&e), "|");
+        // In plain JSON a single quote is only a character.
+        let mut e = json("|");
+        e.type_input("'");
+        assert_eq!(shown(&e), "'|");
+        // A double quote inside a single-quoted string does not end it.
+        let mut e = at("'a|'");
+        e.set_syntax(Syntax::Json5);
+        e.type_input("\"");
+        assert_eq!(shown(&e), "'a\"|'");
     }
 }

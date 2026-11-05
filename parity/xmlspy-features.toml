@@ -1551,11 +1551,11 @@ title = "JSON editing with colouring, folding and formatting"
 area = "I"
 tier = "P1"
 milestone = "M5"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["xml_wellformed", "xml_outline", "xml_folds"]
+evidence = ["crates/json-syntax/tests/reading.rs::what_serde_json_writes_is_read_back_without_a_problem_and_equal", "crates/engine/src/json_analysis.rs::folds_hide_the_lines_between_the_brackets_and_leave_the_closing_bracket_visible", "crates/ui-egui/tests/json.rs::the_outline_of_a_json_document_lists_its_members", "crates/editor/src/typing.rs::json_quotes_and_brackets_are_paired_and_stepped_over"]
+notes = "A `.json` document is read by its own rules (RFC 8259, with every problem at its place), coloured, outlined (members and containers, with a look at scalar values), folded (objects and arrays, the closing bracket stays visible) and typed in with paired quotes and brackets that are stepped over. The tools xml_wellformed, xml_outline and xml_folds read it (a `language` argument for text). Still missing: formatting, completion, hover, and a schema (JSON Schema)."
 
 [[feature]]
 id = "json.jsonc"
@@ -1563,11 +1563,11 @@ title = "JSON with comments (JSONC)"
 area = "I"
 tier = "P2"
 milestone = "M5"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["xml_wellformed", "xml_outline", "xml_folds"]
+evidence = ["crates/json-syntax/tests/reading.rs::what_json_does_not_allow_is_reported_and_the_relatives_allow_it", "crates/ui-egui/tests/json.rs::json_is_checked_as_json_and_a_relative_that_allows_the_text_is_not_complained_about"]
+notes = "`.jsonc`, `.json5` and the configuration files editors read as JSON with comments (tsconfig.json, settings.json, …) are read with comments and trailing commas allowed (JSON5 also single quotes, bare names and more number forms). Still missing: the same editing aids as JSON beyond colouring and folds (formatting, completion)."
 
 [[feature]]
 id = "json.schema-validate"
@@ -1623,11 +1623,11 @@ title = "JSON Lines"
 area = "I"
 tier = "P2"
 milestone = "M5"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["xml_wellformed", "xml_outline", "xml_folds"]
+evidence = ["crates/json-syntax/tests/reading.rs::json_lines_are_read_line_by_line_at_their_places_in_the_text", "crates/engine/src/json_analysis.rs::json_lines_have_an_item_per_line_and_problems_at_the_right_line"]
+notes = "`.jsonl` and `.ndjson`: one value per line, each line an outline item with its members, problems at their lines. Still missing: formatting and schema validation per line."
 
 [[feature]]
 id = "json.openapi"
@@ -2045,11 +2045,11 @@ title = "One editor stack for XML, JSON, YAML and BSON (language abstraction)"
 area = "A"
 tier = "P1"
 milestone = "M5"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "Highlighting, modes, typing aids, outline, folding, formatting and analysis come from a per-language object instead of XML assumptions."
+tools = ["xml_wellformed", "xml_outline", "xml_folds"]
+evidence = ["crates/engine/src/language.rs::the_name_of_a_document_says_what_it_is", "crates/editor/src/typing.rs::json_quotes_and_brackets_are_paired_and_stepped_over", "crates/automation/tests/documents.rs::json_is_read_by_the_same_tools_as_xml_by_name_or_by_the_language_given"]
+notes = "The first step: a document has a language (by its name), and the analysis (problems, outline, folds), the colouring, the typing aids, F8 and the command bar follow it; XML-only features (tag matching, tag-name sync, Schema…, DTD and XSD validation) stay off for JSON. Still to do: YAML and BSON, the format-neutral tool names, formatting and completion per language."
 
 [[feature]]
 id = "json.on-par-with-xml"

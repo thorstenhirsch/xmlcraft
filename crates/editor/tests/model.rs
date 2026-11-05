@@ -264,3 +264,20 @@ proptest! {
         }
     }
 }
+
+/// Found by the property test: a selection extended to the middle of a CR LF left a caret on no line, and a fold ended there.
+#[test]
+fn a_caret_is_never_put_between_the_cr_and_the_lf_of_a_line_break() {
+    let mut e = Editor::new("aaa\n\n\n");
+    let _ = e.type_text("\t\r\n\n");
+    let _ = e.paste("\n");
+    let _ = e.fold_lines(1, 3);
+    e.extend_selection_to(2);
+    let _ = e.backspace();
+    assert!(assert_valid(&e).is_ok(), "{:?} {:?}", e.text(), e.folds());
+    let mut e = Editor::new("a\r\nb");
+    e.place_caret(2, false);
+    assert_eq!(e.primary().head(), 1, "between the CR and the LF is before the line break");
+    e.extend_selection_to(2);
+    assert_eq!((e.primary().start(), e.primary().end()), (1, 1));
+}

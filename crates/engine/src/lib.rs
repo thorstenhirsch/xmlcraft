@@ -11,6 +11,8 @@ mod document;
 pub mod elements;
 pub mod folding;
 pub mod generate;
+mod json_analysis;
+pub mod language;
 pub mod quickfix;
 pub mod recent;
 pub mod schema;
@@ -22,7 +24,7 @@ pub mod validation;
 mod worker;
 pub mod xsd_schemas;
 
-pub use document::{Document, FileStamp, MAX_OPEN_BYTES, OpenError, SaveError};
+pub use document::{Document, FileStamp, MAX_OPEN_BYTES, OpenError, SaveAsPrep, SaveError};
 pub use recent::Recent;
 
 /// The open documents, and which one is shown.
