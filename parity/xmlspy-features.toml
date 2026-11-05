@@ -1576,10 +1576,10 @@ area = "I"
 tier = "P1"
 milestone = "M5"
 status = "partial"
-commands = []
+commands = ["xml.validate"]
 tools = ["json_validate"]
-evidence = ["crates/json/tests/validate.rs::references_are_followed_within_a_document_and_to_other_documents", "crates/json/tests/validate.rs::what_nothing_else_evaluated_is_unevaluated", "crates/automation/tests/json_schema.rs::violations_are_listed_with_their_place_in_the_text"]
-notes = "`xmlcraft-json` validates against drafts 04, 06, 07, 2019-09 and 2020-12 (the draft from `$schema`): all the validation and applicator keywords, `$ref`/`$recursiveRef`/`$dynamicRef` with their scopes, `unevaluatedProperties` and `unevaluatedItems`, exact numbers, and every violation placed in the text of the instance. Headless: the tool `json_validate` (the schema as a file, as text or the file the document names; referred schemas are files next to it, through the root confinement). The JSON Schema Test Suite (required tests, drafts 4 to 2020-12) is the measure: 99.76% (4938 of 4950), ratcheted by `cargo xtask conformance jsonschema`. Missing: the window (assigning a schema, underlines and Problems for violations, F8), YAML and BSON instances, `format` assertions, the meta-schemas (a schema is not checked against its meta-schema; the 10 suite tests that refer to them fail), vocabularies, look-around in patterns."
+evidence = ["crates/json/tests/validate.rs::references_are_followed_within_a_document_and_to_other_documents", "crates/json/tests/validate.rs::what_nothing_else_evaluated_is_unevaluated", "crates/automation/tests/json_schema.rs::violations_are_listed_with_their_place_in_the_text", "crates/engine/src/json_validation.rs::a_json_document_is_checked_against_the_schema_it_names_and_each_problem_is_where_it_is", "crates/ui-egui/tests/json.rs::f8_checks_a_json_document_against_the_schema_it_names_and_lists_what_is_wrong"]
+notes = "`xmlcraft-json` validates against drafts 04, 06, 07, 2019-09 and 2020-12 (the draft from `$schema`): all the validation and applicator keywords, `$ref`/`$recursiveRef`/`$dynamicRef` with their scopes, `unevaluatedProperties` and `unevaluatedItems`, exact numbers, and every violation placed in the text of the instance. Headless: the tool `json_validate` (the schema as a file, as text or the file the document names; referred schemas are files next to it, through the root confinement). The JSON Schema Test Suite (required tests, drafts 4 to 2020-12) is the measure: 99.76% (4938 of 4950), ratcheted by `cargo xtask conformance jsonschema`. In the window (and headless for YAML, see `json.yaml-validate`) F8 does the checking. Missing: `format` assertions, the meta-schemas (a schema is not checked against its meta-schema; the 10 suite tests that refer to them fail), vocabularies, look-around in patterns. F8 (Validate) on a JSON, JSONC, JSON5 or JSON Lines document that names a schema with `$schema` (a path or URI relative to the file; a `$schema` that names a draft is not a schema to check against) reads the schema (and the documents it refers to) through the resolver, the open documents first, and lists each violation in Problems at its place in the text (a member at its name). Not yet: assigning a schema to a document that does not name one, validating while typing, completion and hover, the bundled meta-schemas, SchemaStore, BSON instances."
 
 [[feature]]
 id = "json.yaml-editor"
@@ -1599,11 +1599,11 @@ title = "Validate YAML and BSON against JSON Schema"
 area = "I"
 tier = "P1"
 milestone = "M5"
-status = "planned"
-commands = []
+status = "partial"
+commands = ["xml.validate"]
 tools = []
-evidence = []
-notes = "YAML and BSON have no schema language of their own; a schema may itself be written in YAML."
+evidence = ["crates/engine/src/json_validation.rs::yaml_names_its_schema_by_a_member_or_a_modeline", "crates/engine/src/json_validation.rs::json_lines_are_checked_line_by_line"]
+notes = "YAML documents are checked the same way (F8): the schema is named by a root `$schema` key or by the editor comment `# yaml-language-server: $schema=URI`, and each YAML document of a stream is checked. A schema is read as JSON (with comments and trailing commas allowed). Not yet: schemas written in YAML, BSON (its Extended JSON types are not what a schema describes), the tool `json_validate` for YAML instances, validating while typing, and assigning a schema to a document that does not name one."
 
 [[feature]]
 id = "json.completion"
@@ -1627,7 +1627,7 @@ status = "partial"
 commands = ["xml.minify"]
 tools = ["xml_wellformed", "xml_outline", "xml_folds", "xml_format"]
 evidence = ["crates/json-syntax/tests/reading.rs::json_lines_are_read_line_by_line_at_their_places_in_the_text", "crates/engine/src/json_analysis.rs::json_lines_have_an_item_per_line_and_problems_at_the_right_line", "crates/format/tests/json.rs::json_lines_are_minified_line_by_line_with_the_edits_at_their_places"]
-notes = "`.jsonl` and `.ndjson`: one value per line, each line an outline item with its members, problems at their lines. Minify works per line (pretty-printing is refused: a value per line is the format). Still missing: schema validation per line."
+notes = "`.jsonl` and `.ndjson`: one value per line, each line an outline item with its members, problems at their lines. Minify works per line (pretty-printing is refused: a value per line is the format). Each line is checked against the schema the first line names (F8, `$schema` in the first value); assigning a schema is still missing."
 
 [[feature]]
 id = "json.openapi"

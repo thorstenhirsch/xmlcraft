@@ -81,7 +81,9 @@ impl SchemaSet {
                 continue;
             }
             let Some(text) = loader.load(&uri) else { continue };
-            let read = parse(&text, &Options { dialect: Dialect::Json, ..Options::default() });
+            // (Schemas are often written with comments and trailing commas, as editors allow; the document being validated is
+            // read by the caller, the same way for the schema it names.)
+            let read = parse(&text, &Options { dialect: Dialect::Json5, ..Options::default() });
             let Some(value) = read.root.filter(|_| read.diagnostics.iter().all(|d| d.severity() != xmlcraft_json_syntax::Severity::Error)) else {
                 set.problems.push(SchemaProblem {
                     document: uri.clone(),
