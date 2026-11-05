@@ -111,6 +111,16 @@ pub struct Detection {
     pub process: Option<String>,
 }
 
+/// The path, among the bundled schemas, of the XML Schema a detected document is written against, when XmlCraft ships it (UBL 2.1
+/// Invoice and CreditNote). A document is checked against it when it names no schema of its own.
+pub fn bundled_schema(detection: &Detection) -> Option<&'static str> {
+    match (detection.syntax, detection.document.as_str()) {
+        (Syntax::Ubl, "Invoice") => Some("ubl/maindoc/UBL-Invoice-2.1.xsd"),
+        (Syntax::Ubl, "Credit note") => Some("ubl/maindoc/UBL-CreditNote-2.1.xsd"),
+        _ => None,
+    }
+}
+
 fn child<'a>(tree: &'a Dom, el: &El, namespace: &str, local: &str) -> Option<&'a El> {
     el.children.iter().filter_map(|i| tree.elements.get(*i)).find(|c| c.local == local && c.namespace.as_deref() == Some(namespace))
 }
@@ -378,6 +388,15 @@ mod tests {
             let at = (0..=cut.min(doc.len())).rev().find(|i| doc.is_char_boundary(*i)).unwrap_or(0);
             let _ = detect(&doc[..at]);
         }
+    }
+
+    #[test]
+    fn only_the_documents_with_a_bundled_schema_have_one() {
+        let path = |text: &str| detect(text).as_ref().and_then(bundled_schema);
+        assert_eq!(path(&ubl_invoice("x", "")), Some("ubl/maindoc/UBL-Invoice-2.1.xsd"));
+        assert_eq!(path(&format!("<CreditNote xmlns=\"{UBL_CREDIT_NOTE}\"/>")), Some("ubl/maindoc/UBL-CreditNote-2.1.xsd"));
+        assert_eq!(path(&format!("<Order xmlns=\"{UBL_ORDER}\"/>")), None);
+        assert_eq!(path(&cii_invoice("urn:factur-x.eu:1p0:minimum")), None, "the CII schemas are not bundled");
     }
 
     #[test]

@@ -4395,6 +4395,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust_decimal_macros"
+version = "1.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74a5a6f027e892c7a035c6fddb50435a1fbf5a734ffc0c2a9fed4d0221440519"
+dependencies = [
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6412,6 +6422,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "xee-xslt-ast"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3571df589308fd66f93de243123690d9c5f9e658ccaa00662b20ed15aeff8cf1"
+dependencies = [
+ "ahash",
+ "blanket",
+ "rust_decimal",
+ "strum",
+ "thiserror 2.0.21",
+ "xee-name",
+ "xee-xpath-ast",
+ "xee-xpath-compiler",
+ "xot",
+]
+
+[[package]]
+name = "xee-xslt-compiler"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d3fa4149ac8b04b6a1755e2e8fac2ffd44ebd75f7390d0a03339c8bf9f5a891"
+dependencies = [
+ "ahash",
+ "ibig",
+ "iri-string",
+ "ordered-float",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "thiserror 2.0.21",
+ "xee-interpreter",
+ "xee-ir",
+ "xee-name",
+ "xee-schema-type",
+ "xee-xpath-ast",
+ "xee-xpath-compiler",
+ "xee-xslt-ast",
+ "xot",
+]
+
+[[package]]
 name = "xhtmlchardet"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6476,9 +6526,11 @@ dependencies = [
  "xmlcraft-einvoice",
  "xmlcraft-engine",
  "xmlcraft-format",
+ "xmlcraft-grid",
  "xmlcraft-infer",
  "xmlcraft-json",
  "xmlcraft-json-syntax",
+ "xmlcraft-openapi",
  "xmlcraft-pdf",
  "xmlcraft-platform",
  "xmlcraft-query",
@@ -6626,6 +6678,7 @@ dependencies = [
  "xmlcraft-diff",
  "xmlcraft-dtd",
  "xmlcraft-editor",
+ "xmlcraft-einvoice",
  "xmlcraft-format",
  "xmlcraft-grammar",
  "xmlcraft-infer",
@@ -6664,6 +6717,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-grid"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "xmlcraft-diff",
+ "xmlcraft-text",
+]
+
+[[package]]
 name = "xmlcraft-infer"
 version = "0.1.0"
 dependencies = [
@@ -6692,6 +6754,15 @@ dependencies = [
  "proptest",
  "serde_json",
  "xmlcraft-syntax",
+]
+
+[[package]]
+name = "xmlcraft-openapi"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde_json",
+ "xmlcraft-convert",
 ]
 
 [[package]]
@@ -6736,8 +6807,11 @@ dependencies = [
  "getrandom 0.3.4",
  "proptest",
  "rowan",
+ "xee-interpreter",
+ "xee-name",
  "xee-xpath",
  "xee-xpath-compiler",
+ "xee-xslt-compiler",
  "xmlcraft-syntax",
  "xot",
 ]
@@ -6830,6 +6904,7 @@ dependencies = [
  "xmlcraft-engine",
  "xmlcraft-format",
  "xmlcraft-grammar",
+ "xmlcraft-grid",
  "xmlcraft-infer",
  "xmlcraft-json-syntax",
  "xmlcraft-pdf",

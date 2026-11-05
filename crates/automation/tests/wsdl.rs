@@ -1,7 +1,10 @@
 //! `wsdl_describe` and `soap_sample`, through the tool table and the root confinement.
 
 use serde_json::{Value, json};
-use xmlcraft_automation::{Automation, Content, ToolError};
+use std::io::{Read, Write};
+use std::net::TcpListener;
+
+use xmlcraft_automation::{Automation, Content, Network, ToolError};
 
 fn call(a: &mut Automation, tool: &str, args: Value) -> Result<Value, ToolError> {
     a.call(tool, &args).map(|content| match content.into_iter().next() {
@@ -63,4 +66,88 @@ fn an_unknown_operation_names_the_known_ones_and_other_input_is_refused() {
     assert!(e.to_string().contains("not a WSDL"), "{e}");
     assert!(matches!(call(&mut a, "soap_sample", json!({ "text": WSDL })), Err(ToolError::InvalidArgs(_))));
     assert!(matches!(call(&mut a, "soap_sample", json!({ "text": WSDL, "operation": "Add", "optional": "yes" })), Err(ToolError::InvalidArgs(_))));
+}
+
+/// A server on this computer that answers one request and hands back what it received.
+fn serve(answer: String) -> (String, std::thread::JoinHandle<String>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("binds");
+    let address = listener.local_addr().expect("address");
+    let handle = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accepts");
+        let mut received = Vec::new();
+        let mut buffer = [0u8; 8192];
+        loop {
+            let n = stream.read(&mut buffer).expect("reads");
+            received.extend_from_slice(buffer.get(..n).unwrap_or_default());
+            let text = String::from_utf8_lossy(&received).into_owned();
+            if let Some(split) = text.find("\r\n\r\n") {
+                let length = text
+                    .lines()
+                    .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").and_then(|v| v.trim().parse::<usize>().ok()))
+                    .unwrap_or(0);
+                if n == 0 || received.len() >= split + 4 + length {
+                    break;
+                }
+            }
+            if n == 0 {
+                break;
+            }
+        }
+        stream.write_all(answer.as_bytes()).expect("writes");
+        String::from_utf8_lossy(&received).into_owned()
+    });
+    (format!("http://{address}/calc"), handle)
+}
+
+#[test]
+fn a_call_sends_the_envelope_with_the_headers_of_its_version_and_reads_a_fault_from_the_answer() {
+    let fault = "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><s:Fault><faultcode>s:Server</faultcode><faultstring>Overflow</faultstring></s:Fault></s:Body></s:Envelope>";
+    let (url, server) = serve(format!(
+        "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/xml; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{fault}",
+        fault.len()
+    ));
+    let dir = tempfile::tempdir().expect("dir");
+    std::fs::write(dir.path().join("c.wsdl"), WSDL).expect("writes");
+    std::fs::write(dir.path().join("other.xsd"), OTHER).expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("root").with_network(Network::standard());
+    let r = call(&mut a, "soap_call", json!({ "path": "c.wsdl", "operation": "Add", "binding": "B11", "url": url, "allow_private_hosts": true, "headers": { "Authorization": "Bearer t" } })).expect("runs");
+    assert_eq!((r["response"]["status"].as_u64(), r["response"]["reason"].as_str()), (Some(500), Some("Internal Server Error")), "{r}");
+    assert_eq!(
+        (r["soap"]["version"].as_str(), r["soap"]["fault"]["code"].as_str(), r["soap"]["fault"]["reason"].as_str()),
+        (Some("1.1"), Some("s:Server"), Some("Overflow")),
+        "{r}"
+    );
+    let received = server.join().expect("server");
+    let lower = received.to_ascii_lowercase();
+    assert!(received.starts_with("POST /calc HTTP/1.1"), "{received}");
+    assert!(
+        lower.contains("soapaction: \"urn:add\"")
+            && lower.contains("authorization: bearer t")
+            && lower.contains("content-type: text/xml; charset=utf-8"),
+        "{received}"
+    );
+    assert!(received.contains("<ns1:Add") && received.contains("<ns1:extra>OK</ns1:extra>"), "the sample envelope is the body: {received}");
+    assert!(r["request"]["body"].as_str().is_some_and(|b| b.contains("soapenv:Envelope")), "{r}");
+}
+
+#[test]
+fn nothing_is_sent_offline_or_to_this_computer_unless_allowed_and_a_given_envelope_is_what_is_sent() {
+    let mut offline = Automation::new();
+    let e = call(&mut offline, "soap_call", json!({ "text": WSDL, "operation": "Add", "url": "http://127.0.0.1:1/x" })).expect_err("offline");
+    assert!(e.to_string().contains("offline"), "{e}");
+    let mut online = Automation::new().with_network(Network::standard());
+    let e = call(&mut online, "soap_call", json!({ "text": WSDL, "operation": "Add", "url": "http://127.0.0.1:1/x" })).expect_err("private");
+    assert!(e.to_string().contains("allow private hosts"), "{e}");
+    let e = call(&mut online, "soap_call", json!({ "text": WSDL, "operation": "Add", "binding": "B12" })).expect_err("no address");
+    assert!(e.to_string().contains("no address"), "{e}");
+    assert!(matches!(
+        call(&mut online, "soap_call", json!({ "text": WSDL, "operation": "Add", "timeout_seconds": 0 })),
+        Err(ToolError::InvalidArgs(_))
+    ));
+    let (url, server) = serve("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".to_owned());
+    let r =
+        call(&mut online, "soap_call", json!({ "text": WSDL, "operation": "Add", "url": url, "allow_private_hosts": true, "envelope": "<mine/>" }))
+            .expect("runs");
+    assert_eq!((r["response"]["status"].as_u64(), r["response"]["body"].as_str(), r["soap"].clone()), (Some(200), Some("ok"), Value::Null));
+    assert!(server.join().expect("server").ends_with("<mine/>"));
 }
