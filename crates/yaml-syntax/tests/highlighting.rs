@@ -76,6 +76,20 @@ fn block_scalars_and_multi_line_quotes_carry_over_the_end_of_a_line() {
     assert_eq!(mode, Mode::SingleQuoted);
 }
 
+#[test]
+fn a_unicode_space_at_the_start_of_a_scalar_is_coloured_whole() {
+    // Found by the property test below: U+0085 is two bytes and counts as white space for `str::trim_end`, which left a range of one
+    // byte, ending inside the character.
+    for line in ["'\u{85}:\t", "\u{85}", "a: \u{85}", "\u{a0}: x", "\u{85}\u{85}"] {
+        for start in [Mode::Normal, Mode::SingleQuoted, Mode::DoubleQuoted, Mode::BlockScalar { parent: 0 }] {
+            let (spans, _) = highlight_line(line, start);
+            for (range, _) in &spans {
+                assert!(line.is_char_boundary(range.start) && line.is_char_boundary(range.end), "{range:?} in {line:?} from {start:?}");
+            }
+        }
+    }
+}
+
 proptest! {
     #[test]
     fn any_line_is_coloured_with_ranges_that_are_ordered_and_on_characters(line in ".{0,100}", mode in 0u8..4, parent in 0usize..4) {
