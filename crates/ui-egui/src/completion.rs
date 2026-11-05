@@ -196,7 +196,10 @@ impl XmlCraftApp {
             (Kind::Entity, Some(choices)) => {
                 // Inside the start tag (an attribute value) the choices list none: the grammar's own entities are what a value may refer to.
                 let entities = match (choices.entities.is_empty(), self.active_grammar()) {
-                    (true, Some(grammar)) => xmlcraft_complete::entities(&grammar),
+                    // (An attribute value cannot refer to an external entity or to one whose text holds `<`.)
+                    (true, Some(grammar)) => {
+                        xmlcraft_complete::entities(&grammar).into_iter().filter(|e| e.value.as_deref().is_some_and(|v| !v.contains('<'))).collect()
+                    }
                     _ => choices.entities.clone(),
                 };
                 entities

@@ -255,3 +255,16 @@ fn an_entity_is_offered_inside_an_attribute_value_too() {
     type_text(&mut h, "&");
     assert!(h.query_by_label("Complete &e;").is_some(), "references are written in values too");
 }
+
+#[test]
+fn only_the_entities_a_value_may_refer_to_are_offered_in_one() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    let dtd = "<!DOCTYPE r [<!ELEMENT r (a)><!ELEMENT a EMPTY><!ATTLIST a id CDATA #IMPLIED>\
+               <!ENTITY ok 'fine'><!ENTITY lt2 'a<b'><!ENTITY ext SYSTEM 'x.txt'>]>";
+    open_at(&mut h, dir.path(), &format!("{dtd}<r><a id=\"¦\"/></r>"));
+    type_text(&mut h, "&");
+    assert!(h.query_by_label("Complete &ok;").is_some());
+    assert!(h.query_by_label("Complete &lt2;").is_none(), "its text holds a bracket");
+    assert!(h.query_by_label("Complete &ext;").is_none(), "it is external");
+}
