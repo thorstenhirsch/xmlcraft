@@ -28,6 +28,7 @@ xmlcraft-syntax = { path = "crates/syntax", version = "0.1.0" }
 xmlcraft-json-syntax = { path = "crates/json-syntax", version = "0.1.0" }
 xmlcraft-json = { path = "crates/json", version = "0.1.0" }
 xmlcraft-bson = { path = "crates/bson", version = "0.1.0" }
+xmlcraft-convert = { path = "crates/convert", version = "0.1.0" }
 xmlcraft-yaml-syntax = { path = "crates/yaml-syntax", version = "0.1.0" }
 xmlcraft-format = { path = "crates/format", version = "0.1.0" }
 xmlcraft-catalog = { path = "crates/catalog", version = "0.1.0" }

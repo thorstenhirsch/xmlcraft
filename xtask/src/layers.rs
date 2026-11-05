@@ -54,6 +54,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("infer", Class::Layer(4)),
     ("sample", Class::Layer(4)),
     ("format", Class::Layer(4)),
+    ("convert", Class::Layer(4)),
     ("complete", Class::Layer(4)),
     // L5 interaction
     ("editor", Class::Layer(5)),

@@ -377,7 +377,8 @@ fn resolve(text: &str, style: ScalarStyle, tag: Option<&Tag>) -> Data {
 }
 
 /// A plain scalar that is null, a boolean or a number.
-pub(crate) fn plain(text: &str) -> Option<Data> {
+/// What a plain (unquoted, untagged) scalar is by the core schema: null, a boolean or a number; none when it is a string.
+pub fn plain(text: &str) -> Option<Data> {
     match text {
         "" | "~" | "null" | "Null" | "NULL" => return Some(Data::Null),
         "true" | "True" | "TRUE" => return Some(Data::Bool(true)),
