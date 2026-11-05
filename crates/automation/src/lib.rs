@@ -32,6 +32,7 @@ mod script;
 mod tools;
 mod validate;
 mod wsdl;
+mod xbrl;
 mod xpath;
 mod xslt;
 

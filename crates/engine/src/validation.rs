@@ -283,6 +283,18 @@ fn run(resolvers: &ResolverFactory, request: Request) -> Validation {
             validation = finish(request.version, all);
         }
     }
+    // An XBRL instance or Inline XBRL document is checked for what the specification says of the instance itself (its taxonomy is its
+    // grammar, and is not read here, so "it names no DOCTYPE" is not a finding for it).
+    if matches!(validation.verdict, Verdict::Valid | Verdict::Invalid) && crate::xbrl::recognised(&text) {
+        let extra = crate::guard(|| crate::xbrl::problems(&text)).unwrap_or_else(|message| {
+            log::error!("the XBRL check failed: {message}");
+            Vec::new()
+        });
+        let mut all: Vec<ValidityProblem> =
+            std::mem::take(&mut validation.problems).into_iter().filter(|p| p.diagnostic.code != Code::VcNoDtd).collect();
+        all.extend(extra);
+        validation = finish(request.version, all);
+    }
     validation
 }
 
@@ -512,6 +524,32 @@ mod tests {
         validator.submit(2, 1, &Buffer::from_text(doc), Some(Path::new("/w/doc.xml")), vec![]);
         let v = validator.poll().remove(0).1;
         assert!(v.problems.iter().any(|p| p.diagnostic.code == Code::SchematronUnavailable), "{:?}", v.problems);
+    }
+
+    #[test]
+    fn an_xbrl_instance_is_checked_for_what_it_says_of_itself_and_is_not_blamed_for_having_no_doctype() {
+        let head = "<xbrli:xbrl xmlns:xbrli=\"http://www.xbrl.org/2003/instance\" xmlns:link=\"http://www.xbrl.org/2003/linkbase\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" xmlns:g=\"urn:g\"><link:schemaRef xlink:type=\"simple\" xlink:href=\"g.xsd\"/>";
+        let ctx = "<xbrli:context id=\"c\"><xbrli:entity><xbrli:identifier scheme=\"s\">A</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2025-12-31</xbrli:instant></xbrli:period></xbrli:context>";
+        let ok = format!("{head}{ctx}<g:Name contextRef=\"c\">x</g:Name></xbrli:xbrl>");
+        let run = |text: &str| {
+            let validator = Validator::inline(no_resolvers());
+            validator.submit(1, 1, &Buffer::from_text(text), None, vec![]);
+            validator.poll().remove(0).1
+        };
+        let v = run(&ok);
+        assert_eq!((v.verdict, codes(&v)), (Verdict::Valid, vec![]), "{:?}", v.problems);
+        let bad = format!("{head}{ctx}<g:Name contextRef=\"nope\">x</g:Name></xbrli:xbrl>");
+        let v = run(&bad);
+        assert_eq!(
+            (v.verdict, codes(&v)),
+            (Verdict::Invalid, vec![Code::XbrlWarning, Code::XbrlError]),
+            "{:?}: the unused context is a warning, the unknown one an error",
+            v.problems
+        );
+        let at = bad.find("<g:Name").expect("there");
+        let error = v.problems.iter().find(|p| p.diagnostic.code == Code::XbrlError).expect("an error");
+        assert_eq!(error.diagnostic.span.start, at, "at the fact");
+        assert!(error.diagnostic.message().contains("nope"), "{}", error.diagnostic.message());
     }
 
     #[test]
