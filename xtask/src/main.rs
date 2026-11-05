@@ -10,6 +10,7 @@ mod conformance;
 mod contributors;
 mod fuzz;
 mod gates;
+mod jsonschema;
 mod layers;
 mod parity;
 mod schemas;
@@ -31,7 +32,7 @@ const COMMANDS: &[(&str, &str, Command)] = &[
     ("assets", "Enforce the asset policy (AGENTS.md §1) against ATTRIBUTION.toml; --write regenerates ATTRIBUTION.md", assets::run),
     (
         "conformance",
-        "Run a W3C conformance suite (xmlconf, xsdtests) against the engines and hold the ratchet: `conformance <suite> [--fetch] [--write] [-v]`",
+        "Run a conformance suite (xmlconf, xsdtests, jsonschema) against the engines and hold the ratchet: `conformance <suite> [--fetch] [--write] [-v]`",
         conformance::run,
     ),
     (

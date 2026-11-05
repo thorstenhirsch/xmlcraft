@@ -17,6 +17,7 @@ mod documents;
 mod entry_helpers;
 pub mod file_access;
 mod infer;
+mod json_schema;
 mod lines;
 mod load_schema;
 mod sample;

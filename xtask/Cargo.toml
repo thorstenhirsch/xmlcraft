@@ -20,6 +20,8 @@ xmlcraft-editor = { workspace = true }
 xmlcraft-dtd = { workspace = true }
 xmlcraft-validate = { workspace = true }
 xmlcraft-xsd = { workspace = true }
+xmlcraft-json = { workspace = true }
+xmlcraft-json-syntax = { workspace = true }
 xmlcraft-resolve = { workspace = true }
 xmlcraft-schemas = { workspace = true }
 xmlcraft-engine = { workspace = true }
