@@ -6526,6 +6526,7 @@ dependencies = [
  "xmlcraft-einvoice",
  "xmlcraft-engine",
  "xmlcraft-format",
+ "xmlcraft-grid",
  "xmlcraft-infer",
  "xmlcraft-json",
  "xmlcraft-json-syntax",
@@ -6716,6 +6717,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-grid"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "xmlcraft-diff",
+ "xmlcraft-text",
+]
+
+[[package]]
 name = "xmlcraft-infer"
 version = "0.1.0"
 dependencies = [
@@ -6894,6 +6904,7 @@ dependencies = [
  "xmlcraft-engine",
  "xmlcraft-format",
  "xmlcraft-grammar",
+ "xmlcraft-grid",
  "xmlcraft-infer",
  "xmlcraft-json-syntax",
  "xmlcraft-pdf",

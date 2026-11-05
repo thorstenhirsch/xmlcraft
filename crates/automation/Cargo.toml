@@ -24,6 +24,7 @@ xmlcraft-openapi = { workspace = true }
 xmlcraft-wsdl = { workspace = true }
 xmlcraft-schematron = { workspace = true }
 xmlcraft-diff = { workspace = true }
+xmlcraft-grid = { workspace = true }
 xmlcraft-einvoice = { workspace = true }
 xmlcraft-complete = { workspace = true }
 xmlcraft-dtd = { workspace = true }
