@@ -5335,6 +5335,7 @@ dependencies = [
  "xmlcraft-text",
  "xmlcraft-validate",
  "xmlcraft-xsd",
+ "xmlcraft-yaml-syntax",
 ]
 
 [[package]]
@@ -5496,6 +5497,7 @@ dependencies = [
  "xmlcraft-syntax",
  "xmlcraft-text",
  "xmlcraft-xsd",
+ "xmlcraft-yaml-syntax",
 ]
 
 [[package]]

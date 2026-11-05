@@ -23,6 +23,7 @@ pub mod templates;
 pub mod validation;
 mod worker;
 pub mod xsd_schemas;
+mod yaml_analysis;
 
 pub use document::{Document, FileStamp, MAX_OPEN_BYTES, OpenError, SaveAsPrep, SaveError};
 pub use recent::Recent;

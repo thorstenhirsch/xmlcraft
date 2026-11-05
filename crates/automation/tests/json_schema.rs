@@ -127,3 +127,10 @@ fn files_the_schema_refers_to_outside_the_root_are_not_read() {
     let outside_schema = file(outside.path(), "o.json", "{}");
     assert!(err(&mut confined, json!({ "text": "1", "schema": outside_schema })).contains("outside the root"));
 }
+
+#[test]
+fn yaml_is_refused_with_a_reason_until_it_is_read() {
+    let mut a = Automation::new();
+    let why = err(&mut a, json!({ "text": "a: 1\n", "language": "yaml", "schema_text": "{}" }));
+    assert!(why.contains("YAML") && why.contains("not checked"), "{why}");
+}

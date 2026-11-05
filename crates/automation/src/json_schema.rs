@@ -64,7 +64,7 @@ impl Loader for ConfinedSchemas<'_> {
 fn dialect_of(language: Language) -> Dialect {
     match language {
         Language::Json(flavor) => flavor.dialect(),
-        Language::Xml => Dialect::Json,
+        Language::Xml | Language::Yaml => Dialect::Json,
     }
 }
 
@@ -75,8 +75,10 @@ fn json_validate(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     } else {
         source.language
     };
-    if language == Language::Xml {
-        return fail("json_validate reads JSON: give language json, jsonc, json5 or jsonl for text, or a document with a JSON name");
+    if !language.is_json() {
+        return fail(
+            "json_validate reads JSON: give language json, jsonc, json5 or jsonl for text, or a document with a JSON name (YAML and BSON documents are not checked against a schema yet)",
+        );
     }
     let instance_buffer = Buffer::from_text(&source.text);
     let lines = language == Language::Json(xmlcraft_engine::language::JsonFlavor::Lines);

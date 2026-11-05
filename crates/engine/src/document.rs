@@ -33,6 +33,7 @@ fn syntax_of(language: Language) -> Syntax {
         Language::Xml => Syntax::Xml,
         Language::Json(crate::language::JsonFlavor::Json5) => Syntax::Json5,
         Language::Json(_) => Syntax::Json,
+        Language::Yaml => Syntax::Yaml,
     }
 }
 
@@ -367,6 +368,10 @@ impl Document {
         let text = self.editor.text();
         if let Language::Json(flavor) = self.language() {
             return self.apply_json_escapes(&text, &found, flavor.dialect());
+        }
+        // (YAML has escapes only inside double quotes, and where the quotes are is for the user to choose: another encoding is the answer.)
+        if self.language() == Language::Yaml {
+            return Err(SaveError::Unmappable(*first));
         }
         let mut tokens = Lexer::new(&text);
         let mut current = tokens.next();
@@ -907,5 +912,17 @@ mod tests {
         d.editor_mut().type_text("y");
         d.undo_save_as(prep);
         assert!(d.editor().text().contains('y'), "an edit made since is not undone");
+    }
+
+    #[test]
+    fn a_yaml_document_has_its_own_syntax_no_declaration_and_no_references() {
+        let mut d = Document::from_bytes(1, Some(PathBuf::from("/d/a.yaml")), "a: \"日\"\n".as_bytes(), None).expect("opens");
+        assert_eq!((d.language(), d.editor().syntax()), (Language::Yaml, Syntax::Yaml));
+        assert!(!d.link_tag_names());
+        d.set_encoding(Encoding::WINDOWS_1252, false);
+        assert_eq!(d.editor().text(), "a: \"日\"\n", "no declaration is written into YAML");
+        assert!(matches!(d.apply_character_references(), Err(SaveError::Unmappable(_))), "a reference is XML's; the encoding is the answer");
+        assert_eq!(d.editor().text(), "a: \"日\"\n");
+        assert_eq!(d.pretty_print().map_err(|e| e.to_string()).expect_err("refused"), "YAML is not reformatted: its white space is its structure");
     }
 }
