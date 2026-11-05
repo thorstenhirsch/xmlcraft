@@ -783,7 +783,7 @@ source = "http://json-schema.org/draft-04/schema (retrieved 2026-11-05)"
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "e1489d0b4755f02793302591d3fcb8f07b6893a82a94f24895f8e4edf11b82e2"
 
 [[asset]]
@@ -794,7 +794,7 @@ source = "http://json-schema.org/draft-06/schema (retrieved 2026-11-05)"
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "0064e880ba214bff1cee511e678fbe48c9826dd359e91e2423fc36de67b2ebe1"
 
 [[asset]]
@@ -805,7 +805,7 @@ source = "http://json-schema.org/draft-07/schema (retrieved 2026-11-05)"
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "692e1d165e47afcb5f11b2ce1c639635ffa834035d6ecb6bcf3087481dae8404"
 
 [[asset]]
@@ -816,7 +816,7 @@ source = "https://json-schema.org/draft/2019-09/meta/applicator (retrieved 2026-
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "6b5f4e2fbc326d63cef6f6a3fa53bbfd3da39323116bc2eee866d716afc0e52c"
 
 [[asset]]
@@ -827,7 +827,7 @@ source = "https://json-schema.org/draft/2019-09/meta/content (retrieved 2026-11-
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "9054737ada8e2ffbd9c9487ea406a86af8b57dcfd269543f04aba782936e3385"
 
 [[asset]]
@@ -838,7 +838,7 @@ source = "https://json-schema.org/draft/2019-09/meta/core (retrieved 2026-11-05)
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "a6751523406d9ca767032ae97eb1c00c2de6d3cac9fc7d619babb460131cc1cb"
 
 [[asset]]
@@ -849,7 +849,7 @@ source = "https://json-schema.org/draft/2019-09/meta/format (retrieved 2026-11-0
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "a53cf235aab26c7639e70e94656136b20bcc364379c6a129cc06377982f91e96"
 
 [[asset]]
@@ -860,7 +860,7 @@ source = "https://json-schema.org/draft/2019-09/meta/meta-data (retrieved 2026-1
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "ebcce1cded976590c75b4e5ee18ac471ffd8d21575a41d3ba05f59946fcbb5ce"
 
 [[asset]]
@@ -871,7 +871,7 @@ source = "https://json-schema.org/draft/2019-09/meta/validation (retrieved 2026-
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "c83c5121d0afd313846002429cd16b08ab77be022f423c70f0cfb64adc1069b7"
 
 [[asset]]
@@ -882,7 +882,7 @@ source = "https://json-schema.org/draft/2019-09/schema (retrieved 2026-11-05)"
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "7b761b3e121f0a0ca1ea2a0b8e2cc856bcf801604b8268d71bacaa202bc0c13b"
 
 [[asset]]
@@ -893,7 +893,7 @@ source = "https://json-schema.org/draft/2020-12/meta/applicator (retrieved 2026-
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "bf273b26f9f735b93ece78f2b61b36676e1d122ce78ab37ad5a2e45dfa1ca2b1"
 
 [[asset]]
@@ -904,7 +904,7 @@ source = "https://json-schema.org/draft/2020-12/meta/content (retrieved 2026-11-
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "a10456605b2b5bb12a1b4dcfc0300f02f54d3e8bb3646bed7724583866627682"
 
 [[asset]]
@@ -915,7 +915,7 @@ source = "https://json-schema.org/draft/2020-12/meta/core (retrieved 2026-11-05)
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "21f79d143fab1f180245c331e5657057045b36794d41fe151e6e4fed65035299"
 
 [[asset]]
@@ -926,7 +926,7 @@ source = "https://json-schema.org/draft/2020-12/meta/format-annotation (retrieve
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "5c79404f831dd905c0f40fefac7c6f3e51bf3729b4a876a5c2020178d97f3bcc"
 
 [[asset]]
@@ -937,7 +937,7 @@ source = "https://json-schema.org/draft/2020-12/meta/meta-data (retrieved 2026-1
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "c664d438a84d58889c8edecd248ce2f945a4bc0e3b087323b11303dc136abfbe"
 
 [[asset]]
@@ -948,7 +948,7 @@ source = "https://json-schema.org/draft/2020-12/meta/unevaluated (retrieved 2026
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "fc99f32188da41689a9382af174dd42e8b255e4374965c157b8286556b4ab2bc"
 
 [[asset]]
@@ -959,7 +959,7 @@ source = "https://json-schema.org/draft/2020-12/meta/validation (retrieved 2026-
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "e921c5b79264d3689af01c1af1ffdf692e09f1c45df90a0f08eb7288c9acdeab"
 
 [[asset]]
@@ -970,7 +970,7 @@ source = "https://json-schema.org/draft/2020-12/schema (retrieved 2026-11-05)"
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "41da76f5afb7ce062d248f762463a92f7ca47e4e0f905b224ba6afeef91ded0f"
 
 [[asset]]
@@ -981,7 +981,7 @@ source = "https://raw.githubusercontent.com/OAI/OpenAPI-Specification/3.0.3/sche
 licence = "Apache-2.0"
 licence_file = "schemas/openapi/LICENSE-Apache-2.0"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "b36871c8016292c5e66dd3b203e69aeff98bfef97e0b3c67c1909036095586a5"
 
 [[asset]]
@@ -992,7 +992,7 @@ source = "https://spec.openapis.org/oas/3.0/schema/2024-10-18 (retrieved 2026-11
 licence = "Apache-2.0"
 licence_file = "schemas/openapi/LICENSE-Apache-2.0"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "2385f5bbb8c37878daae73baeabe7f34b2f022a4a8c049329ee61f71796f039c"
 
 [[asset]]
@@ -1003,7 +1003,7 @@ source = "https://spec.openapis.org/oas/3.1/dialect/2024-11-10 (retrieved 2026-1
 licence = "Apache-2.0"
 licence_file = "schemas/openapi/LICENSE-Apache-2.0"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "647f32dfff64949d5020a28ecd1af4ffeffb1e9c695f861a52255a8004e07460"
 
 [[asset]]
@@ -1014,7 +1014,7 @@ source = "https://spec.openapis.org/oas/3.1/meta/2024-11-10 (retrieved 2026-11-0
 licence = "Apache-2.0"
 licence_file = "schemas/openapi/LICENSE-Apache-2.0"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "80706a9a404affedbf84ac4dc1328c9ce0d2a00804cdfc4d95c0ddd0053121dd"
 
 [[asset]]
@@ -1025,7 +1025,7 @@ source = "https://spec.openapis.org/oas/3.1/schema/2025-09-15 (retrieved 2026-11
 licence = "Apache-2.0"
 licence_file = "schemas/openapi/LICENSE-Apache-2.0"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "d0a3955182364c7b5fdebfd0583ecad259a870b4a2fe86a1b0fe8785f8224fed"
 
 [[asset]]
@@ -1036,7 +1036,7 @@ source = "https://spec.openapis.org/oas/3.1/schema-base/2025-09-15 (retrieved 20
 licence = "Apache-2.0"
 licence_file = "schemas/openapi/LICENSE-Apache-2.0"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "740186b45574c93647b1ca6184a96310efd384fbeed16bebd07f572eedfbddd4"
 
 [[asset]]
@@ -1047,7 +1047,7 @@ source = "https://spec.openapis.org/oas/3.2/dialect/2025-09-17 (retrieved 2026-1
 licence = "Apache-2.0"
 licence_file = "schemas/openapi/LICENSE-Apache-2.0"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "4e2c989f3d1e6489d41bc1ca4ade11743278c612b82fba9144c6116c79f1c273"
 
 [[asset]]
@@ -1058,7 +1058,7 @@ source = "https://spec.openapis.org/oas/3.2/meta/2025-09-17 (retrieved 2026-11-0
 licence = "Apache-2.0"
 licence_file = "schemas/openapi/LICENSE-Apache-2.0"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "a1959c0aa1f9a7ce58f2b75699be5bc5187c8a25901fe04a227f1d9419ba4e9c"
 
 [[asset]]
@@ -1069,7 +1069,7 @@ source = "https://spec.openapis.org/oas/3.2/schema/2025-09-17 (retrieved 2026-11
 licence = "Apache-2.0"
 licence_file = "schemas/openapi/LICENSE-Apache-2.0"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "0c9d74bf25f9b9388b2d81e421ef60fdefa9feffa94898dadfc501b342b3bfcc"
 
 [[asset]]
@@ -1080,7 +1080,7 @@ source = "https://spec.openapis.org/oas/3.2/schema-base/2025-09-17 (retrieved 20
 licence = "Apache-2.0"
 licence_file = "schemas/openapi/LICENSE-Apache-2.0"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "43bb51dbd831b2215cf27e734969ff50fe7043a1e60879afe9631c5a6c262214"
 
 [[asset]]
@@ -1091,7 +1091,7 @@ source = "https://www.w3.org/Math/XMLSchema/mathml3/mathml3-common.xsd (retrieve
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "4a3785d3a9ff3e362c0020abdc107a2b79e9a06f863b8a279cd6148e0539e96c"
 
 [[asset]]
@@ -1102,7 +1102,7 @@ source = "https://www.w3.org/Math/XMLSchema/mathml3/mathml3-content.xsd (retriev
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "9f817c92b69d0f6c2aabc604b97f4a68a8797ee799abb446168151e8931dad8c"
 
 [[asset]]
@@ -1113,7 +1113,7 @@ source = "https://www.w3.org/Math/XMLSchema/mathml3/mathml3-presentation.xsd (re
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "c875f8460cd5a7bd047361519b3781cad9bb5f9c8782955b67cad2733f07bf96"
 
 [[asset]]
@@ -1124,7 +1124,7 @@ source = "https://www.w3.org/Math/XMLSchema/mathml3/mathml3-strict-content.xsd (
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "e088d44535a774c343dea51b8cb5f2057b79af04b2adfebb95ea438728f76765"
 
 [[asset]]
@@ -1135,7 +1135,7 @@ source = "https://www.w3.org/Math/XMLSchema/mathml3/mathml3.xsd (retrieved 2026-
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "f7e03c16ac50574e724802cc67e42300b404d7976306d56a38091115630e2d9e"
 
 [[asset]]
@@ -1146,7 +1146,7 @@ source = "https://www.w3.org/2003/05/soap-envelope/ (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "3ae8caa9a74e83528cc0e1a59fc12784435e8e0086e890d0e1b04d881c079bec"
 
 [[asset]]
@@ -1157,7 +1157,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-animation.mod (retrieved 2
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "0efd307e66e446350ace0d8719ae06f0ea092811c9fe0ea8f9b98dedfd7d5b4f"
 
 [[asset]]
@@ -1168,7 +1168,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-animevents-attrib.mod (ret
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "0f5a69f021daf314d54aab34ea651cbecf0dc35e05825ed0411110d30cfa8b74"
 
 [[asset]]
@@ -1179,7 +1179,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-clip.mod (retrieved 2026-1
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "f131c45335da3717ffdda3874cf932c514cf625b844b3b272bdec465e83210bc"
 
 [[asset]]
@@ -1190,7 +1190,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-conditional.mod (retrieved
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "2104c0831737c7797172365eb10fb63c7b6b8a84f3087590e78a187947d52f1b"
 
 [[asset]]
@@ -1201,7 +1201,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-container-attrib.mod (retr
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "7f6d14094fc6086506d3d7bf570afcb2d3b5033e82d97e36f6cb1246154ca109"
 
 [[asset]]
@@ -1212,7 +1212,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-core-attrib.mod (retrieved
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "68b99c92ddd46da8318a70f459a40e42ee487e7a53d771127f38a98fd11ed9d7"
 
 [[asset]]
@@ -1223,7 +1223,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-cursor.mod (retrieved 2026
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "b9eaa045c7d70cda28af280daa03c84e126141c6a197eef17c1e1ba9510f7404"
 
 [[asset]]
@@ -1234,7 +1234,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-datatypes.mod (retrieved 2
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "54e133127168c2623f14f6648df6dcb73fb26fa55c36225406718fe937f10cbd"
 
 [[asset]]
@@ -1245,7 +1245,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-docevents-attrib.mod (retr
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "322f1242baaf41f48a9f7998ec18a349f5a12281b8256f1aef6e4a271ef83a3e"
 
 [[asset]]
@@ -1256,7 +1256,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-extensibility.mod (retriev
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "eed66f6de64fa642cbf4ee8c363b2d6a28528fce0c16d034d6320c03aee2904f"
 
 [[asset]]
@@ -1267,7 +1267,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-extresources-attrib.mod (r
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "3fcf42013a88d0b241f20a887d043dbc1f5180ca679c36957cf43e666cc95d61"
 
 [[asset]]
@@ -1278,7 +1278,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-filter.mod (retrieved 2026
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "1dca72344a000644eeaa893d2b96ba49b6d7c2e397a963ef71c3ddfd17958ff3"
 
 [[asset]]
@@ -1289,7 +1289,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-font.mod (retrieved 2026-1
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "807404b6e4222e603b6c92d95025699b37a0f741399f6811a5a16500f1abbafd"
 
 [[asset]]
@@ -1300,7 +1300,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-framework.mod (retrieved 2
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "089a2f2817c6a282a8e7d93c5fc86fdcb625fc9e7187fc15cde1a3e39f2f263f"
 
 [[asset]]
@@ -1311,7 +1311,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-gradient.mod (retrieved 20
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "85cf26a65845344e9627d35b7421755e878fe825e0c1f6168badec794b599c8e"
 
 [[asset]]
@@ -1322,7 +1322,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-graphevents-attrib.mod (re
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "1cc9f567417ac3bb379d876ded13701b361e748d01fe9819d21055cfe037dcfc"
 
 [[asset]]
@@ -1333,7 +1333,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-graphics-attrib.mod (retri
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "16702d54d475ed2d5c1cec2301bde3c254cef5c9435c6276382c80ee4de08fe0"
 
 [[asset]]
@@ -1344,7 +1344,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-hyperlink.mod (retrieved 2
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "6cb47b7270afd230d55834c2b9272fdb7aee610c5909fea76806dd710cbe52ac"
 
 [[asset]]
@@ -1355,7 +1355,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-image.mod (retrieved 2026-
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "a50c7d047221f3fb09688365840f26bbaadaf01cc41090ae9174834b9f54ea9e"
 
 [[asset]]
@@ -1366,7 +1366,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-marker.mod (retrieved 2026
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "9e991a6eceadcf33812e228f24d15344268005b76ae54f968eb1d58d7af33e05"
 
 [[asset]]
@@ -1377,7 +1377,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-mask.mod (retrieved 2026-1
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "238a235b8d3d1c1d7874285a7716c8f2d241256491e94af115c9e066f4a66edb"
 
 [[asset]]
@@ -1388,7 +1388,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-opacity-attrib.mod (retrie
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "8d165b0bb3e8328f6ea20dfe01f416f9edfebbcdc6a214c960afcdb61b21974a"
 
 [[asset]]
@@ -1399,7 +1399,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-paint-attrib.mod (retrieve
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "ba925dd43f81870cfc4ba8aafdc091fd13bfe0bd4f0510ef28f48fd372236aac"
 
 [[asset]]
@@ -1410,7 +1410,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-pattern.mod (retrieved 202
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "106722fcf20bd9d432c47aa458001ba296ad8d92c97b07831589a23ddc641f27"
 
 [[asset]]
@@ -1421,7 +1421,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-profile.mod (retrieved 202
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "64cbe8f7b77937e360a4d46cf11172f4b9dc1241ba80d258e28f720932141ed8"
 
 [[asset]]
@@ -1432,7 +1432,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-qname.mod (retrieved 2026-
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "72e6aa4b304be9ede67251a5949691fcf025b3471269cb2ca4e47bdb35724f03"
 
 [[asset]]
@@ -1443,7 +1443,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-script.mod (retrieved 2026
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "9ae7b27584a1abfe3f459486817215535f3d55135f1a47f5b74de3d051757ee1"
 
 [[asset]]
@@ -1454,7 +1454,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-shape.mod (retrieved 2026-
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "37de78dead8c3a32dacbf2fa5c1fc3d1a0cf058944e67420bf891e93c5465e3b"
 
 [[asset]]
@@ -1465,7 +1465,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-structure.mod (retrieved 2
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "04a3a49ea2fa7393d92b2cf234e474add88906ca140af006e9f61fd307d5b044"
 
 [[asset]]
@@ -1476,7 +1476,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-style.mod (retrieved 2026-
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "ab28c3c82cab45eb4282554a1bd70e223f8d1ceefad0f4b81db938c8a6fa4e21"
 
 [[asset]]
@@ -1487,7 +1487,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-text.mod (retrieved 2026-1
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "45582df9856b01d734acb8b193aa7e11285ffe5fc93cd3f9ae583af57c849171"
 
 [[asset]]
@@ -1498,7 +1498,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-view.mod (retrieved 2026-1
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "c520711d3325793ad7679391ef10eb282382248bf67beae26a3dfdb552fc1977"
 
 [[asset]]
@@ -1509,7 +1509,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-viewport-attrib.mod (retri
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "402e84fb745163987e4bdda9df98d6e9936887a4384117cda262e1133288ac4b"
 
 [[asset]]
@@ -1520,7 +1520,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg-xlink-attrib.mod (retrieve
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "2c5bad43f3e80b6740b3d01f74f603b1c6847a2f02fcaaf99fd36eb69c661f08"
 
 [[asset]]
@@ -1531,7 +1531,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg11-attribs.mod (retrieved 2
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "ff167724b2149962e2d4e676d67a71ecbfabc9c61253d9e7a823288484a7adf6"
 
 [[asset]]
@@ -1542,7 +1542,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg11-model.mod (retrieved 202
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "28d7aea2e70e64db785f74dbbe5576fe347a1cc71b2a8475fa26704530c46aa1"
 
 [[asset]]
@@ -1553,7 +1553,7 @@ source = "https://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd (retrieved 2026-10-3
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "745598e72f4dc8a5fdad74e5b60c9df11c7857dec5665f2e79d49592dd2a6e4f"
 
 [[asset]]
@@ -1564,7 +1564,7 @@ source = "https://www.w3.org/2007/06/wsdl/wsdl20.xsd (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "43d9da237c5f667e0627c8b86f66756aa15e85cde534a28f494407c6b0632d40"
 
 [[asset]]
@@ -1575,7 +1575,7 @@ source = "https://www.w3.org/TR/xhtml1/DTD/xhtml-lat1.ent (retrieved 2026-10-28)
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "3da1daad08f93b8aff7a32d5447f94853d517561d9c7d0c7bc3ee5c002d12a38"
 
 [[asset]]
@@ -1586,7 +1586,7 @@ source = "https://www.w3.org/TR/xhtml1/DTD/xhtml-special.ent (retrieved 2026-10-
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "7f9518026c59ccee47a02ed74e43f8946d92207d438a7f540a0f3c28f05fa27e"
 
 [[asset]]
@@ -1597,7 +1597,7 @@ source = "https://www.w3.org/TR/xhtml1/DTD/xhtml-symbol.ent (retrieved 2026-10-2
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "a6cd0f9c59e488b8c8e2de80c31c6811f316a3919cd9a0725b5390a8fc785d61"
 
 [[asset]]
@@ -1608,7 +1608,7 @@ source = "https://www.w3.org/TR/xhtml1/DTD/xhtml1-frameset.dtd (retrieved 2026-1
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "6110f1b3409ad7dd00e6acc1eebd2c5b29220d4fd3f57a81a7d8b7c5355bc3f9"
 
 [[asset]]
@@ -1619,7 +1619,7 @@ source = "https://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd (retrieved 2026-10-
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "c477851fac23a922dcfdbde97d2f8c3cdc6dbf3e5abc298b31b6601369e71d40"
 
 [[asset]]
@@ -1630,7 +1630,7 @@ source = "https://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd (retrieved 20
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "28905cd059167bfa1a5866053799d55fd335c0717920a7048de400c8a32b9d93"
 
 [[asset]]
@@ -1641,7 +1641,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-arch-1.mod (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "7b8cb152e086376dca71eefd455081ccdd43e3a81e3e1aab3a9c3c2f67e8256a"
 
 [[asset]]
@@ -1652,7 +1652,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-attribs-1.mod (retrieved 2026-10-3
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "cd69fcb350fe496b6fad6855ee0c71ac937e83c51da18b1eeb057e94e051ccf2"
 
 [[asset]]
@@ -1663,7 +1663,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-base-1.mod (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "c417db0eb222e7006cc64e580e8eca4a0cf0408f4ad5c37885437f5584019c38"
 
 [[asset]]
@@ -1674,7 +1674,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-bdo-1.mod (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "45874977d653a2bb10e516a5e3379fbe18abb6bfe71f7ea670eaebf3543b27c3"
 
 [[asset]]
@@ -1685,7 +1685,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-blkphras-1.mod (retrieved 2026-10-
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "e305093e9612c65467c91c8b6a70ad554f9ac0325e3ee2e2642ede3ea9a9d594"
 
 [[asset]]
@@ -1696,7 +1696,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-blkpres-1.mod (retrieved 2026-10-3
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "4d3d247d6baef39d79196ffad497dcff638ea01c8bbc6667a1aabc321c681ec4"
 
 [[asset]]
@@ -1707,7 +1707,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-blkstruct-1.mod (retrieved 2026-10
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "1c070803e9c86ebd1dd1d639265bd6a6eaae51ec7482395282395a2c577bd3de"
 
 [[asset]]
@@ -1718,7 +1718,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-charent-1.mod (retrieved 2026-10-3
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "5793922f98974779aa5c1adef3bea443e8b6e9dde9c88350b5ebb49d970452e7"
 
 [[asset]]
@@ -1729,7 +1729,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-csismap-1.mod (retrieved 2026-10-3
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "2248710b40e7bd559a1bf20726600fbe9b8bb9a47e6b8af99068407186a5ed1a"
 
 [[asset]]
@@ -1740,7 +1740,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-datatypes-1.mod (retrieved 2026-10
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "6d71841c9aa14e4a0214534d0be41a973e73ff85447ef87b5d9e56fa09848dba"
 
 [[asset]]
@@ -1751,7 +1751,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-edit-1.mod (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "3d5d68c2087a6b616527e17557c79a1825552dbd21ab4d5e13d58c2d6a32b708"
 
 [[asset]]
@@ -1762,7 +1762,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-events-1.mod (retrieved 2026-10-30
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "69a18a7e0a4f0fcf03e4ea81274c968be481f2d0232a8172dde9113fac3d618c"
 
 [[asset]]
@@ -1773,7 +1773,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-form-1.mod (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "87bd7c7190f50a16d49e4d2af54c4135020e2e095737131ff9e5184cf188cd54"
 
 [[asset]]
@@ -1784,7 +1784,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-frames-1.mod (retrieved 2026-10-30
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "9964fe098e794ce1c0b84ccbd0f3d13d8b5b967f878173a0724952259a84fb3b"
 
 [[asset]]
@@ -1795,7 +1795,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-framework-1.mod (retrieved 2026-10
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "8df50b2ef0e80ab8b7eaeabda9253ad36c6f4b0ec5757be617d772c3e9d67790"
 
 [[asset]]
@@ -1806,7 +1806,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-hypertext-1.mod (retrieved 2026-10
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "205d1ed0d4c42ba8182731208f1ba2edd2da0251e4a1a52c5bdca0ca9cb66879"
 
 [[asset]]
@@ -1817,7 +1817,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-iframe-1.mod (retrieved 2026-10-30
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "1895e2b749cc1435435d10cb532d84a4938e151a5e386fc9f14953a15c8f77a8"
 
 [[asset]]
@@ -1828,7 +1828,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-image-1.mod (retrieved 2026-10-30)
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "1640b836a709bf314d02993d17c4f88c87614a71ba924e7c6699c44875bc48d8"
 
 [[asset]]
@@ -1839,7 +1839,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-inlphras-1.mod (retrieved 2026-10-
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "4780016fb518cb8911fbb38662801bd718c9d7ca03fc18c81597c3b84ce9fdbd"
 
 [[asset]]
@@ -1850,7 +1850,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-inlpres-1.mod (retrieved 2026-10-3
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "33de76833d695e596af3d7672e2ee046373e0612fa67cb623f08476f1897477f"
 
 [[asset]]
@@ -1861,7 +1861,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-inlstruct-1.mod (retrieved 2026-10
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "765b03ca44a297ea39e5f6cbee9e756c02c641c8b215484742accec3329c61a6"
 
 [[asset]]
@@ -1872,7 +1872,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-inlstyle-1.mod (retrieved 2026-10-
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "f61e02b620231d542b69de53924efe6f85aa14d3fb56be1088a22aa473419d2d"
 
 [[asset]]
@@ -1883,7 +1883,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-lat1.ent (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "3535a3cf7672ab1a511e4edd094e8e1da8b5874aba8ee8851bd2861d25b0dfd9"
 
 [[asset]]
@@ -1894,7 +1894,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-legacy-1.mod (retrieved 2026-10-30
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "b363bd89b87f3939abcc7cbe2c6ea2beeb237541094e66c9e0a20231c55321fa"
 
 [[asset]]
@@ -1905,7 +1905,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-legacy-redecl-1.mod (retrieved 202
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "7e39c0c1b27930bc168f1fc2e83ff2c93bce9f67a584e667e8f2c3bc9beafbba"
 
 [[asset]]
@@ -1916,7 +1916,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-link-1.mod (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "ae38131fc48246f9a2524915f31b041bc8f20bf980c9d057e25d4c1ecfe7ee52"
 
 [[asset]]
@@ -1927,7 +1927,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-list-1.mod (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "f416719baf3fc04d5b9c2aba7400db38549af18543d363de08c8ea371b34ca18"
 
 [[asset]]
@@ -1938,7 +1938,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-meta-1.mod (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "e8392fceadc050a20834ab5b244e95824b3c5e9d0ca3aefda4524a4c97dc44be"
 
 [[asset]]
@@ -1949,7 +1949,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-notations-1.mod (retrieved 2026-10
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "6a1e151978da847d121741498ccab712965eb5de2517333d7500ef09d45eeb2d"
 
 [[asset]]
@@ -1960,7 +1960,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-object-1.mod (retrieved 2026-10-30
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "ef5b65864b97ab5f96d09be1c1bbd11e0ea3d8a2219f505f001aa2bac94a1458"
 
 [[asset]]
@@ -1971,7 +1971,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-param-1.mod (retrieved 2026-10-30)
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "4cf66c6fe02ffa5684fbe31382ba1e9143526b196d99ea50185453779662849b"
 
 [[asset]]
@@ -1982,7 +1982,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-pres-1.mod (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "41c42fa5c5d9994bde15925e17457796619e7e51ef0d254d99f0f92316fe767b"
 
 [[asset]]
@@ -1993,7 +1993,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-qname-1.mod (retrieved 2026-10-30)
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "5f43f201a8c3176670d508ec7dd187868f983f81cd68cae3a6bee6d4c45188b1"
 
 [[asset]]
@@ -2004,7 +2004,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-ruby-1.mod (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "da4106166353f175892a03f1ad1c302d8a3bce419793f5ed0371c8182cce4142"
 
 [[asset]]
@@ -2015,7 +2015,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-script-1.mod (retrieved 2026-10-30
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "d950a4a9d216c1b9620335fcc5389e61669eb67e376015571dda56522b17fcdd"
 
 [[asset]]
@@ -2026,7 +2026,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-special.ent (retrieved 2026-10-30)
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "348d006519736b764a86fd24aed49ad35114f030ede0f263d3c4638f04e12107"
 
 [[asset]]
@@ -2037,7 +2037,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-ssismap-1.mod (retrieved 2026-10-3
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "4cff76e23fbd10a06343f5e9ea240a13965109217e9a12b13daded0f552a72b1"
 
 [[asset]]
@@ -2048,7 +2048,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-struct-1.mod (retrieved 2026-10-30
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "5b80f3ba23ef7d7e6384ec847c3ebcb973dce41ab10cf4e3991ca356d88973d7"
 
 [[asset]]
@@ -2059,7 +2059,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-style-1.mod (retrieved 2026-10-30)
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "42a6453f3b8644a2cb953886c5e44093d4942a10be46b5363085cad6e41591a5"
 
 [[asset]]
@@ -2070,7 +2070,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-symbol.ent (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "5b173003c47aba07879397bccdd23ef240eb7578c6345a84f3453617410b7e7d"
 
 [[asset]]
@@ -2081,7 +2081,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-table-1.mod (retrieved 2026-10-30)
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "6eabac58188457e3e3be3e84e8d7a15259b996eab5fcce988fa38777831f50ff"
 
 [[asset]]
@@ -2092,7 +2092,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml-text-1.mod (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "cd01adb52acd41b179b8996a1b76b6c8a8f46db18052a49a3bba3bb0e7bb1019"
 
 [[asset]]
@@ -2103,7 +2103,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml11-model-1.mod (retrieved 2026-10-3
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "f4e25d8075aa46f7dc4107ead829d73b48378a6cb41295d9eaba0ba1b4976037"
 
 [[asset]]
@@ -2114,7 +2114,7 @@ source = "https://www.w3.org/MarkUp/DTD/xhtml11.dtd (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "b29eb466e2fe6e1ce625fc9f4603a7c9d51d50d338634c31bd4a7fb3189319c3"
 
 [[asset]]
@@ -2125,7 +2125,7 @@ source = "https://www.w3.org/1999/xlink.xsd (retrieved 2026-10-30)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "c3dbbaa28b884377ecd4a6c49d1f12566d8227cb0dce8ced10c0f66f8fa266e3"
 
 [[asset]]
@@ -2136,7 +2136,7 @@ source = "https://www.w3.org/2001/xml.xsd (retrieved 2026-10-28)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "61960fb3131e38022caad5360e2f33a3382578ab3c80cd58bd74320ede61b20c"
 
 [[asset]]
@@ -2147,7 +2147,7 @@ source = "https://www.w3.org/TR/xmldsig-core/xmldsig-core-schema.xsd (retrieved 
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "d102ad3df7664c307e0c2c776ba4a90513b1969974d8a940bae1a77f9f21e15d"
 
 [[asset]]
@@ -2158,7 +2158,7 @@ source = "https://www.w3.org/2001/XMLSchema.dtd (retrieved 2026-10-28)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "2032ead9fd47a61b22fe56aa02be1840bd9bb9015b0c0d3f1e8aac75dd91c3b9"
 
 [[asset]]
@@ -2169,7 +2169,7 @@ source = "https://www.w3.org/2001/XMLSchema.xsd (retrieved 2026-10-28)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "e767a159c179bd6e4dc2bac2a63a62f50cbd027ec19d6b5cc9eb1c2f33e0cb2e"
 
 [[asset]]
@@ -2180,7 +2180,7 @@ source = "https://www.w3.org/2001/datatypes.dtd (retrieved 2026-10-28)"
 licence = "W3C-20150513"
 licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
-usage = "Bundled standard schema, found through the bundled catalog (schemas/catalog.xml) so that documents validate offline"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "6946432ca7af2e9584f91b48564111fd2c73c8debbbcd9a0e3f5ddd382eeb51c"
 # END bundled schemas
 
