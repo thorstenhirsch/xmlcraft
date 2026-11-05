@@ -291,3 +291,27 @@ fn choosing_a_file_takes_the_error_away() {
     h.run_steps(3);
     assert_eq!(text(&h), "<!DOCTYPE a SYSTEM \"a.dtd\">\n<a/>");
 }
+
+#[test]
+fn a_json_schema_is_assigned_to_json_and_yaml_documents_and_then_F8_checks_the_document_against_it() {
+    let dir = tempfile::tempdir().expect("dir");
+    file(dir.path(), "s.json", "{\"type\": \"object\", \"properties\": {\"n\": {\"type\": \"integer\"}}}");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "d.json", "{\n  \"n\": \"x\"\n}"));
+    assign_with(&mut h, "s.json");
+    assert_eq!(text(&h), "{\n  \"$schema\": \"s.json\",\n  \"n\": \"x\"\n}");
+    assert!(h.query_by_label("Assign Schema").is_none(), "the form is gone");
+    h.state_mut().execute("xml.validate");
+    wait(&mut h, "the validation", |h| h.state().validity().is_some());
+    assert_eq!(h.state().validity(), Some((1, 0)), "the string where the schema wants an integer");
+    h.state_mut().session.active_document_mut().expect("shown").editor_mut().undo();
+    assert_eq!(text(&h), "{\n  \"n\": \"x\"\n}", "one step takes it back");
+    open(&mut h, &file(dir.path(), "d.yaml", "n: 1\n"));
+    assign_with(&mut h, "https://example.com/s.json");
+    assert_eq!(text(&h), "# yaml-language-server: $schema=https://example.com/s.json\nn: 1\n");
+    // What cannot hold it says so and the form stays.
+    open(&mut h, &file(dir.path(), "list.json", "[1, 2]"));
+    assign_with(&mut h, "s.json");
+    assert!(h.query_by_label("Assign Schema").is_some(), "the form stays, for another try");
+    assert_eq!(text(&h), "[1, 2]");
+}
