@@ -1183,11 +1183,11 @@ title = "Schematron validation"
 area = "E"
 tier = "P2"
 milestone = "M7"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.validate"]
+tools = ["schematron_validate"]
+evidence = ["crates/schematron/tests/schematron.rs::an_assert_that_is_false_and_a_report_that_is_true_are_findings_at_their_nodes", "crates/schematron/tests/schematron.rs::a_node_is_matched_by_the_first_rule_of_a_pattern_only_but_each_pattern_has_its_say", "crates/schematron/tests/schematron.rs::lets_namespaces_and_phases", "crates/schematron/tests/schematron.rs::abstract_rules_are_extended_and_abstract_patterns_take_parameters", "crates/engine/src/validation.rs::schematron_rules_named_by_the_document_are_checked_and_found_among_the_open_documents", "crates/automation/tests/schematron.rs::rules_named_by_the_document_are_found_next_to_it_and_includes_stay_inside_the_root"]
+notes = "`xmlcraft-schematron` reads ISO Schematron (ns, let, phase, pattern, rule with abstract rules and extends, abstract patterns with is-a and param, assert and report with id, flag, role, messages with name and value-of, include) and fires it with XPath 3.1 on the `xee` engine: a rule's context is a match pattern, a node is matched by the first rule of a pattern, findings have their path and place in the text and a severity from flag or role; a rule whose XPath fails is a problem and the others still run. F8 runs the rules a document names with `<?xml-model href=… schematypens=…?>` after the DTD or schema check and lists the findings in Problems; the tool `schematron_validate` takes rules by id, path or text. Missing: diagnostics shown beyond their text, `queryBinding`-specific behaviour (XPath 3.1 for all), SVRL output, Quick Fix, Assign Rules in the dialog, a Schematron editor with completion."
 
 
 # ==================================================================================================
@@ -1510,11 +1510,11 @@ title = "XSLT 1.0, 2.0 and 3.0 transformations"
 area = "H"
 tier = "P1"
 milestone = "M7"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.transform"]
+tools = ["xslt_transform"]
+evidence = ["crates/query/tests/xslt.rs::for_each_and_value_of_make_a_result_tree", "crates/query/tests/xslt.rs::templates_are_applied_to_what_matches", "crates/query/tests/xslt.rs::what_the_engine_does_not_implement_is_an_error_that_says_so_and_a_bad_stylesheet_or_document_is_refused", "crates/automation/tests/xslt.rs::the_stylesheet_a_document_names_is_read_from_beside_it_and_only_inside_the_root", "crates/engine/src/xslt.rs::the_first_xslt_stylesheet_before_the_root_is_the_one_named", "crates/ui-egui/tests/xslt.rs::the_stylesheet_a_document_names_is_applied_and_the_result_opens_as_a_new_document", "crates/ui-egui/tests/xslt.rs::a_stylesheet_that_is_not_one_is_said_in_the_window_which_stays", "crates/engine/src/xslt.rs::a_stylesheet_is_applied_on_a_worker_and_the_outcome_says_which_request_it_is_for"]
+notes = "`xmlcraft_query::transform` applies an XSLT stylesheet to a document on the `xee` engine's XSLT compiler (the published crate, 0.1.6): templates and apply-templates, for-each, value-of and literal result elements work; what the engine does not implement (xsl:variable and much else, as of this version) is an error that says so, and a panic inside it is an error too. The tool `xslt_transform` takes the stylesheet by id, path or text, or the one the document names with `<?xml-stylesheet?>` (read from beside it, inside the root). XML ▸ Transform with XSLT… (F10) applies the stylesheet the document names (`<?xml-stylesheet?>`) or another open document, on a worker thread, and opens the result as a new document (named for what it looks like: -result.html, .xml, .json or .txt); a stylesheet the engine cannot use is said in the window. Missing: most of XSLT 1.0, 2.0 and 3.0 (the engine is vendored and extended for this, see the roadmap), xsl:output serialization, parameters, the XSLT editor, the debugger and the profiler."
 
 [[feature]]
 id = "query.xslt-debugger"
@@ -2225,11 +2225,11 @@ title = "WSDL 1.1 and 2.0 editing and validation"
 area = "E"
 tier = "P2"
 milestone = "M8"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["wsdl_describe"]
+evidence = ["crates/wsdl/tests/wsdl.rs::a_wsdl_11_description_gives_an_operation_for_each_soap_binding_with_its_endpoint", "crates/wsdl/tests/wsdl.rs::a_wsdl_20_description_is_soap_12_unless_it_says_1_1", "crates/automation/tests/wsdl.rs::the_operations_are_described_with_their_soap_version_and_endpoint"]
+notes = "`xmlcraft-wsdl` reads WSDL 1.1 (messages, port types, bindings with document and rpc style, SOAP 1.1 and 1.2 bindings, services and ports) and WSDL 2.0 (interfaces, SOAP bindings, endpoints) into operations with their endpoint address, and the embedded schemas; what cannot be used (a binding that is not SOAP, a message that is not defined) is a warning. A WSDL is an XML document in the editor, with XSD validation of the schemas in it. Missing: WSDL-aware validation and completion, a design view of operations, WS-Policy and WS-Addressing, MIME and HTTP bindings."
 
 [[feature]]
 id = "soap.client"
@@ -2237,11 +2237,11 @@ title = "SOAP 1.1 and 1.2 client (build, validate, send, view the response)"
 area = "E"
 tier = "P2"
 milestone = "M8"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["soap_sample", "soap_call"]
+evidence = ["crates/wsdl/tests/wsdl.rs::a_request_has_an_envelope_a_sample_body_and_the_headers_of_its_soap_version", "crates/wsdl/tests/wsdl.rs::rpc_style_wraps_the_parts_in_an_element_named_for_the_operation", "crates/automation/tests/wsdl.rs::a_request_is_made_with_schemas_imported_by_location_from_beside_the_wsdl", "crates/automation/tests/wsdl.rs::a_call_sends_the_envelope_with_the_headers_of_its_version_and_reads_a_fault_from_the_answer", "crates/platform/src/client.rs::a_post_is_sent_with_its_headers_and_body_and_the_whole_answer_comes_back", "crates/wsdl/tests/wsdl.rs::a_response_is_read_with_its_version_headers_and_body_and_a_fault_with_its_code_reason_and_detail"]
+notes = "`Wsdl::sample_request` and the tool `soap_sample` make the request of an operation: a SOAP 1.1 or 1.2 envelope (as the binding says) with a body sampled from the schema of the input (document style) or the operation element with a part each (rpc style), the headers (Content-Type, SOAPAction or the action parameter) and the endpoint address; schemas imported by location are read from beside the WSDL. The tool `soap_call` sends it (an HTTP client in `xmlcraft-platform`: any method, headers and body, no redirects followed, a host on this computer or the local network refused unless the call allows it, the answer capped) and reads the answer: the HTTP response, and when the body is a SOAP message its version, header blocks, body and fault (code, subcode, reason, actor, detail; a 1.1 fault with HTTP 500 is an answer). Missing: validation of the response against the schema, SOAP headers (WS-Security, WS-Addressing), attachments (MTOM), the window."
 
 [[feature]]
 id = "soap.debugger"
@@ -2336,8 +2336,8 @@ milestone = "M9"
 status = "partial"
 commands = []
 tools = ["einvoice_detect"]
-evidence = ["crates/einvoice/src/lib.rs::xrechnung_in_ubl_is_recognised_with_its_version_and_an_extension_is_not_a_plain_xrechnung", "crates/automation/tests/einvoice.rs::text_an_open_document_and_a_file_are_recognised_the_same_way"]
-notes = "Recognised by the UBL Invoice or CreditNote root and the CustomizationID (XRechnung 2.x and 3.x, and its extension profile apart from plain XRechnung): `einvoice_detect` names the standard, version, UBL version and Peppol process. Missing: validation against the UBL schema and the XRechnung rules (Schematron), a status-bar chip."
+evidence = ["crates/einvoice/src/lib.rs::xrechnung_in_ubl_is_recognised_with_its_version_and_an_extension_is_not_a_plain_xrechnung", "crates/automation/tests/einvoice.rs::text_an_open_document_and_a_file_are_recognised_the_same_way", "crates/engine/src/validation.rs::a_ubl_invoice_that_names_no_schema_is_checked_against_the_bundled_one", "crates/automation/tests/einvoice.rs::xml_validate_checks_a_ubl_invoice_against_the_bundled_schema_without_being_told_which"]
+notes = "Recognised by the UBL Invoice or CreditNote root and the CustomizationID (XRechnung 2.x and 3.x, and its extension profile apart from plain XRechnung): `einvoice_detect` names the standard, version, UBL version and Peppol process. F8 and `xml_validate` check an invoice or credit note that names no grammar against the UBL 2.1 XML Schema that ships with the app (the OASIS files, unmodified, found by namespace). Missing: the XRechnung rules (Schematron: business rules, code lists), a status-bar chip."
 
 [[feature]]
 id = "einvoice.xrechnung-cii"
@@ -2360,8 +2360,8 @@ milestone = "M9"
 status = "partial"
 commands = []
 tools = ["einvoice_detect"]
-evidence = ["crates/einvoice/src/lib.rs::peppol_en16931_and_unknown_identifiers_are_told_apart"]
-notes = "The plain EN 16931 identifier is recognised in UBL and CII. Missing: the EN 16931 rules (Schematron)."
+evidence = ["crates/einvoice/src/lib.rs::peppol_en16931_and_unknown_identifiers_are_told_apart", "crates/engine/src/validation.rs::a_ubl_invoice_that_names_no_schema_is_checked_against_the_bundled_one"]
+notes = "The plain EN 16931 identifier is recognised in UBL and CII. The UBL 2.1 schema check applies to the UBL syntax. Missing: the EN 16931 rules (Schematron), and the CII schema check."
 
 [[feature]]
 id = "einvoice.peppol-bis3"
@@ -2372,8 +2372,8 @@ milestone = "M9"
 status = "partial"
 commands = []
 tools = ["einvoice_detect"]
-evidence = ["crates/einvoice/src/lib.rs::peppol_en16931_and_unknown_identifiers_are_told_apart"]
-notes = "Peppol BIS Billing 3.0 (and PINT) is recognised by its CustomizationID, with the process from ProfileID. Missing: the Peppol rules (Schematron)."
+evidence = ["crates/einvoice/src/lib.rs::peppol_en16931_and_unknown_identifiers_are_told_apart", "crates/engine/src/validation.rs::a_ubl_invoice_that_names_no_schema_is_checked_against_the_bundled_one"]
+notes = "Peppol BIS Billing 3.0 (and PINT) is recognised by its CustomizationID, with the process from ProfileID. The UBL 2.1 schema check applies to it. Missing: the Peppol rules (Schematron)."
 
 [[feature]]
 id = "einvoice.fatturapa"

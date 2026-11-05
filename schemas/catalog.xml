@@ -3,4 +3,5 @@
      publishers' own and are not modified. Relative references are relative to the URI this catalog is read from (bundled:/catalog.xml). -->
 <catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog" prefer="public">
   <nextCatalog catalog="w3c/catalog.xml"/>
+  <nextCatalog catalog="ubl/catalog.xml"/>
 </catalog>

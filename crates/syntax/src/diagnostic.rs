@@ -254,6 +254,12 @@ codes! {
     JsonSchemaUnavailable => ("json-schema.unavailable", Warning, "The document cannot be checked against its schema '{0}': {1}."),
     JsonSchemaRefUnavailable => ("json-schema.reference-unavailable", Warning, "The schema document '{0}' that the schema refers to could not be read: {1}."),
     JsonSchemaInvalid => ("json-schema.invalid-schema", Error, "{0}"),
+    // Schematron rules (named by an `xml-model` processing instruction)
+    SchematronError => ("schematron.error", Error, "{0}"),
+    SchematronWarning => ("schematron.warning", Warning, "{0}"),
+    SchematronInfo => ("schematron.info", Info, "{0}"),
+    SchematronUnavailable => ("schematron.unavailable", Warning, "The Schematron rules '{0}' cannot be used: {1}."),
+    SchematronProblem => ("schematron.problem", Warning, "A Schematron check could not be run: {0}"),
     // BSON (shown as Extended JSON; `xmlcraft-bson`)
     BsonInvalid => ("bson.invalid-value", Error, "{0}"),
     // Limits
