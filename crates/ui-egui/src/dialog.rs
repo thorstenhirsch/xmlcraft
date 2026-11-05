@@ -58,6 +58,8 @@ pub(crate) enum Dialog {
     RenameElement(Box<crate::structure::RenameForm>),
     /// What to convert the document to (drawn by `convert_dialog.rs`).
     Convert(Box<crate::convert_dialog::ConvertForm>),
+    /// Two documents compared (drawn by `compare_dialog.rs`).
+    Compare(Box<crate::compare_dialog::CompareForm>),
     Message {
         title: String,
         text: String,
@@ -96,6 +98,7 @@ impl Dialog {
             | Dialog::GenerateSchema(_)
             | Dialog::GenerateSample(_)
             | Dialog::Convert(_)
+            | Dialog::Compare(_)
             | Dialog::RenameElement(_) => false,
         }
     }
@@ -194,6 +197,7 @@ impl XmlCraftApp {
             | Dialog::GenerateSchema(_)
             | Dialog::GenerateSample(_)
             | Dialog::Convert(_)
+            | Dialog::Compare(_)
             | Dialog::RenameElement(_) => {
                 Describe { title: String::new(), text: String::new(), buttons: vec![(tl!("Cancel"), Choice::Cancel)], input: false }
             }
@@ -224,6 +228,10 @@ impl XmlCraftApp {
         }
         if matches!(self.dialog, Some(Dialog::Convert(_))) {
             self.show_convert(ctx);
+            return;
+        }
+        if matches!(self.dialog, Some(Dialog::Compare(_))) {
+            self.show_compare(ctx);
             return;
         }
         if matches!(self.dialog, Some(Dialog::RenameElement(_))) {
