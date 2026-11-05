@@ -6845,6 +6845,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-xbrl"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "xmlcraft-syntax",
+ "xmlcraft-xsd",
+]
+
+[[package]]
 name = "xmlcraft-xsd"
 version = "0.1.0"
 dependencies = [
