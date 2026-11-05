@@ -6478,6 +6478,7 @@ dependencies = [
  "xmlcraft-infer",
  "xmlcraft-json",
  "xmlcraft-json-syntax",
+ "xmlcraft-pdf",
  "xmlcraft-platform",
  "xmlcraft-query",
  "xmlcraft-resolve",
@@ -6684,6 +6685,15 @@ dependencies = [
  "proptest",
  "regex-automata 0.4.18",
  "regex-syntax 0.8.11",
+]
+
+[[package]]
+name = "xmlcraft-pdf"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "miniz_oxide 0.9.1",
+ "proptest",
 ]
 
 [[package]]
