@@ -13,7 +13,7 @@ licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 [[set]]
 name = "json-schema"
 title = "JSON Schema"
-author = "JSON Schema Specification Authors"
+author = "JSON Schema Specification Authors (dual-licensed BSD-3-Clause or AFL-3.0; redistributed under BSD-3-Clause)"
 licence = "BSD-3-Clause"
 licence_file = "schemas/json-schema/LICENSE-BSD-3-Clause"
 
