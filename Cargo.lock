@@ -6530,6 +6530,7 @@ dependencies = [
  "xmlcraft-infer",
  "xmlcraft-json",
  "xmlcraft-json-syntax",
+ "xmlcraft-openapi",
  "xmlcraft-pdf",
  "xmlcraft-platform",
  "xmlcraft-query",
@@ -6753,6 +6754,15 @@ dependencies = [
  "proptest",
  "serde_json",
  "xmlcraft-syntax",
+]
+
+[[package]]
+name = "xmlcraft-openapi"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde_json",
+ "xmlcraft-convert",
 ]
 
 [[package]]
