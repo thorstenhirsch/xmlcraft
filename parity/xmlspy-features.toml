@@ -1320,11 +1320,11 @@ title = "Convert between XML, JSON, YAML and BSON"
 area = "F"
 tier = "P1"
 milestone = "M6"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "Every pair of the four formats (XML-JSON through the standard json-to-xml mapping and a plain mapping, XML-YAML, JSON-YAML, and BSON to and from the others through its Extended JSON text); lossless where the mapping is, and the options say what is not."
+tools = ["data_convert"]
+evidence = ["crates/convert/tests/convert.rs::xml_becomes_data_with_attributes_text_and_repeated_elements", "crates/convert/tests/convert.rs::data_becomes_xml_with_attributes_arrays_and_names_that_are_fixed", "crates/convert/tests/convert.rs::the_standard_mapping_is_lossless_for_json", "crates/convert/tests/convert.rs::json_and_yaml_convert_into_each_other_and_say_what_is_lost", "crates/convert/tests/convert.rs::bson_text_converts_to_plain_data_and_plain_data_to_bson_text", "crates/convert/tests/convert.rs::json_survives_yaml_and_the_standard_xml_mapping", "crates/automation/tests/convert.rs::xml_text_becomes_json_and_json_becomes_yaml"]
+notes = "The `xmlcraft-convert` crate and the `data_convert` tool convert every pair of XML, JSON, YAML and BSON (as Extended JSON), from an open document, a file inside the root or text. XML and data meet in two mappings: the natural one (elements as members, attributes as `@name`, mixed text as `#text`, repeated elements as arrays; options for the prefix, the text key, guessing numbers and booleans, the root and item names, the declaration) and the standard `fn:json-to-xml` one, which is lossless for JSON (property test). What a target cannot hold is a warning (NaN in JSON, BSON types in the others, expanded YAML aliases). Missing: the Convert command and dialog in the window (M6.2), saving the result as a file from the tool, a mapping that keeps the interleaving of different elements, and the XSD to JSON Schema and DTD to XSD conversions (separate entries)."
 
 [[feature]]
 id = "generate.convert-xsd-json-schema"

@@ -5212,6 +5212,7 @@ dependencies = [
  "tempfile",
  "xmlcraft-catalog",
  "xmlcraft-complete",
+ "xmlcraft-convert",
  "xmlcraft-dtd",
  "xmlcraft-editor",
  "xmlcraft-engine",
@@ -5277,6 +5278,20 @@ dependencies = [
  "xmlcraft-grammar",
  "xmlcraft-syntax",
  "xmlcraft-xsd",
+]
+
+[[package]]
+name = "xmlcraft-convert"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "proptest",
+ "rowan",
+ "serde_json",
+ "xmlcraft-bson",
+ "xmlcraft-json-syntax",
+ "xmlcraft-syntax",
+ "xmlcraft-yaml-syntax",
 ]
 
 [[package]]

@@ -17,6 +17,7 @@ mcp = []
 
 [dependencies]
 xmlcraft-catalog = { workspace = true }
+xmlcraft-convert = { workspace = true }
 xmlcraft-complete = { workspace = true }
 xmlcraft-dtd = { workspace = true }
 xmlcraft-infer = { workspace = true }
