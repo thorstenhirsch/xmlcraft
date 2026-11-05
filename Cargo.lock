@@ -6523,6 +6523,7 @@ dependencies = [
  "xmlcraft-diff",
  "xmlcraft-dtd",
  "xmlcraft-editor",
+ "xmlcraft-einvoice",
  "xmlcraft-engine",
  "xmlcraft-format",
  "xmlcraft-infer",
@@ -6533,9 +6534,11 @@ dependencies = [
  "xmlcraft-query",
  "xmlcraft-resolve",
  "xmlcraft-sample",
+ "xmlcraft-schematron",
  "xmlcraft-syntax",
  "xmlcraft-text",
  "xmlcraft-validate",
+ "xmlcraft-wsdl",
  "xmlcraft-xsd",
 ]
 
@@ -6654,6 +6657,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-einvoice"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "xmlcraft-syntax",
+ "xmlcraft-xsd",
+]
+
+[[package]]
 name = "xmlcraft-engine"
 version = "0.1.0"
 dependencies = [
@@ -6674,6 +6686,7 @@ dependencies = [
  "xmlcraft-resolve",
  "xmlcraft-sample",
  "xmlcraft-schemas",
+ "xmlcraft-schematron",
  "xmlcraft-syntax",
  "xmlcraft-text",
  "xmlcraft-validate",
@@ -6815,6 +6828,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-schematron"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "xmlcraft-query",
+ "xmlcraft-syntax",
+ "xmlcraft-xsd",
+]
+
+[[package]]
 name = "xmlcraft-syntax"
 version = "0.1.0"
 dependencies = [
@@ -6883,6 +6906,16 @@ dependencies = [
  "xmlcraft-dtd",
  "xmlcraft-grammar",
  "xmlcraft-schemas",
+ "xmlcraft-syntax",
+ "xmlcraft-xsd",
+]
+
+[[package]]
+name = "xmlcraft-wsdl"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "xmlcraft-sample",
  "xmlcraft-syntax",
  "xmlcraft-xsd",
 ]
