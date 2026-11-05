@@ -242,6 +242,11 @@ pub fn to_text(documents: &[Document], canonical: bool) -> Result<(String, Layou
     Ok((out, Layout::Lines))
 }
 
+/// Whether `name` is the name of a field that makes an object a typed value in Extended JSON (`$oid`, `$date` …).
+pub fn is_wrapper_name(name: &str) -> bool {
+    WRAPPERS.contains(&name)
+}
+
 const WRAPPERS: &[&str] = &[
     "$oid",
     "$numberInt",
@@ -284,16 +289,23 @@ fn problem(value: &Value, message: impl Into<String>) -> BsonError {
     BsonError { offset: value.span.start, length: value.span.len(), message: message.into() }
 }
 
-/// The documents a text stands for, or every problem found: syntax errors of the JSON, and values that are not valid Extended JSON
-/// (with where they are in the text). One document may be spread over lines; several are one to a line.
-pub fn from_text(text: &str) -> Result<Vec<Document>, Vec<BsonError>> {
-    // (A wrapper is an object of its own: the text may nest about twice as deep as the document it stands for.)
+/// How a text lays out its documents: one to a line when it has more than one non-blank line and the first line is a whole value;
+/// otherwise one (indented) document.
+pub fn layout_of_text(text: &str) -> Layout {
     let options = Options { dialect: Dialect::Json, max_depth: crate::MAX_DEPTH * 2 + 4, ..Options::default() };
     let first_line_is_a_value = text.lines().find(|l| !l.trim().is_empty()).is_some_and(|l| {
         let read = parse(l, &options);
         read.root.is_some() && read.diagnostics.iter().all(|d| d.severity() != Severity::Error)
     });
-    let multiple = text.lines().filter(|l| !l.trim().is_empty()).count() > 1 && first_line_is_a_value;
+    if text.lines().filter(|l| !l.trim().is_empty()).count() > 1 && first_line_is_a_value { Layout::Lines } else { Layout::Single }
+}
+
+/// The documents a text stands for, or every problem found: syntax errors of the JSON, and values that are not valid Extended JSON
+/// (with where they are in the text). One document may be spread over lines; several are one to a line.
+pub fn from_text(text: &str) -> Result<Vec<Document>, Vec<BsonError>> {
+    // (A wrapper is an object of its own: the text may nest about twice as deep as the document it stands for.)
+    let options = Options { dialect: Dialect::Json, max_depth: crate::MAX_DEPTH * 2 + 4, ..Options::default() };
+    let multiple = layout_of_text(text) == Layout::Lines;
     let roots: Vec<Value> = if multiple {
         let mut roots = Vec::new();
         let mut errors = Vec::new();

@@ -172,12 +172,17 @@ impl<'a> Reader<'a> {
 
 /// Read every document of `bytes` (a `.bson` file is a series of them). Empty bytes are no documents.
 pub fn read_all(bytes: &[u8]) -> Result<Vec<Document>, BsonError> {
+    read_with_ranges(bytes).map(|list| list.into_iter().map(|(document, _)| document).collect())
+}
+
+/// [`read_all`], each document with the bytes it was read from (what to write back for a document nobody edited).
+pub fn read_with_ranges(bytes: &[u8]) -> Result<Vec<(Document, std::ops::Range<usize>)>, BsonError> {
     let reader = Reader { bytes };
     let mut documents = Vec::new();
     let mut at = 0;
     while at < bytes.len() {
         let (document, end) = reader.document(at, 0)?;
-        documents.push(document);
+        documents.push((document, at..end));
         at = end;
     }
     Ok(documents)

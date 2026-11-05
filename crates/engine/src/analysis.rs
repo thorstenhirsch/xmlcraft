@@ -205,6 +205,9 @@ pub fn analyze_as(language: Language, text: &str, version: u64) -> Analysis {
     if let Language::Json(flavor) = language {
         return crate::json_analysis::analyze_json(text, version, flavor);
     }
+    if language == Language::Bson {
+        return crate::json_analysis::analyze_bson(text, version);
+    }
     if language == Language::Yaml {
         return crate::yaml_analysis::analyze_yaml(text, version);
     }
