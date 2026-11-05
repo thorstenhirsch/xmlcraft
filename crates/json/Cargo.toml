@@ -1,0 +1,19 @@
+[package]
+name = "xmlcraft-json"
+description = "XmlCraft's JSON Schema validator: drafts 04, 06, 07, 2019-09 and 2020-12, with every problem placed in the text of the instance"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-json-syntax = { workspace = true }
+regex = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+serde_json = { workspace = true }

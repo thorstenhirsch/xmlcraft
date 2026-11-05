@@ -5201,6 +5201,8 @@ dependencies = [
  "xmlcraft-engine",
  "xmlcraft-format",
  "xmlcraft-infer",
+ "xmlcraft-json",
+ "xmlcraft-json-syntax",
  "xmlcraft-platform",
  "xmlcraft-resolve",
  "xmlcraft-sample",
@@ -5337,6 +5339,16 @@ dependencies = [
  "xmlcraft-syntax",
  "xmlcraft-validate",
  "xmlcraft-xsd",
+]
+
+[[package]]
+name = "xmlcraft-json"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "regex",
+ "serde_json",
+ "xmlcraft-json-syntax",
 ]
 
 [[package]]
@@ -5509,6 +5521,8 @@ dependencies = [
  "xmlcraft-editor",
  "xmlcraft-engine",
  "xmlcraft-format",
+ "xmlcraft-json",
+ "xmlcraft-json-syntax",
  "xmlcraft-resolve",
  "xmlcraft-schemas",
  "xmlcraft-syntax",
