@@ -42,6 +42,7 @@ xmlcraft-grammar = { path = "crates/grammar", version = "0.1.0" }
 xmlcraft-complete = { path = "crates/complete", version = "0.1.0" }
 xmlcraft-validate = { path = "crates/validate", version = "0.1.0" }
 xmlcraft-query = { path = "crates/query", version = "0.1.0" }
+xmlcraft-schematron = { path = "crates/schematron", version = "0.1.0" }
 xmlcraft-diff = { path = "crates/diff", version = "0.1.0" }
 xmlcraft-pdf = { path = "crates/pdf", version = "0.1.0" }
 xmlcraft-infer = { path = "crates/infer", version = "0.1.0" }
