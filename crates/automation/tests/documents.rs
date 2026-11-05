@@ -738,7 +738,7 @@ fn json_is_read_by_the_same_tools_as_xml_by_name_or_by_the_language_given() {
     // By the language given for text.
     assert_eq!(ok(&mut a, "xml_wellformed", json!({ "text": text, "language": "jsonc" }))["errors"].as_u64(), Some(0));
     assert_eq!(ok(&mut a, "xml_wellformed", json!({ "text": text, "language": "json" }))["errors"].as_u64(), Some(1));
-    assert!(err(&mut a, "xml_wellformed", json!({ "text": text, "language": "yaml" })).contains("language"), "an unknown language is refused");
+    assert!(err(&mut a, "xml_wellformed", json!({ "text": text, "language": "toml" })).contains("language"), "an unknown language is refused");
     let outline = ok(&mut a, "xml_outline", json!({ "text": text, "language": "jsonc" }));
     let names: Vec<_> = outline["items"].as_array().expect("items").iter().map(|i| (i["depth"].as_u64(), i["name"].as_str())).collect();
     assert_eq!(names, [(Some(0), Some("a")), (Some(1), Some("b"))]);
