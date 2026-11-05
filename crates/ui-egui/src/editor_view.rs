@@ -88,7 +88,6 @@ impl SyntaxTokens {
         }
     }
 
-    /// The colour for a class, or `None` for plain text.
     /// The colour for a part of a line of JSON.
     pub fn json_color(&self, class: JsonClass) -> Color32 {
         match class {
@@ -102,6 +101,7 @@ impl SyntaxTokens {
         }
     }
 
+    /// The colour for a class of XML, or `None` for plain text.
     pub fn color(&self, class: HighlightClass) -> Option<Color32> {
         Some(match class {
             HighlightClass::Plain => return None,
@@ -296,7 +296,8 @@ impl XmlStyler {
 
     fn style_json_line(&mut self, buffer: &Buffer, line: usize) -> Vec<StyleSpan> {
         let mode = self.json_mode_at(buffer, line);
-        let Some(text) = buffer.line_range_with_break(line).and_then(|r| buffer.slice(r).ok()) else { return Vec::new() };
+        // The spans are of the line without its break (the break is read for the modes only).
+        let Some(text) = buffer.line_range(line).and_then(|r| buffer.slice(r).ok()) else { return Vec::new() };
         let (spans, _) = json_line(&text, mode);
         spans.into_iter().map(|(range, class)| StyleSpan { range, color: self.tokens.json_color(class) }).collect()
     }

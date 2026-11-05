@@ -5284,6 +5284,7 @@ dependencies = [
  "rowan",
  "unicode-segmentation",
  "unicode-width",
+ "xmlcraft-json-syntax",
  "xmlcraft-syntax",
  "xmlcraft-text",
 ]

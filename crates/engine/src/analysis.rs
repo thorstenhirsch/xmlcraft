@@ -62,6 +62,9 @@ pub struct DoctypeIds {
 pub struct Analysis {
     /// The version of the text this is about (`Editor::version`).
     pub version: u64,
+    /// The language it was read as: a result for another language than the document has now (after Save As under another extension)
+    /// is about the wrong reading and is dropped.
+    pub language: Language,
     pub diagnostics: Vec<Diagnostic>,
     pub outline: Vec<OutlineItem>,
     /// The outline stopped at [`MAX_OUTLINE_ITEMS`].
@@ -133,9 +136,10 @@ impl Analysis {
         (found.name.start <= offset && offset <= found.name.end).then_some([found.name, found.partner_name])
     }
 
-    fn skipped(version: u64, why: Skipped) -> Self {
+    fn skipped(version: u64, language: Language, why: Skipped) -> Self {
         Self {
             version,
+            language,
             diagnostics: Vec::new(),
             outline: Vec::new(),
             outline_truncated: false,
@@ -196,7 +200,7 @@ pub fn analyze(text: &str, version: u64) -> Analysis {
 /// [`analyze`] for a text of this language.
 pub fn analyze_as(language: Language, text: &str, version: u64) -> Analysis {
     if text.len() > MAX_ANALYSED_BYTES {
-        return Analysis::skipped(version, Skipped::TooLarge);
+        return Analysis::skipped(version, language, Skipped::TooLarge);
     }
     if let Language::Json(flavor) = language {
         return crate::json_analysis::analyze_json(text, version, flavor);
@@ -215,6 +219,7 @@ pub fn analyze_as(language: Language, text: &str, version: u64) -> Analysis {
     let root_namespace = xmlcraft_validate::root_namespace(&parsed.syntax());
     Analysis {
         version,
+        language,
         diagnostics,
         outline,
         outline_truncated,
@@ -324,7 +329,7 @@ impl Analyzer {
     /// newer one for the same document, so a slow analysis never leaves a queue behind it.
     pub fn submit(&self, document: u64, version: u64, text: &Buffer, language: Language) {
         if !self.worker.threaded() && text.len() > INLINE_LIMIT {
-            self.worker.finish(document, Analysis::skipped(version, Skipped::TooLarge));
+            self.worker.finish(document, Analysis::skipped(version, language, Skipped::TooLarge));
             return;
         }
         self.worker.submit(document, (version, text.clone(), language));
@@ -345,7 +350,7 @@ pub fn analyze_guarded(text: &str, version: u64) -> Analysis {
 pub fn analyze_guarded_as(language: Language, text: &str, version: u64) -> Analysis {
     crate::guard(|| analyze_as(language, text, version)).unwrap_or_else(|message| {
         log::error!("analysis failed: {message}");
-        Analysis::skipped(version, Skipped::Failed)
+        Analysis::skipped(version, language, Skipped::Failed)
     })
 }
 

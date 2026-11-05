@@ -22,6 +22,8 @@ pub enum Syntax {
     #[default]
     Xml,
     Json,
+    /// JSON5: single quotes make strings too.
+    Json5,
 }
 
 /// How text is indented and how new lines end.

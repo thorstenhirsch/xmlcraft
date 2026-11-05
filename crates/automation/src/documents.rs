@@ -40,7 +40,7 @@ pub(crate) fn source_properties() -> Value {
     json!({
         "id": { "type": "integer", "minimum": 0, "description": "An open document (from doc_open, doc_new or doc_list)" },
         "path": { "type": "string", "description": "A file to read (it is not opened as a document)" },
-        "text": { "type": "string", "description": "The XML itself" },
+        "text": { "type": "string", "description": "The text itself (XML; for the tools that read other languages, see `language`)" },
     })
 }
 
@@ -55,7 +55,7 @@ fn add_language(properties: &mut Value) {
     if let Some(map) = properties.as_object_mut() {
         map.insert(
             "language".into(),
-            json!({ "type": "string", "enum": ["xml", "json", "jsonc", "json5", "jsonl"], "description": "What `text` is written in (default xml). An open document or a file is read by its name: `.json`, `.jsonc`, `.json5`, `.jsonl` and `.ndjson` are JSON, anything else XML." }),
+            json!({ "type": "string", "enum": ["xml", "json", "jsonc", "json5", "jsonl"], "description": "What `text` is written in (default xml). An open document or a file is read by its name: JSON for `.json` (also `.geojson`, `.webmanifest`, `.har`, `.ipynb`, `.jsonld`, `.map`), JSON with comments for `.jsonc` and editor configuration files such as `tsconfig.json` and `settings.json`, `.json5`, JSON Lines for `.jsonl` and `.ndjson`; anything else is XML." }),
         );
     }
 }

@@ -752,4 +752,6 @@ fn json_is_read_by_the_same_tools_as_xml_by_name_or_by_the_language_given() {
     assert_eq!(ok(&mut a, "xml_wellformed", json!({ "id": id }))["errors"].as_u64(), Some(0));
     let folded = ok(&mut a, "doc_fold", json!({ "id": id, "action": "fold_all" }));
     assert_eq!(folded["changed"].as_bool(), Some(true), "{folded}");
+    let ranges: Vec<_> = folded["folded"].as_array().expect("folded").iter().map(|f| (f["first_line"].as_u64(), f["last_line"].as_u64())).collect();
+    assert_eq!(ranges, [(Some(1), Some(4)), (Some(2), Some(3))], "the root object and the nested one: {folded}");
 }

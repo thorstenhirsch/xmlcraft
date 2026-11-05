@@ -29,7 +29,11 @@ const DECLARATION_HEAD: usize = 4096;
 const MAX_UNMAPPABLE: usize = 100_000;
 
 fn syntax_of(language: Language) -> Syntax {
-    if language.is_json() { Syntax::Json } else { Syntax::Xml }
+    match language {
+        Language::Xml => Syntax::Xml,
+        Language::Json(crate::language::JsonFlavor::Json5) => Syntax::Json5,
+        Language::Json(_) => Syntax::Json,
+    }
 }
 
 /// What a file looked like when it was last read or written, to notice that something else changed it.
@@ -271,6 +275,10 @@ impl Document {
 
     /// Make the XML declaration say what the encoding is (see [`Self::set_encoding`]).
     fn sync_declaration(&mut self) {
+        // Only XML has a declaration; a JSON file's encoding is whatever its bytes are.
+        if self.language() != Language::Xml {
+            return;
+        }
         let buffer = self.editor.buffer();
         let mut end = buffer.len().min(DECLARATION_HEAD);
         while end < buffer.len() && !buffer.is_boundary(end) {
@@ -345,6 +353,9 @@ impl Document {
             return Err(SaveError::Unmappable(*first)); // too many to be a few stray characters: another encoding is the answer
         }
         let text = self.editor.text();
+        if let Language::Json(flavor) = self.language() {
+            return self.apply_json_escapes(&text, &found, flavor.dialect());
+        }
         let mut tokens = Lexer::new(&text);
         let mut current = tokens.next();
         let mut edits = Vec::with_capacity(found.len());
@@ -357,6 +368,32 @@ impl Document {
                 return Err(SaveError::Unmappable(*e));
             }
             edits.push(Edit::replace(e.offset..e.offset + e.ch.len_utf8(), format!("&#x{:X};", u32::from(e.ch))));
+        }
+        if self.editor.apply_edits(&edits) { Ok(edits.len()) } else { Err(SaveError::Unmappable(*first)) }
+    }
+
+    /// [`Self::apply_character_references`] for JSON: a character in a string is written as a `\uXXXX` escape (two for a character
+    /// outside the Basic Multilingual Plane); anywhere else (a comment, say) it cannot be, and is the error.
+    fn apply_json_escapes(&mut self, text: &str, found: &[EncodeError], dialect: xmlcraft_json_syntax::Dialect) -> Result<usize, SaveError> {
+        let (tokens, _, more) = xmlcraft_json_syntax::tokens(text, dialect, MAX_UNMAPPABLE * 64);
+        let Some(first) = found.first() else { return Ok(0) };
+        if more {
+            return Err(SaveError::Unmappable(*first));
+        }
+        let mut edits = Vec::with_capacity(found.len());
+        for e in found {
+            let at = tokens.partition_point(|t| t.span.end <= e.offset);
+            let in_string = tokens.get(at).is_some_and(|t| {
+                t.span.start <= e.offset
+                    && t.kind == xmlcraft_json_syntax::TokenKind::Scalar
+                    && text.get(t.span.clone()).is_some_and(|s| s.starts_with(['"', '\'']))
+            });
+            if !in_string {
+                return Err(SaveError::Unmappable(*e));
+            }
+            let mut units = [0u16; 2];
+            let escaped: String = e.ch.encode_utf16(&mut units).iter().map(|u| format!("\\u{u:04X}")).collect();
+            edits.push(Edit::replace(e.offset..e.offset + e.ch.len_utf8(), escaped));
         }
         if self.editor.apply_edits(&edits) { Ok(edits.len()) } else { Err(SaveError::Unmappable(*first)) }
     }
@@ -799,5 +836,21 @@ mod tests {
         assert_eq!(d.editor().syntax(), Syntax::Json, "a generated document called x.jsonc is JSON");
         d.mark_saved(PathBuf::from("/d/y.xml"), None);
         assert_eq!((d.language(), d.editor().syntax()), (Language::Xml, Syntax::Xml), "Save As under another extension changes how it is read");
+    }
+
+    #[test]
+    fn a_json_document_has_no_xml_declaration_and_its_unmappable_characters_become_escapes_in_strings_only() {
+        let json = |text: &str| Document::from_bytes(1, Some(PathBuf::from("/d/a.json")), text.as_bytes(), None).expect("opens");
+        let mut d = json("{\"a\": \"日 \u{1F600}\"}");
+        assert!(d.set_encoding(Encoding::WINDOWS_1252, false));
+        assert_eq!(d.editor().text(), "{\"a\": \"日 \u{1F600}\"}", "no declaration is written into JSON");
+        assert_eq!(d.apply_character_references(), Ok(2));
+        assert_eq!(d.editor().text(), "{\"a\": \"\\u65E5 \\uD83D\\uDE00\"}", "an escape per UTF-16 unit");
+        assert_eq!(d.to_bytes().expect("now it fits"), d.editor().text().into_bytes());
+        // Outside a string there is no way to write it: the character is the error.
+        let mut d = json("{ /* 日 */ \"a\": 1}");
+        d.set_encoding(Encoding::WINDOWS_1252, false);
+        assert!(matches!(d.apply_character_references(), Err(SaveError::Unmappable(_))));
+        assert_eq!(d.editor().text(), "{ /* 日 */ \"a\": 1}", "and nothing was changed");
     }
 }

@@ -218,6 +218,10 @@ impl XmlCraftApp {
             if self.session.position_of(id).is_none() {
                 continue; // closed meanwhile
             }
+            // A reading in another language than the document has now (Save As under another extension) is about the wrong thing.
+            if self.session.position_of(id).and_then(|i| self.session.document(i)).is_some_and(|d| d.language() != analysis.language) {
+                continue;
+            }
             let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
             if view.analysis.as_ref().is_none_or(|current| current.version <= analysis.version) {
                 view.set_analysis(analysis);
@@ -226,6 +230,13 @@ impl XmlCraftApp {
         if let Some(doc) = self.session.active_document() {
             let (id, version) = (doc.id(), doc.editor().version());
             let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
+            // What was read in another language is dropped, and the text is read again whatever its version.
+            if view.analysis.as_ref().is_some_and(|a| a.language != doc.language()) {
+                view.analysis = None;
+                view.requested = None;
+                view.styler.set_folds(Vec::new());
+                view.refresh_underlines();
+            }
             if view.requested != Some(version) {
                 view.requested = Some(version);
                 self.analyzer.submit(id, version, doc.editor().buffer(), doc.language());

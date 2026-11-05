@@ -25,7 +25,8 @@ enum Plan {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum JsonPlace {
     Code,
-    String,
+    /// Inside a string, opened by this quote.
+    String(char),
     Comment,
 }
 
@@ -83,8 +84,12 @@ impl Editor {
     pub fn type_input(&mut self, text: &str) -> bool {
         let mut chars = text.chars();
         let (Some(key), None) = (chars.next(), chars.next()) else { return self.type_text(text) };
-        let json = self.syntax() == Syntax::Json;
-        let aided = if json { matches!(key, '"' | '{' | '[' | '}' | ']') } else { matches!(key, '"' | '\'' | '>' | '/') };
+        let json = self.syntax() != Syntax::Xml;
+        let aided = if json {
+            matches!(key, '"' | '{' | '[' | '}' | ']') || (key == '\'' && self.syntax() == Syntax::Json5)
+        } else {
+            matches!(key, '"' | '\'' | '>' | '/')
+        };
         if !aided {
             return self.type_text(text);
         }
@@ -120,7 +125,7 @@ impl Editor {
         if !caret.is_empty() {
             return Plan::Literal;
         }
-        if self.syntax() == Syntax::Json {
+        if self.syntax() != Syntax::Xml {
             return self.plan_json_key(caret.head(), key);
         }
         match key {
@@ -134,31 +139,28 @@ impl Editor {
     }
 
     /// A quote or a bracket typed in JSON: a quote pairs where a string can start and steps over its closing quote; `{` and `[` write
-    /// the pair where a value can start; a closing bracket that is next is stepped over.
+    /// the pair where a value can start; a closing bracket that is next is stepped over. Nothing is aided in a comment.
     fn plan_json_key(&self, head: usize, key: char) -> Plan {
         if !self.settings().auto_pair {
             return Plan::Literal;
         }
         let next = self.buffer.char_at(head);
         let place = self.json_place(head);
-        let in_string = place == JsonPlace::String;
-        if place == JsonPlace::Comment {
-            return Plan::Literal;
-        }
-        match key {
-            '"' if in_string => {
-                if next == Some('"') {
+        match (key, place) {
+            (_, JsonPlace::Comment) => Plan::Literal,
+            ('"' | '\'', JsonPlace::String(open)) => {
+                if key == open && next == Some(key) {
                     Plan::StepOver
                 } else {
                     Plan::Literal
                 }
             }
-            '}' | ']' if !in_string && next == Some(key) => Plan::StepOver,
-            '"' | '{' | '[' if !in_string && next.is_none_or(|c| c.is_whitespace() || matches!(c, ',' | ':' | '}' | ']')) => {
+            ('}' | ']', JsonPlace::Code) if next == Some(key) => Plan::StepOver,
+            ('"' | '\'' | '{' | '[', JsonPlace::Code) if next.is_none_or(|c| c.is_whitespace() || matches!(c, ',' | ':' | '}' | ']')) => {
                 let close = match key {
                     '{' => '}',
                     '[' => ']',
-                    _ => '"',
+                    other => other,
                 };
                 Plan::Write { text: format!("{key}{close}"), caret: 1 }
             }
@@ -166,28 +168,33 @@ impl Editor {
         }
     }
 
-    /// Where `offset` is, read from the start of its line (a string cannot go over lines, and a comment that opened on an earlier line
-    /// is not known here).
+    /// Where `offset` is: in code, in a string (opened by which quote) or in a comment. It is read with the lexer from a few hundred
+    /// lines above (a comment that opened further up is not known) to the start of its line, and then along the line.
     fn json_place(&self, offset: usize) -> JsonPlace {
-        let line_start = self.buffer.line_start(self.buffer.line_of(offset)).unwrap_or(0);
-        let Ok(before) = self.buffer.slice(line_start..offset) else { return JsonPlace::Code };
-        let (mut inside, mut escaped) = (false, false);
-        let mut chars = before.chars().peekable();
-        while let Some(c) = chars.next() {
-            if inside {
-                match (escaped, c) {
-                    (true, _) => escaped = false,
-                    (false, '\\') => escaped = true,
-                    (false, '"') => inside = false,
-                    _ => {}
-                }
-            } else if c == '"' {
-                inside = true;
-            } else if c == '/' && chars.peek() == Some(&'/') {
-                return JsonPlace::Comment;
-            }
+        use xmlcraft_json_syntax::{JsonClass, Mode as JsonMode, highlight_line};
+        /// How many lines above are read to know whether the line starts inside a block comment.
+        const LOOK_BACK: usize = 500;
+        let line = self.buffer.line_of(offset);
+        let mut mode = JsonMode::Normal;
+        for l in line.saturating_sub(LOOK_BACK)..line {
+            let Some(text) = self.buffer.line_range_with_break(l).and_then(|r| self.buffer.slice(r).ok()) else { return JsonPlace::Code };
+            mode = highlight_line(&text, mode).1;
         }
-        if inside { JsonPlace::String } else { JsonPlace::Code }
+        let line_start = self.buffer.line_start(line).unwrap_or(0);
+        let Ok(before) = self.buffer.slice(line_start..offset) else { return JsonPlace::Code };
+        let (spans, _) = highlight_line(&before, mode);
+        let Some((range, class)) = spans.last().filter(|(range, _)| range.end == before.len()) else { return JsonPlace::Code };
+        let text = before.get(range.clone()).unwrap_or_default();
+        match class {
+            // (A block comment that is closed right at the caret is behind it.)
+            JsonClass::Comment if text.starts_with("/*") && text.ends_with("*/") && text.len() >= 4 => JsonPlace::Code,
+            JsonClass::Comment => JsonPlace::Comment,
+            JsonClass::Error => match text.chars().next() {
+                Some(q @ ('"' | '\'')) => JsonPlace::String(q),
+                _ => JsonPlace::Code,
+            },
+            _ => JsonPlace::Code,
+        }
     }
 
     fn plan_quote(&mut self, head: usize, quote: Quote) -> Plan {
@@ -347,12 +354,17 @@ impl Editor {
             return Vec::new();
         }
         let heads: Vec<usize> = self.carets().iter().filter(|c| c.is_empty()).map(|c| c.head()).collect();
-        if self.syntax() == Syntax::Json {
+        if self.syntax() != Syntax::Xml {
+            let single = self.syntax() == Syntax::Json5;
             return heads
                 .into_iter()
                 .filter(|&head| {
-                    let pair = (head.checked_sub(1).and_then(|at| self.buffer.char_at(at)), self.buffer.char_at(head));
-                    matches!(pair, (Some('"'), Some('"')) | (Some('{'), Some('}')) | (Some('['), Some(']')))
+                    let Some(before) = head.checked_sub(1) else { return false };
+                    let pair = (self.buffer.char_at(before), self.buffer.char_at(head));
+                    let is_pair = matches!(pair, (Some('"'), Some('"')) | (Some('{'), Some('}')) | (Some('['), Some(']')))
+                        || (single && pair == (Some('\''), Some('\'')));
+                    // The first of the two must itself be code: in a string or a comment the pair is only two characters.
+                    is_pair && self.json_place(before) == JsonPlace::Code
                 })
                 .collect();
         }
@@ -755,5 +767,57 @@ mod tests {
         e.set_syntax(Syntax::Json);
         e.type_input("{");
         assert_eq!(shown(&e), "{|");
+    }
+
+    #[test]
+    fn json_typing_aids_leave_block_comments_alone_even_ones_that_began_on_an_earlier_line() {
+        let mut e = json("/* | */");
+        e.type_input("{");
+        assert_eq!(shown(&e), "/* {| */");
+        let mut e = json("/* one\ntwo |\nthree */");
+        e.type_input("\"");
+        assert_eq!(shown(&e), "/* one\ntwo \"|\nthree */");
+        // Behind a comment that is closed, code goes on.
+        let mut e = json("/* c */|");
+        e.type_input("{");
+        assert_eq!(shown(&e), "/* c */{|}");
+        let mut e = json("/* c */ [|]");
+        e.type_input("]");
+        assert_eq!(shown(&e), "/* c */ []|");
+    }
+
+    #[test]
+    fn json_backspace_takes_a_pair_only_in_code_and_json5_pairs_single_quotes() {
+        // Two quotes inside a string, or brackets inside a comment, are just characters.
+        let mut e = json("\"a{|}b\"");
+        e.backspace();
+        assert_eq!(shown(&e), "\"a|}b\"");
+        let mut e = json("// [|]");
+        e.backspace();
+        assert_eq!(shown(&e), "// |]");
+        let mut e = json("\"x\": \"|\"");
+        e.backspace();
+        assert_eq!(shown(&e), "\"x\": |", "an empty string typed with the aid goes with its quotes");
+        // JSON5: a single quote is a string quote.
+        let mut e = at("|");
+        e.set_syntax(Syntax::Json5);
+        e.type_input("'");
+        assert_eq!(shown(&e), "'|'");
+        e.type_text("a");
+        e.type_input("'");
+        assert_eq!(shown(&e), "'a'|", "stepped over");
+        let mut e = at("'|'");
+        e.set_syntax(Syntax::Json5);
+        e.backspace();
+        assert_eq!(shown(&e), "|");
+        // In plain JSON a single quote is only a character.
+        let mut e = json("|");
+        e.type_input("'");
+        assert_eq!(shown(&e), "'|");
+        // A double quote inside a single-quoted string does not end it.
+        let mut e = at("'a|'");
+        e.set_syntax(Syntax::Json5);
+        e.type_input("\"");
+        assert_eq!(shown(&e), "'a\"|'");
     }
 }

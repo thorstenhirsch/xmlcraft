@@ -2,11 +2,11 @@
 
 use std::ops::Range;
 
-use xmlcraft_json_syntax::{Data, Options, Parse, Value, parse, parse_lines};
+use xmlcraft_json_syntax::{Code, Data, Diagnostic, Options, Parse, Value, parse, parse_lines};
 
 use crate::analysis::{Analysis, MAX_OUTLINE_ITEMS, OutlineItem};
 use crate::folding::{FoldKind, FoldRange, Lines, MAX_FOLD_RANGES};
-use crate::language::JsonFlavor;
+use crate::language::{JsonFlavor, Language};
 
 /// The longest preview of a scalar value shown beside a name in the outline.
 const MAX_LABEL: usize = 40;
@@ -16,10 +16,14 @@ pub(crate) fn analyze_json(text: &str, version: u64, flavor: JsonFlavor) -> Anal
     let lines = Lines::new(text);
     let mut out = Walk { text, lines: &lines, outline: Vec::new(), outline_truncated: false, folds: Vec::new(), folds_truncated: false };
     let mut diagnostics = Vec::new();
+    let mut capped = false;
     if flavor == JsonFlavor::Lines {
         for (range, read) in parse_lines(text, &options) {
             let Parse { root, diagnostics: found } = read;
-            diagnostics.extend(found);
+            // The cap is for the whole text, not for each line.
+            let room = options.max_diagnostics.saturating_sub(diagnostics.len());
+            capped |= found.len() > room;
+            diagnostics.extend(found.into_iter().take(room));
             if let Some(root) = root {
                 // Each line is an item of its own, named by its number, with the members of its value under it.
                 let number = lines.line_of(range.start) + 1;
@@ -44,8 +48,12 @@ pub(crate) fn analyze_json(text: &str, version: u64, flavor: JsonFlavor) -> Anal
         }
     }
     diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
+    if capped {
+        diagnostics.push(Diagnostic::new(Code::TooManyDiagnostics, text.len()..text.len(), vec![]));
+    }
     Analysis {
         version,
+        language: Language::Json(flavor),
         diagnostics,
         outline: out.outline,
         outline_truncated: out.outline_truncated,
@@ -70,12 +78,23 @@ fn label_of(value: &Value) -> Option<String> {
             }
             format!("\"{shown}\"")
         }
-        Data::Number(n) => n.chars().take(MAX_LABEL).collect(),
+        Data::Number(n) => {
+            let mut shown: String = n.chars().take(MAX_LABEL).collect();
+            if n.chars().count() > MAX_LABEL {
+                shown.push('…');
+            }
+            shown
+        }
         Data::Bool(b) => b.to_string(),
         Data::Null => "null".to_owned(),
         Data::Array(_) | Data::Object(_) => return None,
     };
     Some(shown)
+}
+
+/// The bracket that closes a container (`}` for an object, `]` for an array): one of the other kind closes nothing.
+fn closer(value: &Value) -> char {
+    if matches!(value.data, Data::Object(_)) { '}' } else { ']' }
 }
 
 struct Walk<'a> {
@@ -127,7 +146,7 @@ impl Walk<'_> {
         let (start_tag, end_tag) = if container {
             let open = value.span.start..(value.span.start + 1).min(value.span.end);
             // (A container that was not closed has no closing bracket.)
-            let closed = self.text.get(value.span.clone()).is_some_and(|t| t.ends_with(['}', ']'])) && value.span.len() > 1;
+            let closed = self.text.get(value.span.clone()).is_some_and(|t| t.len() > 1 && t.ends_with(closer(value)));
             (open, closed.then(|| value.span.end - 1..value.span.end))
         } else {
             (value.span.clone(), None)
@@ -145,7 +164,7 @@ impl Walk<'_> {
         };
         let Some(text) = self.text.get(value.span.clone()) else { return };
         // A container that is not closed cannot be folded to its end.
-        if !text.ends_with(['}', ']']) || text.len() < 2 {
+        if text.len() < 2 || !text.ends_with(closer(value)) {
             return;
         }
         let (first, close) = (self.lines.line_of(value.span.start), self.lines.line_of(value.span.end - 1));
@@ -275,5 +294,43 @@ mod tests {
         let big = format!("[{}]", "{\"a\":1},".repeat(MAX_OUTLINE_ITEMS));
         let a = analysis(&big, JsonFlavor::Json);
         assert!(a.outline_truncated && a.outline.len() == MAX_OUTLINE_ITEMS);
+    }
+
+    #[test]
+    fn a_bracket_of_the_other_kind_closes_nothing_in_the_outline_or_the_folds() {
+        for text in ["{\n\"x\": {\n\"b\": 1\n]\n}", "[\n[1,\n2\n}\n]", "{\n\"a\": [\n1\n}\n"] {
+            let a = analysis(text, JsonFlavor::Json);
+            for item in &a.outline {
+                let open = &text[item.start_tag.clone()];
+                if let Some(end) = &item.end_tag {
+                    assert_eq!((open, &text[end.clone()]), if open == "{" { ("{", "}") } else { ("[", "]") }, "{text:?}");
+                }
+            }
+            for fold in &a.folds {
+                // A fold stops at a bracket that matches: the line it ends on has one of its kind.
+                let end_line = text.lines().nth(fold.end_line).unwrap_or_default();
+                let start_line = text.lines().nth(fold.first_line).unwrap_or_default();
+                let wants = if start_line.contains('{') && !start_line.contains('[') { '}' } else { ']' };
+                assert!(end_line.contains(wants), "{text:?}: {fold:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn json_lines_report_no_more_problems_than_the_cap_for_the_whole_text() {
+        let text = "{\"a\" 1}\n".repeat(5000);
+        let a = analysis(&text, JsonFlavor::Lines);
+        let max = Options::default().max_diagnostics;
+        assert_eq!(a.diagnostics.len(), max + 1, "the cap and the one that says there are more");
+        assert_eq!(a.diagnostics.last().map(|d| d.code), Some(Code::TooManyDiagnostics));
+    }
+
+    #[test]
+    fn a_long_number_is_shown_with_an_ellipsis_like_a_long_string() {
+        let digits = "1".repeat(100);
+        let a = analysis(&format!("{{\"n\": {digits}, \"s\": \"{digits}\"}}"), JsonFlavor::Json);
+        let labels: Vec<_> = a.outline.iter().filter_map(|i| i.label.clone()).collect();
+        assert!(labels.iter().all(|l| l.ends_with('…') || l.ends_with("…\"")), "{labels:?}");
+        assert_eq!(a.language, Language::Json(JsonFlavor::Json));
     }
 }
