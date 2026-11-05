@@ -6541,6 +6541,7 @@ dependencies = [
  "xmlcraft-text",
  "xmlcraft-validate",
  "xmlcraft-wsdl",
+ "xmlcraft-xbrl",
  "xmlcraft-xsd",
 ]
 
@@ -6693,6 +6694,7 @@ dependencies = [
  "xmlcraft-syntax",
  "xmlcraft-text",
  "xmlcraft-validate",
+ "xmlcraft-xbrl",
  "xmlcraft-xsd",
  "xmlcraft-yaml-syntax",
 ]
@@ -6938,6 +6940,15 @@ version = "0.1.0"
 dependencies = [
  "proptest",
  "xmlcraft-sample",
+ "xmlcraft-syntax",
+ "xmlcraft-xsd",
+]
+
+[[package]]
+name = "xmlcraft-xbrl"
+version = "0.1.0"
+dependencies = [
+ "proptest",
  "xmlcraft-syntax",
  "xmlcraft-xsd",
 ]

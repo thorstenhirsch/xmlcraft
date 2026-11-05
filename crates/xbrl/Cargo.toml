@@ -1,0 +1,18 @@
+[package]
+name = "xmlcraft-xbrl"
+description = "XmlCraft's XBRL 2.1 and Inline XBRL instances: contexts, units and facts read from a document, and the structural checks that need no taxonomy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-syntax = { workspace = true }
+xmlcraft-xsd = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

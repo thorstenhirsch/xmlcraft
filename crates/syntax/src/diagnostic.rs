@@ -255,6 +255,9 @@ codes! {
     JsonSchemaRefUnavailable => ("json-schema.reference-unavailable", Warning, "The schema document '{0}' that the schema refers to could not be read: {1}."),
     JsonSchemaInvalid => ("json-schema.invalid-schema", Error, "{0}"),
     // Schematron rules (named by an `xml-model` processing instruction)
+    // XBRL instances (the checks of the specification that need no taxonomy)
+    XbrlError => ("xbrl.error", Error, "{0}"),
+    XbrlWarning => ("xbrl.warning", Warning, "{0}"),
     SchematronError => ("schematron.error", Error, "{0}"),
     SchematronWarning => ("schematron.warning", Warning, "{0}"),
     SchematronInfo => ("schematron.info", Info, "{0}"),
