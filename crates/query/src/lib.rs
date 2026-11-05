@@ -29,7 +29,8 @@ pub struct Options {
     pub max_items: usize,
     /// The most characters of the text of one item.
     pub max_text: usize,
-    /// The most characters of text in all the items listed: once it is passed no more items are listed (they are still counted).
+    /// The most characters of text in all the items listed. It is a soft stop: once it is passed no more items are listed (they are still
+    /// counted), but the item that passed it is listed in full, so the total can be over by up to `max_text`.
     pub max_total_text: usize,
 }
 
