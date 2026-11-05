@@ -2225,11 +2225,11 @@ title = "WSDL 1.1 and 2.0 editing and validation"
 area = "E"
 tier = "P2"
 milestone = "M8"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["wsdl_describe"]
+evidence = ["crates/wsdl/tests/wsdl.rs::a_wsdl_11_description_gives_an_operation_for_each_soap_binding_with_its_endpoint", "crates/wsdl/tests/wsdl.rs::a_wsdl_20_description_is_soap_12_unless_it_says_1_1", "crates/automation/tests/wsdl.rs::the_operations_are_described_with_their_soap_version_and_endpoint"]
+notes = "`xmlcraft-wsdl` reads WSDL 1.1 (messages, port types, bindings with document and rpc style, SOAP 1.1 and 1.2 bindings, services and ports) and WSDL 2.0 (interfaces, SOAP bindings, endpoints) into operations with their endpoint address, and the embedded schemas; what cannot be used (a binding that is not SOAP, a message that is not defined) is a warning. A WSDL is an XML document in the editor, with XSD validation of the schemas in it. Missing: WSDL-aware validation and completion, a design view of operations, WS-Policy and WS-Addressing, MIME and HTTP bindings."
 
 [[feature]]
 id = "soap.client"
@@ -2237,11 +2237,11 @@ title = "SOAP 1.1 and 1.2 client (build, validate, send, view the response)"
 area = "E"
 tier = "P2"
 milestone = "M8"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["soap_sample"]
+evidence = ["crates/wsdl/tests/wsdl.rs::a_request_has_an_envelope_a_sample_body_and_the_headers_of_its_soap_version", "crates/wsdl/tests/wsdl.rs::rpc_style_wraps_the_parts_in_an_element_named_for_the_operation", "crates/automation/tests/wsdl.rs::a_request_is_made_with_schemas_imported_by_location_from_beside_the_wsdl"]
+notes = "`Wsdl::sample_request` and the tool `soap_sample` make the request of an operation: a SOAP 1.1 or 1.2 envelope (as the binding says) with a body sampled from the schema of the input (document style) or the operation element with a part each (rpc style), the headers (Content-Type, SOAPAction or the action parameter) and the endpoint address; schemas imported by location are read from beside the WSDL. Missing: sending the request and showing the response, validation of the response, SOAP headers (WS-Security, WS-Addressing), the window."
 
 [[feature]]
 id = "soap.debugger"

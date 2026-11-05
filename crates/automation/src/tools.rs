@@ -68,6 +68,7 @@ pub fn tools() -> &'static [ToolDef] {
         table.extend(crate::pdf::replace_tools());
         table.extend(crate::convert::tools());
         table.extend(crate::xpath::tools());
+        table.extend(crate::wsdl::tools());
         table.extend(crate::schematron::tools());
         table.extend(crate::einvoice::tools());
         table.extend(crate::diff::tools());
