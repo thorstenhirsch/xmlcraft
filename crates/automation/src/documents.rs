@@ -55,7 +55,7 @@ fn add_language(properties: &mut Value) {
     if let Some(map) = properties.as_object_mut() {
         map.insert(
             "language".into(),
-            json!({ "type": "string", "enum": ["xml", "json", "jsonc", "json5", "jsonl"], "description": "What `text` is written in (default xml). An open document or a file is read by its name: JSON for `.json` (also `.geojson`, `.webmanifest`, `.har`, `.ipynb`, `.jsonld`, `.map`), JSON with comments for `.jsonc` and editor configuration files such as `tsconfig.json` and `settings.json`, `.json5`, JSON Lines for `.jsonl` and `.ndjson`; anything else is XML." }),
+            json!({ "type": "string", "enum": ["xml", "json", "jsonc", "json5", "jsonl", "bson"], "description": "What `text` is written in (default xml). An open document or a file is read by its name: JSON for `.json` (also `.geojson`, `.webmanifest`, `.har`, `.ipynb`, `.jsonld`, `.map`), JSON with comments for `.jsonc` and editor configuration files such as `tsconfig.json` and `settings.json`, `.json5`, JSON Lines for `.jsonl` and `.ndjson`, a BSON file (`.bson`) as the Extended JSON text of its documents (for `text`, `bson` means that text); anything else is XML." }),
         );
     }
 }
@@ -655,8 +655,16 @@ pub(crate) fn source(a: &Automation, args: &Value) -> Result<Source> {
         (None, Some(path), None) => {
             let path = a.confinement.resolve_read(path)?;
             let loaded = xmlcraft_platform::files::read_file(&path).map_err(|e| ToolError::Failed(format!("{}: {e}", path.display())))?;
-            let decoded = decode(&loaded.bytes, &sniff(&loaded.bytes));
             let language = path.file_name().map_or(Language::Xml, |n| Language::of_name(&n.to_string_lossy()));
+            // A BSON file is read as the Extended JSON text of its documents, the text it is edited as.
+            if language == Language::Bson && !loaded.bytes.is_empty() {
+                let documents =
+                    xmlcraft_bson::read_all(&loaded.bytes).map_err(|e| ToolError::Failed(format!("{}: not a BSON file ({e})", path.display())))?;
+                let (text, _) =
+                    xmlcraft_bson::to_text(&documents, true).map_err(|e| ToolError::Failed(format!("{}: {}", path.display(), e.message)))?;
+                return Ok(Source { text, language, id: None, lossy: false, path: Some(path) });
+            }
+            let decoded = decode(&loaded.bytes, &sniff(&loaded.bytes));
             Ok(Source { text: decoded.text, language, id: None, lossy: decoded.lossy, path: Some(path) })
         }
         (None, None, Some(text)) => Ok(Source { text: text.to_owned(), language: language_arg(args)?, id: None, lossy: false, path: None }),
@@ -672,7 +680,8 @@ fn language_arg(args: &Value) -> Result<Language> {
         Some("jsonc") => Language::Json(JsonFlavor::Jsonc),
         Some("json5") => Language::Json(JsonFlavor::Json5),
         Some("jsonl") => Language::Json(JsonFlavor::Lines),
-        Some(other) => return Err(ToolError::InvalidArgs(format!("language is xml, json, jsonc, json5 or jsonl, not {other:?}"))),
+        Some("bson") => Language::Bson,
+        Some(other) => return Err(ToolError::InvalidArgs(format!("language is xml, json, jsonc, json5, jsonl or bson, not {other:?}"))),
     })
 }
 
@@ -1226,6 +1235,10 @@ fn doc_save(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         Err(SaveError::Lossy) => {
             doc.undo_save_as(prep);
             return fail("the document cannot be saved over its file");
+        }
+        Err(SaveError::Invalid(why)) => {
+            doc.undo_save_as(prep);
+            return fail(why);
         }
     };
     let stamp = match files::write_file(&target, &bytes) {

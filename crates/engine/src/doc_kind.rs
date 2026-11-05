@@ -19,7 +19,7 @@ pub enum DocKind {
 /// text (a root element `schema` of the XML Schema namespace is a schema), else XML. `analysis` is the analysis of its text, when there
 /// is one; without it only the name decides.
 pub fn doc_kind(name: &str, analysis: Option<&Analysis>) -> DocKind {
-    if crate::language::Language::of_name(name).is_json() {
+    if crate::language::Language::of_name(name).is_json_like() {
         return DocKind::Json;
     }
     let extension = name.rsplit_once('.').map(|(_, ext)| ext.to_ascii_lowercase());

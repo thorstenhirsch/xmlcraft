@@ -417,7 +417,7 @@ impl XmlCraftApp {
         let kind = self.applied.unwrap_or(ThemeKind::Light);
         let Some(doc) = self.session.active_document() else { return };
         // The validators read XML; a JSON document is checked for its syntax (a schema for it comes with JSON Schema support).
-        if doc.language().is_json() {
+        if doc.language().is_json_like() {
             self.check_now();
             return;
         }
@@ -653,7 +653,7 @@ impl XmlCraftApp {
         let (id, version) = (doc.id(), doc.editor().version());
         let matches = self.find.shown_matches(id, version);
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
-        if view.styler.set_json(doc.language().is_json()) {
+        if view.styler.set_json(doc.language().is_json_like()) {
             view.view.highlight_version += 1;
         }
         view.styler.set_matches(matches);
@@ -806,6 +806,12 @@ impl XmlCraftApp {
                 self.dialog = Some(Dialog::Lossy { id, then });
                 return;
             }
+            Err(SaveError::Invalid(why)) => {
+                doc.undo_save_as(prep);
+                self.quitting = false;
+                self.message(tl!("Couldn't save the file"), why);
+                return;
+            }
         };
         match files::write_file(&path, &bytes) {
             Ok(stamp) => {
@@ -860,7 +866,7 @@ impl XmlCraftApp {
             Err(error) => {
                 let (character, line) = match &error {
                     SaveError::Unmappable(e) => (e.ch, doc.editor().buffer().line_of(e.offset) + 1),
-                    SaveError::Lossy => ('\u{FFFD}', 0),
+                    SaveError::Lossy | SaveError::Invalid(_) => ('\u{FFFD}', 0),
                 };
                 self.quitting = false;
                 self.message(

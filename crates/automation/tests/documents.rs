@@ -779,3 +779,31 @@ fn json_is_formatted_by_xml_format_in_text_in_files_and_in_documents() {
     let r = ok(&mut a, "xml_format", json!({ "text": "{ \"a\" : 1 }\n\n{ \"b\" : 2 }\n", "language": "jsonl", "minify": true }));
     assert_eq!(r["text"].as_str(), Some("{\"a\":1}\n\n{\"b\":2}\n"));
 }
+
+#[test]
+fn bson_files_are_read_by_their_text_and_saved_as_bytes() {
+    let dir = tempfile::tempdir().expect("dir");
+    let docs = vec![xmlcraft_bson::Document {
+        fields: vec![("a".into(), xmlcraft_bson::Bson::Int32(7)), ("o".into(), xmlcraft_bson::Bson::Document(Default::default()))],
+    }];
+    let path = file(dir.path(), "x.bson", &xmlcraft_bson::write_all(&docs).expect("writes"));
+    let mut a = Automation::new();
+    let outline = ok(&mut a, "xml_outline", json!({ "path": path }));
+    let names: Vec<_> = outline["items"].as_array().expect("items").iter().map(|i| i["name"].as_str().unwrap_or_default()).collect();
+    assert_eq!(names, ["a", "o"], "a typed value is one item, not a container: {outline}");
+    assert_eq!(outline["items"][0]["label"].as_str(), Some("7 ($numberInt)"));
+    let id = ok(&mut a, "doc_open", json!({ "path": path }))["id"].as_u64().expect("an id");
+    let text = ok(&mut a, "doc_text", json!({ "id": id }))["text"].as_str().expect("text").to_owned();
+    assert!(text.contains("\"$numberInt\""), "{text}");
+    ok(&mut a, "doc_set_text", json!({ "id": id, "text": text.replace("\"7\"", "\"9\"") }));
+    ok(&mut a, "doc_save", json!({ "id": id }));
+    let back = xmlcraft_bson::read_all(&std::fs::read(&path).expect("reads")).expect("reads");
+    assert_eq!(back[0].fields[0].1, xmlcraft_bson::Bson::Int32(9));
+    ok(&mut a, "doc_set_text", json!({ "id": id, "text": "{\"a\": {\"$oid\": \"zz\"}}" }));
+    let e = err(&mut a, "doc_save", json!({ "id": id }));
+    assert!(e.contains("Extended JSON"), "{e}");
+    assert_eq!(xmlcraft_bson::read_all(&std::fs::read(&path).expect("reads")).expect("still valid")[0].fields[0].1, xmlcraft_bson::Bson::Int32(9));
+    let fake = file(dir.path(), "fake.bson", b"nope");
+    assert!(err(&mut a, "xml_outline", json!({ "path": fake })).contains("not a BSON file"));
+    assert!(err(&mut a, "doc_open", json!({ "path": fake })).contains("not a BSON file"));
+}
