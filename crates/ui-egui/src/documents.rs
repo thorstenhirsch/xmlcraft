@@ -172,6 +172,20 @@ impl XmlCraftApp {
         self.session.open(Some(canonical), &loaded.bytes, Some(loaded.stamp)).map_err(|e| failed(&e))?;
         self.focus_editor = true;
         if let Some(doc) = self.session.active_document()
+            && let Some(embedded) = doc.pdf_embedded_name()
+        {
+            self.status = match doc.pdf_not_editable() {
+                None => fmt(
+                    tl!("{name}: showing {embedded}; saving changes only that file inside the PDF."),
+                    &[("name", doc.name()), ("embedded", embedded)],
+                ),
+                Some(why) => fmt(
+                    tl!("{name}: showing {embedded}. The PDF cannot be changed ({why}); save the XML as a file of its own."),
+                    &[("name", doc.name()), ("embedded", embedded), ("why", why)],
+                ),
+            };
+        }
+        if let Some(doc) = self.session.active_document()
             && doc.is_lossy()
         {
             self.status = fmt(
@@ -798,7 +812,8 @@ impl XmlCraftApp {
         }
         let Some(doc) = self.session.document_mut(index) else { return };
         let prep = doc.prepare_save_as(&path);
-        let bytes = match doc.to_bytes_for(&path) {
+        let now = xmlcraft_resolve::Clock::now(&xmlcraft_platform::network::SystemClock);
+        let bytes = match doc.to_bytes_for(&path, now) {
             Ok(bytes) => bytes,
             Err(SaveError::Unmappable(error)) => {
                 doc.undo_save_as(prep);
@@ -821,7 +836,7 @@ impl XmlCraftApp {
             Ok(stamp) => {
                 let canonical = std::fs::canonicalize(&path).unwrap_or(path);
                 if let Some(doc) = self.session.document_mut(index) {
-                    doc.mark_saved(canonical.clone(), Some(stamp));
+                    doc.mark_saved_bytes(canonical.clone(), Some(stamp), Some(&bytes));
                     self.status = fmt(tl!("Saved {name}"), &[("name", doc.name())]);
                 }
                 self.session.remember_recent(canonical);
