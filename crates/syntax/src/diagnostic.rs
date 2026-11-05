@@ -243,6 +243,12 @@ codes! {
     JsonEmpty => ("json.empty-document", Error, "The document has no value."),
     JsonUnterminatedComment => ("json.unterminated-comment", Error, "The comment is not closed: expected '*/'."),
     JsonTooDeep => ("json.too-deep", Error, "Values nested deeper than {0} levels are not read."),
+    // YAML (read by `xmlcraft-yaml-syntax`)
+    YamlSyntax => ("yaml.syntax-error", Error, "{0}"),
+    YamlAliasTooLarge => ("yaml.alias-too-large", Error, "The aliases expand to more than {0} values; the rest is not expanded."),
+    YamlDuplicateKey => ("yaml.duplicate-key", Warning, "The key '{0}' is used more than once in the mapping."),
+    YamlTooDeep => ("yaml.too-deep", Error, "Values nested deeper than {0} levels are not read."),
+    YamlBadMerge => ("yaml.bad-merge", Warning, "The value of '<<' must be a mapping or a list of mappings."),
     // Limits
     NestingTooDeep => ("limit.nesting-too-deep", Warning, "Elements nested deeper than {0} levels are not shown as a tree."),
     TooManyDiagnostics => ("limit.too-many-diagnostics", Info, "Further problems are not shown."),
