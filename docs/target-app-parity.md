@@ -108,7 +108,7 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 - 2026-11-05: the headline numbers are measured again with `cargo xtask parity` (154 counted features, 10 shipped, 67 partial).
 - 2026-11-05: the headline moved to 71 partial and 29.5% weighted: the three completion features (M1.10d) went from planned to partial (quick fixes, M3.14, did so just before, in the 68 partial).
 - 2026-11-05: the scope grew by 43 planned features (M5–M9) and `scope.xbrl` and `scope.web-services` are in scope: 197 counted features, 5.1% shipped, 23.1% weighted; 2026-11-05 (review): eight duplicate entries folded into their neighbours, 188 counted features, 5.3% shipped, 24.2% weighted.
-- 2026-11-05: M5.2: `json.editor`, `json.jsonc`, `json.lines` and `json.language-abstraction` planned → partial; 10 shipped and 82 partial of 188 counted features, 25.3% weighted.
+- 2026-11-05: M5.2: `json.editor`, `json.jsonc`, `json.lines` and `json.language-abstraction` planned → partial; 10 shipped and 75 partial of 188 counted features, 25.3% weighted.
 - 2026-11-05: M5.4: `json.schema-validate` planned → partial; the JSON Schema Test Suite is measured (4938 of 4950 required tests); 10 shipped and 76 partial of 188 counted features, 25.5% weighted.
 - 2026-11-05: M6.3: `project.diff-files`, `project.diff-three-way` and `project.diff-ignore-options` planned → partial (the `xmlcraft-diff` crate and the tools `diff_compare` and `diff_merge`; no window yet); with the YAML (M5.6), BSON (M5.8) and JSON Schema (M5.4) entries that moved before it, 10 shipped and 81 partial of 188 counted features, 26.9% weighted.
 - 2026-11-05: M9.1: `pdf.embedded-xml` planned → partial (`xmlcraft-pdf`, `pdf_files`).
