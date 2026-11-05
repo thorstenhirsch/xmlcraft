@@ -11,9 +11,14 @@
 //! - redirects are **not** followed: the answer says where to, and the person decides (a redirect would resend a body to another host);
 //! - the answer is at most [`Request::max_response_bytes`] long and the whole request is over within [`Request::timeout`].
 
-use std::net::IpAddr;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+#[cfg(not(target_arch = "wasm32"))]
+use std::net::IpAddr;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+
+#[cfg(not(target_arch = "wasm32"))]
 use crate::http::{first_private, is_local_name, lookup, target_of};
 
 /// The most body a request may send.
@@ -65,9 +70,11 @@ impl Response {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Headers a caller does not set: the client frames the message itself.
 const FRAMING: &[&str] = &["host", "content-length", "transfer-encoding", "connection", "upgrade", "te", "trailer"];
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Whether the request may go where it says (see the module documentation).
 fn check(request: &Request) -> Result<(), String> {
     let target = target_of(&request.url)?;
@@ -95,11 +102,13 @@ fn check(request: &Request) -> Result<(), String> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn is_public_address_for_client(address: IpAddr) -> bool {
     crate::http::is_public_address(address)
 }
 
 /// Send `request` and read the answer. The error says in words what went wrong.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn send(user_agent: &str, request: &Request) -> Result<Response, String> {
     let method = request.method.trim().to_ascii_uppercase();
     if !matches!(method.as_str(), "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS") {
@@ -155,7 +164,14 @@ pub fn send(user_agent: &str, request: &Request) -> Result<Response, String> {
     })
 }
 
-#[cfg(test)]
+/// On the web nothing is sent: the browser build has no sockets.
+#[cfg(target_arch = "wasm32")]
+pub fn send(_user_agent: &str, _request: &Request) -> Result<Response, String> {
+    Err("requests are not sent from the web build".to_owned())
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 mod tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
