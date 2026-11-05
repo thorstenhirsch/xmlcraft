@@ -512,11 +512,11 @@ pub(crate) fn tools() -> Vec<ToolDef> {
         ToolDef {
             name: "xml_format",
             title: "Pretty-print or minify",
-            description: "Change only the white space between nodes: pretty-print (one node per line, indented) or minify. Text with mixed content and elements with \
-                          xml:space=\"preserve\" are left alone, and a document that is not well-formed is refused. On an open document (`id`) it is one undoable edit; \
+            description: "Change only the white space between nodes (XML) or tokens (JSON, JSONC, JSON5): pretty-print (one node or member per line, indented) or minify. XML text with mixed content and elements with \
+                          xml:space=\"preserve\" are left alone, JSON Lines can only be minified, and a document that is not well-formed is refused. On an open document (`id`) it is one undoable edit; \
                           for a file or text the formatted text is returned and nothing is written.",
             input_schema: {
-                let mut properties = source_properties();
+                let mut properties = language_source_properties();
                 if let Some(map) = properties.as_object_mut() {
                     map.insert("minify".into(), json!({ "type": "boolean", "description": "Strip insignificant white space instead of indenting" }));
                     map.insert(
@@ -1395,10 +1395,12 @@ fn xml_format(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         Some("remove") => BlankLines::Remove,
         _ => BlankLines::Keep,
     };
-    let edits = if minify { xmlcraft_format::minify(&source.text) } else { xmlcraft_format::pretty_print_settled(&source.text, &options) };
-    let edits = edits.map_err(|FormatError::NotWellFormed { message, offset }| {
-        let (line, column) = position_json(&Buffer::from_text(&source.text), offset);
-        ToolError::Failed(format!("the document is not well-formed, so it is left as it is (line {line}, column {column}: {message})"))
+    let edits = source.language.format(&source.text, &options, minify).map_err(|error| match error {
+        FormatError::NotWellFormed { message, offset } => {
+            let (line, column) = position_json(&Buffer::from_text(&source.text), offset);
+            ToolError::Failed(format!("the document is not well-formed, so it is left as it is (line {line}, column {column}: {message})"))
+        }
+        FormatError::Refused { message } => ToolError::Failed(format!("{message}: nothing was changed")),
     })?;
     match source.id {
         Some(id) => {

@@ -13,7 +13,9 @@ workspace = true
 [dependencies]
 xmlcraft-text = { workspace = true }
 xmlcraft-syntax = { workspace = true }
+xmlcraft-json-syntax = { workspace = true }
 rowan = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
+serde_json = { workspace = true }

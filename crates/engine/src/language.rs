@@ -3,6 +3,7 @@
 //! XML (with its schema languages) is the first; the data formats follow it one by one. The language comes from the document's name,
 //! so Save As under another extension changes how the text is coloured, outlined and checked.
 
+use xmlcraft_format::{Edit, FormatError, FormatOptions};
 use xmlcraft_json_syntax::Dialect;
 
 /// How a JSON document is read.
@@ -60,6 +61,21 @@ impl Language {
             Some("json5") => Language::Json(JsonFlavor::Json5),
             Some("jsonl" | "ndjson") => Language::Json(JsonFlavor::Lines),
             _ => Language::Xml,
+        }
+    }
+
+    /// The edits that pretty-print `text` (or, with `minify`, strip its white space), in the way of this language. Only white space
+    /// between tokens changes. JSON Lines are not indented (a value per line is the format): they can only be minified.
+    pub fn format(self, text: &str, options: &FormatOptions, minify: bool) -> Result<Vec<Edit>, FormatError> {
+        match self {
+            Language::Xml if minify => xmlcraft_format::minify(text),
+            Language::Xml => xmlcraft_format::pretty_print_settled(text, options),
+            Language::Json(JsonFlavor::Lines) if minify => xmlcraft_format::json::minify_lines(text, Dialect::Json),
+            Language::Json(JsonFlavor::Lines) => Err(FormatError::Refused {
+                message: "JSON Lines have one value on each line, so they are not indented (minify keeps them as they are)".to_owned(),
+            }),
+            Language::Json(flavor) if minify => xmlcraft_format::json::minify(text, flavor.dialect()),
+            Language::Json(flavor) => xmlcraft_format::json::pretty_print(text, flavor.dialect(), options),
         }
     }
 

@@ -554,7 +554,7 @@ impl XmlCraftApp {
     }
 
     /// Pretty-print (or, with `minify`, strip the white space of) the document being shown, as one undoable edit. A document that is not
-    /// well-formed is left as it is and the reason is shown.
+    /// well-formed (or, for JSON, with a syntax error) is left as it is and the reason is shown.
     pub(crate) fn reformat(&mut self, minify: bool) {
         let Some(doc) = self.session.active_document_mut() else { return };
         let name = doc.name().to_owned();
@@ -564,6 +564,7 @@ impl XmlCraftApp {
                 self.status = fmt(if minify { tl!("Stripped the white space of {name}") } else { tl!("Pretty-printed {name}") }, &[("name", &name)])
             }
             Ok(false) => self.status = fmt(tl!("{name} needs no changes"), &[("name", &name)]),
+            Err(xmlcraft_format::FormatError::Refused { message }) => self.message(tl!("Nothing was changed"), message),
             Err(xmlcraft_format::FormatError::NotWellFormed { message, offset }) => {
                 let line = doc.editor().buffer().line_of(offset.min(doc.editor().buffer().len())) + 1;
                 self.message(
