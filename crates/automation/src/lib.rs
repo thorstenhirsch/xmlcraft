@@ -18,6 +18,7 @@ mod documents;
 mod einvoice;
 mod entry_helpers;
 pub mod file_access;
+mod grid;
 mod infer;
 mod json_schema;
 mod lines;

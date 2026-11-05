@@ -539,7 +539,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
 
 // --- helpers -------------------------------------------------------------------------------------------------------------------
 
-fn id_arg(args: &Value) -> Result<u64> {
+pub(crate) fn id_arg(args: &Value) -> Result<u64> {
     args.get("id").and_then(Value::as_u64).ok_or_else(|| ToolError::InvalidArgs("id is required".into()))
 }
 

@@ -628,10 +628,10 @@ title = "Grid view (nested boxes and tables) for XML, JSON, YAML and BSON"
 area = "B"
 tier = "P1"
 milestone = "M6"
-status = "planned"
-commands = []
-tools = []
-evidence = []
+status = "partial"
+commands = ["view.grid", "xml.rename_element"]
+tools = ["grid_rows", "grid_edit"]
+evidence = ["crates/grid/tests/grid.rs::json_rows_nest_and_show_members_items_and_values", "crates/grid/tests/grid.rs::a_json_value_is_replaced_in_place_with_the_right_literal_for_its_type", "crates/grid/tests/grid.rs::a_json_key_is_renamed_and_a_member_is_removed_with_its_comma", "crates/grid/tests/grid.rs::xml_values_are_replaced_in_place_and_escaped", "crates/grid/tests/grid.rs::yaml_rows_and_edits_write_plain_scalars_where_they_read_back_the_same_and_quote_the_rest", "crates/automation/tests/grid.rs::an_edit_changes_the_open_document_with_the_smallest_edit_and_one_undo_takes_it_back", "crates/ui-egui/tests/grid.rs::a_document_is_shown_as_rows_that_open_and_close", "crates/ui-egui/tests/grid.rs::a_value_is_edited_in_place_and_the_text_changes_by_that_value_only", "crates/ui-egui/tests/grid.rs::a_value_that_does_not_fit_its_type_is_refused_with_the_reason_and_the_text_is_left_alone", "crates/ui-egui/tests/grid.rs::a_row_is_removed_with_delete_and_a_name_is_changed_with_f2"]
 notes = "The nested-box and table displays of XMLSpy's Grid view for every supported format (rows and columns for repeated elements or array items, sort, add/remove rows and columns, copy and paste as tab-separated text), editing through the same edits as the text view. The table display shows repeated items as rows for every format."
 
 [[feature]]
