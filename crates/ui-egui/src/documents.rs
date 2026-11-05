@@ -417,7 +417,7 @@ impl XmlCraftApp {
         let kind = self.applied.unwrap_or(ThemeKind::Light);
         let Some(doc) = self.session.active_document() else { return };
         // The validators read XML; a JSON document is checked for its syntax (a schema for it comes with JSON Schema support).
-        if doc.language().is_json_like() {
+        if doc.language().is_data() {
             self.check_now();
             return;
         }
@@ -653,7 +653,11 @@ impl XmlCraftApp {
         let (id, version) = (doc.id(), doc.editor().version());
         let matches = self.find.shown_matches(id, version);
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
-        if view.styler.set_json(doc.language().is_json_like()) {
+        if view.styler.set_syntax(match doc.language() {
+            l if l.is_json_like() => crate::editor_view::Colouring::Json,
+            l if l.is_yaml() => crate::editor_view::Colouring::Yaml,
+            _ => crate::editor_view::Colouring::Xml,
+        }) {
             view.view.highlight_version += 1;
         }
         view.styler.set_matches(matches);

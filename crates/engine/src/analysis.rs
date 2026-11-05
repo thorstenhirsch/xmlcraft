@@ -208,6 +208,9 @@ pub fn analyze_as(language: Language, text: &str, version: u64) -> Analysis {
     if language == Language::Bson {
         return crate::json_analysis::analyze_bson(text, version);
     }
+    if language == Language::Yaml {
+        return crate::yaml_analysis::analyze_yaml(text, version);
+    }
     let parsed = parse_with(text, &Limits::default());
     // The problems of the text and of the declarations of its internal subset (which the DTD reader reads); the external parts of the
     // DTD are not read here.

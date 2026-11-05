@@ -72,7 +72,7 @@ fn innermost_open_element(prefix: &str) -> Option<String> {
 }
 
 impl Editor {
-    /// What typing `text` on the keyboard does. It is [`Editor::type_text`], except for a few characters. In JSON and JSON5 (see
+    /// What typing `text` on the keyboard does. It is [`Editor::type_text`] always in YAML, and except for a few characters elsewhere. In JSON and JSON5 (see
     /// [`Editor::set_syntax`]): `"` (and `'` in JSON5) and `{` and `[` write the pair where a value can start and the closing quote or
     /// bracket typed next is stepped over, never in a string or a comment (when [`crate::Settings::auto_pair`] is on). In XML:
     ///
@@ -86,6 +86,9 @@ impl Editor {
     pub fn type_input(&mut self, text: &str) -> bool {
         let mut chars = text.chars();
         let (Some(key), None) = (chars.next(), chars.next()) else { return self.type_text(text) };
+        if self.syntax() == Syntax::Yaml {
+            return self.type_text(text);
+        }
         let json = self.syntax() != Syntax::Xml;
         let aided = if json {
             matches!(key, '"' | '{' | '[' | '}' | ']') || (key == '\'' && self.syntax() == Syntax::Json5)
@@ -356,6 +359,9 @@ impl Editor {
             return Vec::new();
         }
         let heads: Vec<usize> = self.carets().iter().filter(|c| c.is_empty()).map(|c| c.head()).collect();
+        if self.syntax() == Syntax::Yaml {
+            return Vec::new();
+        }
         if self.syntax() != Syntax::Xml {
             let single = self.syntax() == Syntax::Json5;
             return heads
@@ -821,5 +827,29 @@ mod tests {
         e.set_syntax(Syntax::Json5);
         e.type_input("\"");
         assert_eq!(shown(&e), "'a\"|'");
+    }
+
+    #[test]
+    fn yaml_gets_no_typing_aids() {
+        for key in ["\"", "'", "{", "[", ">", "/"] {
+            let mut e = at("|");
+            e.set_syntax(Syntax::Yaml);
+            e.type_input(key);
+            assert_eq!(shown(&e), format!("{key}|"), "{key}");
+        }
+        let mut e = at("a: \"|\"");
+        e.set_syntax(Syntax::Yaml);
+        e.backspace();
+        assert_eq!(shown(&e), "a: |\"", "Backspace takes one character");
+    }
+
+    #[test]
+    fn enter_after_something_that_looks_like_a_start_tag_indents_only_in_xml() {
+        for (syntax, expected) in [(Syntax::Xml, "<a>\n  |"), (Syntax::Yaml, "<a>\n|"), (Syntax::Json, "<a>\n|")] {
+            let mut e = at("<a>|");
+            e.set_syntax(syntax);
+            e.insert_newline();
+            assert_eq!(shown(&e), expected, "{syntax:?}");
+        }
     }
 }
