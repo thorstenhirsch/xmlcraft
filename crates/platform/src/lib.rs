@@ -10,9 +10,13 @@
 //! - [`network`]: what the resolvers download with ([`network::Network`]: the client, the cache, the clock and the switch to work
 //!   offline). [`http`] (the client, `ureq` over rustls) and [`disk_cache`] (the downloaded copies, kept between runs) are native only;
 //!   on the web `Network::standard()` is a network that downloads nothing.
+//! - [`client`]: sending a request a person asked for (any method, headers and body) and reading the whole answer: what the SOAP client
+//!   and the request builders use (native only).
 //! - [`files`]: reading a file with a size limit, writing it atomically (a crash or a full disk leaves the old file whole), and noticing
 //!   that something else changed or removed it.
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod client;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod disk_cache;
 pub mod file_uri;
