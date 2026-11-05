@@ -16,7 +16,7 @@ Each milestone is a series of one-PR tasks with ids like `M1.4`. A milestone is 
 
 
 
-| **M6** Conversion, Grid, Diff | XML ⇄ JSON ⇄ YAML ⇄ BSON conversion (and XSD ⇄ JSON Schema, DTD → XSD); the Grid editor for every supported format; diff and three-way merge for XML, JSON and YAML, files and folders | 0.2.0 | not started |
+| **M6** Conversion, Grid, Diff | XML ⇄ JSON ⇄ YAML ⇄ BSON conversion (and XSD ⇄ JSON Schema, DTD → XSD); the Grid editor for every supported format; diff and three-way merge for XML, JSON and YAML, files and folders | 0.2.0 | **in progress** (M6.3: the comparison crate `xmlcraft-diff` (lines, trees, three-way merge) and the tools `diff_compare` and `diff_merge`; next: the Compare and merge windows, merge by tree, folder comparison, conversion in the window, the Grid) |
 | **M7** Query engines | XPath 1.0–3.1 and XQuery 1.0–3.1 (with Update), XSLT 1.0–3.0, on a vendored and extended `xee`; the evaluator window, the XSLT editor with completion, the debugger and the profiler; Schematron | 0.2.0 | not started |
 | **M8** Web formats | HTML5 editing with a locked-down browser view; OpenAPI 2.0, 3.0, 3.1 and 3.2; WSDL 1.1/2.0 and SOAP 1.1/1.2 with a client and an intercepting-proxy debugger | 0.2.0 | not started |
 | **M9** Business formats | XBRL (instance and taxonomy validation, dimensions, inline XBRL, packages, OIM conversions); e-invoicing (XRechnung in UBL and CII, EN 16931, Peppol BIS Billing 3, FatturaPA, ZUGFeRD/Factur-X) and PDF with embedded XML edited by incremental update | 0.2.0 | not started |

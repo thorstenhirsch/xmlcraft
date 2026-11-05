@@ -99,6 +99,7 @@ const TOOL_FILES: &[&str] = &[
     "crates/automation/src/json_schema.rs",
     "crates/automation/src/entry_helpers.rs",
     "crates/automation/src/assign.rs",
+    "crates/automation/src/diff.rs",
     "crates/automation/src/infer.rs",
     "crates/automation/src/sample.rs",
     "crates/automation/src/load_schema.rs",

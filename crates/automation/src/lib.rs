@@ -12,6 +12,7 @@
 
 mod assign;
 mod catalog;
+mod diff;
 mod documents;
 mod entry_helpers;
 pub mod file_access;
