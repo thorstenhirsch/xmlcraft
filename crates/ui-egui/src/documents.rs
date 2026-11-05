@@ -791,17 +791,17 @@ impl XmlCraftApp {
             self.dialog = Some(Dialog::OverwriteChanged { id, path, then });
             return;
         }
-        if let Some(doc) = self.session.document_mut(index) {
-            doc.prepare_save_as(&path);
-        }
-        let Some(doc) = self.session.document(index) else { return };
+        let Some(doc) = self.session.document_mut(index) else { return };
+        let prep = doc.prepare_save_as(&path);
         let bytes = match doc.to_bytes() {
             Ok(bytes) => bytes,
             Err(SaveError::Unmappable(error)) => {
+                doc.undo_save_as(prep);
                 self.dialog = Some(Dialog::Unmappable { id, path, then, character: error.ch });
                 return;
             }
             Err(SaveError::Lossy) => {
+                doc.undo_save_as(prep);
                 self.dialog = Some(Dialog::Lossy { id, then });
                 return;
             }
@@ -817,6 +817,9 @@ impl XmlCraftApp {
                 self.after_save(ctx, id, then);
             }
             Err(e) => {
+                if let Some(doc) = self.session.document_mut(index) {
+                    doc.undo_save_as(prep);
+                }
                 self.quitting = false;
                 self.message(
                     tl!("Couldn't save the file"),

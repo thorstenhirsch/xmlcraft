@@ -30,6 +30,10 @@ fn open(h: &mut Harness<'static, XmlCraftApp>, path: &Path) {
     h.run_steps(2);
 }
 
+fn text(h: &Harness<'static, XmlCraftApp>) -> String {
+    h.state().session.active_document().expect("a document is shown").editor().text()
+}
+
 const TEXT: &str = "{\n  \"name\": \"x\", // note\n  \"tags\": [1, 2],\n}\n";
 
 #[test]
@@ -93,7 +97,7 @@ fn save_as_under_another_extension_reads_the_text_again_in_the_new_language_and_
     let as_xml = h.state().problems();
     // Saved as JSON, the text is read as JSON (not well-formed there: no value), the file is written, and nothing of the DTD is left.
     let path = save_as(&mut h, dir.path(), "a.json");
-    until(&mut h, "the JSON reading", &|app| app.problems() != as_xml);
+    until(&mut h, "the JSON reading", &|app| app.problems().is_some_and(|(errors, _)| errors > 0));
     assert!(path.exists(), "the file was written");
     assert_eq!(h.state().tabs().first().map(|t| t.name.clone()).as_deref(), Some("a.json"));
     assert_eq!(h.state().validity(), None, "the old validation is gone");
@@ -114,4 +118,18 @@ fn saving_json_as_xml_in_an_encoding_the_bytes_do_not_tell_declares_it() {
     let written = std::fs::read(&path).expect("reads");
     assert!(written.starts_with(b"<?xml version=\"1.0\" encoding=\"windows-1252\"?>"), "{:?}", String::from_utf8_lossy(&written));
     assert!(written.ends_with(&[0xE9, b'"', b'}']), "and the text is in that encoding");
+}
+
+#[test]
+fn a_save_as_to_xml_that_stops_at_a_character_the_encoding_cannot_hold_leaves_the_text_as_it_was() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "a.json", "{\"a\": 1} // ł"));
+    // (JSONC would read the comment; the point here is the text.)
+    h.state_mut().session.active_document_mut().expect("a document").set_encoding(xmlcraft_text::encoding::Encoding::WINDOWS_1252, false);
+    let before = text(&h);
+    let path = save_as(&mut h, dir.path(), "a.xml");
+    assert!(h.query_by_label("a.json has a character its encoding cannot hold").is_some(), "the question is asked");
+    assert_eq!(text(&h), before, "the XML declaration the attempt wrote is taken back");
+    assert!(!path.exists(), "and nothing was written");
 }

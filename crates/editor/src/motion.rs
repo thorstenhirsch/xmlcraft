@@ -30,9 +30,13 @@ fn ceil_boundary(buf: &Buffer, mut offset: usize) -> usize {
     offset
 }
 
-/// `offset` moved onto a character boundary inside the text.
+/// `offset` moved onto a character boundary inside the text, and out of the middle of a CR LF line break (a caret there is on no line).
 pub fn clamp(buf: &Buffer, offset: usize) -> usize {
-    floor_boundary(buf, offset)
+    let at = floor_boundary(buf, offset);
+    match (at.checked_sub(1).and_then(|before| buf.char_at(before)), buf.char_at(at)) {
+        (Some('\r'), Some('\n')) => at - 1,
+        _ => at,
+    }
 }
 
 /// The text between `from` and `to` (widened to character boundaries) with where it starts.

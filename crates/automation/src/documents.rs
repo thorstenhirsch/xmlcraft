@@ -1206,17 +1206,35 @@ fn doc_save(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
             }
         }
     }
-    doc.prepare_save_as(&target);
+    let prep = doc.prepare_save_as(&target);
     let bytes = match doc.to_bytes() {
         Ok(bytes) => bytes,
         Err(SaveError::Unmappable(e)) if text_arg(args, "unmappable") == Some("references") => {
-            doc.apply_character_references().map_err(|_| unmappable_error(doc, e))?;
-            doc.to_bytes().map_err(|_| unmappable_error(doc, e))?
+            let written = doc.apply_character_references().and_then(|_| doc.to_bytes());
+            match written {
+                Ok(bytes) => bytes,
+                Err(_) => {
+                    doc.undo_save_as(prep);
+                    return Err(unmappable_error(doc, e));
+                }
+            }
         }
-        Err(SaveError::Unmappable(e)) => return Err(unmappable_error(doc, e)),
-        Err(SaveError::Lossy) => return fail("the document cannot be saved over its file"),
+        Err(SaveError::Unmappable(e)) => {
+            doc.undo_save_as(prep);
+            return Err(unmappable_error(doc, e));
+        }
+        Err(SaveError::Lossy) => {
+            doc.undo_save_as(prep);
+            return fail("the document cannot be saved over its file");
+        }
     };
-    let stamp = files::write_file(&target, &bytes).map_err(|e| ToolError::Failed(format!("{}: {e}", target.display())))?;
+    let stamp = match files::write_file(&target, &bytes) {
+        Ok(stamp) => stamp,
+        Err(e) => {
+            doc.undo_save_as(prep);
+            return Err(ToolError::Failed(format!("{}: {e}", target.display())));
+        }
+    };
     doc.mark_saved(target.clone(), Some(stamp));
     let described = describe(doc);
     a.session.remember_recent(target.clone());

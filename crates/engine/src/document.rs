@@ -83,6 +83,12 @@ impl std::fmt::Display for SaveError {
 
 impl std::error::Error for SaveError {}
 
+/// What [`Document::prepare_save_as`] did, to be taken back if the save fails.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SaveAsPrep {
+    edited: Option<u64>,
+}
+
 pub struct Document {
     id: u64,
     name: String,
@@ -396,10 +402,21 @@ impl Document {
 
     /// Get ready to be written under `path`, which may be a name of another language (Save As): a JSON document that becomes XML in an
     /// encoding the bytes do not tell gets the XML declaration that says so. Call it before [`Self::to_bytes`].
-    pub fn prepare_save_as(&mut self, path: &Path) {
+    ///
+    /// Nothing is lost if the save then fails: pass the result to [`Self::undo_save_as`] and the edit is taken back.
+    pub fn prepare_save_as(&mut self, path: &Path) -> SaveAsPrep {
         let target = path.file_name().map_or(Language::Xml, |n| Language::of_name(&n.to_string_lossy()));
+        let before = self.editor.version();
         if target == Language::Xml && self.language() != Language::Xml {
             self.sync_declaration_for(Language::Xml);
+        }
+        SaveAsPrep { edited: (self.editor.version() != before).then(|| self.editor.version()) }
+    }
+
+    /// The save that [`Self::prepare_save_as`] was for did not happen: take back what it wrote, if nothing has been edited since.
+    pub fn undo_save_as(&mut self, prep: SaveAsPrep) {
+        if prep.edited == Some(self.editor.version()) {
+            self.editor.undo();
         }
     }
 
@@ -868,5 +885,25 @@ mod tests {
         assert_eq!(d.editor().text(), "{\"a\": 1}", "a name of the same language changes nothing");
         d.prepare_save_as(Path::new("/d/b.xml"));
         assert!(d.editor().text().starts_with("<?xml version=\"1.0\" encoding=\"windows-1252\"?>"), "{}", d.editor().text());
+    }
+
+    #[test]
+    fn a_save_as_that_does_not_happen_takes_back_the_declaration_it_wrote() {
+        let mut d = Document::from_bytes(1, Some(PathBuf::from("/d/a.json")), b"{\"a\": 1}", None).expect("opens");
+        d.set_encoding(Encoding::WINDOWS_1252, false);
+        let prep = d.prepare_save_as(Path::new("/d/b.xml"));
+        assert!(d.editor().text().starts_with("<?xml"));
+        d.undo_save_as(prep);
+        assert_eq!(d.editor().text(), "{\"a\": 1}", "as it was");
+        // Nothing to take back when nothing was written, and nothing is undone that the user did since.
+        let none = d.prepare_save_as(Path::new("/d/c.json"));
+        d.editor_mut().set_selection(0, 0);
+        d.editor_mut().type_text("x");
+        d.undo_save_as(none);
+        assert_eq!(d.editor().text(), "x{\"a\": 1}");
+        let prep = d.prepare_save_as(Path::new("/d/b.xml"));
+        d.editor_mut().type_text("y");
+        d.undo_save_as(prep);
+        assert!(d.editor().text().contains('y'), "an edit made since is not undone");
     }
 }
