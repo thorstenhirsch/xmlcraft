@@ -316,17 +316,18 @@ impl Pdf {
                 Some(Object::Dict(d)) => d,
                 _ => return Err(bad("has a bad trailer")),
             };
+            let hybrid = trailer.get("XRefStm").and_then(Object::as_int).and_then(|n| usize::try_from(n).ok());
+            // (The free entries are noted only for a hybrid file, whose stream may say what some of them are.)
             let mut freed = HashSet::new();
             for (number, entry) in added {
                 if self.entries.contains_key(&number) {
                     continue;
                 }
-                if matches!(entry, Entry::Free) {
+                if hybrid.is_some() && matches!(entry, Entry::Free) {
                     freed.insert(number);
                 }
                 self.entries.insert(number, entry);
             }
-            let hybrid = trailer.get("XRefStm").and_then(Object::as_int).and_then(|n| usize::try_from(n).ok());
             return Ok((trailer, hybrid, freed));
         }
         // A cross-reference stream.

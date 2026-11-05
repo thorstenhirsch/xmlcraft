@@ -33,7 +33,7 @@ impl Builder {
         self.out.extend_from_slice(b"\nendstream\nendobj\n");
     }
 
-    /// The table for the objects written since `from`, the trailer, and startxref.
+    /// The table for all the objects written, the trailer, and startxref.
     pub fn finish(mut self, size: u32, trailer_extra: &str) -> Vec<u8> {
         let table = self.out.len();
         self.out.extend_from_slice(b"xref\n");
@@ -68,8 +68,6 @@ pub fn invoice_pdf(name: &str, xml: &str) -> Vec<u8> {
     b.finish(6, "")
 }
 
-/// A PDF 1.5 file: the catalog and the filespec are in an object stream, the cross-reference is a stream with a PNG predictor, and the
-/// embedded file is deflated.
 /// How `compressed_pdf_with` differs from `compressed_pdf`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Variant {
@@ -82,6 +80,8 @@ pub enum Variant {
     WrongIndex,
 }
 
+/// A PDF 1.5 file: the catalog and the filespec are in an object stream, the cross-reference is a stream with a PNG predictor, and the
+/// embedded file is deflated.
 pub fn compressed_pdf(xml: &str) -> Vec<u8> {
     compressed_pdf_with(xml, Variant::Plain)
 }

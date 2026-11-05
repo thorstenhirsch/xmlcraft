@@ -276,12 +276,16 @@ mod tests {
         assert!(matches!(decode(&packed, &wide), Err(PdfError::LimitExceeded(_))));
         let rows = dict("<< /Filter /FlateDecode /DecodeParms << /Predictor 10 /Columns 3 >> >>");
         assert_eq!(decode(&packed, &rows).expect("decodes"), [1, 2, 3], "the second row has one byte of three: it is not a row");
-        let inflated = miniz_oxide::deflate::compress_to_vec_zlib(&[0; 64], 6);
-        assert!(decode_with(&inflated, &dict("<< /Filter /FlateDecode >>"), 8).is_err(), "a bomb is cut off");
+        let inflated = miniz_oxide::deflate::compress_to_vec_zlib(&[0; 1000], 6);
+        assert!(inflated.len() <= 100, "the compressed bomb fits the bound");
+        assert!(
+            decode_with(&inflated, &dict("<< /Filter /FlateDecode >>"), 100).is_err(),
+            "a bomb is cut off by the inflate bound, not by the size of its input"
+        );
         // Inflated within the bound but too large once predicted: the rows are counted before they are made.
         let flat = miniz_oxide::deflate::compress_to_vec_zlib(&[0; 64], 6);
         let wide = dict("<< /Filter /FlateDecode /DecodeParms << /Predictor 10 /Columns 7 >> >>");
-        assert!(decode_with(&flat, &wide, 8).is_err());
+        assert!(decode_with(&flat, &wide, 16).is_err());
         assert!(matches!(decode_with(&flat, &wide, 63), Err(PdfError::Corrupt(_) | PdfError::LimitExceeded(_))));
         assert_eq!(decode_with(&flat, &wide, 64).expect("fits").len(), 56);
     }
