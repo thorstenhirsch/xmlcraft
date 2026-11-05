@@ -2,8 +2,10 @@
 //!
 //! A document names its schema with a `$schema` member of its root object (a URI or a path, relative to the document), or, in YAML, with
 //! the editor comment `# yaml-language-server: $schema=URI`. A `$schema` that names a draft of JSON Schema (`https://json-schema.org/…`)
-//! says what the document is, not what to check it against, and is not a reference. A document with no reference is not checked
-//! beyond its syntax. The schema, and the documents it refers to, are read through a [`Resolver`] (the open documents first, so a schema
+//! says that the document is itself a schema: it is checked against the meta-schema of that draft. An OpenAPI description (a root
+//! `openapi` or `swagger` member) is checked against the official schema of its version (2.0, 3.0, 3.1 or 3.2) with no `$schema`
+//! needed. The meta-schemas and the OpenAPI schemas are bundled (`xmlcraft_schemas::json_schema`). A document with no reference is
+//! not checked beyond its syntax. The schema, and the documents it refers to, are read through a [`Resolver`] (the open documents first, so a schema
 //! being edited is validated against as it is). The result is the [`Validation`] of the XML validators, so the window shows both alike.
 
 use std::cell::RefCell;
@@ -22,8 +24,10 @@ use crate::validation::{Validation, ValidityProblem, Verdict, finish};
 /// The instance, as the values the text holds (one, or one to a line for JSON Lines, or one to a YAML document).
 struct Instance {
     roots: Vec<Value>,
-    /// Where `$schema` was written: the byte range of its value, and the value.
+    /// What to check against, and where the document says so: the byte range of the value, and the URI or path (empty when the
+    /// document names an OpenAPI version this does not know, with `note` saying so).
     reference: Option<(Range<usize>, String)>,
+    note: Option<String>,
     /// A syntax error was found.
     broken: bool,
 }
@@ -51,15 +55,62 @@ fn read(text: &str, language: Language) -> Option<Instance> {
         // A BSON file is shown as Extended JSON, whose types a schema does not know.
         Language::Xml | Language::Bson => return None,
     };
-    let reference = roots.first().and_then(member_reference).or_else(|| if language == Language::Yaml { modeline(text) } else { None });
-    Some(Instance { roots, reference, broken })
+    let first = roots.first();
+    let named = first.and_then(member_reference).or_else(|| if language == Language::Yaml { modeline(text) } else { None });
+    let (reference, note) = match named.or_else(|| first.and_then(draft_reference)) {
+        Some(found) => (Some(found), None),
+        None => match first.and_then(openapi_reference) {
+            Some((span, Ok(uri))) => (Some((span, uri)), None),
+            Some((span, Err(why))) => (Some((span, String::new())), Some(why)),
+            None => (None, None),
+        },
+    };
+    Some(Instance { roots, reference, note, broken })
 }
 
 /// Whether the text names a schema to be checked against (see the module). Only the beginning of the text is looked at for a YAML
 /// modeline; the root object is read.
 pub fn names_a_schema(text: &str, language: Language) -> bool {
     // (Both ways of naming a schema contain `$schema`: a text without it is not read at all.)
-    text.len() <= MAX_ANALYSED_BYTES && text.contains("$schema") && read(text, language).is_some_and(|i| !i.broken && i.reference.is_some())
+    text.len() <= MAX_ANALYSED_BYTES
+        && (text.contains("$schema") || text.contains("openapi") || text.contains("swagger"))
+        && read(text, language).is_some_and(|i| !i.broken && i.reference.is_some())
+}
+
+/// The bundled meta-schema a `$schema` that names a draft stands for: the document is a schema of that draft.
+fn draft_reference(root: &Value) -> Option<(Range<usize>, String)> {
+    let Data::Object(members) = &root.data else { return None };
+    let member = members.iter().find(|m| m.key == "$schema")?;
+    let Data::String(uri) = &member.value.data else { return None };
+    let canonical = match Draft::from_uri(uri)? {
+        Draft::D04 => "http://json-schema.org/draft-04/schema",
+        Draft::D06 => "http://json-schema.org/draft-06/schema",
+        Draft::D07 => "http://json-schema.org/draft-07/schema",
+        Draft::D2019_09 => "https://json-schema.org/draft/2019-09/schema",
+        Draft::D2020_12 => "https://json-schema.org/draft/2020-12/schema",
+    };
+    Some((member.value.span.clone(), canonical.to_owned()))
+}
+
+/// The bundled schema of the OpenAPI version a description says it is (`swagger: "2.0"`, `openapi: 3.1.0`), with the place of the
+/// version; an error says why a version is not known.
+fn openapi_reference(root: &Value) -> Option<(Range<usize>, Result<String, String>)> {
+    let Data::Object(members) = &root.data else { return None };
+    let member = members.iter().find(|m| m.key == "openapi").or_else(|| members.iter().find(|m| m.key == "swagger"))?;
+    let version = match &member.value.data {
+        Data::String(s) => s.clone(),
+        Data::Number(n) => n.clone(),
+        _ => return None,
+    };
+    let uri = match (member.key.as_str(), version.as_str()) {
+        ("swagger", "2.0") => Some("http://swagger.io/v2/schema.json"),
+        ("openapi", v) if v.starts_with("3.0.") => Some("https://spec.openapis.org/oas/3.0/schema/2024-10-18"),
+        ("openapi", v) if v.starts_with("3.1.") => Some("https://spec.openapis.org/oas/3.1/schema-base/2025-09-15"),
+        ("openapi", v) if v.starts_with("3.2.") => Some("https://spec.openapis.org/oas/3.2/schema-base/2025-09-17"),
+        _ => None,
+    };
+    let result = uri.map(str::to_owned).ok_or_else(|| format!("OpenAPI version {version} is not known; 2.0 (swagger), 3.0, 3.1 and 3.2 are"));
+    Some((member.value.span.clone(), result))
 }
 
 /// The `$schema` of an object, when it is a string and is not a draft.
@@ -107,6 +158,10 @@ struct Documents<'r> {
 
 impl Documents<'_> {
     fn fetch(&self, reference: &str, base: &str) -> Result<(String, String), String> {
+        // The meta-schemas and the OpenAPI schemas are bundled: read from there first, and never from the web.
+        if let Some(text) = xmlcraft_schemas::json_schema(reference) {
+            return Ok((reference.trim_end_matches('#').to_owned(), text));
+        }
         let found = self.resolver.resolve(&Request::uri(reference, base), &mut self.budget.borrow_mut()).map_err(|f| f.message)?;
         let decoded = decode(&found.bytes, &sniff(&found.bytes));
         if decoded.lossy {
@@ -138,6 +193,9 @@ pub fn validate_data(text: &str, language: Language, version: u64, location: &st
         return Validation { version, verdict: Verdict::NotWellFormed, problems: Vec::new(), truncated: false };
     }
     let Some((span, reference)) = instance.reference else { return finish(version, Vec::new()) };
+    if let Some(why) = instance.note {
+        return finish(version, vec![ValidityProblem { diagnostic: Diagnostic::new(Code::JsonSchemaInvalid, span, vec![why]), file: None }]);
+    }
     let documents = Documents { resolver, budget: RefCell::new(Budget::default()), failed: RefCell::new(Vec::new()) };
     let own = |code: Code, span: Range<usize>, args: Vec<String>| ValidityProblem { diagnostic: Diagnostic::new(code, span, args), file: None };
     let (schema_location, schema_text) = match documents.fetch(&reference, location) {
@@ -274,11 +332,12 @@ mod tests {
     }
 
     #[test]
-    fn no_schema_is_no_problem_a_draft_is_not_a_schema_and_a_missing_schema_is_a_warning() {
+    fn no_schema_is_no_problem_and_a_missing_schema_is_a_warning() {
         assert_eq!(check(r#"{"a": 1}"#, Language::Json(JsonFlavor::Json)).verdict, Verdict::Valid);
+        // A document that names a draft is a schema of that draft, and is checked as one (an instance of the meta-schema).
         let draft = r#"{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": 5}"#;
         let v = check(draft, Language::Json(JsonFlavor::Json));
-        assert_eq!((v.verdict, v.problems.len()), (Verdict::Valid, 0), "a draft names the dialect, not a schema to check against");
+        assert_eq!(v.verdict, Verdict::Invalid, "{:?}", v.problems);
         let missing = r#"{"$schema": "nope.json"}"#;
         let v = check(missing, Language::Json(JsonFlavor::Json));
         assert_eq!(v.verdict, Verdict::Valid, "a schema that cannot be read is said, not an error of the document");
@@ -346,5 +405,103 @@ mod tests {
         let v = validate_data(r#"{"$schema": "s.json", "p": 3}"#, Language::Json(JsonFlavor::Json), 1, "/d/doc.json", &resolver(&schemas));
         assert_eq!(v.verdict, Verdict::Invalid, "the string type is enforced, the comment is no problem: {:?}", v.problems);
         assert!(v.problems.iter().all(|p| p.diagnostic.code == Code::JsonSchemaViolation), "{:?}", v.problems);
+    }
+
+    fn run(text: &str, language: Language) -> Validation {
+        validate_data(text, language, 1, "/d/doc", &resolver(&[]))
+    }
+
+    fn places<'t>(text: &'t str, v: &Validation) -> Vec<&'t str> {
+        v.problems.iter().map(|p| text.get(p.diagnostic.span.clone()).unwrap_or("?")).collect()
+    }
+
+    #[test]
+    fn a_document_that_names_a_draft_is_a_schema_and_is_checked_against_the_meta_schema_of_that_draft() {
+        for (uri, bad) in [
+            ("http://json-schema.org/draft-04/schema#", r#"{"$schema": "http://json-schema.org/draft-04/schema#", "type": "strin"}"#),
+            ("http://json-schema.org/draft-06/schema#", r#"{"$schema": "http://json-schema.org/draft-06/schema#", "type": "strin"}"#),
+            ("http://json-schema.org/draft-07/schema#", r#"{"$schema": "http://json-schema.org/draft-07/schema#", "type": "strin"}"#),
+            ("https://json-schema.org/draft/2019-09/schema", r#"{"$schema": "https://json-schema.org/draft/2019-09/schema", "type": "strin"}"#),
+            ("https://json-schema.org/draft/2020-12/schema", r#"{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "strin"}"#),
+        ] {
+            let v = run(bad, Language::Json(JsonFlavor::Json));
+            assert_eq!(v.verdict, Verdict::Invalid, "{uri}: {:?}", v.problems);
+            assert!(places(bad, &v).contains(&"\"type\""), "{uri}: the keyword is where the problem is: {:?}", places(bad, &v));
+            let good = bad.replace("strin", "string");
+            let v = run(&good, Language::Json(JsonFlavor::Json));
+            assert_eq!(v.verdict, Verdict::Valid, "{uri}: {:?}", v.problems);
+        }
+        // The https spelling of an old draft is the same draft.
+        let v = run(r#"{"$schema": "https://json-schema.org/draft-07/schema", "properties": 5}"#, Language::Json(JsonFlavor::Json));
+        assert_eq!(v.verdict, Verdict::Invalid);
+        // A YAML schema is checked too.
+        let v = run("$schema: https://json-schema.org/draft/2020-12/schema\nrequired: yes\n", Language::Yaml);
+        assert_eq!(v.verdict, Verdict::Invalid, "{:?}", v.problems);
+    }
+
+    #[test]
+    fn an_openapi_description_is_checked_against_the_schema_of_its_version() {
+        let doc = |head: &str, rest: &str| format!(r#"{{{head}, "info": {{"title": "t", "version": "1"}}{rest}}}"#);
+        for (head, rest) in [
+            (r#""swagger": "2.0""#, r#", "paths": {}"#),
+            (r#""openapi": "3.0.3""#, r#", "paths": {}"#),
+            (r#""openapi": "3.1.0""#, r#", "paths": {}"#),
+            (r#""openapi": "3.2.0""#, r#", "paths": {}"#),
+        ] {
+            let good = doc(head, rest);
+            let v = run(&good, Language::Json(JsonFlavor::Json));
+            assert_eq!((v.verdict, v.problems.len()), (Verdict::Valid, 0), "{head}: {:?}", v.problems);
+            // The same without `info`, which every version requires.
+            let bad = format!("{{{head}{rest}}}");
+            let v = run(&bad, Language::Json(JsonFlavor::Json));
+            assert_eq!(v.verdict, Verdict::Invalid, "{head}: no info");
+            // A wrong type for the title, at the title.
+            let wrong = good.replace(r#""title": "t""#, r#""title": 5"#);
+            let v = run(&wrong, Language::Json(JsonFlavor::Json));
+            assert_eq!(v.verdict, Verdict::Invalid, "{head}");
+            assert!(places(&wrong, &v).contains(&"\"title\""), "{head}: {:?}", places(&wrong, &v));
+        }
+        // YAML, with the version unquoted.
+        let yaml = "openapi: 3.1.0\ninfo:\n  title: t\n  version: '1'\npaths: {}\n";
+        assert_eq!(run(yaml, Language::Yaml).verdict, Verdict::Valid);
+        assert_eq!(run("openapi: 3.1.0\ninfo: {}\npaths: {}\n", Language::Yaml).verdict, Verdict::Invalid);
+        // A version that is not known is a problem at the version.
+        let unknown = r#"{"openapi": "4.0.0", "info": {"title": "t", "version": "1"}}"#;
+        let v = run(unknown, Language::Json(JsonFlavor::Json));
+        assert_eq!((v.verdict, places(unknown, &v)), (Verdict::Invalid, vec!["\"4.0.0\""]));
+        assert!(v.problems[0].diagnostic.args[0].contains("not known"), "{:?}", v.problems);
+        // Schema Objects are validated for 3.1 and 3.2 (their dialect): a `type` that is no type is found inside a schema.
+        let nested = r#"{"openapi": "3.1.0", "info": {"title": "t", "version": "1"}, "components": {"schemas": {"A": {"type": "strin"}}}}"#;
+        let v = run(nested, Language::Json(JsonFlavor::Json));
+        assert_eq!(v.verdict, Verdict::Invalid, "{:?}", v.problems);
+        assert!(places(nested, &v).contains(&"\"type\""), "{:?}", places(nested, &v));
+    }
+
+    #[test]
+    fn documents_that_name_an_openapi_version_or_a_draft_are_documents_that_name_a_schema() {
+        assert!(names_a_schema(r#"{"openapi": "3.0.0", "info": {}}"#, Language::Json(JsonFlavor::Json)));
+        assert!(names_a_schema(r#"{"swagger": "2.0"}"#, Language::Json(JsonFlavor::Json)));
+        assert!(names_a_schema(r#"{"$schema": "http://json-schema.org/draft-07/schema#"}"#, Language::Json(JsonFlavor::Json)));
+        assert!(!names_a_schema(r#"{"openapi": true}"#, Language::Json(JsonFlavor::Json)), "not a version");
+        assert!(!names_a_schema(r#"{"note": "openapi"}"#, Language::Json(JsonFlavor::Json)));
+        assert!(!names_a_schema("openapi: 3.0.0\ninfo: {\n", Language::Yaml), "broken text");
+    }
+
+    #[test]
+    fn what_a_draft_adds_is_checked_by_that_draft_and_numbers_and_new_versions_are_found_too() {
+        // `if` is a keyword of draft-07 and later, not of draft-06: only the meta-schema of 07 refuses `"if": 5`.
+        let seven = r#"{"$schema": "http://json-schema.org/draft-07/schema#", "if": 5}"#;
+        assert_eq!(run(seven, Language::Json(JsonFlavor::Json)).verdict, Verdict::Invalid);
+        let six = r#"{"$schema": "http://json-schema.org/draft-06/schema#", "if": 5}"#;
+        assert_eq!(run(six, Language::Json(JsonFlavor::Json)).verdict, Verdict::Valid, "draft-06 does not know `if`");
+        // `swagger: 2.0` is a number in YAML.
+        assert_eq!(run("swagger: 2.0\npaths: {}\n", Language::Yaml).verdict, Verdict::Invalid, "no info");
+        // 3.2 validates its Schema Objects with its dialect too.
+        let nested = r#"{"openapi": "3.2.0", "info": {"title": "t", "version": "1"}, "components": {"schemas": {"A": {"type": "strin"}}}}"#;
+        let v = run(nested, Language::Json(JsonFlavor::Json));
+        assert_eq!(v.verdict, Verdict::Invalid, "{:?}", v.problems);
+        // 3.0 checks its Schema Objects with the schema's own definition of them.
+        let old = r#"{"openapi": "3.0.3", "info": {"title": "t", "version": "1"}, "paths": {}, "components": {"schemas": {"A": {"type": "strin"}}}}"#;
+        assert_eq!(run(old, Language::Json(JsonFlavor::Json)).verdict, Verdict::Invalid);
     }
 }

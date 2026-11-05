@@ -108,6 +108,46 @@ pub fn path_of(uri: &str) -> Option<&str> {
     uri.strip_prefix(URI_PREFIX).filter(|p| !p.is_empty())
 }
 
+/// The JSON Schema documents that are bundled, by the URI they are known by (their `$id`, or `id` in draft 4, without a trailing `#`):
+/// the meta-schemas of the drafts and their vocabularies, and the schemas of OpenAPI 2.0, 3.0, 3.1 and 3.2 with what they refer to.
+pub const JSON_SCHEMAS: &[(&str, &str)] = &[
+    ("http://json-schema.org/draft-04/schema", "json-schema/draft-04/schema.json"),
+    ("http://json-schema.org/draft-06/schema", "json-schema/draft-06/schema.json"),
+    ("http://json-schema.org/draft-07/schema", "json-schema/draft-07/schema.json"),
+    ("https://json-schema.org/draft/2019-09/schema", "json-schema/draft-2019-09/schema.json"),
+    ("https://json-schema.org/draft/2019-09/meta/core", "json-schema/draft-2019-09/meta/core.json"),
+    ("https://json-schema.org/draft/2019-09/meta/applicator", "json-schema/draft-2019-09/meta/applicator.json"),
+    ("https://json-schema.org/draft/2019-09/meta/validation", "json-schema/draft-2019-09/meta/validation.json"),
+    ("https://json-schema.org/draft/2019-09/meta/meta-data", "json-schema/draft-2019-09/meta/meta-data.json"),
+    ("https://json-schema.org/draft/2019-09/meta/format", "json-schema/draft-2019-09/meta/format.json"),
+    ("https://json-schema.org/draft/2019-09/meta/content", "json-schema/draft-2019-09/meta/content.json"),
+    ("https://json-schema.org/draft/2020-12/schema", "json-schema/draft-2020-12/schema.json"),
+    ("https://json-schema.org/draft/2020-12/meta/core", "json-schema/draft-2020-12/meta/core.json"),
+    ("https://json-schema.org/draft/2020-12/meta/applicator", "json-schema/draft-2020-12/meta/applicator.json"),
+    ("https://json-schema.org/draft/2020-12/meta/unevaluated", "json-schema/draft-2020-12/meta/unevaluated.json"),
+    ("https://json-schema.org/draft/2020-12/meta/validation", "json-schema/draft-2020-12/meta/validation.json"),
+    ("https://json-schema.org/draft/2020-12/meta/meta-data", "json-schema/draft-2020-12/meta/meta-data.json"),
+    ("https://json-schema.org/draft/2020-12/meta/format-annotation", "json-schema/draft-2020-12/meta/format-annotation.json"),
+    ("https://json-schema.org/draft/2020-12/meta/content", "json-schema/draft-2020-12/meta/content.json"),
+    ("http://swagger.io/v2/schema.json", "openapi/v2.0/schema.json"),
+    ("https://spec.openapis.org/oas/3.0/schema/2024-10-18", "openapi/v3.0/schema-2024-10-18.json"),
+    ("https://spec.openapis.org/oas/3.1/schema/2025-09-15", "openapi/v3.1/schema-2025-09-15.json"),
+    ("https://spec.openapis.org/oas/3.1/schema-base/2025-09-15", "openapi/v3.1/schema-base-2025-09-15.json"),
+    ("https://spec.openapis.org/oas/3.1/dialect/2024-11-10", "openapi/v3.1/dialect-2024-11-10.json"),
+    ("https://spec.openapis.org/oas/3.1/meta/2024-11-10", "openapi/v3.1/meta-2024-11-10.json"),
+    ("https://spec.openapis.org/oas/3.2/schema/2025-09-17", "openapi/v3.2/schema-2025-09-17.json"),
+    ("https://spec.openapis.org/oas/3.2/schema-base/2025-09-17", "openapi/v3.2/schema-base-2025-09-17.json"),
+    ("https://spec.openapis.org/oas/3.2/dialect/2025-09-17", "openapi/v3.2/dialect-2025-09-17.json"),
+    ("https://spec.openapis.org/oas/3.2/meta/2025-09-17", "openapi/v3.2/meta-2025-09-17.json"),
+];
+
+/// The text of the bundled JSON Schema document known by `uri` (a trailing `#` does not matter), if there is one.
+pub fn json_schema(uri: &str) -> Option<String> {
+    let uri = uri.trim_end_matches('#');
+    let (_, path) = JSON_SCHEMAS.iter().find(|(known, _)| *known == uri)?;
+    get_text(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,6 +168,29 @@ mod tests {
         }
         index.extend_from_slice(&data);
         Box::leak(index.into_boxed_slice())
+    }
+
+    #[test]
+    fn every_bundled_json_schema_is_there_under_the_uri_it_says_it_is_and_nothing_is_left_out() {
+        for (uri, path) in JSON_SCHEMAS {
+            let text = get_text(path).unwrap_or_else(|| panic!("{path} is bundled"));
+            // The `$id` (`id` in draft 4) of the document, found in its text.
+            let key = if text.contains("\"$id\"") { "\"$id\"" } else { "\"id\"" };
+            let at = text.find(key).unwrap_or_else(|| panic!("{path} has an id"));
+            let rest = &text[at + key.len()..];
+            let start = rest.find('"').expect("a string") + 1;
+            let id = &rest[start..start + rest[start..].find('"').expect("its end")];
+            assert_eq!(id.trim_end_matches('#'), *uri, "{path}");
+            assert_eq!(json_schema(uri).as_deref(), Some(text.as_str()));
+            assert_eq!(json_schema(&format!("{uri}#")).as_deref(), Some(text.as_str()), "a trailing # does not matter");
+        }
+        // Every JSON file of the two sets is in the table.
+        for path in paths().filter(|p| p.starts_with("json-schema/") || p.starts_with("openapi/")) {
+            if path.ends_with(".json") {
+                assert!(JSON_SCHEMAS.iter().any(|(_, known)| *known == path), "{path} is bundled but not in JSON_SCHEMAS");
+            }
+        }
+        assert_eq!(json_schema("https://example.com/nope"), None);
     }
 
     #[test]
