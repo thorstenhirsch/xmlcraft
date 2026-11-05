@@ -1216,10 +1216,10 @@ fn doc_save(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         }
     }
     let prep = doc.prepare_save_as(&target);
-    let bytes = match doc.to_bytes() {
+    let bytes = match doc.to_bytes_for(&target) {
         Ok(bytes) => bytes,
         Err(SaveError::Unmappable(e)) if text_arg(args, "unmappable") == Some("references") => {
-            let written = doc.apply_character_references().and_then(|_| doc.to_bytes());
+            let written = doc.apply_character_references().and_then(|_| doc.to_bytes_for(&target));
             match written {
                 Ok(bytes) => bytes,
                 Err(_) => {

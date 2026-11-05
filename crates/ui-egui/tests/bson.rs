@@ -108,5 +108,5 @@ fn a_file_that_is_not_bson_is_not_opened_as_text() {
     assert!(!h.state_mut().open_path(&path), "refused");
     h.run_steps(3);
     assert!(h.state().tabs().iter().all(|t| t.name != "fake.bson"), "no tab for it");
-    assert!(h.query_by_label("this is not a BSON file").is_some() || h.state().tabs().is_empty(), "and the reason is shown");
+    assert!(h.query_by_label_contains("this is not a BSON file").is_some(), "and the reason is shown");
 }

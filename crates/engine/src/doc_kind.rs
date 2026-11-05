@@ -11,7 +11,7 @@ pub enum DocKind {
     Xml,
     Xsd,
     Dtd,
-    /// JSON, JSONC, JSON5 or JSON Lines.
+    /// JSON, JSONC, JSON5 or JSON Lines, and BSON (shown as Extended JSON).
     Json,
 }
 

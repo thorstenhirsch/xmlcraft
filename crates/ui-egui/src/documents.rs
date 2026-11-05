@@ -794,7 +794,7 @@ impl XmlCraftApp {
         }
         let Some(doc) = self.session.document_mut(index) else { return };
         let prep = doc.prepare_save_as(&path);
-        let bytes = match doc.to_bytes() {
+        let bytes = match doc.to_bytes_for(&path) {
             Ok(bytes) => bytes,
             Err(SaveError::Unmappable(error)) => {
                 doc.undo_save_as(prep);

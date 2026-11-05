@@ -23,6 +23,10 @@ pub(crate) fn analyze_bson(text: &str, version: u64) -> Analysis {
         xmlcraft_bson::Layout::Single => JsonFlavor::Json,
     };
     let mut analysis = analyze_json_as(text, version, flavor, Language::Bson);
+    // A file of no documents is a valid BSON file (an empty list), not an empty JSON text.
+    if text.trim_matches(|c: char| c.is_whitespace() || c == '\u{FEFF}').is_empty() {
+        analysis.diagnostics.retain(|d| d.code.key() != "json.empty-document");
+    }
     // Only a text that is JSON can be asked what it means.
     if analysis.diagnostics.iter().all(|d| d.severity() != xmlcraft_json_syntax::Severity::Error)
         && let Err(errors) = xmlcraft_bson::from_text(text)
@@ -185,7 +189,8 @@ impl Walk<'_> {
             return None;
         }
         let Data::Object(members) = &value.data else { return None };
-        let first = members.first().filter(|m| xmlcraft_bson::is_wrapper_name(&m.key))?;
+        // (`$code` may come after `$scope`, as in the conversion.)
+        let first = members.iter().find(|m| m.key == "$code").or_else(|| members.first().filter(|m| xmlcraft_bson::is_wrapper_name(&m.key)))?;
         let inner = match &first.value.data {
             Data::Object(inner) => inner.first().and_then(|m| label_of(&m.value)),
             _ => label_of(&first.value),
@@ -409,6 +414,13 @@ mod tests {
         );
         let shown: Vec<_> = typed.outline.iter().map(|i| (i.depth, i.name.as_str(), i.label.as_deref())).collect();
         assert_eq!(shown, [(0, "id", Some("0123456789abcdef01234567 ($oid)")), (0, "o", None), (1, "d", Some("5 ($date)"))]);
-        assert!(analyze_as(Language::Bson, "", 1).diagnostics.iter().all(|d| d.code.key() != "bson.invalid-value"));
+        // A file of no documents is valid BSON, not an empty JSON text.
+        assert!(analyze_as(Language::Bson, "", 1).diagnostics.is_empty());
+        assert!(analyze_as(Language::Bson, " \n", 1).diagnostics.is_empty());
+        assert!(!analyze_as(Language::Json(JsonFlavor::Json), "", 1).diagnostics.is_empty(), "while an empty JSON file is empty");
+        // JavaScript with a scope is one typed value, whichever member comes first.
+        let code = analyze_as(Language::Bson, "{\"f\": {\"$scope\": {\"x\": {\"$numberInt\": \"1\"}}, \"$code\": \"go()\"}}\n", 1);
+        let shown: Vec<_> = code.outline.iter().map(|i| (i.name.as_str(), i.label.as_deref())).collect();
+        assert_eq!(shown, [("f", Some("go() ($code)"))]);
     }
 }
