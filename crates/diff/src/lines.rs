@@ -112,6 +112,8 @@ pub struct LineDiff {
     /// The length of each text in bytes.
     pub old_len: usize,
     pub new_len: usize,
+    /// Every place where the lines are not the same, with whether the options leave it a difference (blank lines may not be).
+    gaps: Vec<(Hunk, bool)>,
 }
 
 impl LineDiff {
@@ -162,15 +164,20 @@ pub fn diff_lines(old: &str, new: &str, options: &LineOptions) -> LineDiff {
     let (a, a_at) = intern(old, &old_lines);
     let (b, b_at) = intern(new, &new_lines);
     let same: Vec<(usize, usize)> = matches(&a, &b, options.budget).into_iter().filter_map(|(i, j)| Some((*a_at.get(i)?, *b_at.get(j)?))).collect();
-    let mut hunks = hunks_between(&same, old_lines.len(), new_lines.len());
-    if options.ignore_blank_lines {
-        // A difference of nothing but blank lines is none.
-        let blank = |text: &str, lines: &[Range<usize>], r: &Range<usize>| {
-            r.clone().all(|i| lines.get(i).is_none_or(|l| text.get(l.clone()).unwrap_or_default().trim().is_empty()))
-        };
-        hunks.retain(|h| !(blank(old, &old_lines, &h.old) && blank(new, &new_lines, &h.new)));
-    }
-    LineDiff { old_lines, new_lines, hunks, same, old_len: old.len(), new_len: new.len() }
+    let all = hunks_between(&same, old_lines.len(), new_lines.len());
+    // A difference of nothing but blank lines is none, when they are ignored.
+    let blank = |text: &str, lines: &[Range<usize>], r: &Range<usize>| {
+        r.clone().all(|i| lines.get(i).is_none_or(|l| text.get(l.clone()).unwrap_or_default().trim().is_empty()))
+    };
+    let gaps: Vec<(Hunk, bool)> = all
+        .into_iter()
+        .map(|h| {
+            let real = !(options.ignore_blank_lines && blank(old, &old_lines, &h.old) && blank(new, &new_lines, &h.new));
+            (h, real)
+        })
+        .collect();
+    let hunks = gaps.iter().filter(|(_, real)| *real).map(|(h, _)| h.clone()).collect();
+    LineDiff { old_lines, new_lines, hunks, same, old_len: old.len(), new_len: new.len(), gaps }
 }
 
 /// The gaps between the matching lines.
@@ -236,27 +243,29 @@ pub fn diff_words(old: &str, new: &str) -> (Vec<Range<usize>>, Vec<Range<usize>>
 
 impl LineDiff {
     /// The differences as a unified diff (`@@ -a,b +c,d @@` hunks with `context` lines around them), the way `diff -u` writes it. The
-    /// texts must be those that were compared.
+    /// texts must be those that were compared. Differences that the options make none (blank lines) are written where they stand in a
+    /// block, so that its counts are right, but start no block of their own.
     pub fn unified(&self, old: &str, new: &str, old_name: &str, new_name: &str, context: usize) -> String {
         if self.hunks.is_empty() {
             return String::new();
         }
         let line = |text: &str, lines: &[Range<usize>], i: usize| text.get(lines.get(i).cloned().unwrap_or(0..0)).unwrap_or_default().to_owned();
         let mut out = format!("--- {old_name}\n+++ {new_name}\n");
-        // Hunks that are no more than twice the context apart share a block.
-        let mut blocks: Vec<Vec<&Hunk>> = Vec::new();
-        for h in &self.hunks {
+        let reach = context.saturating_mul(2);
+        // Differences no more than twice the context apart share a block.
+        let mut blocks: Vec<Vec<&(Hunk, bool)>> = Vec::new();
+        for g in &self.gaps {
             match blocks.last_mut() {
-                Some(block) if block.last().is_some_and(|p| h.old.start.saturating_sub(p.old.end) <= context * 2) => block.push(h),
-                _ => blocks.push(vec![h]),
+                Some(block) if block.last().is_some_and(|(p, _)| g.0.old.start.saturating_sub(p.old.end) <= reach) => block.push(g),
+                _ => blocks.push(vec![g]),
             }
         }
-        for block in blocks {
-            let (Some(first), Some(last)) = (block.first(), block.last()) else { continue };
+        for block in blocks.into_iter().filter(|b| b.iter().any(|(_, real)| *real)) {
+            let (Some((first, _)), Some((last, _))) = (block.first(), block.last()) else { continue };
             let from = first.old.start.saturating_sub(context);
-            let to = (last.old.end + context).min(self.old_lines.len());
+            let to = last.old.end.saturating_add(context).min(self.old_lines.len());
             let new_from = first.new.start.saturating_sub(context);
-            let new_to = (last.new.end + context).min(self.new_lines.len());
+            let new_to = last.new.end.saturating_add(context).min(self.new_lines.len());
             let count = |a: usize, b: usize| b.saturating_sub(a);
             let start = |from: usize, n: usize| if n == 0 { from } else { from + 1 };
             out.push_str(&format!(
@@ -267,7 +276,7 @@ impl LineDiff {
                 count(new_from, new_to)
             ));
             let mut i = from;
-            for h in &block {
+            for (h, _) in &block {
                 for k in i..h.old.start {
                     out.push_str(&format!(" {}\n", line(old, &self.old_lines, k)));
                 }

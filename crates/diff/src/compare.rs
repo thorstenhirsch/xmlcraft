@@ -1,6 +1,6 @@
 //! The differences between two trees.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::ops::Range;
 
 use crate::node::{Node, NodeKind, TreeOptions};
@@ -28,7 +28,9 @@ pub struct Change {
     pub old: Option<Range<usize>>,
     /// … and in the second (none for a removal).
     pub new: Option<Range<usize>>,
-    /// Where the parent is in the first text (what an addition goes into) and in the second (what a removal came out of).
+    /// The parent of the node in the first text, and in the second (for an addition, the parent in the first text is the one that
+    /// corresponds to the parent in the second, and the other way round for a removal: where it would go). Empty for a change of the
+    /// root, which has no parent.
     pub old_parent: Range<usize>,
     pub new_parent: Range<usize>,
     /// What the node was and is: the value of a leaf, the name of an element, `{…}` or `[…]` for a container.
@@ -73,6 +75,13 @@ struct Ctx<'a> {
     changes: Vec<Change>,
 }
 
+/// Where a node is in each document: its path, and its parent.
+#[derive(Clone, Copy)]
+struct Place<'a> {
+    path: &'a str,
+    parent: Option<&'a Node>,
+}
+
 /// Compare two trees (made by [`Node::from_xml`], [`Node::from_json`] or [`Node::from_yaml`]; both of the same family).
 pub fn compare_trees(mut old: Node, mut new: Node, options: &TreeOptions) -> Vec<Change> {
     old.seal(options);
@@ -81,7 +90,8 @@ pub fn compare_trees(mut old: Node, mut new: Node, options: &TreeOptions) -> Vec
     let mut ctx = Ctx { options, xml, changes: Vec::new() };
     let root_path = if xml { "/".to_owned() } else { String::new() };
     if old.hash != new.hash {
-        ctx.pair(&old, &new, &root_path);
+        let place = Place { path: &root_path, parent: None };
+        ctx.pair(&old, &new, place, place);
     }
     ctx.changes
 }
@@ -93,7 +103,7 @@ fn escape_pointer(key: &str) -> String {
 impl Ctx<'_> {
     /// Names the nodes of a list of siblings by their place among them.
     fn labels(&self, parent: &Node, nodes: &[&Node]) -> Vec<String> {
-        let mut seen: HashMap<(NodeKind, String), usize> = HashMap::new();
+        let mut seen: HashMap<(NodeKind, &str), usize> = HashMap::new();
         nodes
             .iter()
             .enumerate()
@@ -101,7 +111,7 @@ impl Ctx<'_> {
                 if !self.xml {
                     return if parent.kind == NodeKind::Array { i.to_string() } else { escape_pointer(&n.name) };
                 }
-                let count = seen.entry((n.kind, n.key.clone())).and_modify(|c| *c += 1).or_insert(1);
+                let count = seen.entry((n.kind, n.key.as_str())).and_modify(|c| *c += 1).or_insert(1);
                 match n.kind {
                     NodeKind::Element => format!("{}[{count}]", n.name),
                     NodeKind::Attribute => format!("@{}", n.name),
@@ -114,51 +124,54 @@ impl Ctx<'_> {
             .collect()
     }
 
-    fn join(&self, path: &str, label: &str) -> String {
+    fn join(path: &str, label: &str) -> String {
         format!("{}/{label}", path.trim_end_matches('/'))
     }
 
-    fn push(&mut self, kind: ChangeKind, path: String, old: Option<(&Node, &Node)>, new: Option<(&Node, &Node)>) {
-        let span = |p: &Option<(&Node, &Node)>| p.map(|(n, _)| n.span.clone());
-        let parent = |p: &Option<(&Node, &Node)>| p.map(|(_, parent)| parent.span.clone());
-        let (old_parent, new_parent) = match (old, new) {
-            (Some(o), Some(n)) => (parent(&Some(o)).unwrap_or(0..0), parent(&Some(n)).unwrap_or(0..0)),
-            (Some(o), None) => (parent(&Some(o)).unwrap_or(0..0), 0..0),
-            (None, Some(n)) => (0..0, parent(&Some(n)).unwrap_or(0..0)),
-            (None, None) => (0..0, 0..0),
-        };
+    /// Record a difference. `old_at` and `new_at` are where the node is in each document (none: it is not there; the parent of the
+    /// place is then where it would go).
+    fn push(&mut self, kind: ChangeKind, path: String, old_at: (Option<&Node>, Option<&Node>), new_at: (Option<&Node>, Option<&Node>)) {
+        let span = |n: Option<&Node>| n.map(|n| n.span.clone());
         self.changes.push(Change {
             kind,
             path,
-            old: span(&old),
-            new: span(&new),
-            old_parent,
-            new_parent,
-            old_text: old.map(|(n, _)| shown(n)),
-            new_text: new.map(|(n, _)| shown(n)),
+            old: span(old_at.0),
+            new: span(new_at.0),
+            old_parent: span(old_at.1).unwrap_or(0..0),
+            new_parent: span(new_at.1).unwrap_or(0..0),
+            old_text: old_at.0.map(shown),
+            new_text: new_at.0.map(shown),
         });
     }
 
     /// Two nodes that stand for each other, with different hashes.
-    fn pair(&mut self, old: &Node, new: &Node, path: &str) {
+    fn pair(&mut self, old: &Node, new: &Node, old_place: Place<'_>, new_place: Place<'_>) {
         if old.kind != new.kind || old.kind.is_leaf() {
-            self.push(ChangeKind::Changed, path.to_owned(), Some((old, old)), Some((new, new)));
+            self.push(ChangeKind::Changed, new_place.path.to_owned(), (Some(old), old_place.parent), (Some(new), new_place.parent));
         } else {
-            self.children(old, new, path);
+            self.children(old, new, old_place.path, new_place.path);
         }
     }
 
-    fn children(&mut self, old: &Node, new: &Node, path: &str) {
+    fn children(&mut self, old: &Node, new: &Node, old_path: &str, new_path: &str) {
         let (old_keyed, old_ordered): (Vec<&Node>, Vec<&Node>) =
             old.children.iter().partition(|c| c.kind == NodeKind::Attribute || old.kind == NodeKind::Object);
         let (new_keyed, new_ordered): (Vec<&Node>, Vec<&Node>) =
             new.children.iter().partition(|c| c.kind == NodeKind::Attribute || new.kind == NodeKind::Object);
-        self.keyed(old, new, &old_keyed, &new_keyed, path);
-        self.ordered(old, new, &old_ordered, &new_ordered, path);
+        self.keyed(old, new, &old_keyed, &new_keyed, old_path, new_path);
+        self.ordered(old, new, &old_ordered, &new_ordered, old_path, new_path);
+    }
+
+    fn removed(&mut self, node: &Node, label: &str, old: &Node, new: &Node, old_path: &str) {
+        self.push(ChangeKind::Removed, Self::join(old_path, label), (Some(node), Some(old)), (None, Some(new)));
+    }
+
+    fn added(&mut self, node: &Node, label: &str, old: &Node, new: &Node, new_path: &str) {
+        self.push(ChangeKind::Added, Self::join(new_path, label), (None, Some(old)), (Some(node), Some(new)));
     }
 
     /// Attributes and the members of objects: found by name (the n-th of a repeated name by its number), in no order.
-    fn keyed(&mut self, old: &Node, new: &Node, olds: &[&Node], news: &[&Node], path: &str) {
+    fn keyed(&mut self, old: &Node, new: &Node, olds: &[&Node], news: &[&Node], old_path: &str, new_path: &str) {
         let old_labels = self.labels(old, olds);
         let new_labels = self.labels(new, news);
         let numbered = |nodes: &[&Node]| -> Vec<(String, usize)> {
@@ -175,6 +188,7 @@ impl Ctx<'_> {
         let index: HashMap<&(String, usize), usize> = new_ids.iter().enumerate().map(|(i, k)| (k, i)).collect();
         let mut used = vec![false; news.len()];
         for (i, o) in olds.iter().enumerate() {
+            let old_label = old_labels.get(i).map_or("", String::as_str);
             let found = old_ids.get(i).and_then(|id| index.get(id)).copied();
             match found.and_then(|j| news.get(j).map(|n| (j, *n))) {
                 Some((j, n)) => {
@@ -182,105 +196,103 @@ impl Ctx<'_> {
                         *u = true;
                     }
                     if o.hash != n.hash {
-                        let label = new_labels.get(j).cloned().unwrap_or_default();
-                        let p = self.join(path, &label);
-                        self.pair_in(o, n, old, new, &p);
+                        let (op, np) = (Self::join(old_path, old_label), Self::join(new_path, new_labels.get(j).map_or("", String::as_str)));
+                        self.pair(o, n, Place { path: &op, parent: Some(old) }, Place { path: &np, parent: Some(new) });
                     }
                 }
-                None => {
-                    let p = self.join(path, old_labels.get(i).map_or("", String::as_str));
-                    self.push(ChangeKind::Removed, p, Some((o, old)), None);
-                    if let Some(c) = self.changes.last_mut() {
-                        c.new_parent = new.span.clone();
-                    }
-                }
+                None => self.removed(o, old_label, old, new, old_path),
             }
         }
         for (j, n) in news.iter().enumerate() {
             if used.get(j) == Some(&false) {
-                let p = self.join(path, new_labels.get(j).map_or("", String::as_str));
-                self.push(ChangeKind::Added, p, None, Some((n, new)));
-                if let Some(c) = self.changes.last_mut() {
-                    c.old_parent = old.span.clone();
-                }
+                self.added(n, new_labels.get(j).map_or("", String::as_str), old, new, new_path);
             }
         }
     }
 
-    /// `pair` with the parents known (for the places of the parents).
-    fn pair_in(&mut self, o: &Node, n: &Node, old_parent: &Node, new_parent: &Node, path: &str) {
-        let before = self.changes.len();
-        self.pair(o, n, path);
-        for c in self.changes.get_mut(before..).unwrap_or_default() {
-            if c.path == path {
-                c.old_parent = old_parent.span.clone();
-                c.new_parent = new_parent.span.clone();
-            }
-        }
-    }
-
-    /// Children in their order: the longest run of equal ones is kept, and between those the ones of the same sort stand for each other.
-    fn ordered(&mut self, old: &Node, new: &Node, olds: &[&Node], news: &[&Node], path: &str) {
+    /// Children in their order: the longest run of equal ones is kept, and between those the ones of the same sort stand for each other
+    /// (or, when the order does not matter, equal ones are found wherever they are).
+    fn ordered(&mut self, old: &Node, new: &Node, olds: &[&Node], news: &[&Node], old_path: &str, new_path: &str) {
         let old_labels = self.labels(old, olds);
         let new_labels = self.labels(new, news);
+        let unordered = self.options.ignore_child_order;
         let mut stands: Vec<Option<usize>> = vec![None; olds.len()];
         let mut taken = vec![false; news.len()];
-        let pairs: Vec<(usize, usize)> = if self.options.ignore_child_order {
-            // Equal ones are found wherever they are; the first unused equal one of the second list.
-            let mut by_hash: HashMap<u64, Vec<usize>> = HashMap::new();
+        let pairs: Vec<(usize, usize)> = if unordered {
+            // The first unused equal one of the second list.
+            let mut by_hash: HashMap<u128, VecDeque<usize>> = HashMap::new();
             for (j, n) in news.iter().enumerate() {
-                by_hash.entry(n.hash).or_default().push(j);
+                by_hash.entry(n.hash).or_default().push_back(j);
             }
-            for v in by_hash.values_mut() {
-                v.reverse();
-            }
-            olds.iter().enumerate().filter_map(|(i, o)| by_hash.get_mut(&o.hash).and_then(Vec::pop).map(|j| (i, j))).collect()
+            olds.iter().enumerate().filter_map(|(i, o)| by_hash.get_mut(&o.hash).and_then(VecDeque::pop_front).map(|j| (i, j))).collect()
         } else {
-            let a: Vec<u64> = olds.iter().map(|n| n.hash).collect();
-            let b: Vec<u64> = news.iter().map(|n| n.hash).collect();
+            let a: Vec<u128> = olds.iter().map(|n| n.hash).collect();
+            let b: Vec<u128> = news.iter().map(|n| n.hash).collect();
             matches(&a, &b, self.options.budget)
         };
-        for &(i, j) in &pairs {
+        for (i, j) in pairs {
             if let (Some(s), Some(t)) = (stands.get_mut(i), taken.get_mut(j)) {
                 *s = Some(j);
                 *t = true;
             }
         }
-        // Between the equal ones, those of the same sort (in order, when the order matters) stand for each other.
-        let same_sort = |a: &Node, b: &Node| a.kind == b.kind && a.key == b.key;
+        // Between the equal ones, those of the same sort stand for each other: in one pass, with the unused ones of the second list in a
+        // queue for each sort.
+        let mut queues: HashMap<(NodeKind, &str), VecDeque<usize>> = HashMap::new();
+        for (j, n) in news.iter().enumerate() {
+            if taken.get(j) == Some(&false) {
+                queues.entry((n.kind, n.key.as_str())).or_default().push_back(j);
+            }
+        }
+        // Where the next equal one of the second list is, after each of the first.
+        let mut limit = vec![news.len(); olds.len()];
+        let mut upcoming = news.len();
+        for i in (0..olds.len()).rev() {
+            if let Some(slot) = limit.get_mut(i) {
+                *slot = upcoming;
+            }
+            if let Some(Some(j)) = stands.get(i) {
+                upcoming = *j;
+            }
+        }
         let mut floor = 0;
-        for i in 0..olds.len() {
+        for (i, o) in olds.iter().enumerate() {
             if let Some(Some(j)) = stands.get(i) {
                 floor = j + 1;
                 continue;
             }
-            let Some(o) = olds.get(i) else { continue };
-            let limit = stands.iter().skip(i + 1).flatten().min().copied().unwrap_or(news.len());
-            let range = if self.options.ignore_child_order { 0..news.len() } else { floor..limit.max(floor) };
-            let candidate = range.into_iter().find(|&j| taken.get(j) == Some(&false) && news.get(j).is_some_and(|n| same_sort(o, n)));
-            if let Some(j) = candidate {
+            let Some(queue) = queues.get_mut(&(o.kind, o.key.as_str())) else { continue };
+            let ceiling = limit.get(i).copied().unwrap_or(news.len());
+            let chosen = if unordered {
+                queue.pop_front()
+            } else {
+                while queue.front().is_some_and(|&j| j < floor) {
+                    queue.pop_front();
+                }
+                match queue.front() {
+                    Some(&j) if j < ceiling => queue.pop_front(),
+                    _ => None,
+                }
+            };
+            if let Some(j) = chosen {
                 if let (Some(s), Some(t)) = (stands.get_mut(i), taken.get_mut(j)) {
                     *s = Some(j);
                     *t = true;
                 }
-                if !self.options.ignore_child_order {
-                    floor = j + 1;
-                }
+                floor = j + 1;
             }
         }
         // Report in the order of the first document, with the additions where they stand in the second.
-        let mut reported_new = vec![false; news.len()];
         let mut next_new = 0;
         for (i, o) in olds.iter().enumerate() {
+            let old_label = old_labels.get(i).map_or("", String::as_str);
             match stands.get(i).copied().flatten() {
                 Some(j) => {
-                    // Additions before it.
                     while next_new < j {
-                        if taken.get(next_new) == Some(&false) && reported_new.get(next_new) == Some(&false) {
-                            self.add(new_labels.get(next_new), news.get(next_new), old, new, path);
-                            if let Some(r) = reported_new.get_mut(next_new) {
-                                *r = true;
-                            }
+                        if taken.get(next_new) == Some(&false)
+                            && let Some(n) = news.get(next_new)
+                        {
+                            self.added(n, new_labels.get(next_new).map_or("", String::as_str), old, new, new_path);
                         }
                         next_new += 1;
                     }
@@ -288,32 +300,19 @@ impl Ctx<'_> {
                     if let Some(n) = news.get(j)
                         && o.hash != n.hash
                     {
-                        let p = self.join(path, new_labels.get(j).map_or("", String::as_str));
-                        self.pair_in(o, n, old, new, &p);
+                        let (op, np) = (Self::join(old_path, old_label), Self::join(new_path, new_labels.get(j).map_or("", String::as_str)));
+                        self.pair(o, n, Place { path: &op, parent: Some(old) }, Place { path: &np, parent: Some(new) });
                     }
                 }
-                None => {
-                    let p = self.join(path, old_labels.get(i).map_or("", String::as_str));
-                    self.push(ChangeKind::Removed, p, Some((o, old)), None);
-                    if let Some(c) = self.changes.last_mut() {
-                        c.new_parent = new.span.clone();
-                    }
-                }
+                None => self.removed(o, old_label, old, new, old_path),
             }
         }
-        for j in 0..news.len() {
-            if taken.get(j) == Some(&false) && reported_new.get(j) == Some(&false) {
-                self.add(new_labels.get(j), news.get(j), old, new, path);
+        for j in next_new..news.len() {
+            if taken.get(j) == Some(&false)
+                && let Some(n) = news.get(j)
+            {
+                self.added(n, new_labels.get(j).map_or("", String::as_str), old, new, new_path);
             }
-        }
-    }
-
-    fn add(&mut self, label: Option<&String>, node: Option<&&Node>, old: &Node, new: &Node, path: &str) {
-        let Some(n) = node else { return };
-        let p = self.join(path, label.map_or("", String::as_str));
-        self.push(ChangeKind::Added, p, None, Some((n, new)));
-        if let Some(c) = self.changes.last_mut() {
-            c.old_parent = old.span.clone();
         }
     }
 }

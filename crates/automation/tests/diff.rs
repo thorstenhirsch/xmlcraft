@@ -79,7 +79,7 @@ fn files_and_open_documents_are_compared_inside_the_root_only() {
     std::fs::write(inside.path().join("b.yaml"), "k: 2\n").expect("writes");
     std::fs::write(outside.path().join("s.json"), "{}").expect("writes");
     let mut a = Automation::with_root(inside.path()).expect("root");
-    // A JSON file against a YAML file: the family of the first named document decides how they are read.
+    // A JSON file against a YAML file: each named document is read in its own format (both become the same trees).
     let r = call(&mut a, "diff_compare", json!({ "old": { "path": "a.json" }, "new": { "path": "b.yaml" } })).expect("runs");
     assert_eq!((r["format"].clone(), r["changes"][0]["path"].as_str()), (json!({ "old": "json", "new": "yaml" }), Some("/k")), "{r}");
     let opened = call(&mut a, "doc_open", json!({ "path": "b.yaml" })).expect("opens");
@@ -110,4 +110,27 @@ fn a_merge_takes_both_changes_and_writes_conflicts_as_asked() {
     let mut bad = conflict;
     bad["conflicts"] = json!("coin");
     assert!(matches!(call(&mut a, "diff_merge", bad), Err(ToolError::InvalidArgs(_))));
+}
+
+#[test]
+fn a_change_says_where_its_parents_are_and_the_merge_offers_only_what_it_reads() {
+    let mut a = Automation::new();
+    let r = call(
+        &mut a,
+        "diff_compare",
+        json!({ "old": { "text": "{\"a\": {\"x\": 1}}" }, "new": { "text": "{\"a\": {\"x\": 1, \"y\": 2}}" }, "format": "json" }),
+    )
+    .expect("runs");
+    assert_eq!(r["changes"][0]["kind"], "added", "{r}");
+    assert_eq!((r["changes"][0]["new_parent"]["column"].as_u64(), r["changes"][0]["old_parent"]["column"].as_u64()), (Some(7), Some(7)));
+    let tool = xmlcraft_automation::find_tool("diff_merge").expect("the tool");
+    let properties = tool.input_schema["properties"].as_object().expect("properties").keys().cloned().collect::<Vec<_>>();
+    for read in ["base", "ours", "theirs", "conflicts", "whitespace", "ignore_case", "ignore_blank_lines"] {
+        assert!(properties.contains(&read.to_owned()), "{read}");
+    }
+    for ignored in
+        ["format", "mode", "ignore_comments", "ignore_child_order", "numbers_by_value", "ignore_prefixes", "ignore_processing_instructions"]
+    {
+        assert!(!properties.contains(&ignored.to_owned()), "{ignored} is not read by a merge");
+    }
 }

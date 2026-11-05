@@ -2,8 +2,8 @@
 
 use proptest::prelude::*;
 use xmlcraft_diff::{
-    ChangeKind, Choice, Family, HunkKind, LineOptions, Region, TreeOptions, Whitespace, compare_documents, diff_lines, diff_words, merge3,
-    split_lines,
+    ChangeKind, Choice, Family, HunkKind, LineOptions, Node, Region, TreeOptions, Whitespace, compare_documents, compare_mixed, diff_lines,
+    diff_words, merge3, split_lines,
 };
 
 fn changes(old: &str, new: &str, family: Family) -> Vec<String> {
@@ -125,6 +125,9 @@ fn json_and_yaml_differences_are_json_pointers() {
     .expect("reads");
     assert!(same.is_empty(), "{same:?}");
     // YAML reads into the same trees, so a JSON and a YAML text of the same data have no difference.
+    let across =
+        compare_mixed("{\"a\": 1, \"b\": [\"x\", \"y\"]}", Family::Json, "b: [x, y]\na: 1\n", Family::Yaml, &TreeOptions::default()).expect("reads");
+    assert!(across.is_empty(), "{across:?}");
     let y = compare_documents("a: 1\nb: [x, y]\n", "a: 1\nb: [x, z]\n", Family::Yaml, &TreeOptions::default()).expect("reads");
     assert_eq!(y.iter().map(|c| (c.kind, c.path.as_str())).collect::<Vec<_>>(), [(ChangeKind::Changed, "/b/1")]);
     assert!(compare_documents("{\"a\": ", "{}", Family::Json, &TreeOptions::default()).is_err());
@@ -178,6 +181,67 @@ fn three_way_merges_keep_both_sets_of_changes() {
     assert_eq!(merge3("a\nb", "a\nB", "a\nb", &LineOptions::default()).render(Choice::Markers), "a\nB");
 }
 
+/// Whether every `@@ -a,b +c,d @@` block has b lines of the old side (context and `-`) and d lines of the new (context and `+`).
+fn counts_agree(unified: &str) -> bool {
+    let mut blocks: Vec<(usize, usize, usize, usize)> = Vec::new();
+    for line in unified.lines().skip(2) {
+        if let Some(head) = line.strip_prefix("@@ -") {
+            let numbers: Vec<usize> =
+                head.split(|c: char| !c.is_ascii_digit()).filter(|p| !p.is_empty()).map(|p| p.parse().expect("number")).collect();
+            blocks.push((numbers[1], numbers[3], 0, 0));
+        } else if let Some(last) = blocks.last_mut() {
+            match line.chars().next() {
+                Some(' ') => {
+                    last.2 += 1;
+                    last.3 += 1;
+                }
+                Some('-') => last.2 += 1,
+                Some('+') => last.3 += 1,
+                _ => {}
+            }
+        }
+    }
+    blocks.iter().all(|b| b.0 == b.2 && b.1 == b.3)
+}
+
+fn arb_json() -> impl Strategy<Value = String> {
+    let leaf = prop_oneof![
+        Just("null".to_owned()),
+        Just("true".to_owned()),
+        (-5i32..5).prop_map(|n| n.to_string()),
+        "[a-c ]{0,3}".prop_map(|s| serde_json::to_string(&s).unwrap_or_default()),
+    ];
+    leaf.prop_recursive(3, 20, 4, |inner| {
+        prop_oneof![
+            proptest::collection::vec(inner.clone(), 0..4).prop_map(|v| format!("[{}]", v.join(","))),
+            proptest::collection::vec(("[a-c]{1,2}", inner), 0..4).prop_map(|v| {
+                let mut seen = std::collections::HashSet::new();
+                let members: Vec<String> = v
+                    .into_iter()
+                    .filter(|(k, _)| seen.insert(k.clone()))
+                    .map(|(k, x)| format!("{}:{}", serde_json::to_string(&k).unwrap_or_default(), x))
+                    .collect();
+                format!("{{{}}}", members.join(","))
+            }),
+        ]
+    })
+}
+
+fn arb_xml() -> impl Strategy<Value = String> {
+    let leaf = prop_oneof![Just(String::new()), "[a-c ]{1,3}"];
+    let element = leaf.prop_recursive(3, 12, 3, |inner| {
+        ("[a-c]", proptest::collection::vec(("[x-z]", "[a-c]{0,2}"), 0..3), proptest::collection::vec(inner, 0..3)).prop_map(
+            |(name, attributes, children)| {
+                let mut seen = std::collections::HashSet::new();
+                let attrs: String = attributes.into_iter().filter(|(k, _)| seen.insert(k.clone())).map(|(k, v)| format!(" {k}=\"{v}\"")).collect();
+                let content: String = children.into_iter().map(|c| if c.starts_with('<') || c.is_empty() { c } else { c.replace('<', "") }).collect();
+                format!("<{name}{attrs}>{content}</{name}>")
+            },
+        )
+    });
+    element.prop_map(|e| if e.starts_with('<') { e } else { format!("<r>{e}</r>") })
+}
+
 fn text() -> impl Strategy<Value = String> {
     proptest::collection::vec(prop_oneof![Just("a"), Just("b"), Just("c"), Just("d"), Just("")], 0..12).prop_map(|lines| lines.join("\n"))
 }
@@ -210,13 +274,47 @@ proptest! {
     }
 
     #[test]
-    fn a_tree_has_no_difference_with_itself_and_any_text_compares_without_a_panic(a in "[ -~]{0,60}", b in "[ -~]{0,60}") {
+    fn any_text_compares_without_a_panic(a in "[ -~]{0,60}", b in "[ -~]{0,60}") {
         for family in [Family::Xml, Family::Json, Family::Yaml] {
             let _ = compare_documents(&a, &b, family, &TreeOptions::default());
-            if let Ok(found) = compare_documents(&a, &a, family, &TreeOptions::default()) {
-                prop_assert!(found.is_empty());
-            }
         }
+    }
+
+    #[test]
+    fn a_well_formed_document_has_no_difference_with_itself(json in arb_json(), xml in arb_xml()) {
+        let none = TreeOptions::default();
+        for (text, family) in [(&json, Family::Json), (&json, Family::Yaml), (&xml, Family::Xml)] {
+            let found = compare_documents(text, text, family, &none).map_err(|e| TestCaseError::fail(format!("{e} in {text}")))?;
+            prop_assert!(found.is_empty(), "{text}: {found:?}");
+        }
+        // Whatever the options leave out, a document is still the same as itself.
+        let all = TreeOptions {
+            whitespace: Whitespace::Collapse,
+            ignore_case: true,
+            ignore_comments: true,
+            ignore_child_order: true,
+            numbers_by_value: true,
+            ignore_prefixes: true,
+            ..none
+        };
+        for (text, family) in [(&json, Family::Json), (&xml, Family::Xml)] {
+            prop_assert!(compare_documents(text, text, family, &all).map_err(|e| TestCaseError::fail(e.to_string()))?.is_empty());
+        }
+    }
+
+    #[test]
+    fn what_differs_is_found_and_what_is_found_differs(a in arb_json(), b in arb_json()) {
+        let found = compare_documents(&a, &b, Family::Json, &TreeOptions::default()).map_err(|e| TestCaseError::fail(e.to_string()))?;
+        let (x, y): (serde_json::Value, serde_json::Value) = (serde_json::from_str(&a).expect("json"), serde_json::from_str(&b).expect("json"));
+        // (serde_json compares 1 and 1.0 as different too, and the order of members does not matter to either.)
+        prop_assert_eq!(found.is_empty(), x == y, "{} / {}: {:?}", a, b, found);
+    }
+
+    #[test]
+    fn a_unified_diff_has_the_counts_it_says(a in text(), b in text(), context in 0usize..4, blank in proptest::bool::ANY) {
+        let o = LineOptions { ignore_blank_lines: blank, ..LineOptions::default() };
+        let d = diff_lines(&a, &b, &o);
+        prop_assert!(counts_agree(&d.unified(&a, &b, "a", "b", context)));
     }
 }
 
@@ -248,4 +346,126 @@ fn equal_elements_are_found_wherever_they_are_when_the_order_does_not_matter() {
         ["changed /r[1]/i[3]/text()[1]: 1 → 9"],
         "the one that has no equal is the one that changed (named by its place in the second document)"
     );
+}
+
+#[test]
+fn removed_nodes_are_named_by_their_place_in_the_first_document() {
+    let found = changes(r#"{"a": [1, {"y": 2, "z": 3}]}"#, r#"{"a": [{"y": 2}]}"#, Family::Json);
+    assert!(found.contains(&"removed /a/0: 1".to_owned()), "{found:?}");
+    assert!(found.contains(&"removed /a/1/z: 3".to_owned()), "the object was at 1 before it was at 0: {found:?}");
+    let xml = changes("<r><a/><b><c/></b></r>", "<r><b/></r>", Family::Xml);
+    assert!(xml.iter().any(|c| c.starts_with("removed /r[1]/a[1]")) && xml.iter().any(|c| c.starts_with("removed /r[1]/b[1]/c[1]")), "{xml:?}");
+}
+
+#[test]
+fn a_change_of_the_root_has_no_parent() {
+    let found = compare_documents("[1]", "{\"a\": 1}", Family::Json, &TreeOptions::default()).expect("reads");
+    assert_eq!(found.len(), 1);
+    assert_eq!(
+        (found[0].kind, found[0].path.as_str(), found[0].old_parent.clone(), found[0].new_parent.clone()),
+        (ChangeKind::Changed, "", 0..0, 0..0)
+    );
+}
+
+#[test]
+fn many_changed_items_are_compared_in_linear_time() {
+    let items = |f: &dyn Fn(usize) -> String| format!("[{}]", (0..30_000).map(f).collect::<Vec<_>>().join(","));
+    let (old, new) = (items(&|i| format!("{{\"v\": {i}}}")), items(&|i| format!("{{\"v\": {}}}", i + 1_000_000)));
+    for ignore_child_order in [false, true] {
+        let started = std::time::Instant::now();
+        let found = compare_documents(&old, &new, Family::Json, &TreeOptions { ignore_child_order, ..TreeOptions::default() }).expect("reads");
+        assert_eq!(found.len(), 30_000);
+        assert!(started.elapsed() < std::time::Duration::from_secs(20), "{:?}", started.elapsed());
+    }
+}
+
+#[test]
+fn white_space_order_numbers_and_prefixes_apply_where_the_documentation_says() {
+    let ends = TreeOptions { whitespace: Whitespace::Ends, ..TreeOptions::default() };
+    assert!(compare_documents(r#"{"a": " x "}"#, r#"{"a": "x"}"#, Family::Json, &ends).expect("reads").is_empty(), "strings too");
+    let order = TreeOptions { ignore_child_order: true, ..TreeOptions::default() };
+    assert!(compare_documents("[1, 2, 3]", "[3, 1, 2]", Family::Json, &order).expect("reads").is_empty(), "the items of an array too");
+    assert!(!compare_documents("[1, 2, 3]", "[3, 1, 2]", Family::Json, &TreeOptions::default()).expect("reads").is_empty());
+    let by_value = TreeOptions { numbers_by_value: true, ..TreeOptions::default() };
+    assert!(compare_documents(r#"{"a": 0xFF, "b": -0x10}"#, r#"{"a": 255, "b": -16}"#, Family::Json, &by_value).expect("reads").is_empty());
+    assert!(!compare_documents(r#"{"a": 0xFF}"#, r#"{"a": 255}"#, Family::Json, &TreeOptions::default()).expect("reads").is_empty());
+    // The reserved prefixes: `xml:` is a namespace of its own, and declarations are not compared when prefixes are ignored.
+    let prefixes = TreeOptions { ignore_prefixes: true, ..TreeOptions::default() };
+    let (p, q) = (r#"<p:a xmlns:p="u" xml:lang="en"/>"#, r#"<q:a xmlns:q="u" xml:lang="en"/>"#);
+    assert!(compare_documents(p, q, Family::Xml, &prefixes).expect("reads").is_empty());
+    assert!(!compare_documents(p, r#"<q:a xmlns:q="u" xml:lang="de"/>"#, Family::Xml, &prefixes).expect("reads").is_empty());
+    assert!(!compare_documents(r#"<a xmlns:p="u"/>"#, r#"<a xmlns:q="u"/>"#, Family::Xml, &TreeOptions::default()).expect("reads").is_empty());
+    assert!(compare_documents(r#"<a xmlns:p="u"/>"#, r#"<a xmlns:q="u"/>"#, Family::Xml, &prefixes).expect("reads").is_empty());
+}
+
+#[test]
+fn data_nested_too_deeply_is_refused() {
+    use xmlcraft_json_syntax::{Data, Value};
+    let mut value = Value { span: 0..0, data: Data::Null };
+    for _ in 0..600 {
+        value = Value { span: 0..0, data: Data::Array(vec![value]) };
+    }
+    assert!(Node::from_value(&value).is_err());
+    let mut shallow = Value { span: 0..0, data: Data::Null };
+    for _ in 0..100 {
+        shallow = Value { span: 0..0, data: Data::Array(vec![shallow]) };
+    }
+    assert!(Node::from_value(&shallow).is_ok());
+}
+
+#[test]
+fn a_unified_diff_counts_right_with_blank_lines_ignored_and_with_huge_context() {
+    let (old, new) = ("a\n\nb\nc\nd\ne\nf\n", "a\nb\nc\nd\nE\nf\n");
+    let o = LineOptions { ignore_blank_lines: true, ..LineOptions::default() };
+    let d = diff_lines(old, new, &o);
+    assert_eq!(d.hunks.len(), 1, "the blank line is no difference");
+    let text = d.unified(old, new, "a", "b", 3);
+    assert!(counts_agree(&text), "{text}");
+    assert!(text.contains("@@ -1,7 +1,6 @@"), "{text}");
+    // A difference of blank lines alone has no block.
+    assert!(
+        diff_lines("a\n\nb\n", "a\nb\n", &o).unified("a\n\nb\n", "a\nb\n", "a", "b", 3).is_empty()
+            || diff_lines("a\n\nb\n", "a\nb\n", &o).hunks.is_empty()
+    );
+    for context in [usize::MAX, usize::MAX / 2 + 1] {
+        assert!(counts_agree(&d.unified(old, new, "a", "b", context)));
+    }
+}
+
+#[test]
+fn a_merge_keeps_what_the_options_ignore_and_marks_conflicts_cleanly() {
+    let case = LineOptions { ignore_case: true, ..LineOptions::default() };
+    assert_eq!(merge3("a\nb\n", "a\nb\n", "A\nb\n", &case).render(Choice::Markers), "A\nb\n", "their change of case is not undone");
+    assert_eq!(merge3("a\nb\n", "A\nb\n", "a\nb\n", &case).render(Choice::Markers), "A\nb\n");
+    assert_eq!(merge3("a\nb\n", "A\nb\n", "a\nB\n", &case).render(Choice::Markers), "A\nB\n", "each side's change of case stays");
+    let blank = LineOptions { ignore_blank_lines: true, ..LineOptions::default() };
+    let merged = merge3("a\nb\n", "a\n\nb\n", "a\nX\nb\n", &blank);
+    assert_eq!(
+        (merged.conflict_count(), merged.render(Choice::Markers)),
+        (0, "a\nX\nb\n".to_owned()),
+        "a blank line is no change: {:?}",
+        merged.regions
+    );
+    assert_eq!(merge3("a\nb\n", "a\n\nb\n", "a\nb\n", &blank).render(Choice::Markers), "a\n\nb\n");
+    assert_eq!(merge3("a\nb\n", "a\n\nb\n", "a\nb\n", &LineOptions::default()).render(Choice::Markers), "a\n\nb\n");
+    // A side whose last line has no break still gets the markers on lines of their own.
+    let conflict = merge3("a\nb", "a\nX", "a\nY", &LineOptions::default());
+    assert_eq!(conflict.render(Choice::Markers), "a\n<<<<<<< ours\nX\n||||||| base\nb\n=======\nY\n>>>>>>> theirs\n");
+}
+
+#[test]
+fn what_is_removed_deep_inside_a_moved_node_is_named_by_the_first_document() {
+    let found = changes(r#"{"a": [1, {"y": [5, 6]}]}"#, r#"{"a": [{"y": [6]}]}"#, Family::Json);
+    assert!(found.contains(&"removed /a/1/y/0: 5".to_owned()), "{found:?}");
+}
+
+#[test]
+fn blank_lines_added_by_their_side_stay_and_blocks_of_ignored_differences_are_not_written() {
+    let blank = LineOptions { ignore_blank_lines: true, ..LineOptions::default() };
+    assert_eq!(merge3("a\nb\n", "a\nb\n", "a\n\nb\n", &blank).render(Choice::Markers), "a\n\nb\n");
+    let (old, new) = ("a\n\nb\nc\nd\ne\nf\ng\nh\ni\nJ\n", "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
+    let d = diff_lines(old, new, &blank);
+    let text = d.unified(old, new, "a", "b", 1);
+    assert_eq!(text.matches("@@ -").count(), 1, "one block, for the difference that counts: {text}");
+    assert!(counts_agree(&text));
 }

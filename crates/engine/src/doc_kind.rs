@@ -11,7 +11,7 @@ pub enum DocKind {
     Xml,
     Xsd,
     Dtd,
-    /// JSON, JSONC, JSON5 or JSON Lines.
+    /// JSON, JSONC, JSON5 or JSON Lines, and BSON (shown as Extended JSON).
     Json,
     /// YAML (`.yaml`, `.yml`).
     Yaml,
@@ -22,7 +22,7 @@ pub enum DocKind {
 /// is one; without it only the name decides.
 pub fn doc_kind(name: &str, analysis: Option<&Analysis>) -> DocKind {
     match crate::language::Language::of_name(name) {
-        crate::language::Language::Json(_) => return DocKind::Json,
+        crate::language::Language::Json(_) | crate::language::Language::Bson => return DocKind::Json,
         crate::language::Language::Yaml => return DocKind::Yaml,
         crate::language::Language::Xml => {}
     }

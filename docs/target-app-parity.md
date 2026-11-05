@@ -10,8 +10,8 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **5.3%** shipped, 25.3% with partial counted half (10 shipped + 75 partial of 188 counted; 64 P0, 62 P1, 53 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-05) |
-| Must-have (P0) features | 7.8% shipped, 43.0% weighted (5 shipped + 45 partial of 64) | measured |
+| **Feature breadth**, unweighted | **5.3%** shipped, 26.6% with partial counted half (10 shipped + 80 partial of 188 counted; 64 P0, 62 P1, 53 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-05) |
+| Must-have (P0) features | 7.8% shipped, 45.3% weighted (5 shipped + 48 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **100%** (1017 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): a valid document has no well-formedness or validity error, an invalid one is well-formed and has at least one validity error (which one is not compared; 73 of the 227 are documents with no DOCTYPE, invalid because there is nothing to validate against) | measured (same run) |
 | W3C xsdtests (XSD 1.0) | **98.2%** (37,756 of 38,438 accepted tests: schemas 96.2%, instances 99.3%) | measured (`cargo xtask conformance xsdtests`, 2026-10-29) |
@@ -94,3 +94,4 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 - 2026-11-05: the headline moved to 71 partial and 29.5% weighted: the three completion features (M1.10d) went from planned to partial (quick fixes, M3.14, did so just before, in the 68 partial).
 - 2026-11-05: the scope grew by 43 planned features (M5–M9) and `scope.xbrl` and `scope.web-services` are in scope: 197 counted features, 5.1% shipped, 23.1% weighted; 2026-11-05 (review): eight duplicate entries folded into their neighbours, 188 counted features, 5.3% shipped, 24.2% weighted.
 - 2026-11-05: M5.2: `json.editor`, `json.jsonc`, `json.lines` and `json.language-abstraction` planned → partial; 10 shipped and 75 partial of 188 counted features, 25.3% weighted.
+- 2026-11-05: M6.3: `project.diff-files`, `project.diff-three-way` and `project.diff-ignore-options` planned → partial (the `xmlcraft-diff` crate and the tools `diff_compare` and `diff_merge`; no window yet); with the YAML (M5.6), BSON (M5.8) and JSON Schema (M5.4) entries that moved before it, 10 shipped and 80 partial of 188 counted features, 26.6% weighted.

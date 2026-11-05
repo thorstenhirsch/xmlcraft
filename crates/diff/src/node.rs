@@ -6,12 +6,15 @@ use std::hash::{Hash, Hasher};
 use std::ops::Range;
 
 use xmlcraft_json_syntax::{Data, Dialect, Options as JsonOptions, Severity, Value, parse};
-use xmlcraft_syntax::{SyntaxKind, SyntaxNode, decode_references};
+use xmlcraft_syntax::{SyntaxKind, SyntaxNode, XML_NAMESPACE, XMLNS_NAMESPACE, decode_references};
 
 use crate::lines::Whitespace;
 
 /// Elements nested deeper than this are not compared (the readers of XmlCraft stop long before).
 const MAX_DEPTH: usize = 256;
+
+/// Data nested deeper than this is not compared (the readers of JSON and YAML stop at 512 and 256).
+const MAX_DATA_DEPTH: usize = 512;
 
 /// What a node is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -56,7 +59,7 @@ pub struct Node {
     pub namespace: String,
     pub(crate) key: String,
     pub(crate) value: String,
-    pub(crate) hash: u64,
+    pub(crate) hash: u128,
 }
 
 /// Why a text was not read as a tree.
@@ -135,7 +138,7 @@ impl Node {
             return Err(DiffError { offset: Some(d.span.start), message: d.message() });
         }
         let root = read.root.ok_or(DiffError { offset: None, message: "the text has no value".to_owned() })?;
-        Ok(Node::from_value(&root))
+        Node::from_value(&root)
     }
 
     /// The tree of a YAML text; several documents are an array of them.
@@ -145,19 +148,19 @@ impl Node {
             return Err(DiffError { offset: Some(d.span.start), message: d.message() });
         }
         let mut documents = read.documents;
-        Ok(match documents.len() {
+        match documents.len() {
             1 => Node::from_value(&documents.remove(0)),
             _ => {
                 let mut array = node(NodeKind::Array, "", "", 0..text.len());
-                array.children = documents.iter().map(Node::from_value).collect();
-                array
+                array.children = documents.iter().map(Node::from_value).collect::<Result<_, _>>()?;
+                Ok(array)
             }
-        })
+        }
     }
 
-    /// The tree of a value read from JSON or YAML.
-    pub fn from_value(value: &Value) -> Node {
-        value_node(value, String::new(), 0..0)
+    /// The tree of a value read from JSON or YAML. A value nested deeper than the readers allow is refused.
+    pub fn from_value(value: &Value) -> Result<Node, DiffError> {
+        value_node(value, String::new(), 0..0, 0)
     }
 
     /// The number of nodes in the tree.
@@ -166,7 +169,10 @@ impl Node {
     }
 }
 
-fn value_node(value: &Value, name: String, name_span: Range<usize>) -> Node {
+fn value_node(value: &Value, name: String, name_span: Range<usize>, depth: usize) -> Result<Node, DiffError> {
+    if depth > MAX_DATA_DEPTH {
+        return Err(DiffError { offset: Some(value.span.start), message: "the data is nested too deeply to compare".to_owned() });
+    }
     let mut n = match &value.data {
         Data::Null => node(NodeKind::Null, name, "null", value.span.clone()),
         Data::Bool(b) => node(NodeKind::Bool, name, b.to_string(), value.span.clone()),
@@ -174,17 +180,17 @@ fn value_node(value: &Value, name: String, name_span: Range<usize>) -> Node {
         Data::String(s) => node(NodeKind::String, name, s.clone(), value.span.clone()),
         Data::Array(items) => {
             let mut n = node(NodeKind::Array, name, "", value.span.clone());
-            n.children = items.iter().map(|v| value_node(v, String::new(), v.span.start..v.span.start)).collect();
+            n.children = items.iter().map(|v| value_node(v, String::new(), v.span.start..v.span.start, depth + 1)).collect::<Result<_, _>>()?;
             n
         }
         Data::Object(members) => {
             let mut n = node(NodeKind::Object, name, "", value.span.clone());
-            n.children = members.iter().map(|m| value_node(&m.value, m.key.clone(), m.key_span.clone())).collect();
+            n.children = members.iter().map(|m| value_node(&m.value, m.key.clone(), m.key_span.clone(), depth + 1)).collect::<Result<_, _>>()?;
             n
         }
     };
     n.name_span = name_span;
-    n
+    Ok(n)
 }
 
 fn xml_comment(c: &SyntaxNode) -> Node {
@@ -204,7 +210,19 @@ fn xml_pi(p: &SyntaxNode) -> Node {
 
 /// The namespace a prefix (empty: the default) stands for in the declarations that are open, innermost last.
 fn namespace_of(scope: &[(String, String)], prefix: &str) -> String {
+    if prefix == "xml" {
+        return XML_NAMESPACE.to_owned();
+    }
     scope.iter().rev().find(|(p, _)| p == prefix).map(|(_, uri)| uri.clone()).unwrap_or_default()
+}
+
+/// The value of a quoted attribute as the tree keeps it: without the one pair of quotes around it.
+fn unquote(raw: &str) -> &str {
+    let mut chars = raw.chars();
+    match (chars.next(), chars.next_back()) {
+        (Some(first), Some(last)) if (first == '"' || first == '\'') && first == last => raw.get(1..raw.len() - 1).unwrap_or_default(),
+        _ => raw,
+    }
 }
 
 fn xml_element(element: &SyntaxNode, depth: usize, scope: &mut Vec<(String, String)>) -> Result<Node, DiffError> {
@@ -220,8 +238,7 @@ fn xml_element(element: &SyntaxNode, depth: usize, scope: &mut Vec<(String, Stri
         for attribute in tag.children().filter(|n| n.kind() == SyntaxKind::Attribute) {
             let Some((attr_name, attr_span)) = name_token(&attribute) else { continue };
             let raw = attribute.children().find(|n| n.kind() == SyntaxKind::AttrValue).map(|v| v.text().to_string()).unwrap_or_default();
-            let inner = raw.trim_matches(|c| c == '"' || c == '\'');
-            let value = decode_references(inner);
+            let value = decode_references(unquote(&raw));
             if attr_name == "xmlns" {
                 scope.push((String::new(), value.clone()));
             } else if let Some(prefix) = attr_name.strip_prefix("xmlns:") {
@@ -236,8 +253,11 @@ fn xml_element(element: &SyntaxNode, depth: usize, scope: &mut Vec<(String, Stri
     out.namespace = namespace_of(scope, out.name.rsplit_once(':').map_or("", |(p, _)| p));
     for a in out.children.iter_mut().filter(|c| c.kind == NodeKind::Attribute) {
         a.namespace = match a.name.split_once(':') {
-            Some((prefix, _)) if prefix != "xmlns" && prefix != "xml" => namespace_of(scope, prefix),
-            _ => String::new(),
+            // (A declaration is in the namespace of declarations; an attribute with no prefix is in none.)
+            _ if a.name == "xmlns" => XMLNS_NAMESPACE.to_owned(),
+            Some(("xmlns", _)) => XMLNS_NAMESPACE.to_owned(),
+            Some((prefix, _)) => namespace_of(scope, prefix),
+            None => String::new(),
         };
     }
     // Text, character references, entity references and CDATA are one run of text until something else comes.
@@ -297,15 +317,17 @@ fn xml_element(element: &SyntaxNode, depth: usize, scope: &mut Vec<(String, Stri
 /// What counts as the same.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TreeOptions {
-    /// White space in the text and attribute values of XML (text that is nothing but white space is then left out).
+    /// White space in the text and attribute values of XML and in the strings of JSON and YAML (XML text that is nothing but white
+    /// space is then left out).
     pub whitespace: Whitespace,
     /// Letters of different case in text, attribute values and strings are the same.
     pub ignore_case: bool,
     pub ignore_comments: bool,
     pub ignore_processing_instructions: bool,
-    /// The children of an element may be in any order (the order of the members of an object never matters).
+    /// The children of an element and the items of an array may be in any order (the order of the members of an object never
+    /// matters).
     pub ignore_child_order: bool,
-    /// Numbers are the same when they are equal (`1.0` and `1`, `1e2` and `100`).
+    /// Numbers are the same when they are equal (`1.0` and `1`, `1e2` and `100`, `0xFF` and `255`).
     pub numbers_by_value: bool,
     /// Names are the same when their namespaces and local parts are (`a:item` and `b:item` for one namespace; the declarations of
     /// prefixes are then not compared).
@@ -347,6 +369,12 @@ fn canonical_number(text: &str) -> String {
         Some(r) => (true, r),
         None => (false, t.strip_prefix('+').unwrap_or(t)),
     };
+    // JSON5 and YAML hexadecimal: the same number as its decimal.
+    if let Some(hex) = rest.strip_prefix("0x").or_else(|| rest.strip_prefix("0X"))
+        && let Ok(value) = u128::from_str_radix(hex, 16)
+    {
+        return if value == 0 { "0".to_owned() } else { canonical_number(&format!("{}{value}", if negative { "-" } else { "" })) };
+    }
     let (mantissa, exponent) = match rest.split_once(['e', 'E']) {
         Some((m, e)) => (m, e.parse::<i64>().ok()),
         None => (rest, Some(0)),
@@ -373,10 +401,16 @@ fn local(name: &str) -> &str {
     name.rsplit_once(':').map_or(name, |(_, l)| l)
 }
 
-fn hash_of(parts: impl FnOnce(&mut DefaultHasher)) -> u64 {
-    let mut h = DefaultHasher::new();
-    parts(&mut h);
-    h.finish()
+/// 128 bits of SipHash: two hashes of the same parts, the second with a different start. Nodes with equal hashes are taken to be
+/// equal; a collision (2^-128) is the only way this goes wrong.
+fn hash_of(parts: impl Fn(&mut DefaultHasher)) -> u128 {
+    let one = |salt: u8| {
+        let mut h = DefaultHasher::new();
+        salt.hash(&mut h);
+        parts(&mut h);
+        u128::from(h.finish())
+    };
+    (one(0) << 64) | one(1)
 }
 
 impl Node {
@@ -404,8 +438,8 @@ impl Node {
             _ => self.text.clone(),
         };
         let unordered = matches!(self.kind, NodeKind::Object);
-        let mut attributes: Vec<u64> = Vec::new();
-        let mut content: Vec<u64> = Vec::new();
+        let mut attributes: Vec<u128> = Vec::new();
+        let mut content: Vec<u128> = Vec::new();
         for c in &self.children {
             if c.kind == NodeKind::Attribute || unordered {
                 attributes.push(hash_of(|h| (c.key.as_str(), c.hash).hash(h)));
@@ -443,7 +477,14 @@ mod tests {
         assert_ne!(canonical_number("1"), canonical_number("2"));
         assert_ne!(canonical_number("1e2"), canonical_number("1e3"));
         assert_ne!(canonical_number("12"), canonical_number("1.2"));
-        assert_eq!(canonical_number("0xFF"), "0xFF", "not a decimal number: as written");
+        assert_eq!(canonical_number("0xFF"), canonical_number("255"), "hexadecimal is a number");
+        assert_eq!(canonical_number("-0x10"), canonical_number("-16"));
+        assert_eq!(canonical_number("0x0"), canonical_number("0"));
+        assert_eq!(
+            canonical_number("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"),
+            "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+            "too large for the table: as written"
+        );
         assert_eq!(canonical_number("Infinity"), "Infinity");
     }
 
@@ -459,6 +500,21 @@ mod tests {
         assert_eq!(a.children[3].name, "b");
         assert_eq!(a.children[4].text, "&z", "references and CDATA are one run of text");
         assert!(Node::from_xml("<a><b></a>").is_err());
+    }
+
+    #[test]
+    fn names_have_the_namespaces_they_are_declared_in() {
+        let root = Node::from_xml(r#"<p:a xmlns:p="u" xmlns="d" xml:lang="en" p:k="1" j="2"><b/><c xmlns=""/></p:a>"#).expect("reads");
+        let a = &root.children[0];
+        let namespace = |name: &str| a.children.iter().find(|c| c.name == name).map(|c| c.namespace.clone());
+        assert_eq!(a.namespace, "u");
+        assert_eq!(namespace("xmlns"), Some("http://www.w3.org/2000/xmlns/".to_owned()));
+        assert_eq!(namespace("xmlns:p"), Some("http://www.w3.org/2000/xmlns/".to_owned()));
+        assert_eq!(namespace("xml:lang"), Some("http://www.w3.org/XML/1998/namespace".to_owned()));
+        assert_eq!(namespace("p:k"), Some("u".to_owned()));
+        assert_eq!(namespace("j"), Some(String::new()), "an attribute with no prefix is in no namespace");
+        let (b, c) = (a.children.iter().find(|c| c.name == "b").expect("b"), a.children.iter().find(|c| c.name == "c").expect("c"));
+        assert_eq!((b.namespace.as_str(), c.namespace.as_str()), ("d", ""), "the default namespace, and none where it is undeclared");
     }
 
     #[test]

@@ -60,7 +60,11 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             "conflicts".into(),
             json!({ "type": "string", "enum": ["markers", "ours", "theirs", "both", "base"], "description": "What to write for a conflict (default markers: <<<<<<< ours, ||||||| base, =======, >>>>>>> theirs)" }),
         );
-        m.remove("mode");
+        for key in
+            ["mode", "format", "ignore_comments", "ignore_processing_instructions", "ignore_child_order", "numbers_by_value", "ignore_prefixes"]
+        {
+            m.remove(key);
+        }
     }
     vec![
         ToolDef {
@@ -132,7 +136,7 @@ fn tree_options(args: &Value) -> Result<TreeOptions> {
 fn family_of(language: Language) -> Family {
     match language {
         Language::Xml => Family::Xml,
-        Language::Json(_) => Family::Json,
+        Language::Json(_) | Language::Bson => Family::Json,
         Language::Yaml => Family::Yaml,
     }
 }
@@ -208,6 +212,8 @@ fn diff_compare(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
                             "path": c.path,
                             "old": c.old.as_ref().map(|r| place(&old_buffer, r.start)),
                             "new": c.new.as_ref().map(|r| place(&new_buffer, r.start)),
+                            "old_parent": place(&old_buffer, c.old_parent.start),
+                            "new_parent": place(&new_buffer, c.new_parent.start),
                             "old_value": c.old_text,
                             "new_value": c.new_text,
                         })

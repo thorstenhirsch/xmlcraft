@@ -74,13 +74,13 @@ impl Merge3 {
                         }
                         Choice::Base => push_chunk(&mut out, &c.base),
                         Choice::Markers => {
-                            out.push_str("<<<<<<< ours\n");
+                            marker(&mut out, "<<<<<<< ours\n");
                             push_chunk(&mut out, &c.ours);
-                            out.push_str("||||||| base\n");
+                            marker(&mut out, "||||||| base\n");
                             push_chunk(&mut out, &c.base);
-                            out.push_str("=======\n");
+                            marker(&mut out, "=======\n");
                             push_chunk(&mut out, &c.theirs);
-                            out.push_str(">>>>>>> theirs\n");
+                            marker(&mut out, ">>>>>>> theirs\n");
                         }
                     }
                     number += 1;
@@ -89,6 +89,14 @@ impl Merge3 {
         }
         out
     }
+}
+
+/// A line of its own, after a line that may have had no break.
+fn marker(out: &mut String, line: &str) {
+    if !out.is_empty() && !out.ends_with(['\n', '\r']) {
+        out.push('\n');
+    }
+    out.push_str(line);
 }
 
 /// Add lines to the text; a chunk that does not end its last line (only the end of a text does not) gets a break when something follows.
@@ -116,6 +124,15 @@ struct Side<'a> {
     text: &'a str,
     lines: Vec<Range<usize>>,
     keys: Vec<u32>,
+    /// Lines that are blank, when blank lines are ignored.
+    blank: Vec<bool>,
+}
+
+impl Side<'_> {
+    /// What the lines `part` are for comparing: their keys, without the blank lines that are ignored.
+    fn kept(&self, part: &Range<usize>) -> Vec<u32> {
+        part.clone().filter(|&i| self.blank.get(i) == Some(&false)).filter_map(|i| self.keys.get(i).copied()).collect()
+    }
 }
 
 /// Merge `ours` and `theirs`, both made from `base`.
@@ -132,7 +149,8 @@ pub fn merge3(base: &str, ours: &str, theirs: &str, options: &LineOptions) -> Me
                 *ids.entry(key).or_insert(next)
             })
             .collect();
-        Side { text, lines, keys }
+        let blank = lines.iter().map(|r| options.ignore_blank_lines && text.get(r.clone()).unwrap_or_default().trim().is_empty()).collect();
+        Side { text, lines, keys, blank }
     };
     let (o, a, b) = (side(base), side(ours), side(theirs));
     let match_a = matches(&o.keys, &a.keys, options.budget);
@@ -168,28 +186,32 @@ pub fn merge3(base: &str, ours: &str, theirs: &str, options: &LineOptions) -> Me
         if so > oi || sa > ai || sb > bi {
             let base_part = oi..so;
             let (ours_part, theirs_part) = (ai..sa, bi..sb);
-            let same_as_base = |side: &Side<'_>, part: &Range<usize>| -> bool {
-                side.keys.get(part.clone()) == o.keys.get(base_part.clone()) && part.len() == base_part.len()
-            };
+            let base_kept = o.kept(&base_part);
+            let (ours_kept, theirs_kept) = (a.kept(&ours_part), b.kept(&theirs_part));
             let ours_text = slice(a.text, &a.lines, ours_part.clone());
             let theirs_text = slice(b.text, &b.lines, theirs_part.clone());
-            let ours_same = same_as_base(&a, &ours_part);
-            let theirs_same = same_as_base(&b, &theirs_part);
+            let (ours_same, theirs_same) = (ours_kept == base_kept, theirs_kept == base_kept);
             if ours_same && theirs_same {
-                add_same(&mut regions, slice(o.text, &o.lines, base_part));
+                // (Nothing changed that counts: the text of the side that did not keep the base's own wins, so that a difference the
+                // options ignore is not undone by the merge.)
+                let base_text = slice(o.text, &o.lines, base_part);
+                add_same(&mut regions, if ours_text == base_text { theirs_text } else { ours_text });
             } else if ours_same {
                 regions.push(Region::Theirs(theirs_text));
             } else if theirs_same {
                 regions.push(Region::Ours(ours_text));
-            } else if a.keys.get(ours_part.clone()) == b.keys.get(theirs_part.clone()) {
+            } else if ours_kept == theirs_kept {
                 regions.push(Region::Both(ours_text));
             } else {
                 regions.push(Region::Conflict(Conflict { base: slice(o.text, &o.lines, base_part), ours: ours_text, theirs: theirs_text }));
             }
         }
         if so < o.keys.len() {
-            // The kept line itself (ours' version of it).
-            add_same(&mut regions, slice(a.text, &a.lines, sa..sa + 1));
+            // The kept line itself: ours' version, unless ours is the base's and theirs is not (a difference the options ignore, such
+            // as case, then stays).
+            let (ours_line, theirs_line) = (slice(a.text, &a.lines, sa..sa + 1), slice(b.text, &b.lines, sb..sb + 1));
+            let base_line = slice(o.text, &o.lines, so..so + 1);
+            add_same(&mut regions, if ours_line == base_line { theirs_line } else { ours_line });
         }
         oi = so + 1;
         ai = sa + 1;

@@ -249,6 +249,8 @@ codes! {
     YamlDuplicateKey => ("yaml.duplicate-key", Warning, "The key '{0}' is used more than once in the mapping."),
     YamlTooDeep => ("yaml.too-deep", Error, "Values nested deeper than {0} levels are not read."),
     YamlBadMerge => ("yaml.bad-merge", Warning, "The value of '<<' must be a mapping or a list of mappings."),
+    // BSON (shown as Extended JSON; `xmlcraft-bson`)
+    BsonInvalid => ("bson.invalid-value", Error, "{0}"),
     // Limits
     NestingTooDeep => ("limit.nesting-too-deep", Warning, "Elements nested deeper than {0} levels are not shown as a tree."),
     TooManyDiagnostics => ("limit.too-many-diagnostics", Info, "Further problems are not shown."),
