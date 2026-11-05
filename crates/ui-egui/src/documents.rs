@@ -416,8 +416,8 @@ impl XmlCraftApp {
     pub(crate) fn validate_now(&mut self) {
         let kind = self.applied.unwrap_or(ThemeKind::Light);
         let Some(doc) = self.session.active_document() else { return };
-        // The validators read XML; a JSON document is checked for its syntax (a schema for it comes with JSON Schema support).
-        if doc.language().is_data() {
+        // A JSON or YAML document that names no schema is checked for its syntax only (a schema is named with `$schema`).
+        if doc.language().is_data() && !xmlcraft_engine::json_validation::names_a_schema(&doc.editor().text(), doc.language()) {
             self.check_now();
             return;
         }
@@ -437,7 +437,7 @@ impl XmlCraftApp {
         view.auto.requested = Some(version);
         view.auto.count += 1;
         let open = self.open_documents();
-        self.validator.submit(id, version, doc.editor().buffer(), doc.path(), open);
+        self.validator.submit_as(id, version, doc.editor().buffer(), doc.path(), open, doc.language());
         self.validate_pending = Some((id, version));
         self.bottom_open = true;
         self.status = fmt(tl!("Validating {name}…"), &[("name", &name)]);

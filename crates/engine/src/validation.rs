@@ -18,6 +18,7 @@ use xmlcraft_validate::{SchemaOutcome, check_against_schema, schema_hints};
 use xmlcraft_xsd::{ResolvingLoader, SchemaLoader};
 
 use crate::analysis::{MAX_ANALYSED_BYTES, Skipped};
+use crate::language::Language;
 use crate::worker::Worker;
 
 /// The most problems kept.
@@ -142,7 +143,7 @@ fn root_name_span(root: &SyntaxNode) -> std::ops::Range<usize> {
 
 /// Order the problems (the document's own first, by position; then those in the external texts, by file and position), cap them, and
 /// say whether any is an error.
-fn finish(version: u64, mut problems: Vec<ValidityProblem>) -> Validation {
+pub(crate) fn finish(version: u64, mut problems: Vec<ValidityProblem>) -> Validation {
     problems.sort_by(|a, b| {
         (a.file.is_some(), &a.file, a.diagnostic.span.start, a.diagnostic.span.end).cmp(&(
             b.file.is_some(),
@@ -191,6 +192,7 @@ struct Request {
     text: Buffer,
     location: String,
     open: Vec<(String, Buffer)>,
+    language: Language,
 }
 
 /// Runs [`validate`] on a worker thread. `submit` returns at once; `poll` collects what has finished.
@@ -217,8 +219,14 @@ impl Validator {
     /// Ask for `text` (version `version` of the document with this id, saved at `path` if it is) to be validated. `open` are the
     /// documents that are open, by their paths. A request that has not started is replaced by a newer one for the same document.
     pub fn submit(&self, document: u64, version: u64, text: &Buffer, path: Option<&Path>, open: Vec<(String, Buffer)>) {
+        self.submit_as(document, version, text, path, open, Language::Xml);
+    }
+
+    /// [`Self::submit`] for a document written in `language`: XML is checked against its DTD or XML Schema, JSON and YAML against the JSON
+    /// Schema they name (see [`crate::json_validation`]).
+    pub fn submit_as(&self, document: u64, version: u64, text: &Buffer, path: Option<&Path>, open: Vec<(String, Buffer)>, language: Language) {
         let location = path.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-        self.worker.submit(document, Request { version, text: text.clone(), location, open });
+        self.worker.submit(document, Request { version, text: text.clone(), location, open, language });
     }
 
     /// The validations that finished since the last call, oldest first.
@@ -229,6 +237,13 @@ impl Validator {
 
 fn run(resolvers: &ResolverFactory, request: Request) -> Validation {
     let resolver = resolvers(Arc::new(OpenDocuments(request.open)));
+    if request.language != Language::Xml {
+        let (text, version, location, language) = (request.text.text(), request.version, request.location, request.language);
+        return crate::guard(|| crate::json_validation::validate_data(&text, language, version, &location, &resolver)).unwrap_or_else(|message| {
+            log::error!("validation failed: {message}");
+            Validation::skipped(version, Skipped::Failed)
+        });
+    }
     let mut subsets = ResolvingSubsetLoader::new(&resolver);
     let mut schemas = ResolvingLoader::new(&resolver);
     validate_guarded(&request.text.text(), request.version, &request.location, &mut subsets, &mut schemas)
