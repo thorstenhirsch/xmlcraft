@@ -13,6 +13,9 @@
 //! - A document that is not well-formed is refused ([`FormatError::NotWellFormed`]): the formatter does not guess what broken markup
 //!   was meant to be.
 //! - Formatting is idempotent: formatting the result again changes nothing.
+//! - [`json`] does the same for JSON, JSONC and JSON5: only the white space between tokens changes.
+
+pub mod json;
 
 use xmlcraft_syntax::{Parse, SyntaxElement, SyntaxKind, SyntaxNode, parse};
 pub use xmlcraft_text::Edit;
@@ -55,8 +58,10 @@ impl Default for FormatOptions {
 /// Why nothing was done.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FormatError {
-    /// The text is not well-formed XML; this is the first problem (its message and byte offset).
+    /// The text is not well-formed (XML) or not valid JSON; this is the first problem (its message and byte offset).
     NotWellFormed { message: String, offset: usize },
+    /// The text is fine but this formatting is not done to it (JSON Lines are not indented; a text too large to format).
+    Refused { message: String },
 }
 
 impl std::fmt::Display for FormatError {
@@ -65,6 +70,7 @@ impl std::fmt::Display for FormatError {
             FormatError::NotWellFormed { message, offset } => {
                 write!(f, "the document is not well-formed, so it is left as it is (at byte {offset}: {message})")
             }
+            FormatError::Refused { message } => f.write_str(message),
         }
     }
 }

@@ -133,3 +133,28 @@ fn a_save_as_to_xml_that_stops_at_a_character_the_encoding_cannot_hold_leaves_th
     assert_eq!(text(&h), before, "the XML declaration the attempt wrote is taken back");
     assert!(!path.exists(), "and nothing was written");
 }
+
+#[test]
+fn pretty_print_and_minify_work_on_json_and_a_text_with_an_error_is_left_alone() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "f.json", "{\"a\":[1,2],\"b\":{}}"));
+    assert!(h.state_mut().execute("xml.pretty_print"));
+    h.run_steps(2);
+    assert_eq!(text(&h), "{\n  \"a\": [\n    1,\n    2\n  ],\n  \"b\": {}\n}");
+    assert!(h.state_mut().execute("xml.minify"));
+    h.run_steps(2);
+    assert_eq!(text(&h), "{\"a\":[1,2],\"b\":{}}");
+    assert!(h.state_mut().execute("edit.undo"));
+    h.run_steps(2);
+    assert!(text(&h).starts_with("{\n  \"a\""), "one undo step");
+    open(&mut h, &file(dir.path(), "bad.json", "{\"a\": [1,}"));
+    h.state_mut().execute("xml.pretty_print");
+    h.run_steps(3);
+    assert!(h.query_by_label("The document is not well-formed").is_some());
+    assert_eq!(text(&h), "{\"a\": [1,}", "left as it was");
+    open(&mut h, &file(dir.path(), "l.jsonl", "{\"a\": 1}\n{\"b\":  2}\n"));
+    h.state_mut().execute("xml.pretty_print");
+    h.run_steps(3);
+    assert!(h.query_by_label("Nothing was changed").is_some(), "JSON Lines are not indented");
+}

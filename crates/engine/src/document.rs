@@ -337,13 +337,13 @@ impl Document {
     /// Pretty-print the text: only the white space between nodes changes (see `xmlcraft-format`), as one undoable edit. Returns whether
     /// anything changed. A document that is not well-formed is refused and left as it is.
     pub fn pretty_print(&mut self) -> Result<bool, FormatError> {
-        let edits = xmlcraft_format::pretty_print_settled(&self.editor.text(), &self.format_options())?;
+        let edits = self.language().format(&self.editor.text(), &self.format_options(), false)?;
         Ok(self.editor.apply_edits(&edits) && !edits.is_empty())
     }
 
     /// Remove the white space between nodes that means nothing, as one undoable edit. Returns whether anything changed.
     pub fn minify(&mut self) -> Result<bool, FormatError> {
-        let edits = xmlcraft_format::minify(&self.editor.text())?;
+        let edits = self.language().format(&self.editor.text(), &self.format_options(), true)?;
         Ok(self.editor.apply_edits(&edits) && !edits.is_empty())
     }
 

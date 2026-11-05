@@ -5316,6 +5316,8 @@ version = "0.1.0"
 dependencies = [
  "proptest",
  "rowan",
+ "serde_json",
+ "xmlcraft-json-syntax",
  "xmlcraft-syntax",
  "xmlcraft-text",
 ]

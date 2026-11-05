@@ -564,6 +564,7 @@ impl XmlCraftApp {
                 self.status = fmt(if minify { tl!("Stripped the white space of {name}") } else { tl!("Pretty-printed {name}") }, &[("name", &name)])
             }
             Ok(false) => self.status = fmt(tl!("{name} needs no changes"), &[("name", &name)]),
+            Err(xmlcraft_format::FormatError::Refused { message }) => self.message(tl!("Nothing was changed"), message),
             Err(xmlcraft_format::FormatError::NotWellFormed { message, offset }) => {
                 let line = doc.editor().buffer().line_of(offset.min(doc.editor().buffer().len())) + 1;
                 self.message(
