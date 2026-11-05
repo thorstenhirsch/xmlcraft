@@ -18,6 +18,9 @@ const INFINITE: u32 = u32::MAX;
 const HARD_DEPTH: usize = 300;
 /// The most elements of a document, and the most times one particle may be asked to occur.
 const MAX_NODES: usize = 200_000;
+/// Once this many elements are made, only what is required is made, as at the depth limit: a schema whose optional parts nest in many ways
+/// (UBL's shipments, packages and transport equipment refer to each other) would otherwise give a document nobody can read, or none.
+const SOFT_NODES: usize = 20_000;
 const MAX_OCCURRENCES: u32 = 10_000;
 
 /// The names of the global elements a document may start with (the ones that are not abstract), in the order they were declared.
@@ -279,7 +282,7 @@ impl<'a> Generator<'a> {
     }
 
     fn particle(&mut self, p: &Particle, depth: usize, out: &mut Vec<Node>) -> Result<(), SampleError> {
-        let at_cap = depth >= self.options.max_depth;
+        let at_cap = depth >= self.options.max_depth || self.nodes >= SOFT_NODES;
         let count = self.occurrences(p, at_cap);
         if count > MAX_OCCURRENCES {
             return Err(SampleError::TooLarge);
