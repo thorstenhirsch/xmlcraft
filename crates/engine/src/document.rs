@@ -275,8 +275,12 @@ impl Document {
 
     /// Make the XML declaration say what the encoding is (see [`Self::set_encoding`]).
     fn sync_declaration(&mut self) {
+        self.sync_declaration_for(self.language());
+    }
+
+    fn sync_declaration_for(&mut self, language: Language) {
         // Only XML has a declaration; a JSON file's encoding is whatever its bytes are.
-        if self.language() != Language::Xml {
+        if language != Language::Xml {
             return;
         }
         let buffer = self.editor.buffer();
@@ -372,22 +376,14 @@ impl Document {
         if self.editor.apply_edits(&edits) { Ok(edits.len()) } else { Err(SaveError::Unmappable(*first)) }
     }
 
-    /// [`Self::apply_character_references`] for JSON: a character in a string is written as a `\uXXXX` escape (two for a character
+    /// [`Self::apply_character_references`] for JSON: a character in a string is written as a `\\uXXXX` escape (two for a character
     /// outside the Basic Multilingual Plane); anywhere else (a comment, say) it cannot be, and is the error.
     fn apply_json_escapes(&mut self, text: &str, found: &[EncodeError], dialect: xmlcraft_json_syntax::Dialect) -> Result<usize, SaveError> {
-        let (tokens, _, more) = xmlcraft_json_syntax::tokens(text, dialect, MAX_UNMAPPABLE * 64);
         let Some(first) = found.first() else { return Ok(0) };
-        if more {
-            return Err(SaveError::Unmappable(*first));
-        }
+        let offsets: Vec<usize> = found.iter().map(|e| e.offset).collect();
+        let inside = xmlcraft_json_syntax::inside_strings(text, dialect, &offsets);
         let mut edits = Vec::with_capacity(found.len());
-        for e in found {
-            let at = tokens.partition_point(|t| t.span.end <= e.offset);
-            let in_string = tokens.get(at).is_some_and(|t| {
-                t.span.start <= e.offset
-                    && t.kind == xmlcraft_json_syntax::TokenKind::Scalar
-                    && text.get(t.span.clone()).is_some_and(|s| s.starts_with(['"', '\'']))
-            });
+        for (e, in_string) in found.iter().zip(inside) {
             if !in_string {
                 return Err(SaveError::Unmappable(*e));
             }
@@ -396,6 +392,15 @@ impl Document {
             edits.push(Edit::replace(e.offset..e.offset + e.ch.len_utf8(), escaped));
         }
         if self.editor.apply_edits(&edits) { Ok(edits.len()) } else { Err(SaveError::Unmappable(*first)) }
+    }
+
+    /// Get ready to be written under `path`, which may be a name of another language (Save As): a JSON document that becomes XML in an
+    /// encoding the bytes do not tell gets the XML declaration that says so. Call it before [`Self::to_bytes`].
+    pub fn prepare_save_as(&mut self, path: &Path) {
+        let target = path.file_name().map_or(Language::Xml, |n| Language::of_name(&n.to_string_lossy()));
+        if target == Language::Xml && self.language() != Language::Xml {
+            self.sync_declaration_for(Language::Xml);
+        }
     }
 
     /// The bytes of the file: the text in the document's encoding. A character the encoding cannot hold is an error (see
@@ -852,5 +857,16 @@ mod tests {
         d.set_encoding(Encoding::WINDOWS_1252, false);
         assert!(matches!(d.apply_character_references(), Err(SaveError::Unmappable(_))));
         assert_eq!(d.editor().text(), "{ /* 日 */ \"a\": 1}", "and nothing was changed");
+    }
+
+    #[test]
+    fn a_json_document_saved_as_xml_in_an_encoding_the_bytes_do_not_tell_gets_the_declaration() {
+        let mut d = Document::from_bytes(1, Some(PathBuf::from("/d/a.json")), b"{\"a\": 1}", None).expect("opens");
+        d.set_encoding(Encoding::WINDOWS_1252, false);
+        assert_eq!(d.editor().text(), "{\"a\": 1}");
+        d.prepare_save_as(Path::new("/d/b.json"));
+        assert_eq!(d.editor().text(), "{\"a\": 1}", "a name of the same language changes nothing");
+        d.prepare_save_as(Path::new("/d/b.xml"));
+        assert!(d.editor().text().starts_with("<?xml version=\"1.0\" encoding=\"windows-1252\"?>"), "{}", d.editor().text());
     }
 }

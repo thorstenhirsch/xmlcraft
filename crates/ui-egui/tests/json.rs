@@ -62,27 +62,56 @@ fn the_outline_of_a_json_document_lists_its_members() {
     assert!(h.query_by_label("beta 1").is_some(), "with a look at its value");
 }
 
+/// Save As under `name` in the folder of the test: the picker answers with that path.
+fn save_as(h: &mut Harness<'static, XmlCraftApp>, dir: &Path, name: &str) -> PathBuf {
+    let path = dir.join(name);
+    h.state_mut().pick_override = Some(vec![path.clone()]);
+    h.state_mut().execute("file.save_as");
+    h.run_steps(4);
+    path
+}
+
+fn until(h: &mut Harness<'static, XmlCraftApp>, what: &str, done: &dyn Fn(&XmlCraftApp) -> bool) {
+    let started = Instant::now();
+    while !done(h.state()) {
+        assert!(started.elapsed() < Duration::from_secs(10), "waiting for {what}");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    h.run_steps(2);
+}
+
 #[test]
-fn save_as_under_another_extension_reads_the_text_again_in_the_new_language() {
+fn save_as_under_another_extension_reads_the_text_again_in_the_new_language_and_forgets_the_old_checks() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell();
-    open(&mut h, &file(dir.path(), "a.xml", "{\"a\": 1}"));
+    // XML with a DTD of its own, checked: it has a grammar and a verdict.
+    open(&mut h, &file(dir.path(), "a.xml", "<!DOCTYPE r [<!ELEMENT r EMPTY>]><r>x</r>"));
+    h.state_mut().execute("xml.validate");
+    until(&mut h, "the validation", &|app| app.validity().is_some());
+    assert!(h.state().has_grammar());
     let as_xml = h.state().problems();
-    assert!(as_xml.is_some_and(|(errors, _)| errors > 0), "this is not XML: {as_xml:?}");
-    let until = |h: &mut Harness<'static, XmlCraftApp>, what: &str, done: &dyn Fn(Option<(usize, usize)>) -> bool| {
-        let started = Instant::now();
-        while !done(h.state().problems()) {
-            assert!(started.elapsed() < Duration::from_secs(10), "waiting for {what}");
-            h.run_steps(1);
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        h.run_steps(2);
-    };
-    let rename = |h: &mut Harness<'static, XmlCraftApp>, name: &str| {
-        h.state_mut().session.active_document_mut().expect("a document").mark_saved(dir.path().join(name), None);
-    };
-    rename(&mut h, "a.json");
-    until(&mut h, "the JSON reading", &|p| p == Some((0, 0)));
-    rename(&mut h, "a.xml");
-    until(&mut h, "the XML reading", &|p| p == as_xml);
+    // Saved as JSON, the text is read as JSON (not well-formed there: no value), the file is written, and nothing of the DTD is left.
+    let path = save_as(&mut h, dir.path(), "a.json");
+    until(&mut h, "the JSON reading", &|app| app.problems() != as_xml);
+    assert!(path.exists(), "the file was written");
+    assert_eq!(h.state().tabs().first().map(|t| t.name.clone()).as_deref(), Some("a.json"));
+    assert_eq!(h.state().validity(), None, "the old validation is gone");
+    assert!(!h.state().has_grammar(), "and so is the DTD");
+    assert!(h.state().underlined().iter().all(|(r, _)| r.end <= 41), "underlines are those of the JSON reading");
+    // And back.
+    save_as(&mut h, dir.path(), "b.xml");
+    until(&mut h, "the XML reading", &|app| app.problems() == as_xml);
+}
+
+#[test]
+fn saving_json_as_xml_in_an_encoding_the_bytes_do_not_tell_declares_it() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "a.json", "{\"a\": \"é\"}"));
+    h.state_mut().session.active_document_mut().expect("a document").set_encoding(xmlcraft_text::encoding::Encoding::WINDOWS_1252, false);
+    let path = save_as(&mut h, dir.path(), "a.xml");
+    let written = std::fs::read(&path).expect("reads");
+    assert!(written.starts_with(b"<?xml version=\"1.0\" encoding=\"windows-1252\"?>"), "{:?}", String::from_utf8_lossy(&written));
+    assert!(written.ends_with(&[0xE9, b'"', b'}']), "and the text is in that encoding");
 }

@@ -49,3 +49,31 @@ pub fn tokens(text: &str, dialect: Dialect, max: usize) -> (Vec<Token>, usize, b
     }
     (out, first, false)
 }
+
+/// For each of `offsets` (ascending), whether it is inside a string (a quoted scalar). The text is read only as far as the last offset.
+pub fn inside_strings(text: &str, dialect: Dialect, offsets: &[usize]) -> Vec<bool> {
+    let mut lexer = Lexer::new(text, dialect == Dialect::Json5);
+    let mut out = Vec::with_capacity(offsets.len());
+    let mut current = lexer.next_token();
+    for &offset in offsets {
+        while current.as_ref().is_some_and(|t| t.span.end <= offset) {
+            current = lexer.next_token();
+        }
+        out.push(current.as_ref().is_some_and(|t| t.span.start <= offset && matches!(t.kind, Kind::Str { .. })));
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn offsets_are_in_a_string_or_not() {
+        let text = "{ /* \"no\" */ \"a\": \"b c\", d: 'e' }";
+        let at = |needle: &str| text.find(needle).expect("there");
+        let offsets = [at("no"), at("a\":"), at("b c") + 1, at(", d"), at("'e'") + 1, text.len() - 1, text.len() + 5];
+        assert_eq!(inside_strings(text, Dialect::Json5, &offsets), [false, true, true, false, true, false, false]);
+        assert_eq!(inside_strings("", Dialect::Json, &[0, 3]), [false, false]);
+    }
+}

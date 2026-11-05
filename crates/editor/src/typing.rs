@@ -72,7 +72,9 @@ fn innermost_open_element(prefix: &str) -> Option<String> {
 }
 
 impl Editor {
-    /// What typing `text` on the keyboard does. It is [`Editor::type_text`], except for a few characters in XML:
+    /// What typing `text` on the keyboard does. It is [`Editor::type_text`], except for a few characters. In JSON and JSON5 (see
+    /// [`Editor::set_syntax`]): `"` (and `'` in JSON5) and `{` and `[` write the pair where a value can start and the closing quote or
+    /// bracket typed next is stepped over, never in a string or a comment (when [`crate::Settings::auto_pair`] is on). In XML:
     ///
     /// - A quote in a tag is paired (when [`crate::Settings::auto_pair`] is on): after `=` and before something that is not a name or a
     ///   quote, `"` writes `""` with the caret between; where the closing quote of that kind is next, typing it steps over it.

@@ -1206,6 +1206,7 @@ fn doc_save(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
             }
         }
     }
+    doc.prepare_save_as(&target);
     let bytes = match doc.to_bytes() {
         Ok(bytes) => bytes,
         Err(SaveError::Unmappable(e)) if text_arg(args, "unmappable") == Some("references") => {

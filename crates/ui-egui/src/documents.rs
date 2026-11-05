@@ -234,6 +234,11 @@ impl XmlCraftApp {
             if view.analysis.as_ref().is_some_and(|a| a.language != doc.language()) {
                 view.analysis = None;
                 view.requested = None;
+                // And so is what the XML tools had worked out: the grammar, the helpers, the validation with its underlines.
+                view.helpers = Default::default();
+                view.validation = None;
+                view.auto = AutoValidation::default();
+                view.fixes = None;
                 view.styler.set_folds(Vec::new());
                 view.refresh_underlines();
             }
@@ -786,6 +791,10 @@ impl XmlCraftApp {
             self.dialog = Some(Dialog::OverwriteChanged { id, path, then });
             return;
         }
+        if let Some(doc) = self.session.document_mut(index) {
+            doc.prepare_save_as(&path);
+        }
+        let Some(doc) = self.session.document(index) else { return };
         let bytes = match doc.to_bytes() {
             Ok(bytes) => bytes,
             Err(SaveError::Unmappable(error)) => {
