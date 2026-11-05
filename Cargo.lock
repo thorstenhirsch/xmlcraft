@@ -5227,6 +5227,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-bson"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "proptest",
+ "xmlcraft-json-syntax",
+]
+
+[[package]]
 name = "xmlcraft-catalog"
 version = "0.1.0"
 dependencies = [

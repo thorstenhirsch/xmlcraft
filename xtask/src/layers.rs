@@ -38,6 +38,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("datatypes", Class::Standalone(1)),
     ("json-syntax", Class::Standalone(1)),
     ("yaml-syntax", Class::Standalone(1)),
+    ("bson", Class::Standalone(1)),
     // L2 core model
     ("grammar", Class::Layer(2)),
     ("catalog", Class::Layer(2)),
@@ -70,10 +71,16 @@ pub const TABLE: &[(&str, Class)] = &[
     ("xtask", Class::Exempt),
 ];
 
-/// Workspace crates a standalone crate may use: `datatypes` compiles XSD patterns, `syntax` sits on the text buffer, and `json-syntax`
-/// reports its problems with the shared diagnostics of `syntax`.
-pub const STANDALONE_DEPS: &[(&str, &[&str])] =
-    &[("datatypes", &["pattern"]), ("syntax", &["text"]), ("json-syntax", &["syntax"]), ("yaml-syntax", &["syntax", "json-syntax"])];
+/// Workspace crates a standalone crate may use: `datatypes` compiles XSD patterns, `syntax` sits on the text buffer, `json-syntax`
+/// reports its problems with the shared diagnostics of `syntax`, `yaml-syntax` builds the tree of `json-syntax`, and `bson` reads
+/// Extended JSON through `json-syntax`.
+pub const STANDALONE_DEPS: &[(&str, &[&str])] = &[
+    ("datatypes", &["pattern"]),
+    ("syntax", &["text"]),
+    ("json-syntax", &["syntax"]),
+    ("yaml-syntax", &["syntax", "json-syntax"]),
+    ("bson", &["json-syntax"]),
+];
 
 /// Allowed same-layer edges.
 pub const SIDEWAYS: &[(&str, &str)] = &[
@@ -83,6 +90,8 @@ pub const SIDEWAYS: &[(&str, &str)] = &[
     ("json", "resolve"),
     // The JSON reader reports its problems with the shared diagnostic codes.
     ("json-syntax", "syntax"),
+    // The BSON projection reads and writes Extended JSON through the JSON reader.
+    ("bson", "json-syntax"),
     // The YAML reader builds the value tree of the JSON reader (one tree for both) and reports with the shared diagnostics.
     ("yaml-syntax", "syntax"),
     ("yaml-syntax", "json-syntax"),
