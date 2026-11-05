@@ -38,6 +38,10 @@ pub(crate) struct XPathForm {
     waiting: Option<u64>,
     outcome: Option<Outcome>,
     focused: bool,
+    /// Also show each step of a path with the items it leaves and its time.
+    trace_steps: bool,
+    /// The trace of the last evaluation, when it was asked for.
+    trace: Option<xmlcraft_query::Trace>,
 }
 
 /// The one line that says what an error is.
@@ -83,7 +87,16 @@ impl XmlCraftApp {
         }
         let (source, name) = (doc.id(), doc.name().to_owned());
         let expression = std::mem::take(&mut self.xpath_last);
-        self.dialog = Some(Dialog::XPath(Box::new(XPathForm { source, name, expression, waiting: None, outcome: None, focused: false })));
+        self.dialog = Some(Dialog::XPath(Box::new(XPathForm {
+            source,
+            name,
+            expression,
+            waiting: None,
+            outcome: None,
+            focused: false,
+            trace_steps: false,
+            trace: None,
+        })));
     }
 
     /// Ask the worker to evaluate the expression of the form.
@@ -101,7 +114,7 @@ impl XmlCraftApp {
         self.generate_serial += 1;
         let serial = self.generate_serial;
         let options = Options { namespaces: root_namespaces(&text), ..Options::default() };
-        self.xpath.submit(XPathJob { serial, text, expression: form.expression.clone(), options });
+        self.xpath.submit(XPathJob { serial, text, expression: form.expression.clone(), options, trace: form.trace_steps });
         self.xpath_last = form.expression.clone();
         form.waiting = Some(serial);
     }
@@ -114,6 +127,7 @@ impl XmlCraftApp {
                 continue; // an older request
             }
             form.waiting = None;
+            form.trace = done.trace;
             form.outcome = Some(match done.result {
                 Ok(evaluated) => Outcome::Items(evaluated),
                 Err(e) => Outcome::Failed(describe(&e)),
@@ -163,6 +177,7 @@ fn xpath_form(ui: &mut egui::Ui, form: &mut XPathForm) -> (Option<Footer>, Optio
             submit = true;
         }
         kit::help(ui, tl!("Ctrl/⌘+Enter evaluates. Prefixes declared on the root element can be used; elements in a default namespace are *:name."));
+        ui.add(widgets::checkbox(&mut form.trace_steps, tl!("Show the steps: the items each step of a path leaves, and its time")));
     });
     let mut jump = None;
     if form.waiting.is_some() {
@@ -217,6 +232,27 @@ fn xpath_form(ui: &mut egui::Ui, form: &mut XPathForm) -> (Option<Footer>, Optio
                 });
             });
         }
+    }
+    if let Some(trace) = form.trace.as_ref().filter(|_| form.trace_steps) {
+        kit::section(ui, tl!("Steps"), |ui| {
+            if !trace.is_path {
+                kit::help(ui, tl!("This is not a path, so it is one step."));
+            }
+            let t = crate::theme::Tokens::get(ui.ctx());
+            egui::ScrollArea::vertical().id_salt("xmlcraft-xpath-steps").max_height(160.0).auto_shrink([false, true]).show(ui, |ui| {
+                for step in &trace.steps {
+                    let label = match &step.error {
+                        Some(e) => fmt(tl!("{step}  →  {error}"), &[("step", &step.step), ("error", &e.to_string())]),
+                        None => fmt(
+                            tl!("{step}  →  {count} items, {micros} µs"),
+                            &[("step", &step.step), ("count", &step.count.to_string()), ("micros", &step.micros.to_string())],
+                        ),
+                    };
+                    let color = if step.error.is_some() { t.text_muted } else { t.text };
+                    ui.add(egui::Label::new(egui::RichText::new(label).monospace().color(color)).truncate());
+                }
+            });
+        });
     }
     let can = form.waiting.is_none() && !form.expression.trim().is_empty();
     let pressed = match kit::footer(ui, tl!("Close"), tl!("Evaluate"), Some("search"), can, tl!("Type an expression first.")) {

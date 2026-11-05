@@ -108,3 +108,17 @@ fn a_json_document_is_not_evaluated() {
     assert!(h.query_by_label("Evaluate XPath").is_none(), "no window for a JSON document");
     assert!(h.state().status.contains("XML"), "{}", h.state().status);
 }
+
+#[test]
+fn the_steps_of_a_path_are_shown_with_what_each_leaves_when_asked_for() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "order.xml", ORDER));
+    assert!(h.state_mut().execute("xml.xpath"));
+    h.run_steps(3);
+    h.get_by_label_contains("Show the steps").click_accesskit();
+    h.run_steps(2);
+    evaluate(&mut h, "/order/p:item[@n = 2]", "element Q{urn:p}item");
+    assert!(h.query_by_label_contains("/order  →  1 items").is_some(), "the first step leaves the root element");
+    assert!(h.query_by_label_contains("/p:item[@n = 2]  →  1 items").is_some(), "the last step leaves the one item");
+}

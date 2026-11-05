@@ -1,7 +1,7 @@
 //! Evaluating an XPath expression on a worker thread: what the XPath window waits for, so that an expression that takes long (or a large
 //! document) never stops the window. The evaluation itself is [`xmlcraft_query::evaluate`].
 
-use xmlcraft_query::{Evaluated, Options, QueryError, evaluate};
+use xmlcraft_query::{Evaluated, Options, Prepared, QueryError, Trace, trace};
 use xmlcraft_syntax::parse;
 use xmlcraft_xsd::dom;
 
@@ -25,6 +25,8 @@ pub struct XPathJob {
     pub text: String,
     pub expression: String,
     pub options: Options,
+    /// Also trace the steps of a path: how many items each leaves and how long it took.
+    pub trace: bool,
 }
 
 /// What came of a request.
@@ -32,6 +34,8 @@ pub struct XPathJob {
 pub struct XPathOutcome {
     pub serial: u64,
     pub result: Result<Evaluated, QueryError>,
+    /// The trace, when it was asked for and the document could be read.
+    pub trace: Option<Trace>,
 }
 
 /// Evaluates expressions on a worker thread.
@@ -42,19 +46,29 @@ pub struct XPathRunner {
 fn run(job: XPathJob) -> XPathOutcome {
     let serial = job.serial;
     // (The engine returns errors; the guard is for the case that it does not.)
-    let result = match crate::guard(|| evaluate(&job.text, &job.expression, &job.options)) {
-        Ok(done) => done,
+    let done = crate::guard(|| {
+        let mut prepared = Prepared::new(&job.text)?;
+        let result = prepared.evaluate(&job.expression, &job.options);
+        let traced = (job.trace && result.is_ok()).then(|| trace(&mut prepared, &job.expression, &job.options));
+        Ok::<_, QueryError>((result, traced))
+    });
+    let (result, traced) = match done {
+        Ok(Ok(both)) => both,
+        Ok(Err(e)) => (Err(e), None),
         Err(panic) => {
             log::error!("evaluating an XPath expression failed: {panic}");
-            Err(QueryError {
-                phase: xmlcraft_query::Phase::Run,
-                code: String::new(),
-                message: "the evaluation failed (a bug); nothing was changed".to_owned(),
-                span: None,
-            })
+            (
+                Err(QueryError {
+                    phase: xmlcraft_query::Phase::Run,
+                    code: String::new(),
+                    message: "the evaluation failed (a bug); nothing was changed".to_owned(),
+                    span: None,
+                }),
+                None,
+            )
         }
     };
-    XPathOutcome { serial, result }
+    XPathOutcome { serial, result, trace: traced }
 }
 
 impl XPathRunner {
@@ -91,7 +105,13 @@ mod tests {
     use super::*;
 
     fn job(serial: u64, expression: &str) -> XPathJob {
-        XPathJob { serial, text: "<r><i n=\"1\"/><i n=\"2\"/></r>".to_owned(), expression: expression.to_owned(), options: Options::default() }
+        XPathJob {
+            serial,
+            text: "<r><i n=\"1\"/><i n=\"2\"/></r>".to_owned(),
+            expression: expression.to_owned(),
+            options: Options::default(),
+            trace: false,
+        }
     }
 
     #[test]
@@ -132,6 +152,23 @@ mod tests {
         let done = runner.poll().remove(0).result.expect("evaluates");
         let span = done.items[0].span.clone().expect("a place");
         assert_eq!(&text[span], "<p:item n=\"2\">Milk</p:item>");
+    }
+
+    #[test]
+    fn a_trace_is_made_when_asked_for_and_only_for_an_expression_that_evaluates() {
+        let runner = XPathRunner::inline();
+        let mut j = job(1, "/r/i");
+        j.trace = true;
+        runner.submit(j);
+        let mut bad = job(2, "/r/i[");
+        bad.trace = true;
+        runner.submit(bad);
+        runner.submit(job(3, "/r/i"));
+        let outcomes = runner.poll();
+        let steps: Vec<(String, usize)> = outcomes[0].trace.as_ref().expect("a trace").steps.iter().map(|s| (s.step.clone(), s.count)).collect();
+        assert_eq!(steps, [("/r".to_owned(), 1), ("/i".to_owned(), 2)]);
+        assert!(outcomes[1].trace.is_none() && outcomes[1].result.is_err(), "no trace for an expression that does not compile");
+        assert!(outcomes[2].trace.is_none(), "none unless asked for");
     }
 
     #[test]

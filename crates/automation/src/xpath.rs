@@ -3,7 +3,7 @@
 //! The document is an open document (`id`), a file (`path`, through the root confinement) or `text`. Nothing is changed.
 
 use serde_json::{Map, Value, json};
-use xmlcraft_query::{Options, Phase, evaluate};
+use xmlcraft_query::{Options, Phase, Prepared, evaluate, trace};
 use xmlcraft_text::Buffer;
 
 use crate::documents::{fail, json_result, position_json, source, source_properties};
@@ -25,6 +25,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             "version".into(),
             json!({ "type": "string", "enum": ["1.0", "2.0", "3.0", "3.1"], "description": "The XPath version asked for (default 3.1). The engine is 3.1's: the older versions are subsets of it and run under 3.1's rules (1.0's compatibility mode is not implemented)" }),
         );
+        map.insert("trace".into(), json!({ "type": "boolean", "description": "Also return `steps`: for a path, each step with the number of items the path leaves there and the time it took (an expression that is not a path is one step)" }));
         map.insert("max_items".into(), json!({ "type": "integer", "minimum": 1, "maximum": MAX_ITEMS, "description": "The most items listed (default 100; the answer says how many there are)" }));
     }
     vec![ToolDef {
@@ -73,6 +74,11 @@ fn xpath_eval(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
             .ok_or_else(|| ToolError::InvalidArgs(format!("max_items is a whole number from 1 to {MAX_ITEMS}")))?,
     };
     options.max_items = listed;
+    let want_trace = match args.get("trace") {
+        None => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(ToolError::InvalidArgs("trace is true or false".into())),
+    };
     match evaluate(&s.text, expression, &options) {
         Ok(done) => {
             let buffer = Buffer::from_text(&s.text);
@@ -103,9 +109,13 @@ fn xpath_eval(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
                     Value::Object(item)
                 })
                 .collect();
-            json_result(
-                json!({ "count": done.count, "truncated": done.count > items.len(), "items": items, "version": args.get("version").cloned().unwrap_or(json!("3.1")), "engine": "XPath 3.1" }),
-            )
+            let mut answer = json!({ "count": done.count, "truncated": done.count > items.len(), "items": items, "version": args.get("version").cloned().unwrap_or(json!("3.1")), "engine": "XPath 3.1" });
+            if want_trace && let Ok(mut prepared) = Prepared::new(&s.text) {
+                let t = trace(&mut prepared, expression, &options);
+                answer["steps"] = json!(t.steps.iter().map(|st| json!({ "step": st.step, "expression": st.expression, "count": st.count, "micros": st.micros, "error": st.error.as_ref().map(ToString::to_string) })).collect::<Vec<_>>());
+                answer["is_path"] = json!(t.is_path);
+            }
+            json_result(answer)
         }
         Err(e) => {
             let phase = match e.phase {

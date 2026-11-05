@@ -11,6 +11,7 @@
 //!   expression.
 
 mod source_map;
+mod trace;
 
 use std::ops::Range;
 
@@ -19,6 +20,7 @@ use xee_xpath::{Documents, Item, Queries, Query};
 use xot::{Value as XotValue, Xot};
 
 pub use source_map::SourceMap;
+pub use trace::{Step, Trace, trace};
 
 /// What to evaluate with.
 #[derive(Clone, Debug)]
