@@ -10,8 +10,8 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **5.3%** shipped, 25.5% with partial counted half (10 shipped + 76 partial of 188 counted; 64 P0, 62 P1, 53 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-05) |
-| Must-have (P0) features | 7.8% shipped, 43.0% weighted (5 shipped + 45 partial of 64) | measured |
+| **Feature breadth**, unweighted | **5.3%** shipped, 26.3% with partial counted half (10 shipped + 79 partial of 188 counted; 64 P0, 62 P1, 53 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-05) |
+| Must-have (P0) features | 7.8% shipped, 45.3% weighted (5 shipped + 48 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **100%** (1017 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): a valid document has no well-formedness or validity error, an invalid one is well-formed and has at least one validity error (which one is not compared; 73 of the 227 are documents with no DOCTYPE, invalid because there is nothing to validate against) | measured (same run) |
 | W3C xsdtests (XSD 1.0) | **98.2%** (37,756 of 38,438 accepted tests: schemas 96.2%, instances 99.3%) | measured (`cargo xtask conformance xsdtests`, 2026-10-29) |
@@ -110,3 +110,4 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 - 2026-11-05: the scope grew by 43 planned features (M5–M9) and `scope.xbrl` and `scope.web-services` are in scope: 197 counted features, 5.1% shipped, 23.1% weighted; 2026-11-05 (review): eight duplicate entries folded into their neighbours, 188 counted features, 5.3% shipped, 24.2% weighted.
 - 2026-11-05: M5.2: `json.editor`, `json.jsonc`, `json.lines` and `json.language-abstraction` planned → partial; 10 shipped and 75 partial of 188 counted features, 25.3% weighted.
 - 2026-11-05: M5.4: `json.schema-validate` planned → partial; the JSON Schema Test Suite is measured (4938 of 4950 required tests); 10 shipped and 76 partial of 188 counted features, 25.5% weighted.
+- 2026-11-05: M7.1: `query.xpath-evaluator` planned → partial (`xmlcraft-query`, `xpath_eval`; XPath 3.1 on `xee`); 10 shipped and 79 partial of 188 counted features, 26.3% weighted.

@@ -100,6 +100,7 @@ const TOOL_FILES: &[&str] = &[
     "crates/automation/src/entry_helpers.rs",
     "crates/automation/src/assign.rs",
     "crates/automation/src/infer.rs",
+    "crates/automation/src/xpath.rs",
     "crates/automation/src/sample.rs",
     "crates/automation/src/load_schema.rs",
 ];
