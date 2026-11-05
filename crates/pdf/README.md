@@ -1,0 +1,12 @@
+# xmlcraft-pdf
+
+A minimal PDF reader for the XML a PDF carries (layer L1, no UI, no I/O, compiles for the web; one dependency, `miniz_oxide`, to inflate).
+
+- **Structure** (`Pdf::open`): the cross-reference chain from `startxref` (classic tables, cross-reference streams with their `/W`, `/Index` and PNG or TIFF predictors, `/Prev` and hybrid `/XRefStm` sections, newest entry first), indirect objects by number (`Pdf::get`), object streams, and the filters Flate, ASCIIHex and ASCII85. The syntax of objects (`Parser`): names with `#xx`, literal strings with escapes and nesting, hexadecimal strings, numbers, references, comments, and streams whose `/Length` is direct, indirect or wrong (the `endstream` then decides).
+- **Embedded files** (`Pdf::embedded_files`, `embedded_data`): those of the `/EmbeddedFiles` name tree (with `/Kids` and `/Names`) and of the catalog's `/AF`, each once, with name (`/UF`, else `/F`; PDF text strings in UTF-16, UTF-8 or Latin-1), description, `/AFRelationship`, media type, declared size, the file specification and the stream. This is where the XML of a ZUGFeRD, Factur-X or XRechnung PDF is.
+- **Damaged files:** when the cross-reference cannot be followed or leads to no catalog, the file is scanned for `N G obj`, trailers and cross-reference streams (and the contents of object streams) and `Pdf::recovered()` says so; such a file is read but is not one to change.
+- **Refused:** a file with no `%PDF-` header, an encrypted file (`PdfError::Encrypted`), a filter or predictor beyond the list above, a stream that decodes to more than 256 MiB.
+- **Never changes bytes:** the file is kept as it was read (`Pdf::bytes`). Editing the embedded XML is an *incremental update* appended after those bytes (a later change; the part that writes does not exist yet).
+- **Bounded and total:** nesting (64), items in an array or dictionary, cross-reference entries (10 million), sections of the chain (4096), objects in an object stream and decoded size are capped; offsets, lengths and numbers from the file are checked; no input panics.
+
+Tests: `tests/reading.rs` builds PDFs by hand (classic tables, a PDF 1.5 file with an object stream, a deflated embedded file and a predicted cross-reference stream, an incremental update, a damaged table, no table and no trailer, encryption, indirect and wrong stream lengths, the syntax of strings, names and numbers; properties: no bytes panic the reader, a PDF with any byte changed or cut off is read or refused). The tool `pdf_files` is tested in `crates/automation/tests/pdf.rs`.
