@@ -8,6 +8,7 @@ mod assign;
 mod auto_validate;
 mod chrome;
 mod commands;
+mod completion;
 mod control;
 mod dialog;
 mod documents;
@@ -149,6 +150,10 @@ pub struct XmlCraftApp {
     /// Fetches the schema a document names (Load Schema), and the request being waited for.
     schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher,
     loading_schema: Option<u64>,
+    /// The completion being offered at the caret, if any (see `completion.rs`).
+    completion: Option<completion::Completion>,
+    /// Whether the editor had the keyboard at the last frame (the keys of a completion popup are the editor's only then).
+    editor_has_focus: bool,
     /// Reads each document's DOCTYPE into a grammar in the background (what Entry Helpers offer comes from it).
     schemas: Schemas,
     /// Loads the XML Schema a document names, for Entry Helpers.
@@ -301,6 +306,8 @@ impl XmlCraftApp {
             generate_serial: 0,
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
             loading_schema: None,
+            completion: None,
+            editor_has_focus: false,
             outline_filter: String::new(),
             problem_filter: problems::Filter::All,
             problem_selected: None,

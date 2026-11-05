@@ -241,8 +241,8 @@ fn elements_in(element: &SyntaxNode, offset: usize, content: Option<&Content>, g
     }
 }
 
-/// The general entities that can be referred to in text: the parsed ones the grammar declares.
-fn entities(grammar: &Grammar) -> Vec<EntityChoice> {
+/// The general entities that can be referred to in text and in attribute values: the parsed ones the grammar declares.
+pub fn entities(grammar: &Grammar) -> Vec<EntityChoice> {
     grammar
         .entities()
         .iter()

@@ -20,6 +20,8 @@ use crate::{XmlCraftApp, widgets};
 /// Documents larger than this get no Entry Helpers: they are worked out from the whole text each time the caret moves.
 const MAX_TEXT_BYTES: usize = 4 * 1024 * 1024;
 const ROW: f32 = 24.0;
+/// How many places' choices are kept.
+const CACHED_PLACES: usize = 3;
 
 /// The grammar of a document's DTD (or the XML Schema it names), and the choices worked out from it for one place in one version of the
 /// text.
@@ -41,7 +43,9 @@ pub(crate) struct HelperState {
     pub(crate) requested_xsd_key: Option<u64>,
     /// How many requests for a schema were made for this document (what tests count).
     pub(crate) xsd_requests: usize,
-    cache: Option<Cached>,
+    /// The choices at the last few places (the panel asks about the caret and completion about the `<` just typed: one entry would be
+    /// evicted by the other and the text parsed again each time).
+    cache: Vec<Cached>,
 }
 
 /// The choices at one place of one version of the text, from the grammar and the schema as they were.
@@ -61,7 +65,7 @@ impl HelperState {
         self.requested_xsd_key = None;
         self.checked_version = None;
         // The same key may now answer with other content (a catalog was added, the downloads were deleted).
-        self.cache = None;
+        self.cache.clear();
     }
 
     /// Take the answer to a request for a grammar, if it is the answer to the last one asked: a DOCTYPE that was edited meanwhile has been
@@ -105,47 +109,66 @@ impl HelperState {
     /// The choices at `offset` of the text (version `version`), worked out again only when something they depend on changed. A DTD is
     /// what a document with a DOCTYPE is answered from; a schema, when there is none.
     fn choices(&mut self, version: u64, offset: usize, text: impl FnOnce() -> String) -> Option<&Choices> {
-        let stale =
-            self.cache.as_ref().is_none_or(|c| (c.version, c.offset, c.grammar_key, c.xsd_key) != (version, offset, self.grammar_key, self.xsd_key));
-        if stale {
-            let choices = match (&self.grammar, &self.xsd) {
-                (None, None) => None,
-                (grammar, xsd) => {
-                    let text = text();
-                    (text.len() <= MAX_TEXT_BYTES).then(|| {
-                        let root = xmlcraft_syntax::parse(&text).syntax();
-                        match (grammar, xsd) {
-                            (Some(grammar), _) => choices_at(&root, offset, grammar),
-                            (None, Some(schema)) => xsd_choices_at(&root, offset, schema),
-                            (None, None) => Choices::default(),
-                        }
-                    })
+        let key = (version, offset, self.grammar_key, self.xsd_key);
+        let found = self.cache.iter().position(|c| (c.version, c.offset, c.grammar_key, c.xsd_key) == key);
+        let index = match found {
+            Some(i) => i,
+            None => {
+                let choices = match (&self.grammar, &self.xsd) {
+                    (None, None) => None,
+                    (grammar, xsd) => {
+                        let text = text();
+                        (text.len() <= MAX_TEXT_BYTES).then(|| {
+                            let root = xmlcraft_syntax::parse(&text).syntax();
+                            match (grammar, xsd) {
+                                (Some(grammar), _) => choices_at(&root, offset, grammar),
+                                (None, Some(schema)) => xsd_choices_at(&root, offset, schema),
+                                (None, None) => Choices::default(),
+                            }
+                        })
+                    }
+                };
+                if self.cache.len() >= CACHED_PLACES {
+                    self.cache.remove(0);
                 }
-            };
-            self.cache = Some(Cached { version, offset, grammar_key: self.grammar_key, xsd_key: self.xsd_key, choices });
-        }
-        self.cache.as_ref().and_then(|c| c.choices.as_ref())
+                self.cache.push(Cached { version, offset, grammar_key: self.grammar_key, xsd_key: self.xsd_key, choices });
+                self.cache.len() - 1
+            }
+        };
+        self.cache.get(index).and_then(|c| c.choices.as_ref())
     }
 }
 
 impl XmlCraftApp {
     /// What the DTD (or the schema) allows at the caret of the document being shown, if one was read.
-    fn helper_choices(&mut self) -> Option<Choices> {
+    pub(crate) fn helper_choices(&mut self) -> Option<Choices> {
+        let caret = self.session.active_document()?.editor().primary().head();
+        self.helper_choices_at(caret)
+    }
+
+    /// What the grammar allows at `offset` of the document being shown (not only at the caret: completion asks about the place of the `<`
+    /// that was typed, which is where the element goes, while the caret is inside what is not yet a tag).
+    pub(crate) fn helper_choices_at(&mut self, offset: usize) -> Option<Choices> {
         let doc = self.session.active_document()?;
-        let (id, version, caret) = (doc.id(), doc.editor().version(), doc.editor().primary().head());
+        let (id, version) = (doc.id(), doc.editor().version());
         let view = self.views.get_mut(&id)?;
-        view.helpers.choices(version, caret, || doc.editor().text()).cloned()
+        view.helpers.choices(version, offset, || doc.editor().text()).cloned()
     }
 
     /// Put an element at the caret, with what its declaration requires when the option is on. `scope` are the namespace declarations at
     /// the caret (from the choices), for the names an XML Schema element is written with.
     pub(crate) fn insert_element(&mut self, choice: &ElementChoice, scope: &[Declaration]) {
-        let snippet = match (self.active_grammar(), self.active_xsd()) {
-            (Some(grammar), _) => element_snippet(&grammar, &choice.name, self.entry_mandatory),
-            (None, Some(schema)) => xsd_element_snippet(&schema, scope, choice, self.entry_mandatory),
-            (None, None) => return,
-        };
+        let Some(snippet) = self.element_snippet_for(choice, scope) else { return };
         self.insert_at_selection(snippet.text, snippet.caret);
+    }
+
+    /// What is written for `choice` at the caret: the element with what its declaration requires when the option is on.
+    pub(crate) fn element_snippet_for(&self, choice: &ElementChoice, scope: &[Declaration]) -> Option<xmlcraft_complete::Snippet> {
+        match (self.active_grammar(), self.active_xsd()) {
+            (Some(grammar), _) => Some(element_snippet(&grammar, &choice.name, self.entry_mandatory)),
+            (None, Some(schema)) => Some(xsd_element_snippet(&schema, scope, choice, self.entry_mandatory)),
+            (None, None) => None,
+        }
     }
 
     /// Put an entity reference at the caret.
@@ -177,7 +200,7 @@ impl XmlCraftApp {
         }
     }
 
-    fn active_grammar(&self) -> Option<Arc<Grammar>> {
+    pub(crate) fn active_grammar(&self) -> Option<Arc<Grammar>> {
         let id = self.session.active_document()?.id();
         self.views.get(&id)?.helpers.grammar.clone()
     }
@@ -248,7 +271,7 @@ fn drawable(c: char) -> bool {
 
 /// The text of an entity as it is shown beside its name: its first 24 characters, or nothing when one of them could not be drawn (the
 /// XHTML DTD has some two hundred entities for symbols, which would be boxes).
-fn shown_value(value: &str) -> Option<String> {
+pub(crate) fn shown_value(value: &str) -> Option<String> {
     let shown: String = value.chars().take(24).collect();
     (!shown.is_empty() && shown.chars().all(drawable)).then_some(shown)
 }
@@ -543,12 +566,27 @@ mod tests {
     }
 
     #[test]
+    fn the_choices_at_a_few_places_are_kept_so_that_two_askers_do_not_evict_each_other() {
+        let mut state = HelperState::default();
+        let _ = state.choices(1, 0, String::new);
+        let _ = state.choices(1, 0, String::new);
+        assert_eq!(state.cache.len(), 1, "the same place is worked out once");
+        let _ = state.choices(1, 5, String::new);
+        let _ = state.choices(1, 0, String::new);
+        assert_eq!(state.cache.len(), 2, "two places are both kept");
+        for offset in 10..20 {
+            let _ = state.choices(1, offset, String::new);
+        }
+        assert_eq!(state.cache.len(), CACHED_PLACES, "and no more than a few");
+    }
+
+    #[test]
     fn asking_again_for_a_schema_forgets_the_choices_worked_out_from_the_old_one() {
         let mut state = HelperState::default();
         let _ = state.choices(1, 0, String::new);
-        assert!(state.cache.is_some(), "the choices at this place are kept");
+        assert!(!state.cache.is_empty(), "the choices at this place are kept");
         state.forget_requests();
-        assert!(state.cache.is_none(), "the same key may now stand for other content: they are worked out again");
+        assert!(state.cache.is_empty(), "the same key may now stand for other content: they are worked out again");
     }
 
     #[test]

@@ -20,7 +20,7 @@ mod snippet;
 mod xsd;
 mod xsd_snippet;
 
-pub use choices::{AttributeChoice, Choices, ElementChoice, EntityChoice, choices_at};
+pub use choices::{AttributeChoice, Choices, ElementChoice, EntityChoice, choices_at, entities};
 pub use scope::{Declaration, Written};
 pub use snippet::{MAX_SNIPPET_BYTES, MAX_SNIPPET_DEPTH, Snippet, attribute_snippet, element_snippet, entity_snippet};
 pub use xsd::{MAX_ELEMENTS, MAX_VALUES, xsd_choices_at};

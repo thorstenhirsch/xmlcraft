@@ -359,11 +359,11 @@ title = "Completion of names that occur in the document"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/tests/completion.rs::without_a_grammar_the_names_used_in_the_document_are_offered_after_a_bracket", "crates/ui-egui/tests/completion.rs::nothing_is_offered_in_text_or_without_a_typed_character", "crates/ui-egui/src/completion.rs::a_name_after_an_open_bracket_is_an_element_and_after_an_ampersand_an_entity"]
+notes = "Typing `<` in a document that has no DTD or schema offers the element names the document already uses (a popup under the caret; more letters narrow it, prefix matches first; arrow keys choose, Enter or Tab writes `<name></name>`, Escape closes). Missing: attribute names and values from the document, names after `</`, a key to ask for the popup (Ctrl+Space), and a headless tool (completion is the window's popup; the choices are `xml_entry_helpers`)."
 
 [[feature]]
 id = "editor.completion-schema"
@@ -371,11 +371,11 @@ title = "Schema-aware completion of elements, attributes and values"
 area = "A"
 tier = "P0"
 milestone = "M3"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = "DTD-driven at M2, XSD-driven at M3. The choices (what the DTD or the XML Schema allows at a place, and the text to insert) exist as `xmlcraft-complete` and are shown in Entry Helpers (`view.entry-helpers`); the popup in the editor that offers them while typing is not there yet."
+evidence = ["crates/ui-egui/tests/completion.rs::after_an_open_bracket_the_elements_that_may_come_are_offered_and_enter_writes_one", "crates/ui-egui/tests/completion.rs::more_letters_narrow_the_list_and_escape_closes_it_without_writing", "crates/ui-egui/tests/completion.rs::attributes_values_and_entities_are_offered_too", "crates/ui-egui/tests/completion.rs::a_click_on_a_row_writes_it_as_one_undoable_step"]
+notes = "DTD-driven at M2, XSD-driven at M3. The choices (what the DTD or the XML Schema allows at a place, and the text to insert) exist as `xmlcraft-complete` and are shown in Entry Helpers (`view.entry-helpers`); Completion while typing (M1.10d, the popup in the editor): after `<` the elements the DTD or the schema allows there (written with what they require when the Entry Helpers option is on), after `&` its entities, and a few letters into an attribute name the attributes it has not got yet; the popup is under the caret, narrows as letters are typed, and a click, Enter or Tab writes the choice as one undoable step. Missing: a key to ask for it, type/ref/base values inside an XSD file, and wildcard and abstract-type names."
 
 [[feature]]
 id = "editor.completion-values"
@@ -383,11 +383,11 @@ title = "Completion of enumerations, booleans and IDREFs in attribute values"
 area = "A"
 tier = "P0"
 milestone = "M3"
-status = "planned"
+status = "partial"
 commands = []
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/ui-egui/tests/completion.rs::the_values_of_an_attribute_are_offered_inside_its_quotes", "crates/ui-egui/tests/completion.rs::an_attribute_that_is_there_already_is_not_offered_and_a_value_is_of_its_own_attribute"]
+notes = "Inside the quotes of an attribute whose type is an enumeration (DTD) or lists values, those values are offered and written. Missing: booleans and other XSD types that list no values in the grammar, IDREF/IDREFS from the IDs the document has, and values of the type of an element."
 
 [[feature]]
 id = "editor.hover-info"
