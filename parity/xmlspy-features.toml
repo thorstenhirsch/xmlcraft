@@ -556,11 +556,11 @@ title = "Multiple documents as tabs"
 area = "B"
 tier = "P0"
 milestone = "M0"
-status = "partial"
+status = "shipped"
 commands = ["file.new", "file.close"]
 tools = []
-evidence = ["crates/ui-egui/tests/documents.rs::closing_a_document_with_changes_asks_first"]
-notes = "Tabs are the open documents: new, open, close (with a prompt for unsaved changes), middle-click close, an unsaved dot. No scrolling or drag-reorder when many are open."
+evidence = ["crates/ui-egui/tests/documents.rs::closing_a_document_with_changes_asks_first", "crates/ui-egui/tests/tabs.rs::many_documents_leave_new_and_open_in_reach_and_the_shown_tab_in_view", "crates/ui-egui/tests/tabs.rs::a_tab_dragged_along_the_strip_goes_where_it_is_let_go", "crates/engine/src/lib.rs::a_document_moved_in_the_tabs_keeps_the_one_that_is_shown_shown"]
+notes = "Tabs are the open documents: new, open, close (with a prompt for unsaved changes), middle-click close, an unsaved dot. Many tabs share the room (each at least 150 px wide), then the strip scrolls (the wheel scrolls it sideways, and the shown tab is brought into view); a tab is dragged to a new place with a line marking where it will go, and the shown document stays shown. Missing: a tab menu (close others, copy path), tab previews, keyboard reordering."
 
 [[feature]]
 id = "view.status-bar"

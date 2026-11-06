@@ -179,6 +179,8 @@ pub struct XmlCraftApp {
     schemas: Schemas,
     /// What the threads of the SOAP and OpenAPI windows answer on.
     http: http_pane::HttpWorker,
+    /// What the tab strip remembers: the tab last scrolled to and a tab being dragged.
+    tab_strip: chrome::TabStripState,
     /// Autosave recovery: what is kept of unsaved documents, and what an earlier session left.
     recovery: recovery::Recovery,
     /// Loads the XML Schema a document names, for Entry Helpers.
@@ -367,6 +369,7 @@ impl XmlCraftApp {
             schemas: Schemas::new(resolvers()),
             http: http_pane::HttpWorker::default(),
             recovery: recovery::Recovery::default(),
+            tab_strip: chrome::TabStripState::default(),
             xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas::new(resolvers()),
             json_schemas: xmlcraft_engine::json_schemas::JsonSchemas::new(resolvers()),
             entry_mandatory: prefs.entry_mandatory,
