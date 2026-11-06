@@ -26,6 +26,7 @@ pub enum XsltKind {
     Attribute,
     Value,
     Function,
+    Variable,
 }
 
 /// One thing to offer.
@@ -613,14 +614,36 @@ fn after(text: &str, from: usize, pattern: &str) -> Option<usize> {
     text.get(from..)?.find(pattern).map(|n| from + n + pattern.len())
 }
 
-/// The names of the elements open at `upto`, outermost first (those that were closed are gone). Read leniently: a stray end tag is
-/// ignored, and the nesting followed is bounded.
-fn open_elements(text: &str, upto: usize) -> Vec<String> {
-    let mut stack: Vec<String> = Vec::new();
+/// What reading a stylesheet up to the caret found.
+struct Scan {
+    /// The names of the elements open at the caret, outermost first.
+    stack: Vec<String>,
+    /// The variables and parameters visible at the caret as (name, is a parameter): those of the stylesheet, and those declared before
+    /// the caret in an element that is still open.
+    variables: Vec<(String, bool)>,
+}
+
+/// Read the stylesheet `text` as far as `upto`, the start of the tag being written (and on to its end, for the declarations of the
+/// stylesheet). Read leniently: a stray end tag is ignored, and the nesting followed is bounded.
+fn scan(text: &str, prefix: &str, upto: usize) -> Scan {
+    let (variable, parameter) = (qualified(prefix, "variable"), qualified(prefix, "param"));
+    // (name, where its `<` is) of the open elements.
+    let mut stack: Vec<(String, usize)> = Vec::new();
+    let mut snapshot: Option<Vec<(String, usize)>> = None;
+    // (name, is a parameter, where its parent starts (none: the stylesheet), where it is, the depth of its parent).
+    let mut declared: Vec<(String, bool, Option<usize>, usize, usize)> = Vec::new();
     let mut i = 0;
-    while i < upto {
-        let Some(rel) = text.get(i..upto).and_then(|s| s.find('<')) else { break };
+    while i < text.len() {
+        let Some(rel) = text.get(i..).and_then(|s| s.find('<')) else { break };
         let lt = i + rel;
+        if lt >= upto && snapshot.is_none() {
+            snapshot = Some(stack.clone());
+        }
+        if lt == upto {
+            // (The tag being written is not read: it has no end yet.)
+            i = lt + 1;
+            continue;
+        }
         let Some(rest) = text.get(lt + 1..) else { break };
         let next = if rest.starts_with("!--") {
             after(text, lt + 4, "-->")
@@ -645,7 +668,7 @@ fn open_elements(text: &str, upto: usize) -> Vec<String> {
             stop
         } else if let Some(end_tag) = rest.strip_prefix('/') {
             let name = end_tag.split(|c: char| !is_name_char(c)).next().unwrap_or_default();
-            if let Some(at) = stack.iter().rposition(|n| n == name) {
+            if let Some(at) = stack.iter().rposition(|(n, _)| n == name) {
                 stack.truncate(at);
             }
             after(text, lt + 1, ">")
@@ -654,11 +677,17 @@ fn open_elements(text: &str, upto: usize) -> Vec<String> {
             let name = rest.get(..name_len).unwrap_or_default();
             match tag_end(text, lt + 1 + name_len) {
                 Some((end, self_closing)) => {
+                    if (name == variable || name == parameter) && declared.len() < 4 * MAX_ITEMS {
+                        let tag = text.get(lt..end).unwrap_or_default();
+                        if let Some((_, value)) = attributes_of_tag(tag).into_iter().find(|(n, _)| n == "name") {
+                            declared.push((value, name == parameter, stack.last().map(|(_, p)| *p), lt, stack.len()));
+                        }
+                    }
                     if !self_closing && !name.is_empty() {
                         if stack.len() >= MAX_DEPTH {
-                            return stack;
+                            break;
                         }
-                        stack.push(name.to_owned());
+                        stack.push((name.to_owned(), lt));
                     }
                     Some(end + 1)
                 }
@@ -670,7 +699,16 @@ fn open_elements(text: &str, upto: usize) -> Vec<String> {
             _ => break,
         }
     }
-    stack
+    let open = snapshot.unwrap_or(stack);
+    let mut variables: Vec<(String, bool)> = declared
+        .into_iter()
+        // A declaration of the stylesheet is visible everywhere; any other from where it is on in the element it is in, if that is still open.
+        .filter(|(_, _, parent, at, depth)| *depth == 1 || (*at < upto && parent.is_some_and(|p| open.iter().any(|(_, o)| *o == p))))
+        .map(|(name, is_param, _, _, _)| (name, is_param))
+        .collect();
+    variables.sort_unstable();
+    variables.dedup();
+    Scan { stack: open.into_iter().map(|(n, _)| n).collect(), variables }
 }
 
 /// The values of `attribute` on the `xsl:` elements named `locals` in the stylesheet, each word apart (a `mode` can list several); the
@@ -769,8 +807,8 @@ pub fn complete(text: &str, offset: usize, explicit: bool) -> Option<XsltComplet
     let context = tag_context(text, offset)?;
     match context.place {
         Place::Name { typed, replace } => {
-            let stack = open_elements(text, context.lt);
-            let parent = stack.last()?;
+            let scanned = scan(text, &prefix, context.lt);
+            let parent = scanned.stack.last()?;
             let parent_local = xsl_element(parent, &prefix).map(|(local, _)| local);
             let mut items: Vec<XsltItem> = ELEMENTS
                 .iter()
@@ -848,8 +886,24 @@ pub fn complete(text: &str, offset: usize, explicit: bool) -> Option<XsltComplet
             // The name of a function in an expression.
             let ident = typed.rsplit(|c: char| !is_name_char(c)).next().unwrap_or_default();
             let before = typed.get(..typed.len() - ident.len()).unwrap_or_default();
+            // A variable or a parameter: after `$`.
+            if before.ends_with('$') && !ident.contains(':') {
+                let items: Vec<XsltItem> = scan(text, &prefix, context.lt)
+                    .variables
+                    .into_iter()
+                    .filter(|(name, _)| name.starts_with(ident))
+                    .take(MAX_ITEMS)
+                    .map(|(name, is_param)| item(&name, if is_param { "parameter" } else { "variable" }))
+                    .collect();
+                let tail = text.get(offset..replace.end).map_or(0, |r| r.find(|c: char| !is_name_char(c)).unwrap_or(r.len()));
+                return (!items.is_empty()).then_some(XsltCompletion {
+                    kind: XsltKind::Variable,
+                    replace: offset - ident.len()..offset + tail,
+                    items,
+                });
+            }
             if ident.contains(':')
-                || before.ends_with(['$', '@', '/'])
+                || before.ends_with(['@', '/'])
                 || ident.starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '.')
                 || (ident.is_empty() && !explicit)
             {
@@ -1000,6 +1054,27 @@ mod tests {
         let offset = marked.find('|').expect("caret");
         let explicit = complete(&marked.replacen('|', "", 1), offset, true).expect("completion");
         assert!(explicit.items.len() > 100, "an explicit request lists them all");
+    }
+
+    #[test]
+    fn after_a_dollar_the_variables_and_parameters_in_scope_are_offered() {
+        let body = "  <xsl:variable name=\"global\" select=\"1\"/>\n  <xsl:param name=\"mode-p\"/>\n  <xsl:template match=\"/\">\n    <xsl:param name=\"p\"/>\n    <xsl:if test=\"a\"><xsl:variable name=\"inner\" select=\"2\"/></xsl:if>\n    <xsl:variable name=\"before\" select=\"3\"/>\n    <xsl:for-each select=\"x\"><xsl:variable name=\"deep\" select=\"4\"/><xsl:value-of select=\"$|\"/></xsl:for-each>\n    <xsl:variable name=\"after\" select=\"5\"/>\n  </xsl:template>\n  <xsl:variable name=\"later\" select=\"6\"/>";
+        let c = at(body).expect("completion");
+        assert_eq!(c.kind, XsltKind::Variable);
+        // Those of the stylesheet (also those that come later), those of the template before the caret, and not those of a closed element.
+        assert_eq!(labels(&c), ["before", "deep", "global", "later", "mode-p", "p"]);
+        assert_eq!(c.items.iter().find(|i| i.label == "p").map(|i| i.detail.as_str()), Some("parameter"));
+        assert_eq!(c.items.iter().find(|i| i.label == "deep").map(|i| (i.detail.as_str(), i.insert.as_str())), Some(("variable", "deep")));
+        let c = at(&body.replace("$|", "$g|")).expect("completion");
+        assert_eq!(labels(&c), ["global"]);
+        // The name after the dollar is what is replaced (the rest of it too), and the dollar stays.
+        let marked = format!("{HEAD}<xsl:variable name=\"abc\"/><xsl:template match=\"/\"><xsl:value-of select=\"1 + $a|x\"/>");
+        let offset = marked.find('|').expect("caret");
+        let c = complete(&marked.replacen('|', "", 1), offset, false).expect("completion");
+        assert_eq!(&marked.replacen('|', "", 1)[c.replace.clone()], "ax");
+        // Nothing for an unknown start, and in an attribute that holds no expression.
+        assert_eq!(at(&body.replace("$|", "$zzz|")), None);
+        assert_eq!(at("  <xsl:variable name=\"v\"/><xsl:template match=\"/\"><xsl:element name=\"$|\"/>"), None);
     }
 
     #[test]
