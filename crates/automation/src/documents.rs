@@ -55,7 +55,7 @@ fn add_language(properties: &mut Value) {
     if let Some(map) = properties.as_object_mut() {
         map.insert(
             "language".into(),
-            json!({ "type": "string", "enum": ["xml", "json", "jsonc", "json5", "jsonl", "yaml", "bson"], "description": "What `text` is written in (default xml). An open document or a file is read by its name: JSON for `.json` (also `.geojson`, `.webmanifest`, `.har`, `.ipynb`, `.jsonld`, `.map`), JSON with comments for `.jsonc` and editor configuration files such as `tsconfig.json` and `settings.json`, `.json5`, JSON Lines for `.jsonl` and `.ndjson`, YAML for `.yaml` and `.yml`, a BSON file (`.bson`) as the Extended JSON text of its documents (for `text`, `bson` means that text); anything else is XML." }),
+            json!({ "type": "string", "enum": ["xml", "json", "jsonc", "json5", "jsonl", "yaml", "bson", "html"], "description": "What `text` is written in (default xml). An open document or a file is read by its name: JSON for `.json` (also `.geojson`, `.webmanifest`, `.har`, `.ipynb`, `.jsonld`, `.map`), JSON with comments for `.jsonc` and editor configuration files such as `tsconfig.json` and `settings.json`, `.json5`, JSON Lines for `.jsonl` and `.ndjson`, YAML for `.yaml` and `.yml`, a BSON file (`.bson`) as the Extended JSON text of its documents (for `text`, `bson` means that text); `.html` and `.htm` for HTML5; anything else is XML." }),
         );
     }
 }
@@ -690,7 +690,8 @@ fn language_arg(args: &Value) -> Result<Language> {
         Some("jsonl") => Language::Json(JsonFlavor::Lines),
         Some("yaml") => Language::Yaml,
         Some("bson") => Language::Bson,
-        Some(other) => return Err(ToolError::InvalidArgs(format!("language is xml, json, jsonc, json5, jsonl, yaml or bson, not {other:?}"))),
+        Some("html") => Language::Html,
+        Some(other) => return Err(ToolError::InvalidArgs(format!("language is xml, json, jsonc, json5, jsonl, yaml, bson or html, not {other:?}"))),
     })
 }
 

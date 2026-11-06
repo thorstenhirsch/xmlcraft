@@ -2153,11 +2153,11 @@ title = "HTML and HTML5 editing with element and attribute completion"
 area = "A"
 tier = "P2"
 milestone = "M8"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["xml_wellformed", "xml_outline", "xml_folds"]
+evidence = ["crates/html/tests/html.rs::end_tags_that_html_lets_a_person_leave_out_are_implied", "crates/html/tests/html.rs::void_elements_have_no_end_tag_and_one_that_is_written_is_a_problem", "crates/html/tests/html.rs::the_text_of_script_style_title_and_textarea_is_not_markup", "crates/html/tests/html.rs::what_is_unusual_is_said_unknown_obsolete_self_closing_duplicate_ids_images_and_the_doctype", "crates/html/tests/html.rs::any_text_is_read_with_spans_inside_it_and_on_character_boundaries", "crates/engine/src/html_analysis.rs::folds_hide_the_lines_inside_an_element_and_leave_its_end_tag_visible", "crates/engine/src/html_complete.rs::in_a_start_tag_the_attributes_the_element_takes_are_offered_without_those_it_has", "crates/editor/src/typing.rs::html_writes_no_end_tag_for_a_void_element_and_one_for_the_others", "crates/ui-egui/tests/html.rs::the_problems_of_html_are_those_of_html_not_of_xml", "crates/ui-egui/tests/html.rs::elements_attributes_and_values_are_completed_from_what_html_has", "crates/automation/tests/html.rs::html_is_read_by_the_rules_of_html_and_the_tools_say_what_is_wrong_and_what_is_there"]
+notes = "`.html` and `.htm` documents are HTML5 (`Language::Html`): `xmlcraft-html` reads them as a browser builds the tree (void elements, end tags that may be left out, raw text in script, style, textarea and title, svg and math), and the Problems pane lists what is wrong with the markup (an element not closed, a stray or void end tag, `/>` on an element that is not void, an unknown or obsolete element, a duplicate id or attribute, an `<img>` with no alt, a missing `<!DOCTYPE html>`), not the errors XML would give. The outline lists the elements with a hint from their id, elements and comments fold, the editor writes no end tag for a void element, and typing offers the elements, the attributes of the element in the tag and the values an attribute lists (`input type`, `target`, `dir`…), from the tables of the standard. The tools `xml_wellformed`, `xml_outline` and `xml_folds` take `language: html` (or a file named .html). Missing: the browser view (planned with the locked-down webview), pretty-printing, character references, the content-model rules (what may be inside what), the adoption agency repair of misnested formatting elements, hover help for elements and attributes, completion of closing tags, CSS and JavaScript inside style and script, accessibility checks beyond `alt`, XHTML as HTML, and entry helpers."
 
 [[feature]]
 id = "openapi.v2"

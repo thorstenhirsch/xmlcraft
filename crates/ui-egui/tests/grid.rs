@@ -136,11 +136,16 @@ fn a_row_is_removed_with_delete_and_a_name_is_changed_with_f2() {
     assert_eq!(text(&h), JSON.replace("\"name\"", "\"title\""));
     choose(&mut h, "qty: 2");
     h.key_press(egui::Key::Delete);
-    // The grid is read again from the new text one frame after the edit, and the accessibility tree a frame after that: on a slow runner
-    // three steps were not always enough.
-    h.run_steps(8);
+    h.run_steps(3);
     assert_eq!(text(&h), "{\n  \"title\": \"Tea\",\n  \"tags\": [\"a\", \"b\"]\n}");
-    assert!(h.query_by_label_contains("qty").is_none());
+    // "qty" is also in the Outline pane, which comes from an analysis that runs on a thread: on a slow runner it is a moment behind the
+    // text, so wait for it (counting frames was not enough on macOS CI).
+    let started = Instant::now();
+    while h.query_by_label_contains("qty").is_some() {
+        assert!(started.elapsed() < Duration::from_secs(10), "the row, and the outline, no longer show qty");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }
 
 #[test]

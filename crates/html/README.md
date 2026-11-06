@@ -1,0 +1,12 @@
+# xmlcraft-html
+
+The HTML5 layer (layer L1, no UI, no I/O, compiles for the web): a tolerant reader that keeps the place of every element and attribute, and the tables of what HTML is made of.
+
+- **Reading** (`parse`): builds the structure a browser would, as far as an editor needs it. Void elements (`<br>`, `<img>`, `<input>`…) have no content and no end tag; the end tags HTML lets a person leave out (`</p>`, `</li>`, `</td>`, `</option>`…) are implied when the next element says so, or when the parent ends; `script`, `style`, `textarea` and `title` hold text, not markup; inside `svg` and `math` names keep their case and `<path/>` is a closed element. A start tag, an end tag, an attribute and its value each have their byte range. Nothing is rejected: what is wrong is a `Diagnostic` and the tree is as good as it can be.
+- **Problems** (`html.*` codes): an element that is not closed (at its start tag; also when the end tag of its parent comes first), an end tag with no start tag, an end tag for a void element, `/>` on an element that is not void (HTML ignores it), an unknown element (a custom element has a hyphen) or an obsolete one, a duplicate `id`, a repeated attribute, an `<img>` with no `alt`, a tag or a comment that is not finished, a document with an `<html>` element and no `<!DOCTYPE html>`.
+- **Tables** (`data`): the elements (void, raw text, optional end tag, obsolete), the global attributes, the attributes each element takes, the attributes that may be written on any element (`data-*`, `aria-*`, `on…`) and the values some attributes list (`input type`, `target`, `dir`, `loading`, …). Written from the WHATWG HTML Living Standard.
+- **Limits**: elements (`MAX_ELEMENTS`), nesting (`MAX_DEPTH`), attributes in a tag and the number of problems are capped, and `Document::truncated` says when the reader stopped.
+
+Not done: character references are not decoded or checked (there is no table of the 2,231 named ones), the adoption agency algorithm for misnested formatting elements is not run (a misnested `<b><i></b></i>` is reported as unclosed, not repaired), and the content-model rules (what may be inside what) are not checked.
+
+Tests: `tests/html.rs` (the structure and the places of a document, void elements, implied end tags, raw text, attributes, comments, svg, the problems, the limits; a property: for any text every span is inside it and on character boundaries), and the table checks in `src/data.rs`.

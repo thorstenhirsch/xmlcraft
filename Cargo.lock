@@ -6654,6 +6654,7 @@ dependencies = [
  "rowan",
  "unicode-segmentation",
  "unicode-width",
+ "xmlcraft-html",
  "xmlcraft-json-syntax",
  "xmlcraft-syntax",
  "xmlcraft-text",
@@ -6682,6 +6683,7 @@ dependencies = [
  "xmlcraft-einvoice",
  "xmlcraft-format",
  "xmlcraft-grammar",
+ "xmlcraft-html",
  "xmlcraft-infer",
  "xmlcraft-json",
  "xmlcraft-json-syntax",
@@ -6727,6 +6729,14 @@ dependencies = [
  "proptest",
  "xmlcraft-diff",
  "xmlcraft-text",
+]
+
+[[package]]
+name = "xmlcraft-html"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "xmlcraft-syntax",
 ]
 
 [[package]]

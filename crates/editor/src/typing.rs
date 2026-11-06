@@ -89,7 +89,7 @@ impl Editor {
         if self.syntax() == Syntax::Yaml {
             return self.type_text(text);
         }
-        let json = self.syntax() != Syntax::Xml;
+        let json = !self.syntax().is_markup();
         let aided = if json {
             matches!(key, '"' | '{' | '[' | '}' | ']') || (key == '\'' && self.syntax() == Syntax::Json5)
         } else {
@@ -130,7 +130,7 @@ impl Editor {
         if !caret.is_empty() {
             return Plan::Literal;
         }
-        if self.syntax() != Syntax::Xml {
+        if !self.syntax().is_markup() {
             return self.plan_json_key(caret.head(), key);
         }
         match key {
@@ -226,6 +226,10 @@ impl Editor {
             Some('>') => return Plan::StepOver,
             Some('/') if self.buffer.char_at(head + 1) == Some('>') => return Plan::Literal,
             _ => {}
+        }
+        // HTML: a void element has no end tag.
+        if self.syntax() == Syntax::Html && xmlcraft_html::data::is_void(&name.to_ascii_lowercase()) {
+            return Plan::Literal;
         }
         // The end tag is there already (the `>` of a tag being edited in front of it).
         if self.end_tag_follows(head, &name) {
@@ -362,7 +366,7 @@ impl Editor {
         if self.syntax() == Syntax::Yaml {
             return Vec::new();
         }
-        if self.syntax() != Syntax::Xml {
+        if !self.syntax().is_markup() {
             let single = self.syntax() == Syntax::Json5;
             return heads
                 .into_iter()
@@ -841,6 +845,28 @@ mod tests {
         e.set_syntax(Syntax::Yaml);
         e.backspace();
         assert_eq!(shown(&e), "a: |\"", "Backspace takes one character");
+    }
+
+    #[test]
+    fn html_writes_no_end_tag_for_a_void_element_and_one_for_the_others() {
+        for (typed, expected) in [
+            ("<br", "<br>|"),
+            ("<IMG src=x", "<IMG src=x>|"),
+            ("<input type=text", "<input type=text>|"),
+            ("<div", "<div>|</div>"),
+            ("<p", "<p>|</p>"),
+        ] {
+            let mut e = at("|");
+            e.set_syntax(Syntax::Html);
+            e.type_text(typed);
+            e.type_input(">");
+            assert_eq!(shown(&e), expected, "{typed}");
+        }
+        // XML is the same for both: every start tag gets its end tag.
+        let mut e = at("|");
+        e.type_text("<br");
+        e.type_input(">");
+        assert_eq!(shown(&e), "<br>|</br>");
     }
 
     #[test]

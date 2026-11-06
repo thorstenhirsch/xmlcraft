@@ -64,7 +64,7 @@ impl Loader for ConfinedSchemas<'_> {
 fn dialect_of(language: Language) -> Dialect {
     match language {
         Language::Json(flavor) => flavor.dialect(),
-        Language::Xml | Language::Yaml | Language::Bson => Dialect::Json,
+        Language::Xml | Language::Yaml | Language::Bson | Language::Html => Dialect::Json,
     }
 }
 

@@ -14,6 +14,7 @@ workspace = true
 xmlcraft-text = { workspace = true }
 xmlcraft-syntax = { workspace = true }
 xmlcraft-json-syntax = { workspace = true }
+xmlcraft-html = { workspace = true }
 rowan = { workspace = true }
 unicode-segmentation = { workspace = true }
 unicode-width = { workspace = true }

@@ -53,7 +53,7 @@ fn read(text: &str, language: Language) -> Option<Instance> {
             (read.documents, read.diagnostics.iter().any(|d| d.severity() == Severity::Error))
         }
         // A BSON file is shown as Extended JSON, whose types a schema does not know.
-        Language::Xml | Language::Bson => return None,
+        Language::Xml | Language::Bson | Language::Html => return None,
     };
     let first = roots.first();
     let named = first.and_then(member_reference).or_else(|| if language == Language::Yaml { modeline(text) } else { None });

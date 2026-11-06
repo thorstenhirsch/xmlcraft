@@ -246,7 +246,7 @@ fn kind_button(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool) {
         Some(DocKind::Xsd | DocKind::Dtd) if action(app, ui, "xml.generate_sample", tl!("XML…"), PillKind::Secondary, compact) => {
             app.execute("xml.generate_sample");
         }
-        Some(DocKind::Xsd | DocKind::Dtd | DocKind::Json | DocKind::Yaml) => {}
+        Some(DocKind::Xsd | DocKind::Dtd | DocKind::Json | DocKind::Yaml | DocKind::Html) => {}
         None => {}
     }
 }

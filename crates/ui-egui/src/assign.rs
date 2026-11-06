@@ -52,7 +52,7 @@ impl XmlCraftApp {
             kind: Kind::Detect,
             error: None,
             focus: true,
-            data: !doc.language().is_xml(),
+            data: doc.language().is_data(),
         })));
     }
 

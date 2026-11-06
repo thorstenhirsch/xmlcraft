@@ -36,6 +36,8 @@ pub enum Language {
     /// A BSON file: shown and edited as its MongoDB Extended JSON text, saved as the bytes that text stands for.
     Bson,
     Yaml,
+    /// HTML5 (`.html`, `.htm`): read with the rules of HTML (void elements, end tags that may be left out), not those of XML.
+    Html,
 }
 
 /// File names (lower case) that are JSON with comments although they end in `.json`: the configuration files editors read that way.
@@ -65,6 +67,7 @@ impl Language {
             Some("jsonl" | "ndjson") => Language::Json(JsonFlavor::Lines),
             Some("bson") => Language::Bson,
             Some("yaml" | "yml") => Language::Yaml,
+            Some("html" | "htm") => Language::Html,
             _ => Language::Xml,
         }
     }
@@ -87,6 +90,7 @@ impl Language {
                 xmlcraft_bson::Layout::Single => Language::Json(JsonFlavor::Json).format(text, options, minify),
             },
             Language::Yaml => Err(FormatError::Refused { message: "YAML is not reformatted: its white space is its structure".to_owned() }),
+            Language::Html => Err(FormatError::Refused { message: "HTML is not reformatted yet".to_owned() }),
         }
     }
 
@@ -111,9 +115,13 @@ impl Language {
         self == Language::Yaml
     }
 
+    pub fn is_html(self) -> bool {
+        self == Language::Html
+    }
+
     /// A data language (JSON, YAML or BSON): read into a value tree, with no markup, tags or schema hints.
     pub fn is_data(self) -> bool {
-        self != Language::Xml
+        matches!(self, Language::Json(_) | Language::Bson | Language::Yaml)
     }
 
     /// The name used in the tools' answers.
@@ -126,6 +134,7 @@ impl Language {
             Language::Json(JsonFlavor::Lines) => "jsonl",
             Language::Bson => "bson",
             Language::Yaml => "yaml",
+            Language::Html => "html",
         }
     }
 }

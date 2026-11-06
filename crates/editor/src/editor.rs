@@ -26,6 +26,15 @@ pub enum Syntax {
     Json5,
     /// YAML: nothing is typed for you (its white space is its structure).
     Yaml,
+    /// HTML5: typed as markup, but a void element (`<br>`) gets no end tag.
+    Html,
+}
+
+impl Syntax {
+    /// Written in tags (XML and HTML): typed and indented as markup.
+    pub fn is_markup(self) -> bool {
+        matches!(self, Syntax::Xml | Syntax::Html)
+    }
 }
 
 /// How text is indented and how new lines end.
@@ -548,7 +557,7 @@ impl Editor {
                 // After the end of a start tag, the new line is one level in from the line the tag begins on (a tag over several lines
                 // has its attributes on lines of their own).
                 // (Only XML has start tags: in JSON or YAML a value such as `<a>` is text.)
-                let start_tag = if smart && self.syntax == Syntax::Xml { self.after_start_tag(c.start()) } else { None };
+                let start_tag = if smart && self.syntax.is_markup() { self.after_start_tag(c.start()) } else { None };
                 let before_end_tag = start_tag.is_some()
                     && c.is_empty()
                     && self.buffer.slice(c.end()..self.buffer.next_char(self.buffer.next_char(c.end()))).is_ok_and(|s| s == "</");

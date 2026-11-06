@@ -39,7 +39,8 @@ impl ConvertForm {
 
 fn format_of(language: Language) -> (Format, bool) {
     match language {
-        Language::Xml => (Format::Xml, false),
+        // (HTML is converted as the markup it is; text that is not well-formed XML is said so.)
+        Language::Xml | Language::Html => (Format::Xml, false),
         Language::Json(flavor) => (Format::Json, flavor == JsonFlavor::Lines),
         Language::Yaml => (Format::Yaml, false),
         Language::Bson => (Format::Bson, false),
