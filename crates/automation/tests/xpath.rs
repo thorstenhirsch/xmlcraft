@@ -86,3 +86,26 @@ fn nodes_that_cannot_be_placed_say_so_and_the_listing_has_a_total_budget() {
         r["items"].as_array().map_or(0, Vec::len)
     );
 }
+
+#[test]
+fn a_trace_says_how_many_items_each_step_of_a_path_leaves() {
+    use serde_json::json;
+    let mut a = Automation::new();
+    let doc = "<shop><order id=\"1\"><item/><item/></order><order id=\"5\"/></shop>";
+    let r = eval(&mut a, json!({ "text": doc, "expression": "/shop/order[@id < 5]/item", "trace": true })).expect("runs");
+    assert_eq!(r["count"].as_u64(), Some(2));
+    let steps: Vec<(String, u64)> = r["steps"]
+        .as_array()
+        .expect("steps")
+        .iter()
+        .map(|s| (s["step"].as_str().unwrap_or_default().to_owned(), s["count"].as_u64().unwrap_or(99)))
+        .collect();
+    assert_eq!(steps, [("/shop".to_owned(), 1), ("/order[@id < 5]".to_owned(), 1), ("/item".to_owned(), 2)]);
+    assert_eq!(r["is_path"], json!(true));
+    let plain = eval(&mut a, json!({ "text": doc, "expression": "count(//item)" })).expect("runs");
+    assert!(plain.get("steps").is_none(), "no trace unless asked for");
+    assert!(matches!(
+        eval(&mut a, json!({ "text": doc, "expression": "/shop", "trace": "yes" })),
+        Err(xmlcraft_automation::ToolError::InvalidArgs(_))
+    ));
+}
