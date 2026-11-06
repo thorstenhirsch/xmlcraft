@@ -183,6 +183,31 @@ impl Loader for Documents<'_> {
     }
 }
 
+/// The schema `reference` names (relative to `location`) as a value, and where it was found; the error says why it is not available.
+fn load_schema(documents: &Documents<'_>, reference: &str, location: &str) -> Result<(String, Value), String> {
+    let (schema_location, schema_text) = documents.fetch(reference, location)?;
+    // The schema may have comments and trailing commas (JSONC), as editors allow.
+    let schema = parse(&schema_text, &Options { dialect: Dialect::Json5, ..Options::default() });
+    if let Some(d) = schema.diagnostics.iter().find(|d| d.severity() == Severity::Error) {
+        return Err(format!("{schema_location} is not valid JSON: {}", d.message()));
+    }
+    let root = schema.root.ok_or_else(|| "the schema has no value".to_owned())?;
+    Ok((schema_location, root))
+}
+
+/// The schema a document names, read through `resolver`, for completion and hover: none when the document names none or it cannot be
+/// read.
+pub(crate) fn schema_set_for(text: &str, language: Language, location: &str, resolver: &Resolver) -> Option<SchemaSet> {
+    if text.len() > MAX_ANALYSED_BYTES {
+        return None;
+    }
+    let instance = read(text, language)?;
+    let (_, reference) = instance.reference.filter(|(_, r)| !r.is_empty())?;
+    let documents = Documents { resolver, budget: RefCell::new(Budget::default()), failed: RefCell::new(Vec::new()) };
+    let (schema_location, root) = load_schema(&documents, &reference, location).ok()?;
+    Some(SchemaSet::new(root, &schema_location, Draft::D2020_12, &documents))
+}
+
 /// Validate `text` (version `version` of a document of this `language` at `location`, which a relative `$schema` is taken from).
 pub fn validate_data(text: &str, language: Language, version: u64, location: &str, resolver: &Resolver) -> Validation {
     if text.len() > MAX_ANALYSED_BYTES {
@@ -198,18 +223,9 @@ pub fn validate_data(text: &str, language: Language, version: u64, location: &st
     }
     let documents = Documents { resolver, budget: RefCell::new(Budget::default()), failed: RefCell::new(Vec::new()) };
     let own = |code: Code, span: Range<usize>, args: Vec<String>| ValidityProblem { diagnostic: Diagnostic::new(code, span, args), file: None };
-    let (schema_location, schema_text) = match documents.fetch(&reference, location) {
+    let (schema_location, root) = match load_schema(&documents, &reference, location) {
         Ok(found) => found,
         Err(why) => return finish(version, vec![own(Code::JsonSchemaUnavailable, span, vec![reference, why])]),
-    };
-    // The schema may have comments and trailing commas (JSONC), as editors allow.
-    let schema = parse(&schema_text, &Options { dialect: Dialect::Json5, ..Options::default() });
-    if let Some(d) = schema.diagnostics.iter().find(|d| d.severity() == Severity::Error) {
-        let note = format!("{schema_location} is not valid JSON: {}", d.message());
-        return finish(version, vec![own(Code::JsonSchemaUnavailable, span, vec![reference, note])]);
-    }
-    let Some(root) = schema.root else {
-        return finish(version, vec![own(Code::JsonSchemaUnavailable, span, vec![reference, "the schema has no value".to_owned()])]);
     };
     let set = SchemaSet::new(root.clone(), &schema_location, Draft::D2020_12, &documents);
     let mut problems: Vec<ValidityProblem> = set
