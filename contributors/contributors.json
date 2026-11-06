@@ -1,28 +1,28 @@
 {
   "branch": "main",
-  "commits": 148,
+  "commits": 210,
   "contributors": [
     {
-      "binary_added": 19,
-      "binary_deleted": 19,
-      "commits": 146,
+      "binary_added": 40,
+      "binary_deleted": 40,
+      "commits": 208,
       "display_name": null,
       "first_commit": "2026-10-27T00:46:00+01:00",
       "github_name": null,
-      "last_commit": "2026-10-30T17:17:09+01:00",
-      "lines_added": 193727,
-      "lines_deleted": 5551,
+      "last_commit": "2026-11-06T09:04:26+01:00",
+      "lines_added": 304436,
+      "lines_deleted": 8230,
       "login": "thorstenhirsch",
       "people_entry": false,
-      "prs": 23,
+      "prs": 85,
       "real_name": null
     }
   ],
-  "head": "91f9d12c994059a604b93626f3f6fcd6967b6af7",
-  "head_date": "2026-10-30T17:17:09+01:00",
+  "head": "2084c0b8f8aeb29f649a58e4aff25088b66c089e",
+  "head_date": "2026-11-06T09:04:26+01:00",
   "models": [
     {
-      "commits": 126,
+      "commits": 188,
       "name": "Claude Sonnet 5.5"
     },
     {
