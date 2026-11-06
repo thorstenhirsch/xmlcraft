@@ -43,6 +43,12 @@ pub(crate) fn ready(analysis: &xmlcraft_engine::analysis::Analysis, version: u64
     analysis.version == version && analysis.is_well_formed() && (analysis.doctype.is_some() || !analysis.schema_hints.is_empty())
 }
 
+/// Whether a JSON or YAML text of version `version` may be validated while it is typed in: its analysis is of this very text, the text
+/// is well-formed, and it names a schema (`named`: a `$schema`, a modeline, or an OpenAPI version).
+pub(crate) fn ready_data(analysis: &xmlcraft_engine::analysis::Analysis, version: u64, named: bool) -> bool {
+    named && analysis.version == version && analysis.is_well_formed()
+}
+
 pub(crate) fn decide(i: &Inputs) -> Decision {
     if !i.enabled || !i.ready || i.done || i.size > MAX_BYTES {
         return Decision::Not;
@@ -75,6 +81,16 @@ mod tests {
         assert!(!ready(&analysed(dtd, 5), 4), "nor does one of newer text");
         assert!(!ready(&analysed("<a><b/></a>", 4), 4), "it names no grammar");
         assert!(!ready(&analysed("<!DOCTYPE a [<!ELEMENT a EMPTY>]><a>", 4), 4), "it is not well-formed");
+    }
+
+    #[test]
+    fn a_json_text_is_ready_when_it_is_well_formed_and_names_a_schema() {
+        let language = xmlcraft_engine::language::Language::Json(xmlcraft_engine::language::JsonFlavor::Json);
+        let read = |text: &str, version: u64| xmlcraft_engine::analysis::analyze_as(language, text, version);
+        assert!(ready_data(&read("{\"$schema\": \"s.json\"}", 4), 4, true));
+        assert!(!ready_data(&read("{\"$schema\": \"s.json\"}", 4), 4, false), "it names no schema");
+        assert!(!ready_data(&read("{\"$schema\": \"s.json\"}", 3), 4, true), "the analysis is of older text");
+        assert!(!ready_data(&read("{\"$schema\": ", 4), 4, true), "it is not well-formed");
     }
 
     #[test]

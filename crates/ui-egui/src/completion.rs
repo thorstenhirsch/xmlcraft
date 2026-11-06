@@ -119,6 +119,8 @@ pub(crate) struct Completion {
     /// The offset in the document where what is written replaces, and the caret (where it ends).
     pub start: usize,
     pub caret: usize,
+    /// The end of what the choice replaces: the caret, or, in a JSON string that goes on after it, the end of the string.
+    pub end: usize,
     pub items: Vec<Item>,
     pub selected: usize,
 }
@@ -234,6 +236,10 @@ impl XmlCraftApp {
 
     /// Work out what to offer at the caret after the frame's typing, and open or close the popup.
     pub(crate) fn update_completion(&mut self) {
+        // JSON and YAML documents are completed from their JSON Schema.
+        if self.update_data_completion() {
+            return;
+        }
         let Some(doc) = self.session.active_document_mut() else {
             self.completion = None;
             return;
@@ -259,7 +265,7 @@ impl XmlCraftApp {
             return;
         }
         items.truncate(200);
-        self.completion = Some(Completion { doc: id, version, start: ctx.start, caret: head, items, selected: 0 });
+        self.completion = Some(Completion { doc: id, version, start: ctx.start, caret: head, end: head, items, selected: 0 });
     }
 
     /// Whether the popup that is open is about the text as it is in the document being shown.
@@ -306,10 +312,10 @@ impl XmlCraftApp {
         let Some(item) = c.items.get(c.selected) else { return };
         let Some(doc) = self.session.active_document_mut() else { return };
         let editor = doc.editor_mut();
-        if c.caret > editor.buffer().len() || c.start > c.caret {
+        if c.end > editor.buffer().len() || c.start > c.caret || c.caret > c.end {
             return;
         }
-        if editor.apply_edits(&[Edit::replace(c.start..c.caret, item.text.clone())]) {
+        if editor.apply_edits(&[Edit::replace(c.start..c.end, item.text.clone())]) {
             let at = (c.start + item.caret).min(editor.buffer().len());
             editor.set_selection(at, at);
             self.focus_editor = true;

@@ -195,17 +195,26 @@ fn load_schema(documents: &Documents<'_>, reference: &str, location: &str) -> Re
     Ok((schema_location, root))
 }
 
+/// The schema a document names (a `$schema` member, a yaml-language-server modeline, or the OpenAPI version it says it is) as the
+/// reference to read it by; none when it names none. Cheap to refuse: a text without `$schema`, `openapi` or `swagger` is not read.
+pub fn schema_reference(text: &str, language: Language) -> Option<String> {
+    if text.len() > MAX_ANALYSED_BYTES || !(text.contains("$schema") || text.contains("openapi") || text.contains("swagger")) {
+        return None;
+    }
+    read(text, language)?.reference.map(|(_, reference)| reference).filter(|r| !r.is_empty())
+}
+
+/// The schema `reference` names, relative to `location`, read through `resolver` together with the documents it refers to.
+pub fn load_schema_set(reference: &str, location: &str, resolver: &Resolver) -> Result<SchemaSet, String> {
+    let documents = Documents { resolver, budget: RefCell::new(Budget::default()), failed: RefCell::new(Vec::new()) };
+    let (schema_location, root) = load_schema(&documents, reference, location)?;
+    Ok(SchemaSet::new(root, &schema_location, Draft::D2020_12, &documents))
+}
+
 /// The schema a document names, read through `resolver`, for completion and hover: none when the document names none or it cannot be
 /// read.
 pub(crate) fn schema_set_for(text: &str, language: Language, location: &str, resolver: &Resolver) -> Option<SchemaSet> {
-    if text.len() > MAX_ANALYSED_BYTES {
-        return None;
-    }
-    let instance = read(text, language)?;
-    let (_, reference) = instance.reference.filter(|(_, r)| !r.is_empty())?;
-    let documents = Documents { resolver, budget: RefCell::new(Budget::default()), failed: RefCell::new(Vec::new()) };
-    let (schema_location, root) = load_schema(&documents, &reference, location).ok()?;
-    Some(SchemaSet::new(root, &schema_location, Draft::D2020_12, &documents))
+    load_schema_set(&schema_reference(text, language)?, location, resolver).ok()
 }
 
 /// Validate `text` (version `version` of a document of this `language` at `location`, which a relative `$schema` is taken from).
