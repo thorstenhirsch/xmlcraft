@@ -11,6 +11,24 @@ use crate::i18n::{fmt, tl};
 use crate::kit::{self, Footer, Tone};
 use crate::widgets;
 
+/// A schema SchemaStore has for the file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct StoreMatch {
+    pub name: String,
+    pub description: String,
+    pub url: String,
+}
+
+/// What is known of the asking of SchemaStore.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Store {
+    /// The request that is out.
+    pub asking: Option<u64>,
+    pub found: Vec<StoreMatch>,
+    /// What came of the last asking, in words (nothing found, or why not).
+    pub note: Option<String>,
+}
+
 /// What the location is: told by the end of its name, or said.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Kind {
@@ -32,12 +50,16 @@ pub(crate) struct AssignForm {
     focus: bool,
     /// The document is JSON or YAML: a JSON Schema is assigned (a `$schema` member, a modeline), not a DTD or an XML Schema.
     data: bool,
+    /// What SchemaStore said (JSON and YAML only).
+    pub(crate) store: Store,
 }
 
 enum Action {
     Assign,
     Browse,
     Cancel,
+    /// Ask SchemaStore which schemas are for this file.
+    Find,
 }
 
 impl XmlCraftApp {
@@ -53,7 +75,57 @@ impl XmlCraftApp {
             error: None,
             focus: true,
             data: doc.language().is_data(),
+            store: Store::default(),
         })));
+    }
+
+    /// Ask SchemaStore (its catalog, fetched through the app's network as any schema is, so the offline switch and the download cache
+    /// apply) which schemas are for the file of the document; the answer comes through `pump_http`.
+    fn ask_schemastore(&mut self, form: &mut AssignForm) {
+        let file = form.document.as_ref().map_or_else(|| form.name.clone(), |p| p.to_string_lossy().into_owned());
+        let serial = self.next_http_serial();
+        let network = self.network.clone();
+        let started = self.spawn_http(move || {
+            let resolver = network.resolver(std::sync::Arc::new(xmlcraft_engine::validation::OpenDocuments::new(Vec::new())));
+            let result = xmlcraft_engine::guard(|| {
+                let found = resolver
+                    .resolve(&xmlcraft_resolve::Request::uri(xmlcraft_engine::schemastore::CATALOG_URL, ""), &mut xmlcraft_resolve::Budget::default())
+                    .map_err(|f| f.message)?;
+                let decoded = xmlcraft_text::encoding::decode(&found.bytes, &xmlcraft_text::encoding::sniff(&found.bytes));
+                let entries = xmlcraft_engine::schemastore::parse_catalog(&decoded.text)?;
+                Ok::<Vec<StoreMatch>, String>(
+                    xmlcraft_engine::schemastore::matching(&entries, &file)
+                        .into_iter()
+                        .take(20)
+                        .map(|e| StoreMatch { name: e.name.clone(), description: e.description.clone(), url: e.url.clone() })
+                        .collect(),
+                )
+            })
+            .unwrap_or_else(|_| Err("asking SchemaStore failed (a bug); nothing was changed".to_owned()));
+            crate::http_pane::Outcome::Catalog { serial, result }
+        });
+        match started {
+            Ok(()) => {
+                form.store.asking = Some(serial);
+                form.store.found.clear();
+                form.store.note = None;
+            }
+            Err(why) => form.store.note = Some(why),
+        }
+    }
+
+    /// The answer of SchemaStore, if the window is still waiting for it.
+    pub(crate) fn schemastore_answered(&mut self, serial: u64, result: Result<Vec<StoreMatch>, String>) {
+        let Some(Dialog::AssignSchema(form)) = &mut self.dialog else { return };
+        if form.store.asking != Some(serial) {
+            return;
+        }
+        form.store.asking = None;
+        match result {
+            Ok(found) if found.is_empty() => form.store.note = Some(tl!("SchemaStore has no schema for this file name.").to_owned()),
+            Ok(found) => form.store.found = found,
+            Err(why) => form.store.note = Some(why),
+        }
     }
 
     /// The file the picker returned, as the location of the form (from the folder of the document when it is a file).
@@ -92,6 +164,12 @@ impl XmlCraftApp {
             Some(Action::Cancel) => {}
             Some(Action::Browse) => {
                 self.pick_schema_file(ctx);
+                self.dialog = Some(dialog);
+            }
+            Some(Action::Find) => {
+                if let Dialog::AssignSchema(form) = &mut dialog {
+                    self.ask_schemastore(form);
+                }
                 self.dialog = Some(dialog);
             }
             Some(Action::Assign) => {
@@ -200,6 +278,36 @@ fn form_ui(ui: &mut egui::Ui, form: &mut AssignForm) -> Option<Action> {
         });
         kit::help(ui, tl!("A file name is written from the folder of the document. An address starting with http is downloaded when it is needed."));
     });
+    if form.data {
+        kit::section(ui, tl!("SchemaStore"), |ui| {
+            ui.horizontal(|ui| {
+                let asking = form.store.asking.is_some();
+                if ui.add_enabled(!asking, egui::Button::new(tl!("Find a schema for this file"))).clicked() {
+                    action = Some(Action::Find);
+                }
+                if asking {
+                    ui.spinner();
+                }
+            });
+            for found in &form.store.found {
+                let label = if found.description.is_empty() { found.name.clone() } else { format!("{} — {}", found.name, found.description) };
+                if ui.selectable_label(form.location == found.url, label).on_hover_text(&found.url).clicked() {
+                    form.location = found.url.clone();
+                    form.error = None;
+                }
+            }
+            if let Some(note) = &form.store.note {
+                kit::help(ui, note);
+            } else if form.store.found.is_empty() && form.store.asking.is_none() {
+                kit::help(
+                    ui,
+                    tl!(
+                        "Asks schemastore.org for the schemas that are for this file name (it downloads its catalog, which the Work Offline switch stops)."
+                    ),
+                );
+            }
+        });
+    }
     if !form.data {
         kit::section(ui, tl!("It is"), |ui| {
             kit::segmented(

@@ -26,6 +26,7 @@ pub mod rest;
 pub mod schema;
 pub mod schema_fetch;
 pub mod schema_link;
+pub mod schemastore;
 pub mod schematron;
 pub mod selfcheck;
 pub mod soap;

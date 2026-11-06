@@ -1445,11 +1445,11 @@ title = "SchemaStore catalog for JSON and YAML"
 area = "G"
 tier = "P1"
 milestone = "M5"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.assign_schema"]
+tools = ["schemastore_find"]
+evidence = ["crates/engine/src/schemastore.rs::globs_match_names_and_paths_the_way_a_catalog_means", "crates/engine/src/schemastore.rs::a_file_is_matched_by_its_name_or_by_the_end_of_its_path_and_the_better_fit_comes_first", "crates/engine/src/schemastore.rs::the_catalog_gives_each_schema_its_url_and_the_files_it_is_for_and_leaves_out_the_rest", "crates/automation/tests/schemastore.rs::the_schemas_for_a_file_come_from_a_catalog_that_is_given_best_fit_first", "crates/ui-egui/tests/schemastore.rs::the_schemas_for_a_file_are_listed_from_schemastore_and_the_chosen_one_is_assigned"]
+notes = "Assign Schema… on a JSON or YAML document has Find a schema for this file: it downloads SchemaStore's catalog (`catalog.json` of schemastore.org) through the app's network when the button is pressed (the Work Offline switch and the download cache apply; nothing is bundled and opening the window asks nobody), lists the schemas whose file name patterns (`package.json`, `.github/workflows/*.yml`, `**/*.config.json`: `*`, `**`, `?`) fit the file, the closer fits first, and the one that is chosen is assigned as a `$schema` member or a modeline. The tool `schemastore_find` does the same from a catalog that is given or downloaded. Missing: finding the schema while a file is opened (without asking), a schema picked from the whole catalog by name, and the catalog is not kept between runs beyond the download cache."
 
 [[feature]]
 id = "catalog.xinclude"
