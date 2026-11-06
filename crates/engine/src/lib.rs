@@ -14,6 +14,7 @@ pub mod folding;
 pub mod generate;
 mod json_analysis;
 pub mod json_assist;
+pub mod json_schemas;
 pub mod json_validation;
 pub mod language;
 pub mod quickfix;

@@ -46,6 +46,8 @@ pub(crate) struct DocView {
     pub(crate) fixes: Option<crate::quick_fix::FixCache>,
     /// The document is shown as a grid (View ▸ Grid) when this is set.
     pub(crate) grid: Option<crate::grid_view::GridState>,
+    /// The JSON Schema a JSON or YAML document names, for completion and hover.
+    pub(crate) data_schema: crate::data_assist::DataSchema,
 }
 
 /// What is known of validating a document while it is typed in.
@@ -71,6 +73,7 @@ impl DocView {
             auto: AutoValidation::default(),
             fixes: None,
             grid: None,
+            data_schema: Default::default(),
         }
     }
 
@@ -231,6 +234,7 @@ impl XmlCraftApp {
                 view.helpers.accept_xsd(answer);
             }
         }
+        self.pump_json_schemas();
         for (id, analysis) in self.analyzer.poll() {
             if self.session.position_of(id).is_none() {
                 continue; // closed meanwhile
@@ -253,6 +257,7 @@ impl XmlCraftApp {
                 view.requested = None;
                 // And so is what the XML tools had worked out: the grammar, the helpers, the validation with its underlines.
                 view.helpers = Default::default();
+                view.data_schema = Default::default();
                 view.validation = None;
                 view.auto = AutoValidation::default();
                 view.fixes = None;
@@ -266,6 +271,7 @@ impl XmlCraftApp {
         }
         self.request_schema();
         self.request_xsd();
+        self.request_json_schema();
         self.auto_validate();
         self.report_check();
         self.report_validation();
@@ -277,6 +283,7 @@ impl XmlCraftApp {
     pub(crate) fn forget_schema_requests(&mut self) {
         for view in self.views.values_mut() {
             view.helpers.forget_requests();
+            view.data_schema.forget_request();
             view.auto.requested = None;
         }
     }
@@ -709,7 +716,9 @@ impl XmlCraftApp {
         // What is wrong where the pointer rests is said in a tip (once it has rested a moment).
         if let Some(offset) = output.hover {
             let messages = crate::problems::messages_at(self, offset);
-            if !messages.is_empty() {
+            // (What the JSON Schema of a JSON or YAML document says of the name or value is said too.)
+            let words = self.data_hover(offset);
+            if !messages.is_empty() || words.is_some() {
                 let syntax = crate::editor_view::SyntaxTokens::for_kind(tokens.kind);
                 output.response.clone().on_hover_ui_at_pointer(|ui| {
                     ui.set_max_width(380.0);
@@ -724,6 +733,12 @@ impl XmlCraftApp {
                             crate::icons::paint(ui, rect, icon, 15.0, colour);
                             ui.label(message);
                         });
+                    }
+                    if let Some(words) = &words {
+                        if !messages.is_empty() {
+                            ui.separator();
+                        }
+                        ui.label(words);
                     }
                 });
             }
