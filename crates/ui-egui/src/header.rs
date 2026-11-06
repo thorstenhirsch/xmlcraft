@@ -191,6 +191,7 @@ pub fn show(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
         return;
     }
     let t = Tokens::get(ui.ctx());
+    let business = app.business_chip(ui.ctx());
     let (path, grammar, standing_now, offline) = {
         let caret = app.session.active_document().map_or(0, |d| d.editor().primary().head());
         let path: Vec<(String, Option<String>, Range<usize>)> = app
@@ -223,6 +224,12 @@ pub fn show(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                     .clicked()
                 {
                     command = Some("view.messages");
+                }
+                if let Some(chip) = &business {
+                    let (icon, tone) = if chip.warn { ("triangle-alert", Tone::Warn) } else { ("file-check", Tone::Accent) };
+                    if kit::chip(ui, tone, Some(icon), &chip.label, true).on_hover_text(&chip.tip).clicked() {
+                        command = Some("view.messages");
+                    }
                 }
                 if let Some(chip) = &grammar {
                     let (icon, label) = match chip.kind {
