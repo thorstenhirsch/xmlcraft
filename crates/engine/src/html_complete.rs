@@ -6,10 +6,10 @@ use std::ops::Range;
 
 use xmlcraft_html::data::{ELEMENTS, GLOBAL_ATTRIBUTES, attribute_values, attributes_of};
 
+use crate::tag_context::{Place, tag_context};
+
 /// The most items offered.
 pub const MAX_ITEMS: usize = 300;
-/// How far back from the caret the start of the tag is looked for.
-const LOOK_BACK: usize = 8 * 1024;
 
 /// What is offered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,149 +66,55 @@ const BOOLEAN: &[&str] = &[
     "selected",
 ];
 
-fn is_name_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':' | '.')
-}
-
-/// The start of the tag the caret is in (the `<` of it), when it is inside one: the last `<` before `offset` with no `>` after it.
-fn tag_start(text: &str, offset: usize) -> Option<usize> {
-    let from = offset.saturating_sub(LOOK_BACK);
-    let from = (from..=offset).find(|o| text.is_char_boundary(*o))?;
-    let before = text.get(from..offset)?;
-    let lt = before.rfind('<')?;
-    // A `>` between ends the tag, unless it is inside a quoted value (`<a title="a>b" `): then the quotes tell.
-    let tag = before.get(lt..)?;
-    let mut quote: Option<char> = None;
-    for c in tag.chars() {
-        match (quote, c) {
-            (Some(q), c) if c == q => quote = None,
-            (None, '"' | '\'') => quote = Some(c),
-            (None, '>') => return None,
-            _ => {}
-        }
-    }
-    Some(from + lt)
-}
-
 /// What to offer at `offset` of an HTML `text`; none when the caret is not at an element name, an attribute name or an attribute value
 /// of a tag being written.
 pub fn complete(text: &str, offset: usize) -> Option<HtmlCompletion> {
-    if !text.is_char_boundary(offset) || offset > text.len() {
-        return None;
-    }
-    let lt = tag_start(text, offset)?;
-    // Not inside a comment, a declaration, an end tag or a processing instruction.
-    let inside = text.get(lt + 1..offset)?;
-    if inside.starts_with(['/', '!', '?']) || text.get(..lt)?.rfind("<!--").is_some_and(|c| !text.get(c..lt).is_some_and(|s| s.contains("-->"))) {
-        return None;
-    }
-    let name_len = inside.find(|c: char| !is_name_char(c)).unwrap_or(inside.len());
-    if name_len == inside.len() {
-        // The name of the element is being typed.
-        let end = offset + text.get(offset..)?.find(|c: char| !is_name_char(c)).unwrap_or(text.len() - offset);
-        let partial = inside.to_ascii_lowercase();
-        let mut items: Vec<HtmlItem> = ELEMENTS
-            .iter()
-            .filter(|e| !e.obsolete && e.name.starts_with(&partial))
-            .map(|e| {
-                let (insert, cursor) =
-                    if e.void { (format!("<{}>", e.name), e.name.len() + 2) } else { (format!("<{0}></{0}>", e.name), e.name.len() + 2) };
-                HtmlItem { label: e.name.to_owned(), insert, cursor, detail: if e.void { "void".to_owned() } else { String::new() } }
-            })
-            .collect();
-        items.truncate(MAX_ITEMS);
-        return Some(HtmlCompletion { kind: HtmlKind::Element, replace: lt..end, items });
-    }
-    let element = inside.get(..name_len)?.to_ascii_lowercase();
-    let after_name = inside.get(name_len..)?;
-    // The last attribute: its name, whether a value has begun (and how) and what is typed of it.
-    let mut quote: Option<char> = None;
-    let mut value_start: Option<usize> = None;
-    let mut attribute = String::new();
-    let mut name_start: Option<usize> = None;
-    let mut given: Vec<String> = Vec::new();
-    let mut state_after_equals = false;
-    let base = lt + 1 + name_len;
-    for (i, c) in after_name.char_indices() {
-        let at = base + i;
-        match (quote, c) {
-            (Some(q), c) if c == q => {
-                quote = None;
-                value_start = None;
-            }
-            (Some(_), _) => {}
-            (None, '"' | '\'') if state_after_equals => {
-                quote = Some(c);
-                value_start = Some(at + 1);
-                state_after_equals = false;
-            }
-            (None, '=') => {
-                if let Some(s) = name_start.take() {
-                    attribute = text.get(s..at)?.trim().to_ascii_lowercase();
-                    given.push(attribute.clone());
-                }
-                state_after_equals = true;
-            }
-            (None, c) if c.is_whitespace() => {
-                if let Some(s) = name_start.take() {
-                    let n = text.get(s..at)?.to_ascii_lowercase();
-                    if !n.is_empty() {
-                        given.push(n);
-                    }
-                }
-                // (White space after `=` keeps the value to come.)
-            }
-            (None, _) => {
-                if state_after_equals {
-                    // An unquoted value starts here.
-                    value_start = Some(at);
-                    state_after_equals = false;
-                } else if name_start.is_none() && value_start.is_none() {
-                    name_start = Some(at);
-                }
-            }
+    let context = tag_context(text, offset)?;
+    let element = context.element.to_ascii_lowercase();
+    match context.place {
+        Place::Name { typed, replace } => {
+            // The name of the element is being typed.
+            let partial = typed.to_ascii_lowercase();
+            let mut items: Vec<HtmlItem> = ELEMENTS
+                .iter()
+                .filter(|e| !e.obsolete && e.name.starts_with(&partial))
+                .map(|e| {
+                    let (insert, cursor) =
+                        if e.void { (format!("<{}>", e.name), e.name.len() + 2) } else { (format!("<{0}></{0}>", e.name), e.name.len() + 2) };
+                    HtmlItem { label: e.name.to_owned(), insert, cursor, detail: if e.void { "void".to_owned() } else { String::new() } }
+                })
+                .collect();
+            items.truncate(MAX_ITEMS);
+            Some(HtmlCompletion { kind: HtmlKind::Element, replace, items })
+        }
+        Place::Value { attribute, typed, replace } => {
+            let (attribute, lower) = (attribute.to_ascii_lowercase(), typed.to_ascii_lowercase());
+            let mut items: Vec<HtmlItem> = attribute_values(&element, &attribute)
+                .iter()
+                .filter(|v| v.to_ascii_lowercase().starts_with(&lower))
+                .map(|v| HtmlItem { label: (*v).to_owned(), insert: (*v).to_owned(), cursor: v.len(), detail: String::new() })
+                .collect();
+            items.truncate(MAX_ITEMS);
+            Some(HtmlCompletion { kind: HtmlKind::Value, replace, items })
+        }
+        Place::Attribute { typed, replace, given } => {
+            let partial = typed.to_ascii_lowercase();
+            let given: Vec<String> = given.iter().map(|g| g.to_ascii_lowercase()).collect();
+            let mut names: Vec<&str> = attributes_of(&element).iter().chain(GLOBAL_ATTRIBUTES.iter()).copied().collect();
+            names.dedup();
+            let mut items: Vec<HtmlItem> = names
+                .into_iter()
+                .filter(|n| n.starts_with(&partial) && !given.iter().any(|g| g == n))
+                .map(|n| {
+                    let (insert, cursor) = if BOOLEAN.contains(&n) { (n.to_owned(), n.len()) } else { (format!("{n}=\"\""), n.len() + 2) };
+                    let detail = if attributes_of(&element).contains(&n) { String::new() } else { "global".to_owned() };
+                    HtmlItem { label: n.to_owned(), insert, cursor, detail }
+                })
+                .collect();
+            items.truncate(MAX_ITEMS);
+            Some(HtmlCompletion { kind: HtmlKind::Attribute, replace, items })
         }
     }
-    // A value: in quotes (up to the closing quote) or unquoted (up to white space).
-    let in_value = quote.is_some() || state_after_equals || value_start.is_some();
-    if in_value {
-        let start = value_start.unwrap_or(offset);
-        let partial = text.get(start..offset)?.to_owned();
-        let end = match quote {
-            Some(q) => {
-                offset + text.get(offset..)?.find([q, '\n', '>']).filter(|n| text.get(offset + n..).is_some_and(|r| r.starts_with(q))).unwrap_or(0)
-            }
-            None => offset + text.get(offset..)?.find(|c: char| c.is_whitespace() || c == '>').unwrap_or(text.len() - offset),
-        };
-        let lower = partial.to_ascii_lowercase();
-        let mut items: Vec<HtmlItem> = attribute_values(&element, &attribute)
-            .iter()
-            .filter(|v| v.to_ascii_lowercase().starts_with(&lower))
-            .map(|v| HtmlItem { label: (*v).to_owned(), insert: (*v).to_owned(), cursor: v.len(), detail: String::new() })
-            .collect();
-        items.truncate(MAX_ITEMS);
-        return Some(HtmlCompletion { kind: HtmlKind::Value, replace: start..end, items });
-    }
-    // An attribute name: some letters of it after white space (or none, straight after the element's name and a space).
-    let start = name_start.unwrap_or(offset);
-    if name_start.is_none() && !after_name.ends_with(char::is_whitespace) {
-        return None;
-    }
-    let partial = text.get(start..offset)?.to_ascii_lowercase();
-    let end = offset + text.get(offset..)?.find(|c: char| !is_name_char(c)).unwrap_or(text.len() - offset);
-    let mut names: Vec<&str> = attributes_of(&element).iter().chain(GLOBAL_ATTRIBUTES.iter()).copied().collect();
-    names.dedup();
-    let mut items: Vec<HtmlItem> = names
-        .into_iter()
-        .filter(|n| n.starts_with(&partial) && !given.iter().any(|g| g == n))
-        .map(|n| {
-            let (insert, cursor) = if BOOLEAN.contains(&n) { (n.to_owned(), n.len()) } else { (format!("{n}=\"\""), n.len() + 2) };
-            let detail = if attributes_of(&element).contains(&n) { String::new() } else { "global".to_owned() };
-            HtmlItem { label: n.to_owned(), insert, cursor, detail }
-        })
-        .collect();
-    items.truncate(MAX_ITEMS);
-    Some(HtmlCompletion { kind: HtmlKind::Attribute, replace: start..end, items })
 }
 
 #[cfg(test)]

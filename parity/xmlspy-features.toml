@@ -1498,11 +1498,11 @@ title = "XPath completion"
 area = "H"
 tier = "P2"
 milestone = "M7"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["edit.complete"]
+tools = ["xslt_complete"]
+evidence = ["crates/engine/src/xslt_complete.rs::in_an_expression_function_names_are_offered_with_their_parentheses", "crates/automation/tests/xslt_complete.rs::elements_attributes_values_and_functions_are_offered_where_they_fit"]
+notes = "In the expression attributes of an XSLT stylesheet (`select`, `test`, `match`, `group-by` …) the names of XPath 3.1 and XSLT functions are offered while typing, with their signatures; the caret lands inside the parentheses when the function takes arguments. Missing: variables (`$`), axes and node names from the source document, the XPath window of Evaluate XPath, XQuery."
 
 [[feature]]
 id = "query.xslt-transform"
@@ -2129,11 +2129,11 @@ title = "XSLT editor with intelligent completion and entry helpers"
 area = "H"
 tier = "P1"
 milestone = "M7"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["edit.complete", "xml.transform"]
+tools = ["xslt_complete", "xslt_transform"]
+evidence = ["crates/engine/src/xslt_complete.rs::at_the_top_the_declarations_are_offered_and_in_a_template_the_instructions", "crates/engine/src/xslt_complete.rs::some_elements_stand_only_inside_one_parent", "crates/engine/src/xslt_complete.rs::inside_the_quotes_the_values_of_an_attribute_or_the_names_of_the_stylesheet_are_offered", "crates/automation/tests/xslt_complete.rs::elements_attributes_values_and_functions_are_offered_where_they_fit", "crates/ui-egui/tests/xslt_completion.rs::instructions_attributes_names_and_functions_are_completed_in_a_stylesheet"]
+notes = "A stylesheet (a root that binds the XSLT namespace, whatever the prefix) is completed while typing and with Edit > Complete: after `<` the xsl: elements that may stand where the caret is (declarations at the top, instructions inside a template, `when`/`otherwise` in `choose`, `sort` in `for-each`, `with-param` in `call-template` … from the XSLT 3.0 element table, 80 elements); in a start tag the attributes of the element, without those it has; inside the quotes the values an attribute lists (`order`, `method`, `yes`/`no` …) and the names the stylesheet defines itself (`call-template/@name`, `mode`, `use-attribute-sets`); in an expression attribute (`select`, `test`, `match` …) the names of XPath 3.1 and XSLT functions with their signatures. A literal result element has its own names (as in any XML document). Missing: the attributes of an element as the schema for XSLT 3.0 says (types, required ones, the order), variables and parameters in scope (`$`), user functions and their signatures, the names of the elements of the source document (needs the source), attribute value templates, templates for packages/overrides, and the Entry Helpers window for XSLT."
 
 [[feature]]
 id = "query.xslt-profiler"

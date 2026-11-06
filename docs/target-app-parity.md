@@ -1,6 +1,6 @@
 # XmlCraft parity with Altova XMLSpy
 
-> **Last reviewed:** 2026-11-06 · **Last updated:** 2026-11-06 · **Change:** M5.15, SchemaStore lookup (`catalog.schemastore` planned → partial), after M10.2, the tab strip (`view.tabs` partial → shipped), after M9.8, XBRL taxonomies (`xbrl.taxonomy` planned → partial), after M10.1, autosave recovery (`editor.autosave-recovery` planned → shipped) and M8.10, HTML5 editing (`html.editing` planned → partial); the headline is measured by `cargo xtask parity` after the scope of 2026-11-05 (XBRL, e-invoicing, PDF, SOAP, HTML5, OpenAPI, debuggers and profilers, YAML/BSON, conversions, three-way diff, Grid for all formats; duplicates folded): 188 counted features, 11 shipped, 112 partial, 36.2% weighted. What moved before it is in the revision history.
+> **Last reviewed:** 2026-11-06 · **Last updated:** 2026-11-06 · **Change:** M5.15, SchemaStore lookup (`catalog.schemastore` planned → partial), after M10.2, the tab strip (`view.tabs` partial → shipped), after M9.8, XBRL taxonomies (`xbrl.taxonomy` planned → partial), after M10.1, autosave recovery (`editor.autosave-recovery` planned → shipped) and M8.10, HTML5 editing (`html.editing` planned → partial); the headline is measured by `cargo xtask parity` after the scope of 2026-11-05 (XBRL, e-invoicing, PDF, SOAP, HTML5, OpenAPI, debuggers and profilers, YAML/BSON, conversions, three-way diff, Grid for all formats; duplicates folded): 188 counted features, 11 shipped, 114 partial, 36.7% weighted. What moved before it is in the revision history.
 
 The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -10,7 +10,7 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **6.4%** shipped, 36.2% with partial counted half (12 shipped + 112 partial of 188 counted; 64 P0, 62 P1, 53 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-05) |
+| **Feature breadth**, unweighted | **6.4%** shipped, 36.7% with partial counted half (12 shipped + 114 partial of 188 counted; 64 P0, 62 P1, 53 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-05) |
 | Must-have (P0) features | 7.8% shipped, 45.3% weighted (5 shipped + 48 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **100%** (1017 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): a valid document has no well-formedness or validity error, an invalid one is well-formed and has at least one validity error (which one is not compared; 73 of the 227 are documents with no DOCTYPE, invalid because there is nothing to validate against) | measured (same run) |
