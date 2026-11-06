@@ -35,6 +35,7 @@ mod preferences;
 mod problems;
 mod quick_fix;
 mod side_panels;
+mod soap_dialog;
 mod status_pickers;
 mod structure;
 pub mod theme;
@@ -170,6 +171,8 @@ pub struct XmlCraftApp {
     editor_has_focus: bool,
     /// Reads each document's DOCTYPE into a grammar in the background (what Entry Helpers offer comes from it).
     schemas: Schemas,
+    /// What the threads of the SOAP window answer on.
+    soap: soap_dialog::SoapWorker,
     /// Loads the XML Schema a document names, for Entry Helpers.
     xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas,
     /// Entry Helpers write the content an element requires with it.
@@ -348,6 +351,7 @@ impl XmlCraftApp {
             check_pending: None,
             validate_pending: None,
             schemas: Schemas::new(resolvers()),
+            soap: soap_dialog::SoapWorker::default(),
             xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas::new(resolvers()),
             entry_mandatory: prefs.entry_mandatory,
             entry_filter: String::new(),
@@ -464,6 +468,7 @@ impl eframe::App for XmlCraftApp {
         self.pump_compare();
         self.pump_xpath();
         self.pump_transform();
+        self.pump_soap();
         self.pump_schema_fetch();
         for command in self.viewport_commands.drain(..) {
             ctx.send_viewport_cmd(command);

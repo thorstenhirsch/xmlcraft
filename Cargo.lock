@@ -6694,6 +6694,7 @@ dependencies = [
  "xmlcraft-syntax",
  "xmlcraft-text",
  "xmlcraft-validate",
+ "xmlcraft-wsdl",
  "xmlcraft-xbrl",
  "xmlcraft-xsd",
  "xmlcraft-yaml-syntax",

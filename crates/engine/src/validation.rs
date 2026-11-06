@@ -192,10 +192,11 @@ pub fn validate_guarded(text: &str, version: u64, location: &str, loader: &mut d
 pub type ResolverFactory = Arc<dyn Fn(Arc<dyn Buffers>) -> Resolver + Send + Sync>;
 
 /// The documents that are open, by their paths (as they were when a validation was asked for).
-pub(crate) struct OpenDocuments(Vec<(String, Buffer)>);
+pub struct OpenDocuments(Vec<(String, Buffer)>);
 
 impl OpenDocuments {
-    pub(crate) fn new(open: Vec<(String, Buffer)>) -> Self {
+    /// The documents `open` are open, by their paths.
+    pub fn new(open: Vec<(String, Buffer)>) -> Self {
         Self(open)
     }
 }
