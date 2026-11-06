@@ -30,6 +30,8 @@ pub(crate) struct AssignForm {
     error: Option<String>,
     /// The keyboard goes to the field once, when the dialog opens.
     focus: bool,
+    /// The document is JSON or YAML: a JSON Schema is assigned (a `$schema` member, a modeline), not a DTD or an XML Schema.
+    data: bool,
 }
 
 enum Action {
@@ -50,6 +52,7 @@ impl XmlCraftApp {
             kind: Kind::Detect,
             error: None,
             focus: true,
+            data: !doc.language().is_xml(),
         })));
     }
 
@@ -72,7 +75,12 @@ impl XmlCraftApp {
             Dialog::AssignSchema(form) => form.name.clone(),
             _ => String::new(),
         };
-        let subtitle = fmt(tl!("Say which XML Schema or DTD {name} is checked against."), &[("name", &name)]);
+        let data = matches!(&dialog, Dialog::AssignSchema(form) if form.data);
+        let subtitle = if data {
+            fmt(tl!("Say which JSON Schema {name} is checked against."), &[("name", &name)])
+        } else {
+            fmt(tl!("Say which XML Schema or DTD {name} is checked against."), &[("name", &name)])
+        };
         let (mut action, closed) = kit::dialog(ctx, "xmlcraft-assign", 520.0, "book-open", tl!("Assign Schema"), &subtitle, |ui| match &mut dialog {
             Dialog::AssignSchema(form) => form_ui(ui, form),
             _ => None,
@@ -111,6 +119,19 @@ impl XmlCraftApp {
         let Some(doc) = self.session.position_of(form.source).and_then(|i| self.session.document_mut(i)) else {
             return Err(tl!("The document is gone.").to_owned());
         };
+        if form.data {
+            let language = doc.language();
+            let edits = xmlcraft_engine::assign::assign_data(&doc.editor().text(), language, location).map_err(|e| e.to_string())?;
+            if edits.is_empty() {
+                self.dialog = None;
+                return Ok(fmt(tl!("{name} uses {location} already"), &[("name", &form.name), ("location", location)]));
+            }
+            if !doc.editor_mut().apply_edits(&edits) {
+                return Err(tl!("The text could not be changed.").to_owned());
+            }
+            self.dialog = None;
+            return Ok(fmt(tl!("Assigned {location} to {name}"), &[("location", location), ("name", &form.name)]));
+        }
         let is_dtd = match form.kind {
             Kind::Dtd => true,
             Kind::Schema => false,
@@ -161,7 +182,11 @@ fn form_ui(ui: &mut egui::Ui, form: &mut AssignForm) -> Option<Action> {
             if kit::pill(ui, kit::PillKind::Secondary, Some("folder-open"), tl!("Browse…")).clicked() {
                 action = Some(Action::Browse);
             }
-            let field = ui.add(widgets::line(&mut form.location).hint_text(tl!("schema.xsd, a DTD or a URL")).desired_width(ui.available_width()));
+            let field = ui.add(
+                widgets::line(&mut form.location)
+                    .hint_text(if form.data { tl!("schema.json or a URL") } else { tl!("schema.xsd, a DTD or a URL") })
+                    .desired_width(ui.available_width()),
+            );
             widgets::name_for_assistive_technology(ui, &field, tl!("The location of the schema or the DTD"));
             if std::mem::take(&mut form.focus) {
                 field.request_focus();
@@ -175,9 +200,15 @@ fn form_ui(ui: &mut egui::Ui, form: &mut AssignForm) -> Option<Action> {
         });
         kit::help(ui, tl!("A file name is written from the folder of the document. An address starting with http is downloaded when it is needed."));
     });
-    kit::section(ui, tl!("It is"), |ui| {
-        kit::segmented(ui, &mut form.kind, &[(Kind::Detect, tl!("Told by its name")), (Kind::Schema, tl!("XML Schema")), (Kind::Dtd, tl!("DTD"))]);
-    });
+    if !form.data {
+        kit::section(ui, tl!("It is"), |ui| {
+            kit::segmented(
+                ui,
+                &mut form.kind,
+                &[(Kind::Detect, tl!("Told by its name")), (Kind::Schema, tl!("XML Schema")), (Kind::Dtd, tl!("DTD"))],
+            );
+        });
+    }
     if let Some(message) = &form.error {
         ui.add_space(kit::GAP_GROUP);
         kit::banner(ui, Tone::Bad, message);

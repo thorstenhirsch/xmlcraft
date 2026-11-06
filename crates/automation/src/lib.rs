@@ -18,10 +18,12 @@ mod documents;
 mod einvoice;
 mod entry_helpers;
 pub mod file_access;
+mod grid;
 mod infer;
 mod json_schema;
 mod lines;
 mod load_schema;
+mod openapi;
 mod pdf;
 mod sample;
 mod schema;
@@ -30,7 +32,9 @@ mod script;
 mod tools;
 mod validate;
 mod wsdl;
+mod xbrl;
 mod xpath;
+mod xslt;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod control;

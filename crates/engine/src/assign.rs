@@ -548,3 +548,191 @@ mod tests {
         assert_eq!(relative_location(&doc, Path::new("schemas/a.xsd")), "schemas/a.xsd");
     }
 }
+
+// --- JSON and YAML ---------------------------------------------------------------------------------------------------------------
+
+/// Edits that name the JSON Schema at `location` in a JSON document (a root `"$schema"` member, replaced when there is one, else the
+/// first member, written to match the lines around it) or a YAML document (the first line `# yaml-language-server: $schema=…`, replaced
+/// when there is one). None when it is assigned already, as it would be written. JSON Lines and BSON have no place for it.
+pub fn assign_data(text: &str, language: crate::language::Language, location: &str) -> Result<Vec<Edit>, AssignError> {
+    use crate::language::{JsonFlavor, Language};
+    let location = location.trim();
+    if location.is_empty() || location.contains(['\n', '\r']) {
+        return Err(AssignError::BadLocation("the location is empty or has a line break".to_owned()));
+    }
+    let mut edits = match language {
+        Language::Json(JsonFlavor::Lines) => return Err(AssignError::BadLocation("a JSON Lines file has no place for a schema".to_owned())),
+        Language::Json(flavor) => assign_json(text, flavor, location)?,
+        Language::Yaml => assign_yaml(text, location),
+        Language::Bson => return Err(AssignError::BadLocation("a BSON file has no place for a schema".to_owned())),
+        Language::Xml => return Err(AssignError::BadLocation("an XML document is given a DTD or an XML Schema, not a JSON Schema".to_owned())),
+    };
+    edits.retain(|e| text.get(e.range.clone()) != Some(e.text.as_str()));
+    Ok(edits)
+}
+
+fn json_quote(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn assign_json(text: &str, flavor: crate::language::JsonFlavor, location: &str) -> Result<Vec<Edit>, AssignError> {
+    use xmlcraft_json_syntax::{Data, Options, Severity as JsonSeverity, parse};
+    let read = parse(text, &Options { dialect: flavor.dialect(), ..Options::default() });
+    if read.diagnostics.iter().any(|d| d.severity() == JsonSeverity::Error) {
+        return Err(AssignError::NotWellFormed);
+    }
+    let Some(root) = read.root else { return Err(AssignError::NoRoot) };
+    let Data::Object(members) = &root.data else {
+        return Err(AssignError::BadLocation("the document is not an object, which is where a \"$schema\" member goes".to_owned()));
+    };
+    let quoted = json_quote(location);
+    if let Some(existing) = members.iter().find(|m| m.key == "$schema") {
+        return match existing.value.data {
+            Data::String(_) => Ok(vec![Edit::replace(existing.value.span.clone(), quoted)]),
+            _ => Err(AssignError::BadLocation("the \"$schema\" member is not a string".to_owned())),
+        };
+    }
+    let member = format!("{}: {quoted}", json_quote("$schema"));
+    match members.first() {
+        // `{}` or `{ }`: the member goes between the braces.
+        None => {
+            let open = root.span.start + 1;
+            Ok(vec![Edit::insert(open, member)])
+        }
+        Some(first) => {
+            let at = first.key_span.start;
+            let line_start = text.get(..at).and_then(|b| b.rfind('\n')).map_or(0, |i| i + 1);
+            let before = text.get(line_start..at).unwrap_or_default();
+            // The first member on a line of its own: the new one is written on a line of its own, indented the same.
+            if before.trim().is_empty() && line_start > root.span.start {
+                let eol = xmlcraft_text::eol::LineEndings::count(text).dominant().as_str();
+                Ok(vec![Edit::insert(at, format!("{member},{eol}{before}"))])
+            } else {
+                Ok(vec![Edit::insert(at, format!("{member}, "))])
+            }
+        }
+    }
+}
+
+fn assign_yaml(text: &str, location: &str) -> Vec<Edit> {
+    let line = format!("# yaml-language-server: $schema={location}");
+    // An existing modeline among the comment lines before the first value is replaced.
+    let mut offset = 0;
+    for l in text.split_inclusive('\n') {
+        let trimmed = l.trim_start();
+        let start = offset + (l.len() - trimmed.len());
+        offset += l.len();
+        let Some(comment) = trimmed.strip_prefix('#') else {
+            if trimmed.trim().is_empty() {
+                continue;
+            }
+            break;
+        };
+        if comment.trim_start().starts_with("yaml-language-server:")
+            && let Some(at) = comment.find("$schema=")
+        {
+            let value_start = start + 1 + at + "$schema=".len();
+            let value_end = start + trimmed.trim_end_matches(['\r', '\n']).len();
+            return vec![Edit::replace(value_start..value_end, location)];
+        }
+    }
+    let eol = xmlcraft_text::eol::LineEndings::count(text).dominant().as_str();
+    vec![Edit::insert(0, format!("{line}{eol}"))]
+}
+
+#[cfg(test)]
+mod data_tests {
+    use super::*;
+    use crate::language::{JsonFlavor, Language};
+
+    const JSON: Language = Language::Json(JsonFlavor::Json);
+
+    fn apply(text: &str, edits: &[Edit]) -> String {
+        let mut out = text.to_owned();
+        let mut sorted: Vec<&Edit> = edits.iter().collect();
+        sorted.sort_by_key(|e| std::cmp::Reverse(e.range.start));
+        for e in sorted {
+            out.replace_range(e.range.clone(), &e.text);
+        }
+        out
+    }
+
+    fn assigned(text: &str, language: Language, location: &str) -> String {
+        apply(text, &assign_data(text, language, location).expect("assigns"))
+    }
+
+    #[test]
+    fn a_json_object_gets_a_schema_member_written_to_match_its_lines() {
+        assert_eq!(assigned("{\n  \"a\": 1\n}", JSON, "s.json"), "{\n  \"$schema\": \"s.json\",\n  \"a\": 1\n}");
+        assert_eq!(
+            assigned("{\r\n\t\"a\": 1\r\n}\r\n", JSON, "s.json"),
+            "{\r\n\t\"$schema\": \"s.json\",\r\n\t\"a\": 1\r\n}\r\n",
+            "tabs and CRLF are kept"
+        );
+        assert_eq!(assigned("{\"a\": 1}", JSON, "s.json"), "{\"$schema\": \"s.json\", \"a\": 1}");
+        assert_eq!(assigned("{}", JSON, "s.json"), "{\"$schema\": \"s.json\"}");
+        assert_eq!(
+            assigned("// c\n{\n  \"a\": 1, // x\n}", Language::Json(JsonFlavor::Jsonc), "u\"v"),
+            "// c\n{\n  \"$schema\": \"u\\\"v\",\n  \"a\": 1, // x\n}"
+        );
+    }
+
+    #[test]
+    fn an_existing_schema_member_is_replaced_and_the_same_one_is_no_change() {
+        let doc = "{\n  \"$schema\": \"old.json\",\n  \"a\": 1\n}";
+        assert_eq!(assigned(doc, JSON, "new.json"), doc.replace("old.json", "new.json"));
+        assert!(assign_data(doc, JSON, "old.json").expect("assigns").is_empty());
+        assert!(assign_data("{\"$schema\": 3}", JSON, "x").is_err(), "a member that is not a string is not overwritten");
+    }
+
+    #[test]
+    fn yaml_gets_a_modeline_on_its_first_line_or_has_its_own_replaced() {
+        assert_eq!(assigned("a: 1\n", Language::Yaml, "s.json"), "# yaml-language-server: $schema=s.json\na: 1\n");
+        assert_eq!(assigned("a: 1\r\nb: 2\r\n", Language::Yaml, "s.json"), "# yaml-language-server: $schema=s.json\r\na: 1\r\nb: 2\r\n");
+        let doc = "# yaml-language-server: $schema=old.json\na: 1\n";
+        assert_eq!(assigned(doc, Language::Yaml, "new.json"), "# yaml-language-server: $schema=new.json\na: 1\n");
+        assert!(assign_data(doc, Language::Yaml, "old.json").expect("assigns").is_empty());
+        assert_eq!(
+            assigned("# a comment\n\n# yaml-language-server: $schema=old\nk: v\n", Language::Yaml, "n"),
+            "# a comment\n\n# yaml-language-server: $schema=n\nk: v\n"
+        );
+    }
+
+    #[test]
+    fn what_cannot_hold_a_schema_is_refused_and_says_why() {
+        for (text, language, why) in [
+            ("[1]", JSON, "not an object"),
+            ("{\"a\": ", JSON, "not well-formed"),
+            ("", JSON, "no root"),
+            ("{}\n{}", Language::Json(JsonFlavor::Lines), "JSON Lines"),
+            ("<a/>", Language::Xml, "DTD or an XML Schema"),
+        ] {
+            let e = assign_data(text, language, "s.json").expect_err(text);
+            assert!(
+                e.to_string().to_lowercase().contains(&why.to_lowercase()) || matches!(e, AssignError::NotWellFormed | AssignError::NoRoot),
+                "{text:?}: {e}"
+            );
+        }
+        assert!(assign_data("{}", JSON, "").is_err());
+        assert!(assign_data("{}", JSON, "a\nb").is_err());
+    }
+
+    #[test]
+    fn what_is_assigned_is_what_the_validator_reads() {
+        let text = assigned("{\n  \"a\": 1\n}", JSON, "s.json");
+        assert!(crate::json_validation::names_a_schema(&text, JSON), "{text}");
+        let yaml = assigned("a: 1\n", Language::Yaml, "s.json");
+        assert!(crate::json_validation::names_a_schema(&yaml, Language::Yaml), "{yaml}");
+    }
+}

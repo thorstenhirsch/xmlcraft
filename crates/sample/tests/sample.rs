@@ -137,6 +137,17 @@ fn a_recursive_schema_is_cut_at_the_depth_and_still_valid() {
 }
 
 #[test]
+fn a_schema_that_nests_in_many_ways_is_cut_by_size_and_still_valid() {
+    // Twelve optional children of the type itself: at the default depth that is far past the limit of elements.
+    let children: String = (0..12).map(|i| format!("<xs:element name=\"c{i}\" type=\"t\" minOccurs=\"0\"/>")).collect();
+    let schema = assembled(&schema_of(&format!(
+        "<xs:complexType name=\"t\"><xs:sequence>{children}</xs:sequence></xs:complexType><xs:element name=\"root\" type=\"t\"/>"
+    )));
+    let text = valid_sample(&schema, None, &Options::default());
+    assert!(text.matches('<').count() < 100_000, "{}", text.len());
+}
+
+#[test]
 fn a_required_branch_that_ends_the_recursion_is_the_one_taken_at_the_depth() {
     // `a` needs an `a` or a `leaf`: only the second ends.
     let schema = assembled(&schema_of(

@@ -11,6 +11,10 @@
 //! - What a description cannot say (a binding that is not SOAP, an operation with no binding, an unknown message) is left out or is a
 //!   warning of the description, never a panic.
 
+mod message;
+
+pub use message::{Fault, Message, read_message};
+
 use std::collections::HashMap;
 
 use xmlcraft_sample::{Options as SampleOptions, QName, sample_from_schema};

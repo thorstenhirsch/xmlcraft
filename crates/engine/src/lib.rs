@@ -25,8 +25,10 @@ pub mod selfcheck;
 pub mod templates;
 pub mod validation;
 mod worker;
+pub mod xbrl;
 pub mod xpath;
 pub mod xsd_schemas;
+pub mod xslt;
 mod yaml_analysis;
 
 pub use document::{Document, FileStamp, MAX_OPEN_BYTES, OpenError, SaveAsPrep, SaveError};

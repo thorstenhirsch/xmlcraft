@@ -165,3 +165,21 @@ fn assigning_what_is_assigned_already_changes_nothing_and_leaves_no_step() {
     let text_only = assign(&mut a, json!({ "text": "<!DOCTYPE a SYSTEM \"a.dtd\">\n<a/>", "schema": "a.dtd" })).expect("runs");
     assert_eq!((text_only["changed"].clone(), text_only["text"].clone()), (json!(false), json!("<!DOCTYPE a SYSTEM \"a.dtd\">\n<a/>")));
 }
+
+#[test]
+fn a_json_schema_is_assigned_to_json_and_yaml_documents_as_a_member_and_a_modeline() {
+    use serde_json::json;
+    use xmlcraft_automation::{Automation, Content};
+    let mut a = Automation::new();
+    let run = |a: &mut Automation, args: serde_json::Value| match a.call("xml_assign_schema", &args).expect("runs").into_iter().next() {
+        Some(Content::Json(v)) => v,
+        None => serde_json::Value::Null,
+    };
+    let r = run(&mut a, json!({ "text": "{\n  \"a\": 1\n}", "language": "json", "schema": "s.json" }));
+    assert_eq!((r["changed"].as_bool(), r["text"].as_str()), (Some(true), Some("{\n  \"$schema\": \"s.json\",\n  \"a\": 1\n}")), "{r}");
+    let r = run(&mut a, json!({ "text": "a: 1\n", "language": "yaml", "schema": "https://example.com/s.json" }));
+    assert_eq!(r["text"].as_str(), Some("# yaml-language-server: $schema=https://example.com/s.json\na: 1\n"), "{r}");
+    let same = run(&mut a, json!({ "text": "{\"$schema\": \"s.json\"}", "language": "json", "schema": "s.json" }));
+    assert_eq!((same["changed"].as_bool(), same["edits"].as_u64()), (Some(false), Some(0)));
+    assert!(a.call("xml_assign_schema", &json!({ "text": "[1]", "language": "json", "schema": "s.json" })).is_err());
+}

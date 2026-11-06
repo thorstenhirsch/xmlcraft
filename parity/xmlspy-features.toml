@@ -628,10 +628,10 @@ title = "Grid view (nested boxes and tables) for XML, JSON, YAML and BSON"
 area = "B"
 tier = "P1"
 milestone = "M6"
-status = "planned"
-commands = []
-tools = []
-evidence = []
+status = "partial"
+commands = ["view.grid", "xml.rename_element"]
+tools = ["grid_rows", "grid_edit"]
+evidence = ["crates/grid/tests/grid.rs::json_rows_nest_and_show_members_items_and_values", "crates/grid/tests/grid.rs::a_json_value_is_replaced_in_place_with_the_right_literal_for_its_type", "crates/grid/tests/grid.rs::a_json_key_is_renamed_and_a_member_is_removed_with_its_comma", "crates/grid/tests/grid.rs::xml_values_are_replaced_in_place_and_escaped", "crates/grid/tests/grid.rs::yaml_rows_and_edits_write_plain_scalars_where_they_read_back_the_same_and_quote_the_rest", "crates/automation/tests/grid.rs::an_edit_changes_the_open_document_with_the_smallest_edit_and_one_undo_takes_it_back", "crates/ui-egui/tests/grid.rs::a_document_is_shown_as_rows_that_open_and_close", "crates/ui-egui/tests/grid.rs::a_value_is_edited_in_place_and_the_text_changes_by_that_value_only", "crates/ui-egui/tests/grid.rs::a_value_that_does_not_fit_its_type_is_refused_with_the_reason_and_the_text_is_left_alone", "crates/ui-egui/tests/grid.rs::a_row_is_removed_with_delete_and_a_name_is_changed_with_f2"]
 notes = "The nested-box and table displays of XMLSpy's Grid view for every supported format (rows and columns for repeated elements or array items, sort, add/remove rows and columns, copy and paste as tab-separated text), editing through the same edits as the text view. The table display shows repeated items as rows for every format."
 
 [[feature]]
@@ -1510,11 +1510,11 @@ title = "XSLT 1.0, 2.0 and 3.0 transformations"
 area = "H"
 tier = "P1"
 milestone = "M7"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.transform"]
+tools = ["xslt_transform"]
+evidence = ["crates/query/tests/xslt.rs::for_each_and_value_of_make_a_result_tree", "crates/query/tests/xslt.rs::templates_are_applied_to_what_matches", "crates/query/tests/xslt.rs::what_the_engine_does_not_implement_is_an_error_that_says_so_and_a_bad_stylesheet_or_document_is_refused", "crates/automation/tests/xslt.rs::the_stylesheet_a_document_names_is_read_from_beside_it_and_only_inside_the_root", "crates/engine/src/xslt.rs::the_first_xslt_stylesheet_before_the_root_is_the_one_named", "crates/ui-egui/tests/xslt.rs::the_stylesheet_a_document_names_is_applied_and_the_result_opens_as_a_new_document", "crates/ui-egui/tests/xslt.rs::a_stylesheet_that_is_not_one_is_said_in_the_window_which_stays", "crates/engine/src/xslt.rs::a_stylesheet_is_applied_on_a_worker_and_the_outcome_says_which_request_it_is_for"]
+notes = "`xmlcraft_query::transform` applies an XSLT stylesheet to a document on the `xee` engine's XSLT compiler (the published crate, 0.1.6): templates and apply-templates, for-each, value-of and literal result elements work; what the engine does not implement (xsl:variable and much else, as of this version) is an error that says so, and a panic inside it is an error too. The tool `xslt_transform` takes the stylesheet by id, path or text, or the one the document names with `<?xml-stylesheet?>` (read from beside it, inside the root). XML ▸ Transform with XSLT… (F10) applies the stylesheet the document names (`<?xml-stylesheet?>`) or another open document, on a worker thread, and opens the result as a new document (named for what it looks like: -result.html, .xml, .json or .txt); a stylesheet the engine cannot use is said in the window. Missing: most of XSLT 1.0, 2.0 and 3.0 (the engine is vendored and extended for this, see the roadmap), xsl:output serialization, parameters, the XSLT editor, the debugger and the profiler."
 
 [[feature]]
 id = "query.xslt-debugger"
@@ -1578,8 +1578,8 @@ milestone = "M5"
 status = "partial"
 commands = ["xml.validate"]
 tools = ["json_validate"]
-evidence = ["crates/json/tests/validate.rs::references_are_followed_within_a_document_and_to_other_documents", "crates/json/tests/validate.rs::what_nothing_else_evaluated_is_unevaluated", "crates/automation/tests/json_schema.rs::violations_are_listed_with_their_place_in_the_text", "crates/engine/src/json_validation.rs::a_json_document_is_checked_against_the_schema_it_names_and_each_problem_is_where_it_is", "crates/ui-egui/tests/json.rs::f8_checks_a_json_document_against_the_schema_it_names_and_lists_what_is_wrong", "crates/engine/src/json_validation.rs::a_document_that_names_a_draft_is_a_schema_and_is_checked_against_the_meta_schema_of_that_draft"]
-notes = "`xmlcraft-json` validates against drafts 04, 06, 07, 2019-09 and 2020-12 (the draft from `$schema`): all the validation and applicator keywords, `$ref`/`$recursiveRef`/`$dynamicRef` with their scopes, `unevaluatedProperties` and `unevaluatedItems`, exact numbers, and every violation placed in the text of the instance. Headless: the tool `json_validate` (the schema as a file, as text or the file the document names; referred schemas are files next to it, through the root confinement). The JSON Schema Test Suite (required tests, drafts 4 to 2020-12) is the measure: 99.96% (4948 of 4950), ratcheted by `cargo xtask conformance jsonschema`. In the window (and headless for YAML, see `json.yaml-validate`) F8 does the checking. Missing: `format` assertions, vocabularies, look-around in patterns. F8 (Validate) on a JSON, JSONC, JSON5 or JSON Lines document that names a schema with `$schema` (a path or URI relative to the file; a `$schema` that names a draft is not a schema to check against) reads the schema (and the documents it refers to) through the resolver, the open documents first, and lists each violation in Problems at its place in the text (a member at its name). Not yet: assigning a schema to a document that does not name one, validating while typing, completion and hover, SchemaStore, BSON instances. A document that names a draft with `$schema` is a schema and is checked against the bundled meta-schema of the draft (M5.10). A document that names a draft of JSON Schema with `$schema` is itself checked against the bundled meta-schema of that draft."
+evidence = ["crates/json/tests/validate.rs::references_are_followed_within_a_document_and_to_other_documents", "crates/json/tests/validate.rs::what_nothing_else_evaluated_is_unevaluated", "crates/automation/tests/json_schema.rs::violations_are_listed_with_their_place_in_the_text", "crates/engine/src/json_validation.rs::a_json_document_is_checked_against_the_schema_it_names_and_each_problem_is_where_it_is", "crates/ui-egui/tests/json.rs::f8_checks_a_json_document_against_the_schema_it_names_and_lists_what_is_wrong", "crates/engine/src/json_validation.rs::a_document_that_names_a_draft_is_a_schema_and_is_checked_against_the_meta_schema_of_that_draft", "crates/engine/src/assign.rs::a_json_object_gets_a_schema_member_written_to_match_its_lines", "crates/engine/src/assign.rs::yaml_gets_a_modeline_on_its_first_line_or_has_its_own_replaced", "crates/ui-egui/tests/assign.rs::a_json_schema_is_assigned_to_json_and_yaml_documents_and_then_f8_checks_the_document_against_it", "crates/automation/tests/assign.rs::a_json_schema_is_assigned_to_json_and_yaml_documents_as_a_member_and_a_modeline"]
+notes = "Assign Schema… (the header pill, the XML menu, `xml_assign_schema`) names a JSON Schema in a JSON or YAML document as a minimal edit that can be undone: a root `$schema` member (replaced when there is one; written to match the lines around it, the indentation and line ending of the document kept; JSONC and JSON5 comments untouched) or the first-line `# yaml-language-server: $schema=` modeline (replaced when there is one); JSON Lines, BSON and a root that is not an object are refused with the reason. `xmlcraft-json` validates against drafts 04, 06, 07, 2019-09 and 2020-12 (the draft from `$schema`): all the validation and applicator keywords, `$ref`/`$recursiveRef`/`$dynamicRef` with their scopes, `unevaluatedProperties` and `unevaluatedItems`, exact numbers, and every violation placed in the text of the instance. Headless: the tool `json_validate` (the schema as a file, as text or the file the document names; referred schemas are files next to it, through the root confinement). The JSON Schema Test Suite (required tests, drafts 4 to 2020-12) is the measure: 99.96% (4948 of 4950), ratcheted by `cargo xtask conformance jsonschema`. In the window (and headless for YAML, see `json.yaml-validate`) F8 does the checking. Missing: `format` assertions, vocabularies, look-around in patterns. F8 (Validate) on a JSON, JSONC, JSON5 or JSON Lines document that names a schema with `$schema` (a path or URI relative to the file; a `$schema` that names a draft is not a schema to check against) reads the schema (and the documents it refers to) through the resolver, the open documents first, and lists each violation in Problems at its place in the text (a member at its name). Not yet: assigning a schema to a document that does not name one, validating while typing, completion and hover, SchemaStore, BSON instances. A document that names a draft with `$schema` is a schema and is checked against the bundled meta-schema of the draft (M5.10). A document that names a draft of JSON Schema with `$schema` is itself checked against the bundled meta-schema of that draft."
 
 [[feature]]
 id = "json.yaml-editor"
@@ -2213,11 +2213,11 @@ title = "Build and send an HTTP request from an OpenAPI operation"
 area = "I"
 tier = "P2"
 milestone = "M8"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["openapi_describe", "openapi_request", "openapi_call"]
+evidence = ["crates/openapi/tests/openapi.rs::operations_servers_and_parameters_are_read_with_refs_followed", "crates/openapi/tests/openapi.rs::examples_come_from_schemas_with_refs_enums_formats_and_recursion_cut", "crates/openapi/tests/openapi.rs::a_request_has_its_path_filled_in_and_encoded_its_query_headers_and_body", "crates/openapi/tests/openapi.rs::a_yaml_description_and_swagger_2_are_read_too", "crates/automation/tests/openapi.rs::a_call_is_sent_to_a_server_and_the_json_answer_is_read_and_nothing_is_sent_offline_or_to_this_computer_unless_allowed"]
+notes = "`xmlcraft-openapi` reads OpenAPI 2.0, 3.0, 3.1 and 3.2 descriptions in JSON or YAML into servers (variables resolved; for 2.0 from host, basePath and schemes) and operations with their parameters (path, query, header, cookie; shared and own, local $refs followed) and request bodies per media type, makes example values from JSON Schemas (example, default, const, first enum value, required and optional properties, an array item, the first of oneOf or anyOf, allOf merged, formats, 3.1 type lists; a recursive schema is cut) and builds the HTTP request (path parameters filled in and percent-encoded, query, headers, body, Content-Type; what is required and missing is an error). The tools `openapi_describe`, `openapi_request` and `openapi_call` (sends it with the HTTP client of the SOAP call: no redirects, private hosts refused unless allowed, only when a person allowed the network; the JSON answer is read) use it. Missing: the window, authentication schemes and security requirements, cookie parameters in the request, parameter styles beyond the default, form and multipart bodies, response validation, remote $refs, a history."
 
 [[feature]]
 id = "soap.wsdl-editor"
@@ -2239,9 +2239,9 @@ tier = "P2"
 milestone = "M8"
 status = "partial"
 commands = []
-tools = ["soap_sample"]
-evidence = ["crates/wsdl/tests/wsdl.rs::a_request_has_an_envelope_a_sample_body_and_the_headers_of_its_soap_version", "crates/wsdl/tests/wsdl.rs::rpc_style_wraps_the_parts_in_an_element_named_for_the_operation", "crates/automation/tests/wsdl.rs::a_request_is_made_with_schemas_imported_by_location_from_beside_the_wsdl"]
-notes = "`Wsdl::sample_request` and the tool `soap_sample` make the request of an operation: a SOAP 1.1 or 1.2 envelope (as the binding says) with a body sampled from the schema of the input (document style) or the operation element with a part each (rpc style), the headers (Content-Type, SOAPAction or the action parameter) and the endpoint address; schemas imported by location are read from beside the WSDL. Missing: sending the request and showing the response, validation of the response, SOAP headers (WS-Security, WS-Addressing), the window."
+tools = ["soap_sample", "soap_call"]
+evidence = ["crates/wsdl/tests/wsdl.rs::a_request_has_an_envelope_a_sample_body_and_the_headers_of_its_soap_version", "crates/wsdl/tests/wsdl.rs::rpc_style_wraps_the_parts_in_an_element_named_for_the_operation", "crates/automation/tests/wsdl.rs::a_request_is_made_with_schemas_imported_by_location_from_beside_the_wsdl", "crates/automation/tests/wsdl.rs::a_call_sends_the_envelope_with_the_headers_of_its_version_and_reads_a_fault_from_the_answer", "crates/platform/src/client.rs::a_post_is_sent_with_its_headers_and_body_and_the_whole_answer_comes_back", "crates/wsdl/tests/wsdl.rs::a_response_is_read_with_its_version_headers_and_body_and_a_fault_with_its_code_reason_and_detail"]
+notes = "`Wsdl::sample_request` and the tool `soap_sample` make the request of an operation: a SOAP 1.1 or 1.2 envelope (as the binding says) with a body sampled from the schema of the input (document style) or the operation element with a part each (rpc style), the headers (Content-Type, SOAPAction or the action parameter) and the endpoint address; schemas imported by location are read from beside the WSDL. The tool `soap_call` sends it (an HTTP client in `xmlcraft-platform`: any method, headers and body, no redirects followed, a host on this computer or the local network refused unless the call allows it, the answer capped) and reads the answer: the HTTP response, and when the body is a SOAP message its version, header blocks, body and fault (code, subcode, reason, actor, detail; a 1.1 fault with HTTP 500 is an answer). Missing: validation of the response against the schema, SOAP headers (WS-Security, WS-Addressing), attachments (MTOM), the window."
 
 [[feature]]
 id = "soap.debugger"
@@ -2261,11 +2261,11 @@ title = "XBRL 2.1 instance validation"
 area = "E"
 tier = "P2"
 milestone = "M9"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.validate"]
+tools = ["xbrl_facts"]
+evidence = ["crates/xbrl/tests/xbrl.rs::contexts_units_and_facts_are_read_with_their_places_and_dimensions", "crates/xbrl/tests/xbrl.rs::what_the_instance_says_wrong_about_itself_is_found_at_the_fact_or_context", "crates/xbrl/tests/xbrl.rs::periods_duplicates_and_what_is_never_used", "crates/engine/src/validation.rs::an_xbrl_instance_is_checked_for_what_it_says_of_itself_and_is_not_blamed_for_having_no_doctype", "crates/automation/tests/xbrl.rs::facts_contexts_units_and_findings_are_listed_with_places"]
+notes = "`xmlcraft-xbrl` reads an XBRL 2.1 instance into contexts (entity identifier and scheme, instant, duration or forever, explicit and typed dimension members of segment and scenario), units (measures, divide) and facts (concept, value, contextRef, unitRef, decimals, precision, nil, id, place in the text) and checks what the specification says of the instance itself: a fact whose contextRef or unitRef names nothing or is missing, duplicate context and unit ids, a period that is no date or ends before it starts, an entity with no scheme, decimals with precision, decimals or precision that is not an integer or INF, a nil fact with a value, a number that is not one, duplicate and inconsistent facts, contexts and units never used, a missing schemaRef. F8 lists the findings in Problems at their fact or context (and an XBRL instance is not blamed for naming no DOCTYPE); the tool `xbrl_facts` lists the facts, contexts, units and findings. Missing: everything that needs the taxonomy (is the concept numeric, its period type, its balance, the calculation relationships, the dimensional validation of members and hypercubes), schemaRef resolution, the XBRL conformance suite, a facts table in the window."
 
 [[feature]]
 id = "xbrl.taxonomy"
@@ -2297,11 +2297,11 @@ title = "Inline XBRL 1.1 transform and validate"
 area = "E"
 tier = "P2"
 milestone = "M9"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.validate"]
+tools = ["xbrl_facts"]
+evidence = ["crates/xbrl/tests/xbrl.rs::inline_xbrl_facts_are_read_with_scale_and_sign_applied_and_checked_like_an_instance"]
+notes = "Inline XBRL documents (XHTML with ix: tags) are read into the same facts, contexts and units: `ix:nonNumeric`, `ix:nonFraction` (the default number format with thousands separators; `scale` and `sign` applied, so `1,234.5` with scale 3 is 1234500) and `ix:fraction`, with the contexts and units of `ix:resources` and the `schemaRef` of `ix:references`; a number that is not one in the default format is a finding that names the transformation format. They are checked like an instance. Missing: the ixt transformation registries (formats such as ixt:num-comma-decimal and date formats), nested and continued `ix:continuation` text, the Inline XBRL transform to an XBRL instance, hidden facts and `ix:exclude`, a viewer."
 
 [[feature]]
 id = "xbrl.oim"
@@ -2336,8 +2336,8 @@ milestone = "M9"
 status = "partial"
 commands = []
 tools = ["einvoice_detect"]
-evidence = ["crates/einvoice/src/lib.rs::xrechnung_in_ubl_is_recognised_with_its_version_and_an_extension_is_not_a_plain_xrechnung", "crates/automation/tests/einvoice.rs::text_an_open_document_and_a_file_are_recognised_the_same_way"]
-notes = "Recognised by the UBL Invoice or CreditNote root and the CustomizationID (XRechnung 2.x and 3.x, and its extension profile apart from plain XRechnung): `einvoice_detect` names the standard, version, UBL version and Peppol process. Missing: validation against the UBL schema and the XRechnung rules (Schematron), a status-bar chip."
+evidence = ["crates/einvoice/src/lib.rs::xrechnung_in_ubl_is_recognised_with_its_version_and_an_extension_is_not_a_plain_xrechnung", "crates/automation/tests/einvoice.rs::text_an_open_document_and_a_file_are_recognised_the_same_way", "crates/engine/src/validation.rs::a_ubl_invoice_that_names_no_schema_is_checked_against_the_bundled_one", "crates/automation/tests/einvoice.rs::xml_validate_checks_a_ubl_invoice_against_the_bundled_schema_without_being_told_which"]
+notes = "Recognised by the UBL Invoice or CreditNote root and the CustomizationID (XRechnung 2.x and 3.x, and its extension profile apart from plain XRechnung): `einvoice_detect` names the standard, version, UBL version and Peppol process. F8 and `xml_validate` check an invoice or credit note that names no grammar against the UBL 2.1 XML Schema that ships with the app (the OASIS files, unmodified, found by namespace). Missing: the XRechnung rules (Schematron: business rules, code lists), a status-bar chip."
 
 [[feature]]
 id = "einvoice.xrechnung-cii"
@@ -2360,8 +2360,8 @@ milestone = "M9"
 status = "partial"
 commands = []
 tools = ["einvoice_detect"]
-evidence = ["crates/einvoice/src/lib.rs::peppol_en16931_and_unknown_identifiers_are_told_apart"]
-notes = "The plain EN 16931 identifier is recognised in UBL and CII. Missing: the EN 16931 rules (Schematron)."
+evidence = ["crates/einvoice/src/lib.rs::peppol_en16931_and_unknown_identifiers_are_told_apart", "crates/engine/src/validation.rs::a_ubl_invoice_that_names_no_schema_is_checked_against_the_bundled_one"]
+notes = "The plain EN 16931 identifier is recognised in UBL and CII. The UBL 2.1 schema check applies to the UBL syntax. Missing: the EN 16931 rules (Schematron), and the CII schema check."
 
 [[feature]]
 id = "einvoice.peppol-bis3"
@@ -2372,8 +2372,8 @@ milestone = "M9"
 status = "partial"
 commands = []
 tools = ["einvoice_detect"]
-evidence = ["crates/einvoice/src/lib.rs::peppol_en16931_and_unknown_identifiers_are_told_apart"]
-notes = "Peppol BIS Billing 3.0 (and PINT) is recognised by its CustomizationID, with the process from ProfileID. Missing: the Peppol rules (Schematron)."
+evidence = ["crates/einvoice/src/lib.rs::peppol_en16931_and_unknown_identifiers_are_told_apart", "crates/engine/src/validation.rs::a_ubl_invoice_that_names_no_schema_is_checked_against_the_bundled_one"]
+notes = "Peppol BIS Billing 3.0 (and PINT) is recognised by its CustomizationID, with the process from ProfileID. The UBL 2.1 schema check applies to it. Missing: the Peppol rules (Schematron)."
 
 [[feature]]
 id = "einvoice.fatturapa"
