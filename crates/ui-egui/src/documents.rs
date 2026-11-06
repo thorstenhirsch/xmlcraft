@@ -403,7 +403,10 @@ impl XmlCraftApp {
             }
         };
         // (A JSON or YAML text is validated when it names a schema, as an XML text is when it names a grammar.)
-        let ready = if doc.language().is_data() {
+        let ready = if doc.language().is_html() {
+            // (HTML has no DTD or schema to validate against: it is checked as it is typed, by the analysis.)
+            false
+        } else if doc.language().is_data() {
             let named = view.data_schema.names_a_schema_at(version);
             view.analysis.as_ref().is_some_and(|a| crate::auto_validate::ready_data(a, version, named))
         } else {
@@ -447,7 +450,9 @@ impl XmlCraftApp {
         let kind = self.applied.unwrap_or(ThemeKind::Light);
         let Some(doc) = self.session.active_document() else { return };
         // A JSON or YAML document that names no schema is checked for its syntax only (a schema is named with `$schema`).
-        if doc.language().is_data() && !xmlcraft_engine::json_validation::names_a_schema(&doc.editor().text(), doc.language()) {
+        if doc.language().is_html()
+            || (doc.language().is_data() && !xmlcraft_engine::json_validation::names_a_schema(&doc.editor().text(), doc.language()))
+        {
             self.check_now();
             return;
         }

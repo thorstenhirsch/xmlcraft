@@ -15,6 +15,8 @@ pub enum DocKind {
     Json,
     /// YAML (`.yaml`, `.yml`).
     Yaml,
+    /// HTML5 (`.html`, `.htm`).
+    Html,
 }
 
 /// What the document called `name` is: a JSON name or a YAML name (see [`crate::language::Language::of_name`]) is that; otherwise by its extension (`.xsd` is a schema; `.dtd`, `.ent` and `.mod` are DTDs), else by its
@@ -24,6 +26,7 @@ pub fn doc_kind(name: &str, analysis: Option<&Analysis>) -> DocKind {
     match crate::language::Language::of_name(name) {
         crate::language::Language::Json(_) | crate::language::Language::Bson => return DocKind::Json,
         crate::language::Language::Yaml => return DocKind::Yaml,
+        crate::language::Language::Html => return DocKind::Html,
         crate::language::Language::Xml => {}
     }
     let extension = name.rsplit_once('.').map(|(_, ext)| ext.to_ascii_lowercase());

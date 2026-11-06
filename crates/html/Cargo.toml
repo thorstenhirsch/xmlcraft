@@ -1,0 +1,17 @@
+[package]
+name = "xmlcraft-html"
+description = "XmlCraft's HTML5 layer: a tolerant reader with spans (void elements, optional end tags, raw text), what is wrong with the markup, and the element and attribute tables"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-syntax = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

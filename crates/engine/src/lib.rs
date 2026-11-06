@@ -12,6 +12,8 @@ mod document;
 pub mod elements;
 pub mod folding;
 pub mod generate;
+mod html_analysis;
+pub mod html_complete;
 mod json_analysis;
 pub mod json_assist;
 pub mod json_schemas;

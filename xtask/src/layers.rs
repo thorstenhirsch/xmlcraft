@@ -37,6 +37,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("syntax", Class::Standalone(1)),
     ("datatypes", Class::Standalone(1)),
     ("json-syntax", Class::Standalone(1)),
+    ("html", Class::Standalone(1)),
     ("yaml-syntax", Class::Standalone(1)),
     ("bson", Class::Standalone(1)),
     ("pdf", Class::Standalone(1)),
@@ -88,6 +89,7 @@ pub const STANDALONE_DEPS: &[(&str, &[&str])] = &[
     ("datatypes", &["pattern"]),
     ("syntax", &["text"]),
     ("json-syntax", &["syntax"]),
+    ("html", &["syntax"]),
     ("yaml-syntax", &["syntax", "json-syntax"]),
     ("bson", &["json-syntax"]),
 ];
@@ -100,6 +102,7 @@ pub const SIDEWAYS: &[(&str, &str)] = &[
     ("json", "resolve"),
     // The JSON reader reports its problems with the shared diagnostic codes.
     ("json-syntax", "syntax"),
+    ("html", "syntax"),
     // The BSON projection reads and writes Extended JSON through the JSON reader.
     ("bson", "json-syntax"),
     // The YAML reader builds the value tree of the JSON reader (one tree for both) and reports with the shared diagnostics.
