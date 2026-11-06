@@ -48,6 +48,11 @@ impl DataSchema {
         true
     }
 
+    /// What the text of version `version` names as its schema (it was read from that very text), if it names one.
+    pub(crate) fn reference_if_current(&self, version: u64) -> Option<String> {
+        if self.reference_version == Some(version) { self.reference.clone() } else { None }
+    }
+
     /// Whether the text of version `version` names a schema (the name was read from that very text).
     pub(crate) fn names_a_schema_at(&self, version: u64) -> bool {
         self.reference_version == Some(version) && self.reference.is_some()
