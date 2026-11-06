@@ -234,10 +234,34 @@ impl XmlCraftApp {
             .collect()
     }
 
+    /// After typing in an HTML document: open the popup with the elements, attributes or values that fit where the caret is, or close it.
+    /// Returns false when the document is not HTML.
+    fn update_html_completion(&mut self) -> bool {
+        let Some(doc) = self.session.active_document() else { return false };
+        if !doc.language().is_html() {
+            return false;
+        }
+        self.completion = None;
+        let editor = doc.editor();
+        let caret = editor.primary();
+        if editor.carets().len() != 1 || !caret.is_empty() || editor.buffer().len() > 2 * 1024 * 1024 {
+            return true;
+        }
+        let (id, version, head) = (doc.id(), editor.version(), caret.head());
+        let Some(found) = xmlcraft_engine::html_complete::complete(&editor.text(), head) else { return true };
+        if found.items.is_empty() {
+            return true;
+        }
+        let items: Vec<Item> = found.items.into_iter().map(|i| Item { label: i.label, detail: i.detail, text: i.insert, caret: i.cursor }).collect();
+        self.completion =
+            Some(Completion { doc: id, version, start: found.replace.start, caret: head, end: found.replace.end.max(head), items, selected: 0 });
+        true
+    }
+
     /// Work out what to offer at the caret after the frame's typing, and open or close the popup.
     pub(crate) fn update_completion(&mut self) {
         // JSON and YAML documents are completed from their JSON Schema.
-        if self.update_data_completion() {
+        if self.update_data_completion() || self.update_html_completion() {
             return;
         }
         let Some(doc) = self.session.active_document_mut() else {

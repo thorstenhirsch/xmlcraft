@@ -461,7 +461,7 @@ pub fn hover_with(set: &SchemaSet, text: &str, language: Language, offset: usize
         }
         Language::Json(flavor) => parse(text, &Options { dialect: flavor.dialect(), ..Options::default() }).root.into_iter().collect(),
         Language::Yaml => xmlcraft_yaml_syntax::parse(text, &xmlcraft_yaml_syntax::Options::default()).documents,
-        Language::Xml | Language::Bson => return None,
+        Language::Xml | Language::Bson | Language::Html => return None,
     };
     let root = roots.iter().find(|r| r.span.start <= offset && offset <= r.span.end)?;
     let path = root.path_at(offset)?;

@@ -35,7 +35,7 @@ pub struct Ignore {
 /// What a text is written in, for comparing.
 pub fn family_of(language: Language) -> Family {
     match language {
-        Language::Xml => Family::Xml,
+        Language::Xml | Language::Html => Family::Xml,
         Language::Json(_) | Language::Bson => Family::Json,
         Language::Yaml => Family::Yaml,
     }

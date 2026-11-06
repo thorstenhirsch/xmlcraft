@@ -75,7 +75,7 @@ fn format_arg(args: &Value, key: &str) -> Result<Option<Format>> {
 
 fn format_of(language: Language) -> Format {
     match language {
-        Language::Xml => Format::Xml,
+        Language::Xml | Language::Html => Format::Xml,
         Language::Json(_) => Format::Json,
         Language::Yaml => Format::Yaml,
         Language::Bson => Format::Bson,

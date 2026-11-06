@@ -34,7 +34,7 @@ One Cargo workspace (edition 2024, Rust ≥ 1.95, `MIT OR Apache-2.0`): library 
 
 | Layer | Crate | Role |
 |---|---|---|
-| L1 | `json-syntax`, `yaml-syntax`, `bson` (codec), `pdf` | Lossless CST of JSON/JSONC/JSON5/JSON Lines; YAML events with spans and alias caps; BSON read/write and its Extended JSON text; a minimal PDF object reader and **incremental-update writer** |
+| L1 | `json-syntax`, `yaml-syntax`, `html`, `bson` (codec), `pdf` | Lossless CST of JSON/JSONC/JSON5/JSON Lines; YAML events with spans and alias caps; HTML5 with void elements, implied end tags and the element and attribute tables; BSON read/write and its Extended JSON text; a minimal PDF object reader and **incremental-update writer** |
 | L2 | `datamodel` | One format-neutral tree with spans (object, array, scalar, element, attribute) under Grid, conversion and diff |
 | L3 | `json` (JSON Schema) | JSON Schema drafts 04–2020-12 with pointer → span |
 | L4 | `openapi` (on top of `json`), `query` (vendored and extended `xee`), `schematron`, `diff`, `convert`, `xbrl`, `einvoice`, SOAP/WSDL message building | Engines and format logic; all pure and wasm-clean |

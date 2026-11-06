@@ -566,6 +566,7 @@ pub fn assign_data(text: &str, language: crate::language::Language, location: &s
         Language::Yaml => assign_yaml(text, location),
         Language::Bson => return Err(AssignError::BadLocation("a BSON file has no place for a schema".to_owned())),
         Language::Xml => return Err(AssignError::BadLocation("an XML document is given a DTD or an XML Schema, not a JSON Schema".to_owned())),
+        Language::Html => return Err(AssignError::BadLocation("an HTML document has no place for a schema".to_owned())),
     };
     edits.retain(|e| text.get(e.range.clone()) != Some(e.text.as_str()));
     Ok(edits)

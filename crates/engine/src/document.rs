@@ -31,6 +31,7 @@ const MAX_UNMAPPABLE: usize = 100_000;
 fn syntax_of(language: Language) -> Syntax {
     match language {
         Language::Xml => Syntax::Xml,
+        Language::Html => Syntax::Html,
         Language::Json(crate::language::JsonFlavor::Json5) => Syntax::Json5,
         Language::Json(_) | Language::Bson => Syntax::Json,
         Language::Yaml => Syntax::Yaml,
