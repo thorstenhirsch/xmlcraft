@@ -29,6 +29,36 @@ const MODE_BAR: f32 = 48.0;
 const STATUS_BAR: f32 = 26.0;
 /// A tab's chrome around its name: the icon on the left, the close button on the right.
 const TAB_CHROME: f32 = 64.0;
+/// How narrow a tab may get before the strip scrolls instead.
+const MIN_TAB: f32 = 150.0;
+/// The room the strip keeps free on its right for New, Open and the theme button.
+const STRIP_RESERVE: f32 = 230.0;
+
+/// What the tab strip remembers between frames.
+#[derive(Default)]
+pub(crate) struct TabStripState {
+    /// The tab that was last scrolled into view (a tab that becomes the shown one is scrolled to; one the person scrolled away from is left).
+    scrolled_to: Option<usize>,
+    /// A tab being dragged: where it was, and where it would go now.
+    drag: Option<(usize, usize)>,
+}
+
+/// The widths of the tabs: their natural widths when they fit in `room` (with `gap` between them), else shrunk in proportion, but not
+/// below [`MIN_TAB`] (past that the strip scrolls).
+pub(crate) fn tab_widths(naturals: &[f32], room: f32, gap: f32) -> Vec<f32> {
+    let gaps = gap * naturals.len().saturating_sub(1) as f32;
+    let total: f32 = naturals.iter().sum::<f32>() + gaps;
+    if total <= room || naturals.is_empty() {
+        return naturals.to_vec();
+    }
+    let scale = ((room - gaps) / naturals.iter().sum::<f32>()).max(0.0);
+    naturals.iter().map(|w| (w * scale).max(MIN_TAB.min(*w))).collect()
+}
+
+/// The place a tab dragged to the pointer at `x` would take among tabs at `rects`.
+pub(crate) fn drop_index(rects: &[Rect], x: f32) -> usize {
+    rects.iter().position(|r| x <= r.right()).unwrap_or(rects.len().saturating_sub(1))
+}
 
 pub fn tab_strip(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
@@ -57,16 +87,69 @@ pub fn tab_strip(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                     app.session.set_active(None);
                 }
                 let mut close = None;
-                for (i, tab_info) in app.tabs().iter().enumerate() {
-                    let response = tab(ui, &t, &tab_info.name, tab_info.dirty, active == Some(i), &mut close, i, tab_h);
-                    if response.clicked() {
-                        app.session.set_active(Some(i));
-                        app.focus_editor = true;
+                let tabs = app.tabs();
+                // The tabs shrink to share the room, then the strip scrolls (the shown tab is brought into view, and the wheel scrolls it).
+                let room = (ui.available_width() - STRIP_RESERVE).max(MIN_TAB);
+                let font = theme::regular(13.0);
+                let naturals: Vec<f32> = tabs.iter().map(|i| widgets::text_width(ui, &tab_name(&i.name), &font) + TAB_CHROME).collect();
+                let widths = tab_widths(&naturals, room, 4.0);
+                let mut rects: Vec<Rect> = Vec::new();
+                let mut dragging: Option<usize> = None;
+                let mut dropped = false;
+                let scroll = egui::ScrollArea::horizontal()
+                    .id_salt("document-tabs")
+                    .max_width(room)
+                    .auto_shrink([true, false])
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.0;
+                            for (i, tab_info) in tabs.iter().enumerate() {
+                                let width = widths.get(i).copied().unwrap_or(MIN_TAB);
+                                let response = tab(ui, &t, &tab_info.name, tab_info.dirty, active == Some(i), &mut close, i, tab_h, width);
+                                if response.clicked() {
+                                    app.session.set_active(Some(i));
+                                    app.focus_editor = true;
+                                }
+                                // A middle click closes the tab, as in browsers.
+                                if response.middle_clicked() {
+                                    close = Some(i);
+                                }
+                                if response.dragged() {
+                                    dragging = Some(i);
+                                }
+                                dropped |= response.drag_stopped();
+                                if active == Some(i) && app.tab_strip.scrolled_to != Some(i) {
+                                    response.scroll_to_me(Some(Align::Center));
+                                    app.tab_strip.scrolled_to = Some(i);
+                                }
+                                rects.push(response.rect);
+                            }
+                        });
+                        // The wheel scrolls the strip sideways where the system gives it only up and down.
+                        if ui.rect_contains_pointer(ui.max_rect()) {
+                            let delta = ui.input(|i| i.smooth_scroll_delta);
+                            if delta.x == 0.0 && delta.y != 0.0 {
+                                ui.scroll_with_delta(vec2(delta.y, 0.0));
+                            }
+                        }
+                    });
+                // A tab dragged along the strip: where it would go is marked, and it goes there when it is let go.
+                if let (Some(from), Some(pointer)) = (dragging, ui.ctx().pointer_latest_pos()) {
+                    let to = drop_index(&rects, pointer.x);
+                    app.tab_strip.drag = Some((from, to));
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                    if let Some(target) = rects.get(to).filter(|_| to != from) {
+                        let x = if to > from { target.right() } else { target.left() };
+                        ui.painter().vline(x, scroll.inner_rect.y_range(), Stroke::new(2.0, t.accent));
                     }
-                    // A middle click closes the tab, as in browsers.
-                    if response.middle_clicked() {
-                        close = Some(i);
-                    }
+                }
+                if dropped && let Some((from, to)) = app.tab_strip.drag.take() {
+                    app.session.move_document(from, to);
+                    app.tab_strip.scrolled_to = None;
+                }
+                if dragging.is_none() && !dropped {
+                    app.tab_strip.drag = None;
                 }
                 if let Some(i) = close {
                     app.request_close(i);
@@ -116,17 +199,28 @@ pub fn tab_name(name: &str) -> String {
 
 /// A document tab: the file icon on the left, the name, and a close button (or a dot while there are unsaved changes) on the right.
 #[allow(clippy::too_many_arguments)]
-fn tab(ui: &mut egui::Ui, t: &Tokens, name: &str, dirty: bool, active: bool, close: &mut Option<usize>, index: usize, height: f32) -> egui::Response {
+fn tab(
+    ui: &mut egui::Ui,
+    t: &Tokens,
+    name: &str,
+    dirty: bool,
+    active: bool,
+    close: &mut Option<usize>,
+    index: usize,
+    height: f32,
+    width: f32,
+) -> egui::Response {
     let font = theme::regular(13.0);
     let label = tab_name(name);
-    let text_w = widgets::text_width(ui, &label, &font);
     // Full strip height so the active tab sits on the mode bar instead of floating in the title bar.
     let height = ui.available_height().max(height);
-    let (rect, _) = ui.allocate_exact_size(vec2(text_w + TAB_CHROME, height), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
     let id = ui.scope_id().with(("document-tab", index));
     let a11y = if dirty { format!("{name} (edited)") } else { name.to_string() };
-    let resp =
-        craft_ui::tabs::Tab::new(id, &a11y, active).sense(Sense::click()).focus_stroke(Stroke::new(1.0, t.accent)).show_at(ui, rect, |ui, resp| {
+    let resp = craft_ui::tabs::Tab::new(id, &a11y, active).sense(Sense::click_and_drag()).focus_stroke(Stroke::new(1.0, t.accent)).show_at(
+        ui,
+        rect,
+        |ui, resp| {
             let press = theme::Press::track(ui, resp);
             let bg = if active {
                 press.fill(t.chrome, t.chrome.lerp_to_gamma(t.hover, 0.65), t.hover)
@@ -143,14 +237,17 @@ fn tab(ui: &mut egui::Ui, t: &Tokens, name: &str, dirty: bool, active: bool, clo
                 15.0,
                 if active { t.accent } else { t.text_muted },
             );
-            ui.painter().text(
+            // (A tab that has been made narrower cuts its name before the close button.)
+            let name_room = Rect::from_min_max(rect.min + vec2(28.0, 0.0), egui::pos2(rect.right() - 30.0, rect.bottom()));
+            ui.painter().with_clip_rect(name_room).text(
                 rect.min + vec2(28.0, rect.height() / 2.0),
                 Align2::LEFT_CENTER,
                 label,
                 font,
                 if active { t.text } else { t.text_muted },
             );
-        });
+        },
+    );
     let x_rect = Rect::from_center_size(rect.right_center() - vec2(16.0, 0.0), vec2(20.0, 20.0));
     let x = ui.interact(x_rect, id.with("close"), Sense::click());
     let x_press = theme::Press::track(ui, &x);
@@ -549,6 +646,29 @@ mod tests {
         for plain in ["a.xml", "Untitled-1", "", "xsd", ".hidden", "archive.tar.gz"] {
             assert_eq!(file_icon(plain), "code-xml", "{plain:?}");
         }
+    }
+
+    #[test]
+    fn tabs_keep_their_width_while_they_fit_then_shrink_together_and_stop_at_the_least_width() {
+        let naturals = [300.0, 200.0, 400.0];
+        assert_eq!(tab_widths(&naturals, 1000.0, 4.0), naturals, "they fit");
+        let shrunk = tab_widths(&naturals, 700.0, 4.0);
+        assert!(shrunk.iter().sum::<f32>() + 8.0 <= 700.5, "{shrunk:?}");
+        assert!(shrunk[0] < 300.0 && shrunk[2] < 400.0 && shrunk[2] > shrunk[0] && shrunk[1] >= MIN_TAB, "in proportion: {shrunk:?}");
+        // A tab that is naturally narrower than the least stays as it is, and none goes below the least.
+        let many = vec![150.0; 40];
+        assert!(tab_widths(&many, 400.0, 4.0).iter().all(|w| (*w - MIN_TAB).abs() < f32::EPSILON), "they stop at the least, and the strip scrolls");
+        assert_eq!(tab_widths(&[60.0], 10.0, 4.0), [60.0]);
+        assert!(tab_widths(&[], 10.0, 4.0).is_empty());
+        assert!(tab_widths(&naturals, f32::NAN, 4.0).iter().all(|w| w.is_finite()), "no NaN comes out");
+    }
+
+    #[test]
+    fn the_place_a_dragged_tab_would_take_is_the_one_under_the_pointer() {
+        let rect = |l: f32, r: f32| Rect::from_min_max(egui::pos2(l, 0.0), egui::pos2(r, 30.0));
+        let rects = [rect(0.0, 100.0), rect(104.0, 204.0), rect(208.0, 308.0)];
+        assert_eq!([-50.0, 0.0, 99.0, 103.0, 150.0, 250.0, 400.0].map(|x| drop_index(&rects, x)), [0, 0, 0, 1, 1, 2, 2]);
+        assert_eq!(drop_index(&[], 10.0), 0);
     }
 
     #[test]

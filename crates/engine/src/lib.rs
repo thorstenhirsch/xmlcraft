@@ -190,6 +190,29 @@ impl Session {
         Ok(index)
     }
 
+    /// Move the document at `from` to the place `to` (the tabs are dragged): the others close up and make room, and what is shown stays
+    /// the same document. False when either place is not a document or they are the same.
+    pub fn move_document(&mut self, from: usize, to: usize) -> bool {
+        let count = self.documents.len();
+        if from >= count || to >= count || from == to {
+            return false;
+        }
+        let moved = self.documents.remove(from);
+        self.documents.insert(to, moved);
+        self.active = self.active.map(|a| {
+            if a == from {
+                to
+            } else if from < to && a > from && a <= to {
+                a - 1
+            } else if from > to && a >= to && a < from {
+                a + 1
+            } else {
+                a
+            }
+        });
+        true
+    }
+
     /// Close the document at `index` (the caller has dealt with unsaved changes). The one to its left, or the home view, is shown next.
     pub fn close(&mut self, index: usize) -> Option<Document> {
         if index >= self.documents.len() {
@@ -236,6 +259,33 @@ mod tests {
         let s = Session::new();
         assert!(!s.has_document() && s.active().is_none() && s.documents().is_empty());
         assert!(!s.can_undo() && !s.can_redo() && !s.has_unsaved_changes());
+    }
+
+    #[test]
+    fn a_document_moved_in_the_tabs_keeps_the_one_that_is_shown_shown() {
+        let mut s = Session::new();
+        for name in ["a", "b", "c", "d"] {
+            s.open(Some(format!("/x/{name}.xml").into()), b"<a/>", None).expect("opens");
+        }
+        let names = |s: &Session| s.documents().iter().map(|d| d.name().to_owned()).collect::<Vec<String>>();
+        let want = |list: [&str; 4]| list.iter().map(|n| (*n).to_owned()).collect::<Vec<String>>();
+        // `d` is shown. Moving another document across it moves its place by one; moving it moves the place with it.
+        assert_eq!(s.active(), Some(3));
+        assert!(s.move_document(0, 3));
+        assert_eq!((names(&s), s.active()), (want(["b.xml", "c.xml", "d.xml", "a.xml"]), Some(2)));
+        assert!(s.move_document(2, 0));
+        assert_eq!((names(&s), s.active()), (want(["d.xml", "b.xml", "c.xml", "a.xml"]), Some(0)));
+        s.set_active(Some(1));
+        assert!(s.move_document(3, 0));
+        assert_eq!((names(&s), s.active()), (want(["a.xml", "d.xml", "b.xml", "c.xml"]), Some(2)), "b is still shown");
+        assert!(s.move_document(1, 3));
+        assert_eq!((names(&s), s.active()), (want(["a.xml", "b.xml", "c.xml", "d.xml"]), Some(1)), "and still");
+        // Nothing moves for a place that is not there, or for the same place.
+        let before = names(&s);
+        assert!(!s.move_document(1, 1) && !s.move_document(4, 0) && !s.move_document(0, 4));
+        assert_eq!(names(&s), before);
+        let mut empty = Session::new();
+        assert!(!empty.move_document(0, 0));
     }
 
     #[test]
