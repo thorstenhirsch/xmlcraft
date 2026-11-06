@@ -6685,6 +6685,7 @@ dependencies = [
  "xmlcraft-infer",
  "xmlcraft-json",
  "xmlcraft-json-syntax",
+ "xmlcraft-openapi",
  "xmlcraft-pdf",
  "xmlcraft-query",
  "xmlcraft-resolve",

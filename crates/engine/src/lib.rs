@@ -18,6 +18,7 @@ pub mod json_validation;
 pub mod language;
 pub mod quickfix;
 pub mod recent;
+pub mod rest;
 pub mod schema;
 pub mod schema_fetch;
 pub mod schema_link;

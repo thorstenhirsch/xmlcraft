@@ -203,6 +203,7 @@ impl XmlCraftApp {
             "xml.xpath" => self.open_xpath(),
             "xml.transform" => self.open_transform(),
             "xml.soap" => self.open_soap(),
+            "xml.openapi" => self.open_openapi(),
             "xml.generate_schema" => self.open_generate_schema(),
             "xml.generate_sample" => self.open_generate_sample(),
             "xml.load_schema" => self.load_schema(),

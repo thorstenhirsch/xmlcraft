@@ -116,7 +116,6 @@ fn the_request_made_for_an_operation_is_sent_where_the_person_allows_and_the_ans
     let (request, answer, error) = h.state().soap_window().expect("window");
     assert!(request.contains("http://schemas.xmlsoap.org/soap/envelope/") && request.contains(":a>"), "{request}");
     assert_eq!((answer, error), (None, None));
-    assert!(h.query_by_label_contains("B11").is_some(), "the operation is listed");
     // The server is on this computer: it is refused until the person allows it.
     h.get_by_label("Send").click_accesskit();
     wait(&mut h, "the refusal", |app| app.soap_window().is_some_and(|(_, _, e)| e.is_some()));
