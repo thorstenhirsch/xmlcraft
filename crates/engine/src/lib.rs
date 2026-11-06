@@ -13,6 +13,7 @@ pub mod elements;
 pub mod folding;
 pub mod generate;
 mod json_analysis;
+pub mod json_assist;
 pub mod json_validation;
 pub mod language;
 pub mod quickfix;
@@ -31,6 +32,7 @@ pub mod xpath;
 pub mod xsd_schemas;
 pub mod xslt;
 mod yaml_analysis;
+mod yaml_assist;
 
 pub use document::{Document, FileStamp, MAX_OPEN_BYTES, OpenError, SaveAsPrep, SaveError};
 pub use recent::Recent;

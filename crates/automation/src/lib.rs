@@ -20,6 +20,7 @@ mod entry_helpers;
 pub mod file_access;
 mod grid;
 mod infer;
+mod json_assist;
 mod json_schema;
 mod lines;
 mod load_schema;

@@ -1611,11 +1611,11 @@ title = "Schema-driven completion and hover for JSON and YAML"
 area = "I"
 tier = "P1"
 milestone = "M5"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["json_complete", "json_hover"]
+evidence = ["crates/json/tests/assist.rs::the_names_of_an_object_come_with_what_is_required_first_and_what_is_present_left_out", "crates/json/tests/assist.rs::a_reference_is_followed_into_the_members_of_a_member", "crates/json/tests/assist.rs::alternatives_are_all_offered_and_combined_schemas_are_merged", "crates/json/tests/assist.rs::a_schema_that_refers_to_itself_ends", "crates/engine/src/json_assist.rs::names_are_offered_required_first_without_those_present_and_replace_what_is_typed", "crates/engine/src/json_assist.rs::yaml_offers_names_and_values_by_indentation", "crates/engine/src/json_assist.rs::hover_says_what_the_schema_says_of_a_name_or_a_value", "crates/engine/src/json_assist.rs::no_caret_in_any_text_makes_it_panic", "crates/automation/tests/json_assist.rs::names_and_values_come_from_the_schema_the_document_names_even_while_it_is_being_typed", "crates/automation/tests/json_assist.rs::hover_says_what_the_schema_says_and_yaml_works_with_the_modeline"]
+notes = "`SchemaSet::properties_at`, `values_at` and `describe_at` (xmlcraft-json) say what the schemas that apply at a place allow: the names the object declares (the required ones first, without those it already has), the values of enum and const, true and false, null, the default and the examples, and the title, description, types and deprecation, following $ref, allOf, anyOf, oneOf, then and else, patternProperties, additionalProperties, items and prefixItems; conditions are not evaluated, so every alternative is offered. `xmlcraft_engine::json_assist::complete` and `hover` find the place from the text before the caret (a scanner that follows brackets, names and commas, so a document that is being typed works; JSON, JSONC, JSON5 and JSON Lines) or, for YAML, from the indentation, list dashes and keys above it (block style), read the schema the document names (`$schema`, or the yaml-language-server modeline) through the resolver, and give the text to put in with the caret position and the part to replace. The tools `json_complete` and `json_hover` do the same headlessly. Missing: the popup and tooltip in the editor window, flow-style YAML and multi-line scalars, BSON, evaluating `if`, the dependent keywords, snippets for objects and arrays, the SchemaStore catalog to find a schema by file name, completion in a schema being written (its keywords)."
 
 [[feature]]
 id = "json.lines"

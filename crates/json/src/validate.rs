@@ -48,6 +48,72 @@ impl Outcome {
 }
 
 impl SchemaSet {
+    /// The place a full reference (`uri#fragment`) names, and the URI of the resource that holds it.
+    pub(crate) fn resolve(&self, target: &str) -> Option<(Place, String)> {
+        let resource = uri::without_fragment(target);
+        let fragment = uri::fragment(target).unwrap_or_default();
+        let decoded = uri::percent_decode(fragment)?;
+        let found = self.resources.get(resource);
+        if decoded.is_empty() {
+            return found.map(|p| (p.clone(), resource.to_owned()));
+        }
+        if decoded.starts_with('/') {
+            let at = found?;
+            let place = Place { doc: at.doc, pointer: format!("{}{decoded}", at.pointer) };
+            let base = self.base_inside(at, &decoded, resource);
+            return Some((place, base));
+        }
+        let anchor = self.anchors.get(&format!("{resource}#{decoded}"))?;
+        Some((anchor.clone(), resource.to_owned()))
+    }
+
+    /// The base URI in force at `place`: that of the closest resource around it, changed by each `$id` between.
+    pub(crate) fn base_of(&self, place: &Place) -> String {
+        let around = self
+            .resources
+            .iter()
+            .filter(|(_, at)| {
+                at.doc == place.doc
+                    && (at.pointer.is_empty() || place.pointer == at.pointer || place.pointer.starts_with(&format!("{}/", at.pointer)))
+            })
+            .max_by_key(|(_, at)| at.pointer.len());
+        match around {
+            Some((resource, at)) => {
+                let rest = place.pointer.get(at.pointer.len()..).unwrap_or_default();
+                self.base_inside(at, rest, resource)
+            }
+            None => String::new(),
+        }
+    }
+
+    /// The base URI in force at `rest` (a pointer) below the resource `at`, which is known as `resource`: each schema on the way down
+    /// that has an `$id` changes it. The schema at the end of the pointer is not counted; evaluating it does that.
+    pub(crate) fn base_inside(&self, at: &Place, rest: &str, resource: &str) -> String {
+        let draft = self.docs.get(at.doc).map_or(Draft::D2020_12, |d| d.draft);
+        let mut base = resource.to_owned();
+        let Some(mut value) = self.docs.get(at.doc).and_then(|d| d.value.pointer(&at.pointer)) else { return base };
+        let tokens: Vec<&str> = rest.split('/').skip(1).collect();
+        for (i, token) in tokens.iter().enumerate() {
+            let Some(raw) = uri::unescape_token(token) else { break };
+            let next = match &value.data {
+                Data::Object(members) => find(members, &raw),
+                Data::Array(items) => raw.parse::<usize>().ok().and_then(|n| items.get(n)),
+                _ => None,
+            };
+            let Some(next) = next else { break };
+            value = next;
+            if i + 1 < tokens.len()
+                && let Data::Object(members) = &value.data
+                && !(draft.ref_hides_siblings() && find(members, "$ref").is_some())
+                && let Some(id) = find(members, draft.id_keyword()).and_then(text_of)
+                && !id.starts_with('#')
+            {
+                base = uri::without_fragment(&uri::join(&base, id)).to_owned();
+            }
+        }
+        base
+    }
+
     /// Check `instance` against the first document of the set.
     pub fn validate(&self, instance: &Value) -> Outcome {
         let Some(doc) = self.docs.first() else { return Outcome::default() };
@@ -304,7 +370,7 @@ impl Run<'_> {
     #[allow(clippy::too_many_arguments)]
     fn reference(&mut self, reference: &str, keyword: &'static str, sp: &str, inst: &Value, ip: &str, base: &str, depth: usize, ann: &mut Ann) {
         let target = uri::join(base, reference);
-        let Some((place, target_base)) = self.resolve(&target) else {
+        let Some((place, target_base)) = self.set.resolve(&target) else {
             self.fail(ip, sp, keyword, format!("The reference '{reference}' cannot be resolved."));
             ann.valid = false;
             return;
@@ -314,7 +380,7 @@ impl Run<'_> {
         let (place, target_base) = if redirected.doc == place.doc && redirected.pointer == place.pointer {
             (place, target_base)
         } else {
-            let base = self.base_of(&redirected);
+            let base = self.set.base_of(&redirected);
             (redirected, base)
         };
         let Some(value) = self.set.docs.get(place.doc).and_then(|d| d.value.pointer(&place.pointer)) else {
@@ -335,73 +401,6 @@ impl Run<'_> {
         } else {
             ann.valid = false;
         }
-    }
-
-    /// The place a full reference (`uri#fragment`) names, and the URI of the resource that holds it.
-    fn resolve(&self, target: &str) -> Option<(Place, String)> {
-        let resource = uri::without_fragment(target);
-        let fragment = uri::fragment(target).unwrap_or_default();
-        let decoded = uri::percent_decode(fragment)?;
-        let found = self.set.resources.get(resource);
-        if decoded.is_empty() {
-            return found.map(|p| (p.clone(), resource.to_owned()));
-        }
-        if decoded.starts_with('/') {
-            let at = found?;
-            let place = Place { doc: at.doc, pointer: format!("{}{decoded}", at.pointer) };
-            let base = self.base_inside(at, &decoded, resource);
-            return Some((place, base));
-        }
-        let anchor = self.set.anchors.get(&format!("{resource}#{decoded}"))?;
-        Some((anchor.clone(), resource.to_owned()))
-    }
-
-    /// The base URI in force at `place`: that of the closest resource around it, changed by each `$id` between.
-    fn base_of(&self, place: &Place) -> String {
-        let around = self
-            .set
-            .resources
-            .iter()
-            .filter(|(_, at)| {
-                at.doc == place.doc
-                    && (at.pointer.is_empty() || place.pointer == at.pointer || place.pointer.starts_with(&format!("{}/", at.pointer)))
-            })
-            .max_by_key(|(_, at)| at.pointer.len());
-        match around {
-            Some((resource, at)) => {
-                let rest = place.pointer.get(at.pointer.len()..).unwrap_or_default();
-                self.base_inside(at, rest, resource)
-            }
-            None => String::new(),
-        }
-    }
-
-    /// The base URI in force at `rest` (a pointer) below the resource `at`, which is known as `resource`: each schema on the way down
-    /// that has an `$id` changes it. The schema at the end of the pointer is not counted; evaluating it does that.
-    fn base_inside(&self, at: &Place, rest: &str, resource: &str) -> String {
-        let draft = self.set.docs.get(at.doc).map_or(Draft::D2020_12, |d| d.draft);
-        let mut base = resource.to_owned();
-        let Some(mut value) = self.set.docs.get(at.doc).and_then(|d| d.value.pointer(&at.pointer)) else { return base };
-        let tokens: Vec<&str> = rest.split('/').skip(1).collect();
-        for (i, token) in tokens.iter().enumerate() {
-            let Some(raw) = uri::unescape_token(token) else { break };
-            let next = match &value.data {
-                Data::Object(members) => find(members, &raw),
-                Data::Array(items) => raw.parse::<usize>().ok().and_then(|n| items.get(n)),
-                _ => None,
-            };
-            let Some(next) = next else { break };
-            value = next;
-            if i + 1 < tokens.len()
-                && let Data::Object(members) = &value.data
-                && !(draft.ref_hides_siblings() && find(members, "$ref").is_some())
-                && let Some(id) = find(members, draft.id_keyword()).and_then(text_of)
-                && !id.starts_with('#')
-            {
-                base = uri::without_fragment(&uri::join(&base, id)).to_owned();
-            }
-        }
-        base
     }
 
     /// `$dynamicRef` and `$recursiveRef` look for the outermost resource that has the same dynamic anchor.
