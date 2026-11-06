@@ -2273,11 +2273,11 @@ title = "XBRL taxonomy discovery, linkbases and validation, taxonomy packages"
 area = "E"
 tier = "P2"
 milestone = "M9"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.validate"]
+tools = ["xbrl_facts"]
+evidence = ["crates/xbrl/tests/taxonomy.rs::the_concepts_of_the_schemas_an_instance_names_and_what_they_import_are_read_with_their_types", "crates/xbrl/tests/taxonomy.rs::a_correct_instance_has_nothing_to_say_and_each_mistake_is_its_own_finding", "crates/xbrl/tests/taxonomy.rs::what_cannot_be_read_of_the_taxonomy_is_a_warning_and_what_it_does_not_cover_is_not_judged", "crates/engine/src/validation.rs::the_facts_of_an_instance_are_checked_against_the_taxonomy_among_the_open_documents", "crates/automation/tests/xbrl.rs::the_taxonomy_a_schema_ref_names_is_read_from_beside_the_instance_and_its_findings_are_listed"]
+notes = "The taxonomy an instance names is read: its `schemaRef`s (and the `xs:import` and `xs:include` of what they load, once each, at most 500 documents and 64 MB) through the resolver (the open documents, files inside the root, the catalogs, the bundle, the web where the app may), into concepts (name, type, substitution group, period type, abstract) and the types derived from the XBRL item types. F8 and `xbrl_facts` then find in the facts what the instance alone cannot say: a concept the taxonomy does not declare, an abstract concept with a fact, a number with no unitRef (or a unit on what is not a number), a number with neither decimals nor precision, an instant concept in a duration context (or the other way round); a taxonomy document that could not be read is a warning, and a namespace no document read declares is said once and not judged. Missing: linkbases (labels, presentation, calculation, definition, formula), the XBRL conformance suite, taxonomy packages, dimensions (hypercubes, domain-member checks), fractions and tuples (a tuple concept is skipped), balance and calculation checks, the facts window, and reading a taxonomy from a remote location is only as good as the app's network setting."
 
 [[feature]]
 id = "xbrl.dimensions"

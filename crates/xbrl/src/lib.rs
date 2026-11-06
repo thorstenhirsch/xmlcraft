@@ -14,6 +14,8 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
+pub mod taxonomy;
+
 use xmlcraft_syntax::{Severity, parse};
 use xmlcraft_xsd::dom::{self, Dom, El};
 
