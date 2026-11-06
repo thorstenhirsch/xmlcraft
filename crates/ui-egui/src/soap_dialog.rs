@@ -79,6 +79,12 @@ pub(crate) struct SoapForm {
     act: Option<Act>,
 }
 
+/// What a thread is to do and hand back.
+type Job = Box<dyn FnOnce() -> Outcome + Send>;
+
+/// What the window holds, for tests: the request as it is, the answer (status and body) and the error shown.
+pub type SoapView = (String, Option<(u16, String)>, Option<String>);
+
 /// The extension of an answer: SOAP is XML.
 fn answer_name(name: &str, what: &str) -> String {
     let stem = name.rsplit_once('.').map_or(name, |(stem, _)| stem);
@@ -87,7 +93,7 @@ fn answer_name(name: &str, what: &str) -> String {
 
 impl XmlCraftApp {
     /// What the SOAP window holds, for tests: the request as it is in the window, the answer (status and body) and the error shown.
-    pub fn soap_window(&self) -> Option<(String, Option<(u16, String)>, Option<String>)> {
+    pub fn soap_window(&self) -> Option<SoapView> {
         let Some(Dialog::Soap(form)) = &self.dialog else { return None };
         Some((form.body.clone(), form.answer.as_ref().map(|a| (a.status, a.body.clone())), form.error.clone()))
     }
@@ -142,7 +148,7 @@ impl XmlCraftApp {
     /// Run `job` on a thread (without one, on the web, at once); its outcome comes back through `pump_soap`.
     fn spawn_soap(&self, job: impl FnOnce() -> Outcome + Send + 'static) -> Result<(), String> {
         let (tx, ctx) = (self.soap.tx.clone(), self.ctx.clone());
-        let run = move |job: Box<dyn FnOnce() -> Outcome + Send>| {
+        let run = move |job: Job| {
             let _ = tx.send(job());
             if let Some(ctx) = ctx {
                 ctx.request_repaint();
@@ -155,7 +161,7 @@ impl XmlCraftApp {
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let slot: Arc<Mutex<Option<Box<dyn FnOnce() -> Outcome + Send>>>> = Arc::new(Mutex::new(Some(Box::new(job))));
+            let slot: Arc<Mutex<Option<Job>>> = Arc::new(Mutex::new(Some(Box::new(job))));
             std::thread::Builder::new()
                 .name("soap".into())
                 .spawn(move || {
@@ -330,7 +336,7 @@ fn soap_form(ui: &mut egui::Ui, form: &mut SoapForm) -> Option<Footer> {
     });
     kit::section(ui, tl!("Address"), |ui| {
         ui.add(egui::TextEdit::singleline(&mut form.url).desired_width(f32::INFINITY).hint_text("https://example.com/service"));
-        ui.checkbox(&mut form.allow_private, tl!("Allow this computer and the local network"));
+        ui.add(crate::widgets::checkbox(&mut form.allow_private, tl!("Allow this computer and the local network")));
     });
     kit::section(ui, tl!("Headers"), |ui| mono_edit(ui, &mut form.headers, 3, "xmlcraft-soap-headers"));
     kit::section(ui, tl!("Request"), |ui| {
