@@ -147,7 +147,7 @@ impl XmlCraftApp {
         let Some(set) = self.views.get(&id).and_then(|v| v.data_schema.set.clone()) else { return true };
         let offered = complete_with(&set, &editor.text(), language, head);
         let Some(first) = offered.first() else { return true };
-        if first.replace.is_empty() {
+        if first.replace.is_empty() && !self.completion_explicit {
             return true;
         }
         let (start, end) = (first.replace.start, first.replace.end.max(head));

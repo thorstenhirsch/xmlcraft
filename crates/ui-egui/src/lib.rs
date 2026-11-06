@@ -173,6 +173,8 @@ pub struct XmlCraftApp {
     loading_schema: Option<u64>,
     /// The completion being offered at the caret, if any (see `completion.rs`).
     completion: Option<completion::Completion>,
+    /// Completion was asked for (Edit ▸ Complete), not set off by typing: the popup opens where nothing has been typed too.
+    completion_explicit: bool,
     /// Whether the editor had the keyboard at the last frame (the keys of a completion popup are the editor's only then).
     editor_has_focus: bool,
     /// Reads each document's DOCTYPE into a grammar in the background (what Entry Helpers offer comes from it).
@@ -356,6 +358,7 @@ impl XmlCraftApp {
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
             loading_schema: None,
             completion: None,
+            completion_explicit: false,
             editor_has_focus: false,
             outline_filter: String::new(),
             problem_filter: problems::Filter::All,

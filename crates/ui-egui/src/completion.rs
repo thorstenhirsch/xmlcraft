@@ -258,6 +258,19 @@ impl XmlCraftApp {
         true
     }
 
+    /// Edit ▸ Complete: open the popup at the caret whether or not anything has been typed (between names, after a colon). Without
+    /// anything to offer there it says so.
+    pub(crate) fn complete_at_caret(&mut self) {
+        self.completion_explicit = true;
+        self.update_completion();
+        self.completion_explicit = false;
+        if self.completion.is_none() {
+            self.status = tl!("Nothing to complete here.").to_owned();
+        } else {
+            self.focus_editor = true;
+        }
+    }
+
     /// Work out what to offer at the caret after the frame's typing, and open or close the popup.
     pub(crate) fn update_completion(&mut self) {
         // JSON and YAML documents are completed from their JSON Schema.
