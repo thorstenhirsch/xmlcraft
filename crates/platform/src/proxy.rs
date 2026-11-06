@@ -521,8 +521,7 @@ mod native {
                 while let Ok((mut stream, _)) = listener.accept() {
                     let mut got = Vec::new();
                     let mut buf = [0u8; 4096];
-                    loop {
-                        let Ok(n) = stream.read(&mut buf) else { break };
+                    while let Ok(n) = stream.read(&mut buf) {
                         if n == 0 {
                             break;
                         }
@@ -692,6 +691,10 @@ pub struct Debugger;
 impl Debugger {
     pub fn start(_config: Config) -> Result<Debugger, String> {
         Err("the debugger needs sockets, which the web build does not have".to_owned())
+    }
+
+    pub fn address(&self) -> std::net::SocketAddr {
+        std::net::SocketAddr::from(([127, 0, 0, 1], 0))
     }
 
     pub fn on_change(&self, _callback: impl Fn() + Send + Sync + 'static) {}

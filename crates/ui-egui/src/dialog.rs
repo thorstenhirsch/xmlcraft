@@ -68,6 +68,8 @@ pub(crate) enum Dialog {
     Transform(Box<crate::xslt_dialog::XsltForm>),
     Soap(Box<crate::soap_dialog::SoapForm>),
     OpenApi(Box<crate::openapi_dialog::OpenApiForm>),
+    /// The SOAP Debugger window (drawn by `proxy_dialog.rs`).
+    Proxy(Box<crate::proxy_dialog::ProxyForm>),
     Message {
         title: String,
         text: String,
@@ -112,6 +114,7 @@ impl Dialog {
             | Dialog::Transform(_)
             | Dialog::Soap(_)
             | Dialog::OpenApi(_)
+            | Dialog::Proxy(_)
             | Dialog::RenameElement(_) => false,
         }
     }
@@ -216,6 +219,7 @@ impl XmlCraftApp {
             | Dialog::Transform(_)
             | Dialog::Soap(_)
             | Dialog::OpenApi(_)
+            | Dialog::Proxy(_)
             | Dialog::RenameElement(_) => {
                 Describe { title: String::new(), text: String::new(), buttons: vec![(tl!("Cancel"), Choice::Cancel)], input: false }
             }
@@ -270,6 +274,10 @@ impl XmlCraftApp {
         }
         if matches!(self.dialog, Some(Dialog::OpenApi(_))) {
             self.show_openapi(ctx);
+            return;
+        }
+        if matches!(self.dialog, Some(Dialog::Proxy(_))) {
+            self.show_proxy(ctx);
             return;
         }
         if matches!(self.dialog, Some(Dialog::RenameElement(_))) {

@@ -2249,11 +2249,11 @@ title = "SOAP debugger: an intercepting proxy with breakpoints per operation, co
 area = "E"
 tier = "P2"
 milestone = "M8"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.soap_debugger"]
+tools = ["soap_proxy_start", "soap_proxy_state", "soap_proxy_breaks", "soap_proxy_release", "soap_proxy_drop", "soap_proxy_stop"]
+evidence = ["crates/platform/src/proxy.rs::a_request_is_forwarded_to_the_target_and_the_answer_comes_back_and_both_are_recorded", "crates/platform/src/proxy.rs::a_held_request_waits_for_a_person_and_goes_on_as_edited", "crates/platform/src/proxy.rs::a_dropped_request_never_reaches_the_target_and_a_held_answer_can_be_edited", "crates/platform/src/proxy.rs::what_is_not_an_http_request_or_is_too_large_is_refused_and_a_dead_target_is_a_bad_gateway", "crates/platform/src/proxy.rs::a_chunked_request_body_is_decoded_and_stop_frees_what_is_held", "crates/ui-egui/tests/soap_debugger.rs::a_request_comes_through_the_proxy_and_is_listed_with_its_path_and_stage", "crates/ui-egui/tests/soap_debugger.rs::a_held_request_is_released_from_the_window_and_only_then_reaches_the_target", "crates/automation/tests/soap_proxy.rs::a_request_is_forwarded_recorded_held_and_released_edited", "crates/automation/tests/soap_proxy.rs::a_dropped_request_never_reaches_the_target_and_the_refusals_are_said"]
+notes = "XML ▸ SOAP Debugger… and the tools `soap_proxy_*` run an intercepting proxy: it listens on this computer only (127.0.0.1), is started by a person (Start, or soap_proxy_start; the session's network must be allowed) and stops with the window (or soap_proxy_stop), forwards every request to one target through the same client as the SOAP window (no redirects, private targets only when allowed, answers capped) and records each request and answer. With Hold requests or Hold answers on (optionally only messages whose body contains a text) a message waits until it is released, as it was or edited (headers and body), or dropped (the client gets 502; a dropped request never reaches the target). The client talks plain HTTP/1.1 to it (Content-Length or chunked bodies, one request to a connection). Missing: conditions as XPath on the SOAP body and breakpoints per operation (only a text the body contains), TLS from the client to the proxy, keep-alive, WebSocket, a saved history of exchanges, and the profiling views of the real tool."
 
 [[feature]]
 id = "xbrl.instance-validation"
