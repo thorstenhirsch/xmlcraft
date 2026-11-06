@@ -101,3 +101,29 @@ fn yaml_is_completed_by_indentation_from_the_schema_of_its_modeline() {
     h.run_steps(4);
     assert_eq!(text(&h), "# yaml-language-server: $schema=s.json\nname: x\nhome:\n  city: \n");
 }
+
+#[test]
+fn edit_complete_opens_the_popup_between_names_and_after_a_colon_where_nothing_was_typed() {
+    let dir = tempfile::tempdir().expect("dir");
+    file(dir.path(), "s.json", SCHEMA);
+    let mut h = shell();
+    open_at(&mut h, dir.path(), "d.json", "{\"$schema\": \"s.json\", ¦}");
+    assert!(h.query_by_label("Complete name").is_none(), "nothing pops up by itself");
+    assert!(h.state_mut().execute("edit.complete"));
+    h.run_steps(3);
+    assert!(h.query_by_label("Complete name").is_some() && h.query_by_label("Complete home").is_some(), "the names of the schema");
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    assert!(text(&h).contains("\"name\": \"\""), "the first choice is written: {}", text(&h));
+    // After a colon: the values.
+    open_at(&mut h, dir.path(), "e.json", "{\"$schema\": \"s.json\", \"kind\": ¦}");
+    assert!(h.state_mut().execute("edit.complete"));
+    h.run_steps(3);
+    assert!(h.query_by_label("Complete \"alpha\"").is_some());
+    // Where there is nothing to offer it says so.
+    open_at(&mut h, dir.path(), "f.json", "{\"$schema\": \"s.json\", \"name\": \"x\"}¦");
+    assert!(h.state_mut().execute("edit.complete"));
+    h.run_steps(3);
+    assert!(h.query_by_label("Complete name").is_none());
+    assert!(h.state().status.contains("Nothing to complete"), "{}", h.state().status);
+}
