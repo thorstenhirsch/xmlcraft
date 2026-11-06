@@ -6,6 +6,7 @@ mod about;
 mod after_analysis;
 mod assign;
 mod auto_validate;
+mod business_chip;
 mod chrome;
 mod commands;
 mod compare_dialog;

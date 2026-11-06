@@ -5,6 +5,7 @@
 
 pub mod analysis;
 pub mod assign;
+pub mod business;
 pub mod commands;
 pub mod compare;
 pub mod doc_kind;
