@@ -2070,10 +2070,10 @@ area = "J"
 tier = "P1"
 milestone = "M6"
 status = "partial"
-commands = []
+commands = ["file.merge"]
 tools = ["diff_merge"]
-evidence = ["crates/diff/tests/diff.rs::three_way_merges_keep_both_sets_of_changes", "crates/diff/tests/diff.rs::the_regions_of_a_merge_say_who_changed_what", "crates/diff/tests/diff.rs::a_merge_with_an_unchanged_side_is_the_other_side", "crates/automation/tests/diff.rs::a_merge_takes_both_changes_and_writes_conflicts_as_asked"]
-notes = "`merge3` and `diff_merge` merge a base and two versions line by line: a change of one version is taken, the same change of both once, different changes to the same lines are conflicts that are written as markers or settled for ours, theirs, both or the base (each conflict can be settled on its own through the regions). Missing: the merge window with keep-left/keep-right per difference, and a merge by tree for XML, JSON and YAML (so that two edits to the same line of different elements do not conflict)."
+evidence = ["crates/diff/tests/diff.rs::three_way_merges_keep_both_sets_of_changes", "crates/diff/tests/diff.rs::the_regions_of_a_merge_say_who_changed_what", "crates/diff/tests/diff.rs::a_merge_with_an_unchanged_side_is_the_other_side", "crates/automation/tests/diff.rs::a_merge_takes_both_changes_and_writes_conflicts_as_asked", "crates/ui-egui/tests/merge.rs::changes_that_do_not_meet_are_both_kept_in_a_new_document", "crates/ui-egui/tests/merge.rs::what_both_changed_is_marked_as_a_conflict_or_taken_as_chosen"]
+notes = "File > Merge Documents… merges the document being shown (ours) with another open document (theirs), both made from a third (the base), line by line into a new document: changes that do not meet are both kept; what both changed in the same lines is marked (<<<<<<<, |||||||, =======, >>>>>>>) or settled as ours, theirs, both or the base; white space can be ignored. `merge3` and `diff_merge` merge a base and two versions line by line: a change of one version is taken, the same change of both once, different changes to the same lines are conflicts that are written as markers or settled for ours, theirs, both or the base (each conflict can be settled on its own through the regions). Missing: the merge window with keep-left/keep-right per difference, and a merge by tree for XML, JSON and YAML (so that two edits to the same line of different elements do not conflict)."
 
 [[feature]]
 id = "project.diff-ignore-options"

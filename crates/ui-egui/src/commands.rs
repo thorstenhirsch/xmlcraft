@@ -199,6 +199,7 @@ impl XmlCraftApp {
             "app.about" => self.open_about(),
             "file.convert" => self.open_convert(),
             "file.compare" => self.open_compare(),
+            "file.merge" => self.open_merge(),
             "xml.xpath" => self.open_xpath(),
             "xml.transform" => self.open_transform(),
             "xml.generate_schema" => self.open_generate_schema(),
