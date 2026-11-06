@@ -402,7 +402,13 @@ impl XmlCraftApp {
                 std::time::Duration::ZERO
             }
         };
-        let ready = view.analysis.as_ref().is_some_and(|a| crate::auto_validate::ready(a, version));
+        // (A JSON or YAML text is validated when it names a schema, as an XML text is when it names a grammar.)
+        let ready = if doc.language().is_data() {
+            let named = view.data_schema.names_a_schema_at(version);
+            view.analysis.as_ref().is_some_and(|a| crate::auto_validate::ready_data(a, version, named))
+        } else {
+            view.analysis.as_ref().is_some_and(|a| crate::auto_validate::ready(a, version))
+        };
         // Both ways of asking for a validation (F8, and this) say which version they asked for.
         let done = view.auto.requested == Some(version);
         let inputs = crate::auto_validate::Inputs { enabled: self.validate_typing, ready, size, done, quiet_for, delay: self.validate_delay };
@@ -418,7 +424,7 @@ impl XmlCraftApp {
                 view.auto.count += 1;
                 let open = self.open_documents();
                 if let Some(doc) = self.session.active_document() {
-                    self.validator.submit(id, version, doc.editor().buffer(), doc.path(), open);
+                    self.validator.submit_as(id, version, doc.editor().buffer(), doc.path(), open, doc.language());
                 }
             }
         }

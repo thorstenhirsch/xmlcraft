@@ -48,6 +48,11 @@ impl DataSchema {
         true
     }
 
+    /// Whether the text of version `version` names a schema (the name was read from that very text).
+    pub(crate) fn names_a_schema_at(&self, version: u64) -> bool {
+        self.reference_version == Some(version) && self.reference.is_some()
+    }
+
     /// The document names no schema (any more): none is held.
     fn forget(&mut self) {
         self.set = None;

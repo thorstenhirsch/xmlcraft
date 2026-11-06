@@ -256,6 +256,26 @@ fn a_document_that_names_a_grammar_is_validated_when_it_is_left_alone_without_a_
 }
 
 #[test]
+fn a_json_or_yaml_document_that_names_a_schema_is_validated_when_it_is_left_alone_and_one_that_names_none_is_not() {
+    let dir = tempfile::tempdir().expect("dir");
+    file(dir.path(), "s.json", r#"{"type": "object", "properties": {"n": {"type": "integer"}}}"#);
+    let mut h = shell_validating_after(Duration::from_millis(150));
+    open(&mut h, &file(dir.path(), "bad.json", "{\"$schema\": \"s.json\", \"n\": \"x\"}"));
+    wait(&mut h, "the validation while typing", |app| app.validity().is_some());
+    assert_eq!(h.state().validity(), Some((1, 0)), "F8 was never pressed");
+    assert!(!h.state().underlined().is_empty(), "the problem is underlined");
+    assert_eq!(h.state().validations_requested(), 1);
+    // The same for YAML with a modeline.
+    open(&mut h, &file(dir.path(), "bad.yaml", "# yaml-language-server: $schema=s.json\nn: x\n"));
+    wait(&mut h, "the validation of the YAML", |app| app.validity().is_some());
+    assert_eq!(h.state().validity(), Some((1, 0)));
+    // A document that names no schema is not asked about.
+    open(&mut h, &file(dir.path(), "plain.json", "{\"n\": \"x\"}"));
+    idle(&mut h, Duration::from_millis(500));
+    assert_eq!(h.state().validations_requested(), 0, "nothing is named, so there is nothing to validate against");
+}
+
+#[test]
 fn what_is_typed_is_validated_after_a_pause_and_not_after_each_key() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell_validating_after(Duration::from_millis(400));
