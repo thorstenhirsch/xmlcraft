@@ -36,13 +36,22 @@ fn entry(o: &Operation) -> RestOperation {
     RestOperation { id: o.id.clone(), method: o.method.clone(), path: o.path.clone(), summary: o.summary.clone(), deprecated: o.deprecated }
 }
 
-/// The operations, the servers (each with its variables resolved) and what was left out of the OpenAPI description `text` (`yaml`: it
-/// is YAML).
-pub fn describe(text: &str, yaml: bool) -> Result<(Vec<RestOperation>, Vec<String>, Vec<String>), String> {
+/// An OpenAPI description as the window lists it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Described {
+    pub operations: Vec<RestOperation>,
+    /// Each server's address with its variables resolved.
+    pub servers: Vec<String>,
+    /// What was left out.
+    pub warnings: Vec<String>,
+}
+
+/// The operations, the servers and what was left out of the OpenAPI description `text` (`yaml`: it is YAML).
+pub fn describe(text: &str, yaml: bool) -> Result<Described, String> {
     let api = parse(text, yaml).map_err(|e| e.0)?;
     let operations = api.operations.iter().take(MAX_OPERATIONS).map(entry).collect();
     let servers = api.servers.iter().map(|s| s.resolved()).collect();
-    Ok((operations, servers, api.warnings))
+    Ok(Described { operations, servers, warnings: api.warnings })
 }
 
 /// The request made for an operation.
@@ -79,7 +88,7 @@ mod tests {
 
     #[test]
     fn operations_and_servers_are_listed_with_their_variables_resolved() {
-        let (ops, servers, warnings) = describe(API, false).expect("reads");
+        let Described { operations: ops, servers, warnings } = describe(API, false).expect("reads");
         assert!(warnings.is_empty(), "{warnings:?}");
         assert_eq!(servers, ["https://api.example.com/v1", "http://localhost:8080"]);
         let labels: Vec<String> = ops.iter().map(RestOperation::label).collect();

@@ -2,7 +2,7 @@
 //! request made for one with example values (method, address, headers and body, all of it editable) and the answer to sending it (see
 //! [`crate::http_pane`]). Nothing is changed in the description.
 
-use xmlcraft_engine::rest::{RestOperation, describe, prepare};
+use xmlcraft_engine::rest::{Described, RestOperation, describe, prepare};
 
 use crate::XmlCraftApp;
 use crate::dialog::Dialog;
@@ -51,7 +51,7 @@ impl XmlCraftApp {
             return;
         }
         let (text, yaml) = (doc.editor().text(), language.is_yaml());
-        let (ops, servers, warnings) = match describe(&text, yaml) {
+        let Described { operations: ops, servers, warnings } = match describe(&text, yaml) {
             Ok(found) => found,
             Err(why) => {
                 self.status = fmt(tl!("This is not an OpenAPI description: {why}"), &[("why", &why)]);
