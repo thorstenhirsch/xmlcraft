@@ -2105,11 +2105,11 @@ title = "XPath and XQuery debugger (breakpoints, tracepoints, watch, call stack,
 area = "H"
 tier = "P1"
 milestone = "M7"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.xpath"]
+tools = ["xpath_eval"]
+evidence = ["crates/query/tests/trace.rs::each_step_of_a_path_says_how_many_items_it_leaves", "crates/automation/tests/xpath.rs::a_trace_says_how_many_items_each_step_of_a_path_leaves", "crates/ui-egui/tests/xpath.rs::the_steps_of_a_path_are_shown_with_what_each_leaves_when_asked_for"]
+notes = "The first step of a debugger, without hooks in the engine: the XPath window's \"Show the steps\" (and `xpath_eval` with `trace`) evaluates a path up to each of its steps and shows how many items each step leaves, so the step where a path loses or gains its items is seen at once. Missing: stepping through the evaluation of an expression, breakpoints and tracepoints, watch and call stack, predicates and function arguments as steps, XQuery and XSLT (the engine is to be vendored and given hooks for this)."
 
 [[feature]]
 id = "query.xpath-xquery-profiler"
@@ -2117,11 +2117,11 @@ title = "XPath and XQuery profiler (hit count, call graph)"
 area = "H"
 tier = "P1"
 milestone = "M7"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.xpath"]
+tools = ["xpath_eval"]
+evidence = ["crates/query/tests/trace.rs::each_step_of_a_path_says_how_many_items_it_leaves", "crates/automation/tests/xpath.rs::a_trace_says_how_many_items_each_step_of_a_path_leaves", "crates/ui-egui/tests/xpath.rs::the_steps_of_a_path_are_shown_with_what_each_leaves_when_asked_for"]
+notes = "The first step of a profiler, without hooks in the engine: the same step trace gives the time that evaluating the path up to each step took (microseconds), so the costly step is seen. Missing: hit counts per sub-expression, a call graph, charts, XQuery and XSLT profiling (the engine is to be vendored and given hooks for this)."
 
 [[feature]]
 id = "query.xslt-editor"

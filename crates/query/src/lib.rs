@@ -11,6 +11,7 @@
 //!   expression.
 
 mod source_map;
+mod trace;
 mod xslt;
 
 use std::ops::Range;
@@ -20,6 +21,7 @@ use xee_xpath::{Documents, Item, Queries, Query};
 use xot::{Value as XotValue, Xot};
 
 pub use source_map::SourceMap;
+pub use trace::{Step, Trace, trace};
 pub use xslt::{MAX_OUTPUT_BYTES, TransformError, Transformed, transform};
 
 /// What to evaluate with.
