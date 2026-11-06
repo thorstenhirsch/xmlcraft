@@ -44,3 +44,13 @@ fn a_document_that_is_no_stylesheet_has_nothing_and_a_bad_request_is_refused() {
     assert!(call(&mut a, json!({ "text": "{}", "language": "json", "offset": 1 })).is_err(), "not XML");
     assert!(call(&mut a, json!({ "text": "<a/>", "language": "xml", "offset": 99 })).is_err(), "outside the text");
 }
+
+#[test]
+fn variables_and_parameters_in_scope_are_offered_after_a_dollar() {
+    let mut a = Automation::new();
+    let text = format!("{HEAD}<xsl:variable name=\"g\"/><xsl:template match=\"/\"><xsl:param name=\"p\"/><xsl:value-of select=\"$\"/>");
+    let offset = text.find("$\"").expect("found") + 1;
+    let r = call(&mut a, json!({ "text": text, "language": "xml", "offset": offset })).expect("runs");
+    assert_eq!((r["kind"].as_str(), labels(&r)), (Some("variable"), vec!["g", "p"]), "{r}");
+    assert_eq!(r["items"][1]["detail"].as_str(), Some("parameter"));
+}

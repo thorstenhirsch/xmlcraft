@@ -61,6 +61,7 @@ fn xslt_complete(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
                 XsltKind::Attribute => "attribute",
                 XsltKind::Value => "value",
                 XsltKind::Function => "function",
+                XsltKind::Variable => "variable",
             },
             c.replace.start,
             c.replace.end,
