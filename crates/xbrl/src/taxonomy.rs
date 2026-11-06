@@ -14,6 +14,10 @@ use xmlcraft_xsd::dom::{self, Dom, El};
 use crate::{Finding, Instance, Kind, Level, Period, XBRLI};
 
 const XS: &str = "http://www.w3.org/2001/XMLSchema";
+const LINK: &str = "http://www.xbrl.org/2003/linkbase";
+const XLINK: &str = "http://www.w3.org/1999/xlink";
+/// The most arcs of calculation linkbases kept.
+const MAX_ARCS: usize = 500_000;
 /// The most schema documents read for one instance.
 pub const MAX_DOCUMENTS: usize = 500;
 /// The most bytes of schema documents read for one instance.
@@ -41,6 +45,50 @@ pub struct Concept {
     pub abstract_concept: bool,
 }
 
+/// One contributing concept of a calculation and the weight of its arc (a decimal as written).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Contribution {
+    pub concept: String,
+    pub weight: String,
+}
+
+/// The summation-item relationships from one concept in one extended link role: the concept (as `{namespace}local`) is the sum of
+/// the contributing concepts, each times its weight.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Calculation {
+    pub role: String,
+    pub parent: String,
+    pub items: Vec<Contribution>,
+}
+
+/// A calculation link as read: locators by label, and arcs, before the locators are resolved to concepts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RawLink {
+    document: String,
+    role: String,
+    /// label, href
+    locators: Vec<(String, String)>,
+    arcs: Vec<RawArc>,
+}
+
+/// The arc that holds between two concepts in a role.
+struct Winner {
+    priority: i64,
+    prohibited: bool,
+    weight: String,
+    order: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RawArc {
+    from: String,
+    to: String,
+    weight: String,
+    order: String,
+    priority: i64,
+    prohibited: bool,
+}
+
 /// Finds a schema document: its resolved location and its text, or why not.
 pub trait Loader {
     fn load(&mut self, location: &str, base: &str) -> Result<(String, String), String>;
@@ -59,6 +107,11 @@ pub struct Taxonomy {
     pub documents: Vec<String>,
     /// The documents that could not be read and why: what was asked for and the reason.
     pub not_loaded: Vec<(String, String)>,
+    /// The summation-item relationships of the calculation linkbases (and those in schema documents) that were read.
+    pub calculations: Vec<Calculation>,
+    /// The `id` of each element declaration, with the document and the concept it is in.
+    ids: HashMap<String, Vec<(String, String)>>,
+    links: Vec<RawLink>,
 }
 
 fn attr<'a>(el: &'a El, name: &str) -> Option<&'a str> {
@@ -104,13 +157,16 @@ impl Taxonomy {
             return;
         }
         let tree = dom::build(&parsed.syntax());
-        let Some(root) = tree.elements.first().filter(|r| r.local == "schema" && r.namespace.as_deref() == Some(XS)) else {
-            self.not_loaded.push((location.to_owned(), "it is not an XML Schema document".to_owned()));
+        let Some(root) = tree.elements.first().filter(|r| {
+            (r.local == "schema" && r.namespace.as_deref() == Some(XS)) || (r.local == "linkbase" && r.namespace.as_deref() == Some(LINK))
+        }) else {
+            self.not_loaded.push((location.to_owned(), "it is not an XML Schema or a linkbase document".to_owned()));
             return;
         };
         let target = attr(root, "targetNamespace").unwrap_or_default().to_owned();
         self.namespaces.insert(target.clone());
         self.documents.push(location.to_owned());
+        self.read_links(&tree, location, queue);
         for &i in &root.children {
             let Some(el) = tree.elements.get(i) else { continue };
             if el.namespace.as_deref() != Some(XS) {
@@ -137,6 +193,9 @@ impl Taxonomy {
                         period_type,
                         abstract_concept: attr(el, "abstract") == Some("true"),
                     };
+                    if let Some(id) = attr(el, "id") {
+                        self.ids.entry(id.to_owned()).or_default().push((location.to_owned(), format!("{{{target}}}{name}")));
+                    }
                     self.concepts.insert(format!("{{{target}}}{name}"), concept);
                 }
                 "complexType" | "simpleType" => {
@@ -155,6 +214,120 @@ impl Taxonomy {
                 _ => {}
             }
         }
+    }
+
+    /// The calculation linkbases a schema document refers to are queued, and the calculation links in the document (a linkbase, or one
+    /// in the `appinfo` of a schema) are kept to be resolved once every schema has been read.
+    fn read_links(&mut self, tree: &Dom, location: &str, queue: &mut VecDeque<(String, String)>) {
+        for el in &tree.elements {
+            if el.namespace.as_deref() != Some(LINK) {
+                continue;
+            }
+            match el.local.as_str() {
+                "linkbaseRef" => {
+                    let role = attr_ns(el, XLINK, "role");
+                    if let Some(href) = attr_ns(el, XLINK, "href").filter(|h| !h.trim().is_empty())
+                        && role.is_none_or(|r| r.ends_with("calculationLinkbaseRef"))
+                    {
+                        queue.push_back((href.trim().to_owned(), location.to_owned()));
+                    }
+                }
+                "calculationLink" => {
+                    let mut link = RawLink {
+                        document: location.to_owned(),
+                        role: attr_ns(el, XLINK, "role").unwrap_or("http://www.xbrl.org/2003/role/link").to_owned(),
+                        locators: Vec::new(),
+                        arcs: Vec::new(),
+                    };
+                    for c in el.children.iter().filter_map(|i| tree.elements.get(*i)) {
+                        if c.namespace.as_deref() != Some(LINK) {
+                            continue;
+                        }
+                        match c.local.as_str() {
+                            "loc" => {
+                                if let (Some(label), Some(href)) = (attr_ns(c, XLINK, "label"), attr_ns(c, XLINK, "href")) {
+                                    link.locators.push((label.to_owned(), href.to_owned()));
+                                }
+                            }
+                            "calculationArc" => {
+                                if let (Some(from), Some(to)) = (attr_ns(c, XLINK, "from"), attr_ns(c, XLINK, "to")) {
+                                    link.arcs.push(RawArc {
+                                        from: from.to_owned(),
+                                        to: to.to_owned(),
+                                        weight: attr(c, "weight").unwrap_or("1").to_owned(),
+                                        order: attr(c, "order").unwrap_or("1").to_owned(),
+                                        priority: attr(c, "priority").and_then(|p| p.trim().parse().ok()).unwrap_or(0),
+                                        prohibited: attr(c, "use") == Some("prohibited"),
+                                    });
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    if self.links.iter().map(|l| l.arcs.len()).sum::<usize>() < MAX_ARCS {
+                        self.links.push(link);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// The concept an `href` (`file.xsd#id`) of the linkbase in `document` points at: the element declaration with that `id`; when
+    /// several documents use it, the one whose location ends with the file part of the `href`.
+    fn concept_at(&self, href: &str) -> Option<&str> {
+        let (file, id) = href.split_once('#')?;
+        let candidates = self.ids.get(id.trim())?;
+        match candidates.as_slice() {
+            [only] => Some(only.1.as_str()),
+            many => {
+                let name = file.rsplit('/').next().filter(|n| !n.is_empty())?;
+                many.iter().find(|(doc, _)| doc.rsplit('/').next() == Some(name)).map(|(_, key)| key.as_str())
+            }
+        }
+    }
+
+    /// Resolve the calculation links read to relationships between concepts. An arc that a later one with the same ends, role and a
+    /// priority at least as high prohibits is dropped.
+    fn resolve_calculations(&mut self) {
+        // (role, from, to) -> the arc that wins (the highest priority; prohibiting wins a tie), with its weight and order.
+        let mut best: HashMap<(String, String, String), Winner> = HashMap::new();
+        for link in &self.links {
+            let at = |label: &str| -> Vec<&str> {
+                link.locators.iter().filter(|(l, _)| l == label).filter_map(|(_, href)| self.concept_at(href)).collect()
+            };
+            for arc in &link.arcs {
+                for from in at(&arc.from) {
+                    for to in at(&arc.to) {
+                        let key = (link.role.clone(), from.to_owned(), to.to_owned());
+                        let entry =
+                            Winner { priority: arc.priority, prohibited: arc.prohibited, weight: arc.weight.clone(), order: arc.order.clone() };
+                        let wins = best
+                            .get(&key)
+                            .is_none_or(|w| arc.priority > w.priority || (arc.priority == w.priority && arc.prohibited && !w.prohibited));
+                        if wins {
+                            best.insert(key, entry);
+                        }
+                    }
+                }
+            }
+        }
+        let mut by_parent: HashMap<(String, String), Vec<(f64, Contribution)>> = HashMap::new();
+        for ((role, from, to), Winner { prohibited, weight, order, .. }) in best {
+            if !prohibited {
+                by_parent.entry((role, from)).or_default().push((order.trim().parse().unwrap_or(1.0), Contribution { concept: to, weight }));
+            }
+        }
+        let mut calculations: Vec<Calculation> = by_parent
+            .into_iter()
+            .map(|((role, parent), mut items)| {
+                items.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.concept.cmp(&b.1.concept)));
+                Calculation { role, parent, items: items.into_iter().map(|(_, c)| c).collect() }
+            })
+            .collect();
+        calculations.sort_by(|a, b| (&a.role, &a.parent).cmp(&(&b.role, &b.parent)));
+        self.calculations = calculations;
+        self.links.clear();
     }
 
     /// Whether the type `{namespace}local` is a number: `Some(true)` for the numeric types of XBRL and XML Schema (and what is derived
@@ -259,6 +432,7 @@ pub fn load(schema_refs: &[String], base: &str, loader: &mut dyn Loader) -> Taxo
             Err(why) => taxonomy.not_loaded.push((location, why)),
         }
     }
+    taxonomy.resolve_calculations();
     taxonomy
 }
 
@@ -352,5 +526,6 @@ pub fn check_taxonomy(instance: &Instance, taxonomy: &Taxonomy) -> Vec<Finding> 
             }
         }
     }
+    found.extend(crate::calc::check_calculations(instance, taxonomy));
     found
 }

@@ -57,3 +57,36 @@ fn the_taxonomy_a_schema_ref_names_is_read_from_beside_the_instance_and_its_find
     let codes: Vec<&str> = r["findings"].as_array().expect("findings").iter().filter_map(|f| f["code"].as_str()).collect();
     assert!(codes.contains(&"xbrl.taxonomy-not-loaded") && !codes.contains(&"xbrl.unknown-concept"), "{codes:?}");
 }
+
+#[test]
+fn a_calculation_linkbase_beside_the_schema_is_used_to_check_the_sums() {
+    let dir = tempfile::tempdir().expect("dir");
+    let schema = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" targetNamespace="urn:g">
+<xs:annotation><xs:appinfo><link:linkbaseRef xlink:type="simple" xlink:href="g-cal.xml" xlink:role="http://www.xbrl.org/2003/role/calculationLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/></xs:appinfo></xs:annotation>
+<xs:element id="g_Assets" name="Assets" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant"/>
+<xs:element id="g_Cash" name="Cash" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant"/>
+<xs:element id="g_Stock" name="Stock" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant"/></xs:schema>"#;
+    let calc = r#"<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink"><link:calculationLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+<link:loc xlink:type="locator" xlink:href="g.xsd#g_Assets" xlink:label="a"/><link:loc xlink:type="locator" xlink:href="g.xsd#g_Cash" xlink:label="c"/><link:loc xlink:type="locator" xlink:href="g.xsd#g_Stock" xlink:label="s"/>
+<link:calculationArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/summation-item" xlink:from="a" xlink:to="c" weight="1" order="1"/>
+<link:calculationArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/summation-item" xlink:from="a" xlink:to="s" weight="1" order="2"/></link:calculationLink></link:linkbase>"#;
+    let instance = |assets: &str| {
+        format!(
+            r#"<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:iso4217="http://www.xbrl.org/2003/iso4217" xmlns:g="urn:g"><link:schemaRef xlink:type="simple" xlink:href="g.xsd"/>
+<xbrli:context id="c"><xbrli:entity><xbrli:identifier scheme="s">x</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2025-12-31</xbrli:instant></xbrli:period></xbrli:context>
+<xbrli:unit id="u"><xbrli:measure>iso4217:EUR</xbrli:measure></xbrli:unit>
+<g:Cash contextRef="c" unitRef="u" decimals="0">70</g:Cash><g:Stock contextRef="c" unitRef="u" decimals="0">30</g:Stock><g:Assets contextRef="c" unitRef="u" decimals="0">{assets}</g:Assets></xbrli:xbrl>"#
+        )
+    };
+    std::fs::write(dir.path().join("g.xsd"), schema).expect("writes");
+    std::fs::write(dir.path().join("g-cal.xml"), calc).expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    let codes = |a: &mut Automation, assets: &str| -> Vec<String> {
+        let path = dir.path().join("i.xml");
+        std::fs::write(&path, instance(assets)).expect("writes");
+        let r = call(a, json!({ "path": path.to_str().expect("utf-8") })).expect("runs");
+        r["findings"].as_array().expect("findings").iter().filter_map(|f| f["code"].as_str().map(str::to_owned)).collect()
+    };
+    assert!(!codes(&mut a, "100").contains(&"xbrl.calculation-inconsistent".to_owned()), "70 + 30 is 100");
+    assert!(codes(&mut a, "101").contains(&"xbrl.calculation-inconsistent".to_owned()), "70 + 30 is not 101");
+}
