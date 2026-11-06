@@ -12,6 +12,7 @@ mod compare_dialog;
 mod completion;
 mod control;
 mod convert_dialog;
+mod data_assist;
 mod dialog;
 mod documents;
 pub mod editor_view;
@@ -172,6 +173,8 @@ pub struct XmlCraftApp {
     schemas: Schemas,
     /// Loads the XML Schema a document names, for Entry Helpers.
     xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas,
+    /// Loads the JSON Schema a JSON or YAML document names, for completion and hover.
+    json_schemas: xmlcraft_engine::json_schemas::JsonSchemas,
     /// Entry Helpers write the content an element requires with it.
     entry_mandatory: bool,
     /// What the Entry Helpers filter field holds, the row chosen with the arrow keys (among those that can be chosen), and whether the
@@ -292,7 +295,11 @@ impl XmlCraftApp {
             let repaint = repaint.clone();
             move || repaint.request_repaint()
         });
-        app.xsd_schemas.on_done(move || repaint.request_repaint());
+        app.xsd_schemas.on_done({
+            let repaint = repaint.clone();
+            move || repaint.request_repaint()
+        });
+        app.json_schemas.on_done(move || repaint.request_repaint());
         app
     }
 
@@ -349,6 +356,7 @@ impl XmlCraftApp {
             validate_pending: None,
             schemas: Schemas::new(resolvers()),
             xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas::new(resolvers()),
+            json_schemas: xmlcraft_engine::json_schemas::JsonSchemas::new(resolvers()),
             entry_mandatory: prefs.entry_mandatory,
             entry_filter: String::new(),
             entry_selected: 0,
