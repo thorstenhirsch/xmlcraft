@@ -18,6 +18,7 @@ mod documents;
 mod einvoice;
 mod entry_helpers;
 pub mod file_access;
+mod files_find;
 mod grid;
 mod infer;
 mod json_assist;
@@ -38,6 +39,7 @@ mod wsdl;
 mod xbrl;
 mod xpath;
 mod xslt;
+mod xslt_complete;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod control;

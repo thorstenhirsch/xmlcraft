@@ -258,10 +258,43 @@ impl XmlCraftApp {
         true
     }
 
+    /// After typing in an XSLT stylesheet: open the popup with the `xsl:` elements, attributes, values or XPath functions that fit where the
+    /// caret is. Returns true when it did; otherwise the other kinds of completion go on (a literal result element has names of its own).
+    fn update_xslt_completion(&mut self) -> bool {
+        let Some(doc) = self.session.active_document() else { return false };
+        if !doc.language().is_xml() {
+            return false;
+        }
+        let editor = doc.editor();
+        let caret = editor.primary();
+        if editor.carets().len() != 1 || !caret.is_empty() || editor.buffer().len() > 2 * 1024 * 1024 {
+            return false;
+        }
+        let (id, version, head) = (doc.id(), editor.version(), caret.head());
+        let Some(found) = xmlcraft_engine::xslt_complete::complete(&editor.text(), head, self.completion_explicit) else { return false };
+        let items: Vec<Item> = found.items.into_iter().map(|i| Item { label: i.label, detail: i.detail, text: i.insert, caret: i.cursor }).collect();
+        self.completion =
+            Some(Completion { doc: id, version, start: found.replace.start, caret: head, end: found.replace.end.max(head), items, selected: 0 });
+        true
+    }
+
+    /// Edit ▸ Complete: open the popup at the caret whether or not anything has been typed (between names, after a colon). Without
+    /// anything to offer there it says so.
+    pub(crate) fn complete_at_caret(&mut self) {
+        self.completion_explicit = true;
+        self.update_completion();
+        self.completion_explicit = false;
+        if self.completion.is_none() {
+            self.status = tl!("Nothing to complete here.").to_owned();
+        } else {
+            self.focus_editor = true;
+        }
+    }
+
     /// Work out what to offer at the caret after the frame's typing, and open or close the popup.
     pub(crate) fn update_completion(&mut self) {
         // JSON and YAML documents are completed from their JSON Schema.
-        if self.update_data_completion() || self.update_html_completion() {
+        if self.update_data_completion() || self.update_html_completion() || self.update_xslt_completion() {
             return;
         }
         let Some(doc) = self.session.active_document_mut() else {

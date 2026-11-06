@@ -46,6 +46,7 @@ mod status_pickers;
 mod structure;
 pub mod theme;
 pub use control::{ControlClient, Reply as ControlReply};
+mod find_files_dialog;
 mod widgets;
 mod xpath_dialog;
 mod xslt_dialog;
@@ -166,6 +167,8 @@ pub struct XmlCraftApp {
     xslt: xmlcraft_engine::xslt::XsltRunner,
     /// The expression last typed in the XPath window, put back when it is opened again.
     xpath_last: String,
+    /// The last Find in Files window, with its query and result.
+    find_files_last: Option<Box<crate::find_files_dialog::FindFilesForm>>,
     /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
     generate_serial: u64,
     /// Fetches the schema a document names (Load Schema), and the request being waited for.
@@ -173,6 +176,8 @@ pub struct XmlCraftApp {
     loading_schema: Option<u64>,
     /// The completion being offered at the caret, if any (see `completion.rs`).
     completion: Option<completion::Completion>,
+    /// Completion was asked for (Edit ▸ Complete), not set off by typing: the popup opens where nothing has been typed too.
+    completion_explicit: bool,
     /// Whether the editor had the keyboard at the last frame (the keys of a completion popup are the editor's only then).
     editor_has_focus: bool,
     /// Reads each document's DOCTYPE into a grammar in the background (what Entry Helpers offer comes from it).
@@ -352,10 +357,12 @@ impl XmlCraftApp {
             xpath: xmlcraft_engine::xpath::XPathRunner::new(),
             xslt: xmlcraft_engine::xslt::XsltRunner::new(),
             xpath_last: String::new(),
+            find_files_last: None,
             generate_serial: 0,
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
             loading_schema: None,
             completion: None,
+            completion_explicit: false,
             editor_has_focus: false,
             outline_filter: String::new(),
             problem_filter: problems::Filter::All,

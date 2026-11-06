@@ -26,3 +26,5 @@ pub mod network;
 pub mod proxy;
 pub mod recovery;
 pub mod schema_files;
+pub mod search;
+pub mod walk;
