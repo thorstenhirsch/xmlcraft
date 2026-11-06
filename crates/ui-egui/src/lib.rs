@@ -22,6 +22,7 @@ mod generate;
 mod grid_view;
 mod header;
 mod home;
+mod http_pane;
 mod i18n;
 mod icon_data;
 mod icons;
@@ -30,12 +31,14 @@ mod load_schema;
 mod merge_dialog;
 mod motion;
 mod new_from_template;
+mod openapi_dialog;
 mod palette;
 mod pickers;
 mod preferences;
 mod problems;
 mod quick_fix;
 mod side_panels;
+mod soap_dialog;
 mod status_pickers;
 mod structure;
 pub mod theme;
@@ -171,6 +174,8 @@ pub struct XmlCraftApp {
     editor_has_focus: bool,
     /// Reads each document's DOCTYPE into a grammar in the background (what Entry Helpers offer comes from it).
     schemas: Schemas,
+    /// What the threads of the SOAP and OpenAPI windows answer on.
+    http: http_pane::HttpWorker,
     /// Loads the XML Schema a document names, for Entry Helpers.
     xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas,
     /// Loads the JSON Schema a JSON or YAML document names, for completion and hover.
@@ -355,6 +360,7 @@ impl XmlCraftApp {
             check_pending: None,
             validate_pending: None,
             schemas: Schemas::new(resolvers()),
+            http: http_pane::HttpWorker::default(),
             xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas::new(resolvers()),
             json_schemas: xmlcraft_engine::json_schemas::JsonSchemas::new(resolvers()),
             entry_mandatory: prefs.entry_mandatory,
@@ -472,6 +478,7 @@ impl eframe::App for XmlCraftApp {
         self.pump_compare();
         self.pump_xpath();
         self.pump_transform();
+        self.pump_http();
         self.pump_schema_fetch();
         for command in self.viewport_commands.drain(..) {
             ctx.send_viewport_cmd(command);

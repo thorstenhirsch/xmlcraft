@@ -66,6 +66,8 @@ pub(crate) enum Dialog {
     XPath(Box<crate::xpath_dialog::XPathForm>),
     /// The Transform window (drawn by `xslt_dialog.rs`).
     Transform(Box<crate::xslt_dialog::XsltForm>),
+    Soap(Box<crate::soap_dialog::SoapForm>),
+    OpenApi(Box<crate::openapi_dialog::OpenApiForm>),
     Message {
         title: String,
         text: String,
@@ -108,6 +110,8 @@ impl Dialog {
             | Dialog::Merge(_)
             | Dialog::XPath(_)
             | Dialog::Transform(_)
+            | Dialog::Soap(_)
+            | Dialog::OpenApi(_)
             | Dialog::RenameElement(_) => false,
         }
     }
@@ -210,6 +214,8 @@ impl XmlCraftApp {
             | Dialog::Merge(_)
             | Dialog::XPath(_)
             | Dialog::Transform(_)
+            | Dialog::Soap(_)
+            | Dialog::OpenApi(_)
             | Dialog::RenameElement(_) => {
                 Describe { title: String::new(), text: String::new(), buttons: vec![(tl!("Cancel"), Choice::Cancel)], input: false }
             }
@@ -256,6 +262,14 @@ impl XmlCraftApp {
         }
         if matches!(self.dialog, Some(Dialog::Transform(_))) {
             self.show_transform(ctx);
+            return;
+        }
+        if matches!(self.dialog, Some(Dialog::Soap(_))) {
+            self.show_soap(ctx);
+            return;
+        }
+        if matches!(self.dialog, Some(Dialog::OpenApi(_))) {
+            self.show_openapi(ctx);
             return;
         }
         if matches!(self.dialog, Some(Dialog::RenameElement(_))) {
