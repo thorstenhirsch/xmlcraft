@@ -6809,6 +6809,7 @@ dependencies = [
  "tempfile",
  "ureq",
  "xmlcraft-dtd",
+ "xmlcraft-editor",
  "xmlcraft-engine",
  "xmlcraft-resolve",
  "xmlcraft-text",

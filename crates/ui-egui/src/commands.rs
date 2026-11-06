@@ -210,6 +210,7 @@ impl XmlCraftApp {
             "xml.load_schema" => self.load_schema(),
             "edit.quick_fix" => self.quick_fix_at_caret(),
             "edit.complete" => self.complete_at_caret(),
+            "edit.find_in_files" => self.open_find_files(),
             "app.preferences" => {
                 // Not over a question that is being asked: its answer would be lost.
                 if self.dialog.is_none() {

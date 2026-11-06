@@ -41,6 +41,11 @@ pub(crate) struct Prepared {
 
 /// What a thread came to.
 pub(crate) enum Outcome {
+    /// What Find in Files found.
+    Files {
+        serial: u64,
+        result: Result<xmlcraft_platform::search::Found, String>,
+    },
     /// SchemaStore's schemas for a file (the Assign Schema window).
     Catalog {
         serial: u64,
@@ -235,6 +240,10 @@ impl XmlCraftApp {
         while let Ok(outcome) = self.http.rx.try_recv() {
             if let Outcome::Catalog { serial, result } = outcome {
                 self.schemastore_answered(serial, result);
+                continue;
+            }
+            if let Outcome::Files { serial, result } = outcome {
+                self.find_files_answered(serial, result);
                 continue;
             }
             let Some(pane) = self.open_pane() else { continue };

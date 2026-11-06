@@ -107,11 +107,11 @@ title = "Find and replace across files and folders"
 area = "A"
 tier = "P1"
 milestone = "M10"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["edit.find_in_files"]
+tools = ["files_find"]
+evidence = ["crates/platform/src/search.rs::a_folder_is_searched_by_file_name_pattern_and_what_is_not_text_is_skipped", "crates/automation/tests/files_find.rs::a_folder_is_searched_with_the_editors_matcher_and_a_name_pattern", "crates/ui-egui/tests/find_files.rs::the_hits_in_a_folder_are_listed_and_a_click_opens_the_file_at_the_line"]
+notes = "Find in Files (Shift+Cmd+F): a text or regular expression (case, whole word) looked for with the editor's matcher in the files under a folder whose names fit `*.xml;*.xsd`-style patterns; the hits are listed by file with line and column, and a click opens the file at the line. Dot folders, node_modules and target are skipped, links are not followed, files that are not text are skipped, and files, hits and line lengths are capped. Missing: replace across files, a folder chooser panel (the folder is typed), searching open unsaved documents, an include/exclude list, results kept in a panel instead of a window."
 
 [[feature]]
 id = "editor.code-folding"

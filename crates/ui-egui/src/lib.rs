@@ -46,6 +46,7 @@ mod status_pickers;
 mod structure;
 pub mod theme;
 pub use control::{ControlClient, Reply as ControlReply};
+mod find_files_dialog;
 mod widgets;
 mod xpath_dialog;
 mod xslt_dialog;
@@ -166,6 +167,8 @@ pub struct XmlCraftApp {
     xslt: xmlcraft_engine::xslt::XsltRunner,
     /// The expression last typed in the XPath window, put back when it is opened again.
     xpath_last: String,
+    /// The last Find in Files window, with its query and result.
+    find_files_last: Option<Box<crate::find_files_dialog::FindFilesForm>>,
     /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
     generate_serial: u64,
     /// Fetches the schema a document names (Load Schema), and the request being waited for.
@@ -354,6 +357,7 @@ impl XmlCraftApp {
             xpath: xmlcraft_engine::xpath::XPathRunner::new(),
             xslt: xmlcraft_engine::xslt::XsltRunner::new(),
             xpath_last: String::new(),
+            find_files_last: None,
             generate_serial: 0,
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
             loading_schema: None,
