@@ -201,6 +201,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("file.revert", "Revert", FILE, None, Needs::Document, "file-text"),
     c("file.convert", "Convert…", FILE, None, Needs::Document, "wand-sparkles").sep(),
     c("file.compare", "Compare Documents…", FILE, None, Needs::Document, "files"),
+    c("file.merge", "Merge Documents…", FILE, None, Needs::Document, "files"),
     c("file.close", "Close", FILE, Some(Shortcut::cmd("W")), Needs::Document, "x").sep(),
     c("file.quit", "Quit", FILE, Some(Shortcut::cmd("Q")), Nothing, "x"),
     c("edit.undo", "Undo", EDIT, Some(Shortcut::cmd("Z")), Needs::Undo, "undo-2").not_in_text(),
@@ -346,6 +347,7 @@ mod tests {
                 "file.revert",
                 "file.convert",
                 "file.compare",
+                "file.merge",
                 "file.close",
                 "file.quit"
             ]

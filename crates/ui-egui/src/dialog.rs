@@ -60,6 +60,8 @@ pub(crate) enum Dialog {
     Convert(Box<crate::convert_dialog::ConvertForm>),
     /// Two documents compared (drawn by `compare_dialog.rs`).
     Compare(Box<crate::compare_dialog::CompareForm>),
+    /// Three documents merged (drawn by `merge_dialog.rs`).
+    Merge(Box<crate::merge_dialog::MergeForm>),
     /// The XPath window (drawn by `xpath_dialog.rs`).
     XPath(Box<crate::xpath_dialog::XPathForm>),
     /// The Transform window (drawn by `xslt_dialog.rs`).
@@ -103,6 +105,7 @@ impl Dialog {
             | Dialog::GenerateSample(_)
             | Dialog::Convert(_)
             | Dialog::Compare(_)
+            | Dialog::Merge(_)
             | Dialog::XPath(_)
             | Dialog::Transform(_)
             | Dialog::RenameElement(_) => false,
@@ -204,6 +207,7 @@ impl XmlCraftApp {
             | Dialog::GenerateSample(_)
             | Dialog::Convert(_)
             | Dialog::Compare(_)
+            | Dialog::Merge(_)
             | Dialog::XPath(_)
             | Dialog::Transform(_)
             | Dialog::RenameElement(_) => {
@@ -240,6 +244,10 @@ impl XmlCraftApp {
         }
         if matches!(self.dialog, Some(Dialog::Compare(_))) {
             self.show_compare(ctx);
+            return;
+        }
+        if matches!(self.dialog, Some(Dialog::Merge(_))) {
+            self.show_merge(ctx);
             return;
         }
         if matches!(self.dialog, Some(Dialog::XPath(_))) {

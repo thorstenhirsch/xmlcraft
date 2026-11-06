@@ -26,6 +26,7 @@ mod icon_data;
 mod icons;
 mod kit;
 mod load_schema;
+mod merge_dialog;
 mod motion;
 mod new_from_template;
 mod palette;
