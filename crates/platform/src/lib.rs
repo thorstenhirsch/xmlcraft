@@ -23,4 +23,5 @@ pub mod files;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod http;
 pub mod network;
+pub mod proxy;
 pub mod schema_files;

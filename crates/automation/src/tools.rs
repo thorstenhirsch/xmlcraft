@@ -74,6 +74,7 @@ pub fn tools() -> &'static [ToolDef] {
         table.extend(crate::grid::tools());
         table.extend(crate::xslt::tools());
         table.extend(crate::wsdl::tools());
+        table.extend(crate::soap_proxy::tools());
         table.extend(crate::schematron::tools());
         table.extend(crate::einvoice::tools());
         table.extend(crate::diff::tools());

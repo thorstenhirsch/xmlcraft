@@ -36,6 +36,7 @@ mod palette;
 mod pickers;
 mod preferences;
 mod problems;
+mod proxy_dialog;
 mod quick_fix;
 mod side_panels;
 mod soap_dialog;

@@ -30,6 +30,7 @@ mod sample;
 mod schema;
 mod schematron;
 mod script;
+mod soap_proxy;
 mod tools;
 mod validate;
 mod wsdl;
@@ -92,6 +93,8 @@ pub struct Automation {
     /// What the schemas and DTDs that documents name are downloaded with. Nothing is downloaded unless the program gives a network that
     /// does ([`Automation::with_network`]); `--root` confines files, not this.
     network: Network,
+    /// The debugging proxy, while one is started (`soap_proxy_start`); it stops with `soap_proxy_stop` or when the session ends.
+    proxy: Option<xmlcraft_platform::proxy::Debugger>,
 }
 
 impl Default for Automation {
@@ -103,12 +106,12 @@ impl Default for Automation {
 impl Automation {
     /// A session with no root: paths are not confined (a person at their own terminal).
     pub fn new() -> Self {
-        Self { session: Session::new(), confinement: Confinement::none(), network: Network::offline() }
+        Self { session: Session::new(), confinement: Confinement::none(), network: Network::offline(), proxy: None }
     }
 
     /// A session whose tools may only touch files under `root`.
     pub fn with_root(root: &Path) -> Result<Self> {
-        Ok(Self { session: Session::new(), confinement: Confinement::new(root)?, network: Network::offline() })
+        Ok(Self { session: Session::new(), confinement: Confinement::new(root)?, network: Network::offline(), proxy: None })
     }
 
     /// The same session, with the schemas and DTDs that documents name downloaded (and kept) with `network`.

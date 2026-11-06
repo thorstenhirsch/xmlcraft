@@ -245,6 +245,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("xml.transform", "Transform with XSLT…", XML, Some(Shortcut::key("F10")), Needs::Document, "wand-sparkles"),
     c("xml.soap", "Send SOAP Request…", XML, None, Needs::Document, "cloud"),
     c("xml.openapi", "Send OpenAPI Request…", XML, None, Needs::Document, "cloud"),
+    c("xml.soap_debugger", "SOAP Debugger…", XML, None, Needs::Nothing, "cloud"),
     c("xml.generate_schema", "Generate Schema…", XML, None, Needs::Document, "file-code").sep(),
     c("xml.load_schema", "Load Schema", XML, None, Needs::Document, "external-link"),
     c("xml.generate_sample", "Generate Sample XML…", XML, None, Needs::Document, "sparkles"),
@@ -403,6 +404,7 @@ mod tests {
                 "xml.transform",
                 "xml.soap",
                 "xml.openapi",
+                "xml.soap_debugger",
                 "xml.generate_schema",
                 "xml.load_schema",
                 "xml.generate_sample"

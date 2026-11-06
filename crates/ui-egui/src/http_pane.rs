@@ -3,6 +3,7 @@
 //! while the app works offline, a host on this computer or the local network needs the box ticked, and redirects are not followed.
 
 use std::sync::mpsc::{Receiver, Sender, channel};
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::{Arc, Mutex, PoisonError};
 
 use xmlcraft_engine::soap::{Summary, headers_text, parse_headers, summarize};
