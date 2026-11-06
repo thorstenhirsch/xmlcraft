@@ -4,12 +4,12 @@
 use serde_json::{Value, json};
 use xmlcraft_engine::assign::{Assignment, assign, is_dtd_location, schema_namespace};
 
-use crate::documents::{describe, index_of, json_result, source, source_properties};
+use crate::documents::{describe, index_of, json_result, language_source_properties, source};
 use crate::tools::ToolDef;
 use crate::{Automation, Content, Result, ToolError};
 
 pub(crate) fn tools() -> Vec<ToolDef> {
-    let mut properties = source_properties();
+    let mut properties = language_source_properties();
     if let Some(map) = properties.as_object_mut() {
         map.insert(
             "schema".into(),
@@ -24,7 +24,8 @@ pub(crate) fn tools() -> Vec<ToolDef> {
     vec![ToolDef {
         name: "xml_assign_schema",
         title: "Assign a schema or a DTD to a document",
-        description: "Say which schema or DTD a document is to be checked against, as a minimal edit: a DTD is `<!DOCTYPE root SYSTEM \"location\">` before \
+        description: "Say which schema or DTD a document is to be checked against, as a minimal edit (for a JSON document a root `$schema` member, for a YAML document the \
+                      first-line `# yaml-language-server: $schema=` modeline: `schema` is then the JSON Schema's location, `kind` and `namespace` do not apply): a DTD is `<!DOCTYPE root SYSTEM \"location\">` before \
                       the root element (an existing DOCTYPE keeps its name and internal subset); an XML Schema is `xsi:noNamespaceSchemaLocation` or \
                       `xsi:schemaLocation` on the root element, with the declaration of the `xsi` prefix when it is not there, or the location changed when \
                       one is. Nothing else of the text changes. For an open document `id` the edit is made in it; for a `path` or `text` the new text is \
@@ -43,6 +44,21 @@ fn xml_assign_schema(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         .filter(|l| !l.is_empty())
         .ok_or_else(|| ToolError::InvalidArgs("schema is the location to write".into()))?;
     let document = source(a, args)?;
+    if !document.language.is_xml() {
+        let edits =
+            xmlcraft_engine::assign::assign_data(&document.text, document.language, location).map_err(|e| ToolError::Failed(e.to_string()))?;
+        return match document.id {
+            Some(id) => {
+                let index = index_of(a, id)?;
+                let Some(doc) = a.session.document_mut(index) else { return Err(ToolError::Failed("the document disappeared".into())) };
+                let changed = doc.editor_mut().apply_edits(&edits);
+                json_result(json!({ "changed": changed, "edits": edits.len(), "document": describe(doc) }))
+            }
+            None => json_result(
+                json!({ "changed": !edits.is_empty(), "edits": edits.len(), "text": xmlcraft_text::apply_edits(&document.text, &edits), "lossy": document.lossy }),
+            ),
+        };
+    }
     let is_dtd = match args.get("kind").and_then(Value::as_str) {
         Some("dtd") => true,
         Some("xsd") => false,
