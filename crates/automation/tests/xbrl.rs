@@ -37,3 +37,23 @@ fn other_documents_and_bad_arguments_are_refused() {
     assert!(matches!(call(&mut a, json!({ "text": DOC, "concept": 1 })), Err(ToolError::InvalidArgs(_))));
     assert!(matches!(call(&mut a, json!({ "text": DOC, "max_facts": 0 })), Err(ToolError::InvalidArgs(_))));
 }
+
+#[test]
+fn the_taxonomy_a_schema_ref_names_is_read_from_beside_the_instance_and_its_findings_are_listed() {
+    let dir = tempfile::tempdir().expect("dir");
+    let schema = "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xmlns:xbrli=\"http://www.xbrl.org/2003/instance\" targetNamespace=\"urn:g\"><xs:element name=\"Assets\" type=\"xbrli:monetaryItemType\" substitutionGroup=\"xbrli:item\" xbrli:periodType=\"instant\"/></xs:schema>";
+    std::fs::write(dir.path().join("g.xsd"), schema).expect("writes");
+    let path = dir.path().join("i.xml");
+    std::fs::write(&path, DOC).expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    let r = call(&mut a, json!({ "path": path.to_str().expect("utf-8") })).expect("runs");
+    let codes: Vec<&str> = r["findings"].as_array().expect("findings").iter().filter_map(|f| f["code"].as_str()).collect();
+    // g:Assets is declared and fine; g:Cash is not declared in the taxonomy (and its context does not exist).
+    assert!(codes.contains(&"xbrl.unknown-concept") && codes.contains(&"xbrl.unknown-context"), "{codes:?}");
+    assert!(!codes.contains(&"xbrl.taxonomy-not-loaded"), "{codes:?}");
+    // Without the taxonomy beside it, the instance still has its own findings and a warning that the taxonomy is not there.
+    std::fs::remove_file(dir.path().join("g.xsd")).expect("removes");
+    let r = call(&mut a, json!({ "path": path.to_str().expect("utf-8") })).expect("runs");
+    let codes: Vec<&str> = r["findings"].as_array().expect("findings").iter().filter_map(|f| f["code"].as_str()).collect();
+    assert!(codes.contains(&"xbrl.taxonomy-not-loaded") && !codes.contains(&"xbrl.unknown-concept"), "{codes:?}");
+}

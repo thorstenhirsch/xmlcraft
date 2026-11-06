@@ -287,7 +287,7 @@ fn run(resolvers: &ResolverFactory, request: Request) -> Validation {
     // An XBRL instance or Inline XBRL document is checked for what the specification says of the instance itself (its taxonomy is its
     // grammar, and is not read here, so "it names no DOCTYPE" is not a finding for it).
     if matches!(validation.verdict, Verdict::Valid | Verdict::Invalid) && crate::xbrl::recognised(&text) {
-        let extra = crate::guard(|| crate::xbrl::problems(&text)).unwrap_or_else(|message| {
+        let extra = crate::guard(|| crate::xbrl::problems(&text, &request.location, &resolver)).unwrap_or_else(|message| {
             log::error!("the XBRL check failed: {message}");
             Vec::new()
         });
@@ -538,19 +538,44 @@ mod tests {
             validator.poll().remove(0).1
         };
         let v = run(&ok);
-        assert_eq!((v.verdict, codes(&v)), (Verdict::Valid, vec![]), "{:?}", v.problems);
+        // (Its taxonomy, g.xsd, is not there to be read: a warning says so, and nothing is judged by it.)
+        assert_eq!((v.verdict, codes(&v)), (Verdict::Valid, vec![Code::XbrlWarning]), "{:?}", v.problems);
+        assert!(v.problems[0].diagnostic.message().contains("g.xsd"), "{}", v.problems[0].diagnostic.message());
         let bad = format!("{head}{ctx}<g:Name contextRef=\"nope\">x</g:Name></xbrli:xbrl>");
         let v = run(&bad);
         assert_eq!(
             (v.verdict, codes(&v)),
-            (Verdict::Invalid, vec![Code::XbrlWarning, Code::XbrlError]),
-            "{:?}: the unused context is a warning, the unknown one an error",
+            (Verdict::Invalid, vec![Code::XbrlWarning, Code::XbrlWarning, Code::XbrlError]),
+            "{:?}: the taxonomy that is not there and the unused context are warnings, the unknown context an error",
             v.problems
         );
         let at = bad.find("<g:Name").expect("there");
         let error = v.problems.iter().find(|p| p.diagnostic.code == Code::XbrlError).expect("an error");
         assert_eq!(error.diagnostic.span.start, at, "at the fact");
         assert!(error.diagnostic.message().contains("nope"), "{}", error.diagnostic.message());
+    }
+
+    #[test]
+    fn the_facts_of_an_instance_are_checked_against_the_taxonomy_among_the_open_documents() {
+        let schema = "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xmlns:xbrli=\"http://www.xbrl.org/2003/instance\" targetNamespace=\"urn:g\"><xs:element name=\"Amount\" type=\"xbrli:monetaryItemType\" substitutionGroup=\"xbrli:item\" xbrli:periodType=\"instant\"/></xs:schema>";
+        let head = "<xbrli:xbrl xmlns:xbrli=\"http://www.xbrl.org/2003/instance\" xmlns:link=\"http://www.xbrl.org/2003/linkbase\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" xmlns:g=\"urn:g\"><link:schemaRef xlink:type=\"simple\" xlink:href=\"g.xsd\"/>";
+        let ctx = "<xbrli:context id=\"c\"><xbrli:entity><xbrli:identifier scheme=\"s\">A</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2025-12-31</xbrli:instant></xbrli:period></xbrli:context>";
+        let run = |facts: &str| {
+            let text = format!("{head}{ctx}{facts}</xbrli:xbrl>");
+            let validator = Validator::inline(no_resolvers());
+            validator.submit(1, 1, &Buffer::from_text(&text), Some(Path::new("/w/i.xml")), vec![("/w/g.xsd".to_owned(), Buffer::from_text(schema))]);
+            validator.poll().remove(0).1
+        };
+        let v = run("<g:Amount contextRef=\"c\" decimals=\"0\">1</g:Amount>");
+        assert!(v.problems.iter().any(|p| p.diagnostic.message().contains("no unitRef")), "{:?}", v.problems);
+        let v = run("<g:Other contextRef=\"c\">1</g:Other>");
+        assert!(v.problems.iter().any(|p| p.diagnostic.message().contains("does not declare the concept")), "{:?}", v.problems);
+        let v = run("<g:Amount contextRef=\"c\" unitRef=\"u\" decimals=\"0\">1</g:Amount>");
+        assert!(
+            v.problems.iter().all(|p| !p.diagnostic.message().contains("taxonomy")),
+            "the unit is unknown, but the taxonomy has nothing to say: {:?}",
+            v.problems
+        );
     }
 
     #[test]

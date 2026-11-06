@@ -5,7 +5,7 @@
 
 use serde_json::{Value, json};
 use xmlcraft_text::Buffer;
-use xmlcraft_xbrl::{Instance, Kind, Level, check, read};
+use xmlcraft_xbrl::{Instance, Kind, Level, read};
 
 use crate::documents::{fail, json_result, position_json, source, source_properties};
 use crate::tools::ToolDef;
@@ -88,7 +88,10 @@ fn xbrl_facts(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
             })
         })
         .collect();
-    let findings: Vec<Value> = check(&instance)
+    // The taxonomy the instance names is read as validation reads it (the open documents, files inside the root, the catalogs, the bundle).
+    let location = s.path.as_deref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let resolver = crate::validate::schema_resolver(a);
+    let findings: Vec<Value> = xmlcraft_engine::xbrl::findings(&instance, &location, &resolver)
         .into_iter()
         .take(MAX_FACTS)
         .map(|f| {
