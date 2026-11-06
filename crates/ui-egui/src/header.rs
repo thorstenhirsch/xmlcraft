@@ -26,6 +26,8 @@ pub(crate) fn element_path(outline: &[OutlineItem], caret: usize) -> Vec<&Outlin
 pub(crate) enum GrammarKind {
     Dtd,
     Xsd,
+    /// The JSON Schema a JSON or YAML document names.
+    Json,
 }
 
 /// The quoted strings of a DOCTYPE declaration, in order (the public identifier and the system identifier).
@@ -88,6 +90,11 @@ fn external_id_keywords(doctype: &str) -> (bool, bool) {
 
 /// A short name for the schema a hint names: the file of its location, else its namespace.
 pub(crate) fn schema_label(location: &str, namespace: Option<&str>) -> String {
+    // (The schemas of UBL 2.1 that ship with the app are named for what they are, not for their long namespace.)
+    if let Some(document) = namespace.and_then(|n| n.strip_prefix("urn:oasis:names:specification:ubl:schema:xsd:")).and_then(|r| r.strip_suffix("-2"))
+    {
+        return format!("UBL 2.1 {document}");
+    }
     let file = location.rsplit(['/', '\\']).next().filter(|f| !f.is_empty());
     match (file, namespace) {
         (Some(file), _) => file.to_owned(),
@@ -110,6 +117,21 @@ fn grammar_chip(app: &XmlCraftApp) -> Option<GrammarChip> {
     let doc = app.session.active_document()?;
     let analysis = app.active_analysis()?;
     let helpers = app.views.get(&doc.id()).map(|v| &v.helpers);
+    // A JSON or YAML document names a JSON Schema (`$schema`, the modeline): the chip says which, and whether it was read.
+    if doc.language().is_data()
+        && let Some(view) = app.views.get(&doc.id())
+        && let Some(reference) = view.data_schema.reference_if_current(doc.editor().version())
+    {
+        let label = schema_label(&reference, None);
+        let (tone, tip) = match (&view.data_schema.error, view.data_schema.set.is_some()) {
+            (Some(why), _) => (Tone::Warn, fmt(tl!("The schema {name} could not be read: {why}"), &[("name", &label), ("why", why)])),
+            (None, true) => {
+                (Tone::Accent, fmt(tl!("This document is checked against the JSON Schema {name}. Click to assign another."), &[("name", &label)]))
+            }
+            (None, false) => (Tone::Neutral, fmt(tl!("Reading the schema {name}…"), &[("name", &label)])),
+        };
+        return Some(GrammarChip { kind: Some(GrammarKind::Json), label, tone, tip });
+    }
     if let Some(range) = &analysis.doctype {
         let text = doc.editor().buffer().slice(range.clone()).unwrap_or_default();
         let label = dtd_label(&text);
@@ -235,6 +257,7 @@ pub fn show(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                     let (icon, label) = match chip.kind {
                         Some(GrammarKind::Dtd) => ("file-code", format!("DTD · {}", chip.label)),
                         Some(GrammarKind::Xsd) => ("book-open", format!("XSD · {}", chip.label)),
+                        Some(GrammarKind::Json) => ("braces", format!("Schema · {}", chip.label)),
                         None => ("plus", chip.label.clone()),
                     };
                     if kit::chip(ui, chip.tone, Some(icon), &label, true).on_hover_text(&chip.tip).clicked() {

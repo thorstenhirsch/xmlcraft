@@ -51,7 +51,13 @@ pub fn xsd_key(hints: &[SchemaHint], path: Option<&Path>, open: &[(String, u64)]
 /// for it. There is no location, only the namespace, and a namespace is a name: it is looked up in the catalogs and never read as a file
 /// or downloaded, so opening a document asks nobody anything.
 pub fn implicit_hints(namespace: &str) -> Vec<SchemaHint> {
-    vec![SchemaHint { namespace: Some(namespace.to_owned()), location: String::new() }]
+    // (The UBL 2.1 Invoice and CreditNote schemas ship with the app; a document in their namespace is helped, and validated, with them.)
+    let location = match namespace {
+        "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" => "bundled:/ubl/maindoc/UBL-Invoice-2.1.xsd",
+        "urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2" => "bundled:/ubl/maindoc/UBL-CreditNote-2.1.xsd",
+        _ => "",
+    };
+    vec![SchemaHint { namespace: Some(namespace.to_owned()), location: location.to_owned() }]
 }
 
 struct Request {
@@ -204,5 +210,21 @@ mod tests {
         // Nothing named at all.
         schemas.submit(2, 6, Vec::new(), None, Vec::new());
         assert!(schemas.poll()[0].1.schema.is_err());
+    }
+}
+
+#[cfg(test)]
+mod hint_tests {
+    use super::implicit_hints;
+
+    #[test]
+    fn the_ubl_invoice_and_credit_note_namespaces_name_the_schemas_that_ship_with_the_app() {
+        let invoice = implicit_hints("urn:oasis:names:specification:ubl:schema:xsd:Invoice-2");
+        assert_eq!(invoice[0].location, "bundled:/ubl/maindoc/UBL-Invoice-2.1.xsd");
+        assert_eq!(
+            implicit_hints("urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2")[0].location,
+            "bundled:/ubl/maindoc/UBL-CreditNote-2.1.xsd"
+        );
+        assert_eq!(implicit_hints("urn:other")[0].location, "", "any other namespace is looked up by its name only");
     }
 }
