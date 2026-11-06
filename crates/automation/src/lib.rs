@@ -28,6 +28,7 @@ mod openapi;
 mod pdf;
 mod sample;
 mod schema;
+mod schemastore;
 mod schematron;
 mod script;
 mod soap_proxy;

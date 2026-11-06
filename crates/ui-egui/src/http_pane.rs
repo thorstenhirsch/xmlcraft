@@ -41,8 +41,19 @@ pub(crate) struct Prepared {
 
 /// What a thread came to.
 pub(crate) enum Outcome {
-    Prepared { serial: u64, result: Result<Prepared, String> },
-    Sent { serial: u64, result: Result<Answer, String> },
+    /// SchemaStore's schemas for a file (the Assign Schema window).
+    Catalog {
+        serial: u64,
+        result: Result<Vec<crate::assign::StoreMatch>, String>,
+    },
+    Prepared {
+        serial: u64,
+        result: Result<Prepared, String>,
+    },
+    Sent {
+        serial: u64,
+        result: Result<Answer, String>,
+    },
 }
 
 /// What a thread is to do and hand back.
@@ -222,6 +233,10 @@ impl XmlCraftApp {
     /// Collect what the threads finished. Called every frame.
     pub(crate) fn pump_http(&mut self) {
         while let Ok(outcome) = self.http.rx.try_recv() {
+            if let Outcome::Catalog { serial, result } = outcome {
+                self.schemastore_answered(serial, result);
+                continue;
+            }
             let Some(pane) = self.open_pane() else { continue };
             match outcome {
                 Outcome::Prepared { serial, result } if pane.preparing == Some(serial) => {
