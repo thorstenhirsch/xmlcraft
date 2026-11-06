@@ -792,6 +792,7 @@ impl XmlCraftApp {
 
     fn close_index(&mut self, index: usize) {
         if let Some(closed) = self.session.close(index) {
+            self.recovery_forget(closed.id());
             self.views.remove(&closed.id());
         }
     }
@@ -1031,6 +1032,7 @@ impl XmlCraftApp {
             return;
         }
         self.quit_confirmed = true;
+        self.recovery_finish();
         self.release_control_file();
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }

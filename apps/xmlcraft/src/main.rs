@@ -192,6 +192,8 @@ fn app_creator<'a>(started: Rc<Cell<bool>>, control: Option<PathBuf>, files: Vec
         // The one place the app is given the web: schemas and DTDs that documents name are downloaded and kept (XML ▸ Work Offline).
         let mut app = XmlCraftApp::with_network(cc, Network::standard());
         app.open_paths(files.iter().map(Path::new));
+        // Unsaved text is kept next to the app's other stored state, and what a session that crashed left there is offered.
+        app.set_recovery_dir(eframe::storage_dir(APP_NAME).map(|d| d.join("recovery")));
         if let Some(file) = &control {
             open_control_channel(&mut app, &cc.egui_ctx, file)?;
             app.set_control_file(file.clone());
