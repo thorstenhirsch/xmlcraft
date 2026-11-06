@@ -10,12 +10,14 @@
 //! - Never panics and bounds its work: nesting, the number of evaluations, the size of a pattern and the number of violations are capped,
 //!   and a result that was cut off says so.
 
+mod assist;
 mod draft;
 mod number;
 mod schema;
 mod uri;
 mod validate;
 
+pub use assist::{Docs, MAX_NODES, MAX_PROPERTIES, MAX_VALUES as MAX_HINTS, PropertyHint, ValueHint};
 pub use draft::Draft;
 pub use schema::{Loader, MAX_DOCUMENTS, NoLoader, SchemaProblem, SchemaSet};
 pub use validate::{MAX_VIOLATIONS, Outcome, Violation};
