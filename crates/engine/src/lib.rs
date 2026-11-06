@@ -30,6 +30,7 @@ pub mod schemastore;
 pub mod schematron;
 pub mod selfcheck;
 pub mod soap;
+mod tag_context;
 pub mod templates;
 pub mod validation;
 mod worker;
@@ -37,6 +38,7 @@ pub mod xbrl;
 pub mod xpath;
 pub mod xsd_schemas;
 pub mod xslt;
+pub mod xslt_complete;
 mod yaml_analysis;
 mod yaml_assist;
 

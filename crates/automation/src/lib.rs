@@ -39,6 +39,7 @@ mod wsdl;
 mod xbrl;
 mod xpath;
 mod xslt;
+mod xslt_complete;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod control;
