@@ -443,11 +443,11 @@ title = "Crash recovery of unsaved work"
 area = "A"
 tier = "P1"
 milestone = "M1"
-status = "planned"
+status = "shipped"
 commands = []
 tools = []
-evidence = []
-notes = ""
+evidence = ["crates/platform/src/recovery.rs::a_snapshot_is_written_and_read_back_whole_with_odd_names_and_every_kind_of_text", "crates/platform/src/recovery.rs::what_is_not_a_snapshot_or_is_damaged_is_not_listed_and_is_left_alone", "crates/platform/src/recovery.rs::a_session_removes_the_snapshots_it_took_and_no_one_elses_and_keys_cannot_leave_the_folder", "crates/ui-egui/tests/recovery.rs::unsaved_text_is_kept_while_it_is_unsaved_and_removed_when_it_is_saved_or_closed", "crates/ui-egui/tests/recovery.rs::what_an_earlier_session_left_is_offered_and_recovered_with_its_edits_unsaved", "crates/ui-egui/tests/recovery.rs::discarding_deletes_what_was_left_and_later_keeps_it"]
+notes = "The text of every document with unsaved changes is written, a few seconds after it last changed, to a folder next to the app's other stored state (a small file each: name, path and the text; written atomically on a thread; texts over 16 MB are not kept), removed when the document is saved or closed, and all of this session's removed when the app ends normally. What is left at the next start is what a session that did not end normally had unsaved: the window asks Recover, Later or Discard; Recover opens each as a document with its edits unsaved (a saved file is opened and the text typed over it, so undo goes back to the file; a document that was never saved comes back as a new one) and deletes the snapshots, Later keeps them. The documents' own files are never touched. Missing: the undo history and the caret are not kept, two instances running at once would offer each other's snapshots, and it is a UI feature with no headless tool."
 
 [[feature]]
 id = "editor.external-change"

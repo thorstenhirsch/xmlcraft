@@ -24,4 +24,5 @@ pub mod files;
 pub mod http;
 pub mod network;
 pub mod proxy;
+pub mod recovery;
 pub mod schema_files;

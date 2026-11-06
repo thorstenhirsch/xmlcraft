@@ -38,6 +38,7 @@ mod preferences;
 mod problems;
 mod proxy_dialog;
 mod quick_fix;
+mod recovery;
 mod side_panels;
 mod soap_dialog;
 mod status_pickers;
@@ -177,6 +178,8 @@ pub struct XmlCraftApp {
     schemas: Schemas,
     /// What the threads of the SOAP and OpenAPI windows answer on.
     http: http_pane::HttpWorker,
+    /// Autosave recovery: what is kept of unsaved documents, and what an earlier session left.
+    recovery: recovery::Recovery,
     /// Loads the XML Schema a document names, for Entry Helpers.
     xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas,
     /// Loads the JSON Schema a JSON or YAML document names, for completion and hover.
@@ -362,6 +365,7 @@ impl XmlCraftApp {
             validate_pending: None,
             schemas: Schemas::new(resolvers()),
             http: http_pane::HttpWorker::default(),
+            recovery: recovery::Recovery::default(),
             xsd_schemas: xmlcraft_engine::xsd_schemas::XsdSchemas::new(resolvers()),
             json_schemas: xmlcraft_engine::json_schemas::JsonSchemas::new(resolvers()),
             entry_mandatory: prefs.entry_mandatory,
@@ -480,12 +484,14 @@ impl eframe::App for XmlCraftApp {
         self.pump_xpath();
         self.pump_transform();
         self.pump_http();
+        self.recovery_tick(ctx);
         self.pump_schema_fetch();
         for command in self.viewport_commands.drain(..) {
             ctx.send_viewport_cmd(command);
         }
         if ctx.input(|i| i.viewport().close_requested()) {
             if self.quit_confirmed || !self.has_unsaved_changes() {
+                self.recovery_finish();
                 self.release_control_file();
             } else {
                 // Unsaved work: stop the close and ask, document by document.

@@ -40,6 +40,11 @@ pub(crate) enum Dialog {
     ConfirmRevert {
         id: u64,
     },
+    /// Documents with unsaved changes that an earlier session left (a crash, a power cut): recover them or throw them away.
+    Recover {
+        count: usize,
+        names: String,
+    },
     /// Asks for a line (and column) to go to; the answer is typed into the app's `goto_input`.
     GoToLine,
     /// Which DTD or schema to assign to the document (drawn by `assign.rs`).
@@ -83,6 +88,7 @@ fn icon_of(dialog: &Dialog) -> (&'static str, Tone) {
         Dialog::OverwriteChanged { .. } | Dialog::Unmappable { .. } | Dialog::Lossy { .. } => ("triangle-alert", Tone::Warn),
         Dialog::ConfirmRevert { .. } => ("undo-2", Tone::Warn),
         Dialog::GoToLine => ("text-cursor-input", Tone::Accent),
+        Dialog::Recover { .. } => ("file-check", Tone::Accent),
         Dialog::Reload { .. } => ("info", Tone::Accent),
         // Messages report a failure (a file that could not be saved or read).
         Dialog::Message { .. } => ("circle-x", Tone::Bad),
@@ -98,6 +104,7 @@ impl Dialog {
             Dialog::Unsaved { then, .. } => *then == AfterClose::Quit,
             Dialog::OverwriteChanged { then, .. } | Dialog::Unmappable { then, .. } | Dialog::Lossy { then, .. } => *then == Some(AfterClose::Quit),
             Dialog::Reload { .. }
+            | Dialog::Recover { .. }
             | Dialog::ConfirmRevert { .. }
             | Dialog::Message { .. }
             | Dialog::GoToLine
@@ -132,6 +139,7 @@ enum Choice {
     SaveAs,
     Reload,
     Keep,
+    Recover,
     Revert,
     Go,
     Ok,
@@ -188,6 +196,15 @@ impl XmlCraftApp {
                 title: fmt(tl!("{name} changed on disk"), &[("name", &self.document_name(*id))]),
                 text: tl!("Another program changed the file, and you have unsaved changes here. Reloading discards your changes.").to_owned(),
                 buttons: vec![(tl!("Keep my version"), Choice::Keep), (tl!("Reload"), Choice::Reload), (tl!("Cancel"), Choice::Cancel)],
+                input: false,
+            },
+            Dialog::Recover { count, names } => Describe {
+                title: tl!("Recover unsaved work?").to_owned(),
+                text: fmt(
+                    tl!("XmlCraft did not end normally last time, and {count} documents had unsaved changes: {names}. Recover opens them with those changes (nothing is saved until you save); Discard deletes what was kept."),
+                    &[("count", &count.to_string()), ("names", names)],
+                ),
+                buttons: vec![(tl!("Recover"), Choice::Recover), (tl!("Later"), Choice::Cancel), (tl!("Discard"), Choice::Discard)],
                 input: false,
             },
             Dialog::ConfirmRevert { id } => Describe {
@@ -348,6 +365,8 @@ impl XmlCraftApp {
             }
             (Dialog::Reload { id }, Choice::Reload) | (Dialog::ConfirmRevert { id }, Choice::Revert) => self.reload_document(id),
             (Dialog::Reload { id }, Choice::Keep) => self.keep_version(id),
+            (Dialog::Recover { .. }, Choice::Recover) => self.recover_found(),
+            (Dialog::Recover { .. }, Choice::Discard) => self.discard_found(),
             (Dialog::GoToLine, Choice::Go) => {
                 let input = std::mem::take(&mut self.goto_input);
                 if !self.go_to_line(&input) {
