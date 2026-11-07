@@ -31,3 +31,6 @@ craft-menu = { workspace = true }
 [build-dependencies]
 # Icon, manifest and VERSIONINFO for xmlcraft.exe; build.rs only uses it when targeting Windows.
 winresource = "0.1"
+
+[dev-dependencies]
+tempfile = "3"

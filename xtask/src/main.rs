@@ -51,7 +51,7 @@ const COMMANDS: &[(&str, &str, Command)] = &[
         "The credits of the About window from the history: `contributors [--write] [--no-github]` (contributors/contributors.json)",
         contributors::run,
     ),
-    ("parity", "Validate parity/xmlspy-features.toml against the registry, tools and tests; report progress (--json, --partial)", parity::run),
+    ("parity", "Validate parity/features.toml against the registry, tools and tests; report progress (--json, --partial)", parity::run),
 ];
 
 fn version_cmd(args: &[String]) -> anyhow::Result<()> {

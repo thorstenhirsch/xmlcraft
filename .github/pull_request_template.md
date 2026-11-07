@@ -45,8 +45,9 @@ keystroke is untrusted input (`AGENTS.md` §5).
 This is the part that cannot be undone after a merge, and the part a new contributor is
 least likely to know about. Please read `AGENTS.md` §1 and §2 before adding any asset or schema.
 
-- [ ] No asset from an Altova product (XMLSpy and friends), and no Altova icon, graphic,
-      catalog or sample file recreated, traced or imitated
+- [ ] No asset from a commercial XML editor product (the market leaders' desktop editors
+      and their companion tools), and no such icon, graphic, catalog or sample file
+      recreated, traced or imitated
 - [ ] No font files committed (the Latin UI fonts in `assets/fonts/` are the only ones)
 - [ ] No GPL/AGPL code copied in — libxml2/`xmllint`, Xerces, Saxon and the Rust XSD crates may
       only be used as black-box oracles
@@ -65,8 +66,8 @@ least likely to know about. Please read `AGENTS.md` §1 and §2 before adding an
 
 ## Parity and reach
 
-- [ ] `parity/xmlspy-features.toml` updated in this PR, with `notes` saying what is *still*
-      missing — `shipped` means "exists and tested", not "as good as XMLSpy"
+- [ ] `parity/features.toml` updated in this PR, with `notes` saying what is *still*
+      missing — `shipped` means "exists and tested", not "as good as the leading commercial XML editor"
 - [ ] Conformance numbers in `docs/target-app-parity.md` still true (xmlconf, xsdtests)
 - [ ] Reachable headlessly through an `automation` tool where that applies (`AGENTS.md` §3),
       so agents can drive it and not just the UI

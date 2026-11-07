@@ -3,7 +3,7 @@
 
 use egui::{Align, Align2, Color32, CornerRadius, Layout, Rect, Sense, Stroke, vec2};
 
-use crate::i18n::tl;
+use crate::i18n::{fmt, tl};
 use crate::kit::{self, PillKind};
 use crate::theme::{self, ThemePreference, Tokens};
 use crate::{XmlCraftApp, icons, widgets};
@@ -41,6 +41,15 @@ pub(crate) struct TabStripState {
     scrolled_to: Option<usize>,
     /// A tab being dragged: where it was, and where it would go now.
     drag: Option<(usize, usize)>,
+}
+
+/// What the tab context menu asks for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TabAction {
+    Close,
+    CloseOthers,
+    CloseRight,
+    CopyPath,
 }
 
 /// The widths of the tabs: their natural widths when they fit in `room` (with `gap` between them), else shrunk in proportion, but not
@@ -96,6 +105,7 @@ pub fn tab_strip(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                 let mut rects: Vec<Rect> = Vec::new();
                 let mut dragging: Option<usize> = None;
                 let mut dropped = false;
+                let mut tab_action: Option<(usize, TabAction)> = None;
                 let scroll = egui::ScrollArea::horizontal()
                     .id_salt("document-tabs")
                     .max_width(room)
@@ -123,6 +133,25 @@ pub fn tab_strip(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                                     response.scroll_to_me(Some(Align::Center));
                                     app.tab_strip.scrolled_to = Some(i);
                                 }
+                                let has_path = app.session.document(i).is_some_and(|d| d.path().is_some());
+                                response.clone().context_menu(|ui| {
+                                    if ui.button(tl!("Close")).clicked() {
+                                        tab_action = Some((i, TabAction::Close));
+                                        ui.close();
+                                    }
+                                    if ui.button(tl!("Close Others")).clicked() {
+                                        tab_action = Some((i, TabAction::CloseOthers));
+                                        ui.close();
+                                    }
+                                    if ui.button(tl!("Close Tabs to the Right")).clicked() {
+                                        tab_action = Some((i, TabAction::CloseRight));
+                                        ui.close();
+                                    }
+                                    if has_path && ui.button(tl!("Copy Path")).clicked() {
+                                        tab_action = Some((i, TabAction::CopyPath));
+                                        ui.close();
+                                    }
+                                });
                                 rects.push(response.rect);
                             }
                         });
@@ -153,6 +182,37 @@ pub fn tab_strip(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                 }
                 if let Some(i) = close {
                     app.request_close(i);
+                }
+                if let Some((i, action)) = tab_action {
+                    app.session.set_active(Some(i));
+                    match action {
+                        TabAction::Close => app.request_close(i),
+                        TabAction::CloseOthers => {
+                            let count = app.session.documents().len();
+                            let left = app.close_clean_indices((0..count).filter(|j| *j != i).collect());
+                            app.status = if left == 0 {
+                                tl!("Closed the other tabs").to_owned()
+                            } else {
+                                fmt(tl!("Left {n} other tabs open with unsaved changes"), &[("n", &left.to_string())])
+                            };
+                        }
+                        TabAction::CloseRight => {
+                            let count = app.session.documents().len();
+                            let left = app.close_clean_indices((i.saturating_add(1)..count).collect());
+                            app.status = if left == 0 {
+                                tl!("Closed the tabs to the right").to_owned()
+                            } else {
+                                fmt(tl!("Left {n} tabs open with unsaved changes"), &[("n", &left.to_string())])
+                            };
+                        }
+                        TabAction::CopyPath => {
+                            if let (Some(path), Some(ctx)) = (app.session.document(i).and_then(|d| d.path()), app.ctx.clone()) {
+                                let path = path.display().to_string();
+                                ctx.copy_text(path.clone());
+                                app.status = fmt(tl!("Copied {path}"), &[("path", &path)]);
+                            }
+                        }
+                    }
                 }
                 ui.add_space(4.0);
                 // New and Open sit next to the tabs, as in a browser.

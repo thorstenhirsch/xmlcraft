@@ -2,9 +2,9 @@
 
 # XmlCraft
 
-An open-source, clean-room XML editor in the spirit of Altova XMLSpy, written in Rust.
+An open-source, clean-room XML editor built to match the feature set of the leading commercial XML editors, written in Rust.
 
-> **Status: 0.1.0, the first release, is out** ([Releases](https://github.com/thorstenhirsch/xmlcraft/releases/tag/v0.1.0)). The editor, the XSD and DTD engines, validation and the schema and sample generators work and are tested. Downloads: macOS (universal `.dmg`), Windows (x64 and arm64, `.msi` or portable `.zip`), Linux (x86_64 and aarch64: AppImage, `.deb`, `.rpm`, `.tar.gz`) and the command line `xmlcraft-cli`; `SHA256SUMS.txt` lists every checksum. The macOS build is ad-hoc signed (macOS asks you to allow it in System Settings ▸ Privacy & Security) and the Windows builds are unsigned (SmartScreen: "More info" ▸ "Run anyway"); you can also build from source. What is done and what is not is kept honestly in [ROADMAP.md](ROADMAP.md), [docs/gaps.md](docs/gaps.md) and [docs/target-app-parity.md](docs/target-app-parity.md).
+> **Status: 0.2.1 is out** ([Releases](https://github.com/thorstenhirsch/xmlcraft/releases/latest)). The editor, the XSD and DTD engines, validation and the schema and sample generators work and are tested. Downloads: macOS (universal `.dmg`), Windows (x64 and arm64, `.msi` or portable `.zip`), Linux (x86_64 and aarch64: AppImage, `.deb`, `.rpm`, `.tar.gz`) and the command line `xmlcraft-cli`; `SHA256SUMS.txt` lists every checksum. The macOS build is ad-hoc signed (macOS asks you to allow it in System Settings ▸ Privacy & Security) and the Windows builds are unsigned (SmartScreen: "More info" ▸ "Run anyway"); you can also build from source. What is done and what is not is kept honestly in [ROADMAP.md](ROADMAP.md), [docs/gaps.md](docs/gaps.md) and [docs/target-app-parity.md](docs/target-app-parity.md).
 
 ## What it does today
 
@@ -55,7 +55,7 @@ cargo xtask help
 
 ## Clean-room
 
-XmlCraft is not affiliated with Altova GmbH. It is built from public specifications (W3C, OASIS, IETF) and black-box behaviour, never from Altova's software, files or assets. "XMLSpy" is a trademark of Altova GmbH.
+XmlCraft is not affiliated with any commercial XML editor vendor. It is built from public specifications (W3C, OASIS, IETF) and black-box behaviour, never from another product's software, files or assets. Product names are the trademarks of their respective owners.
 
 ## License
 

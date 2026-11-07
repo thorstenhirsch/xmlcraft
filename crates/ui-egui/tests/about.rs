@@ -21,7 +21,7 @@ fn the_about_window_says_what_the_app_is_and_who_made_it() {
     open(&mut h);
     assert!(h.query_by_label(&format!("Version {}", xmlcraft_ui_egui::VERSION)).is_some(), "the version of this build");
     assert!(h.query_by_label("MIT or Apache-2.0, at your option").is_some());
-    assert!(h.query_by_label_contains("Independent of Altova GmbH").is_some(), "the clean-room statement");
+    assert!(h.query_by_label_contains("not affiliated with any commercial XML editor vendor").is_some(), "the clean-room statement");
     assert!(h.query_by_label("CONTRIBUTORS").is_some());
     // The credits compiled into the binary name the person the project belongs to.
     assert!(h.query_all_by_label_contains("@thorstenhirsch").count() >= 1, "the owner is credited by their username");

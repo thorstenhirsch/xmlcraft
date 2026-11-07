@@ -6,7 +6,8 @@
 //!   files and carry none);
 //! - a licence is not on the allowlist (a separate, stricter one for bundled schemas, AGENTS.md §1.6), or a declared licence
 //!   file is missing;
-//! - a visual asset, schema or data file names Altova or XMLSpy as author, source or title (AGENTS.md §1.1);
+//! - a visual asset, schema or data file names a commercial XML editor vendor or product, or another proprietary source, as
+//!   author, source or title (AGENTS.md §1.1);
 //! - a `[[bundled]]` crate version is not the one in Cargo.lock;
 //! - `ATTRIBUTION.md` is out of date (`--write` regenerates it).
 
@@ -205,15 +206,15 @@ fn licence_ids(expr: &str) -> impl Iterator<Item = &str> {
     expr.split(|c: char| c.is_whitespace() || c == '(' || c == ')').filter(|t| !t.is_empty() && *t != "OR" && *t != "AND" && *t != "WITH")
 }
 
-/// Altova and its products (AGENTS.md §1.1).
-fn mentions_altova(s: &str) -> bool {
+/// A commercial or proprietary source: assets must be openly licensed or contributor-original (AGENTS.md §1.1).
+fn mentions_proprietary_source(s: &str) -> bool {
     let s = s.to_ascii_lowercase();
-    s.contains("altova") || s.contains("xmlspy")
+    ["proprietary", "commercial xml editor", "trial version", "evaluation version", "demo version"].iter().any(|m| s.contains(m))
 }
 
-/// Kinds that may never come from Altova: visual design, schemas, data, and UI translations (which must be clean-room, never taken
-/// from a product's string tables).
-fn altova_forbidden(kind: &str) -> bool {
+/// Kinds that may never come from a commercial or proprietary product: visual design, schemas, data, and UI translations (which
+/// must be clean-room, never taken from a product's string tables).
+fn proprietary_source_forbidden(kind: &str) -> bool {
     matches!(kind, "icon" | "image" | "font" | "logo" | "cursor" | "video" | "translation" | SCHEMA_KIND | "data" | "document")
 }
 
@@ -254,8 +255,10 @@ pub fn check(root: &Path, m: &Manifest, repo_files: &[String], lock: &BTreeSet<(
         if a.path.starts_with(SCHEMA_DIR) && is_asset_path(&a.path) && a.kind != SCHEMA_KIND {
             problems.push(format!("{}: files under {SCHEMA_DIR} must be kind = \"{SCHEMA_KIND}\" (AGENTS.md §1.6)", a.path));
         }
-        if altova_forbidden(&a.kind) && (mentions_altova(&a.author) || mentions_altova(&a.source) || mentions_altova(&a.title)) {
-            problems.push(format!("{}: {} from Altova is forbidden (AGENTS.md §1.1)", a.path, a.kind));
+        if proprietary_source_forbidden(&a.kind)
+            && (mentions_proprietary_source(&a.author) || mentions_proprietary_source(&a.source) || mentions_proprietary_source(&a.title))
+        {
+            problems.push(format!("{}: {} from a commercial or proprietary source is forbidden (AGENTS.md §1.1)", a.path, a.kind));
         }
         let catalog = a.is_translation_catalog();
         match (std::fs::read(root.join(&a.path)), &a.sha256) {
@@ -280,8 +283,10 @@ pub fn check(root: &Path, m: &Manifest, repo_files: &[String], lock: &BTreeSet<(
         if !lock.contains(&(b.krate.clone(), b.version.clone())) {
             problems.push(format!("{what}: crate version not in Cargo.lock (dependency changed: re-audit its bundled assets)"));
         }
-        if altova_forbidden(&b.kind) && (mentions_altova(&b.author) || mentions_altova(&b.source) || mentions_altova(&b.title)) {
-            problems.push(format!("{what}: {} from Altova is forbidden (AGENTS.md §1.1)", b.kind));
+        if proprietary_source_forbidden(&b.kind)
+            && (mentions_proprietary_source(&b.author) || mentions_proprietary_source(&b.source) || mentions_proprietary_source(&b.title))
+        {
+            problems.push(format!("{what}: {} from a commercial or proprietary source is forbidden (AGENTS.md §1.1)", b.kind));
         }
         if b.sha256.len() != 64 {
             problems.push(format!("{what}: sha256 must be 64 hex digits"));
@@ -419,21 +424,27 @@ mod tests {
     }
 
     #[test]
-    fn altova_material_is_rejected_whatever_its_licence() {
-        for (kind, author) in [("icon", "Altova GmbH"), ("image", "XMLSpy team"), ("font", "altova"), ("schema", "Altova GmbH"), ("data", "Altova")] {
+    fn proprietary_material_is_rejected_whatever_its_licence() {
+        for (kind, author) in [
+            ("icon", "Proprietary Vendor GmbH"),
+            ("image", "Commercial XML Editor team"),
+            ("font", "proprietary"),
+            ("schema", "Proprietary Vendor GmbH"),
+            ("data", "Proprietary"),
+        ] {
             let p = check_assets(vec![asset("assets/icons/x.svg", author, kind, "MIT")]);
-            assert!(p.iter().any(|p| p.contains("from Altova is forbidden")), "{kind}: {p:?}");
+            assert!(p.iter().any(|p| p.contains("from a commercial or proprietary source is forbidden")), "{kind}: {p:?}");
         }
         // The source and the title count too.
         let mut a = asset("assets/icons/x.svg", "someone", "icon", "MIT");
-        a.source = "https://www.altova.com/x".into();
-        assert!(check_assets(vec![a]).iter().any(|p| p.contains("from Altova is forbidden")));
+        a.source = "https://example.com/proprietary/x".into();
+        assert!(check_assets(vec![a]).iter().any(|p| p.contains("from a commercial or proprietary source is forbidden")));
         let mut a = asset("assets/icons/x.svg", "someone", "icon", "MIT");
-        a.title = "XMLSpy toolbar icon".into();
-        assert!(check_assets(vec![a]).iter().any(|p| p.contains("from Altova is forbidden")));
+        a.title = "Commercial XML editor toolbar icon".into();
+        assert!(check_assets(vec![a]).iter().any(|p| p.contains("from a commercial or proprietary source is forbidden")));
         // A bundled asset is held to the same rule.
-        let m = Manifest { bundled: vec![bundled("c", "x.ttf", "Altova", "font", "OFL-1.1")], ..Default::default() };
-        assert!(check(&root(), &m, &[], &lock(&[("c", "1.0.0")])).iter().any(|p| p.contains("from Altova is forbidden")));
+        let m = Manifest { bundled: vec![bundled("c", "x.ttf", "Proprietary Vendor", "font", "OFL-1.1")], ..Default::default() };
+        assert!(check(&root(), &m, &[], &lock(&[("c", "1.0.0")])).iter().any(|p| p.contains("from a commercial or proprietary source is forbidden")));
     }
 
     #[test]

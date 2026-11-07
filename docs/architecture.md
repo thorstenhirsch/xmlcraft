@@ -1,6 +1,6 @@
 # XmlCraft architecture
 
-> **Last reviewed:** 2026-11-05 · **Last updated:** 2026-11-05 · **Change:** the layers as built, and the crates planned for the formats beyond XML (2026-11-05); first written as the planned layout · **Target:** Altova XMLSpy (public documentation)
+> **Last reviewed:** 2026-11-05 · **Last updated:** 2026-11-05 · **Change:** the layers as built, and the crates planned for the formats beyond XML (2026-11-05); first written as the planned layout · **Target:** the leading commercial XML editors (public documentation)
 
 This file describes the layered workspace. Until a crate's milestone lands, the row below is the plan, not the code; each crate gets a `README.md` when it is created.
 

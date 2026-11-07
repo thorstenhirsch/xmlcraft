@@ -14,14 +14,14 @@ An **asset** is any non-code material that the project includes, ships, embeds, 
 - sample, demo and test documents that are committed or published;
 - anything the app renders from those.
 
-### 1.1 Nothing from Altova products
+### 1.1 Nothing from commercial XML editor products
 
-- **Never** use icons, images, artwork, logos, UI graphics, fonts, templates, sample files, schema or catalog files, help text, screenshots or any other asset taken from an Altova product, installer, website, document or package.
-  - "Altova product" includes XMLSpy, MapForce, StyleVision, Authentic, RaptorXML, DiffDog, UModel, MissionKit and the Altova website and manuals.
-  - That covers files XMLSpy installs, such as its `RootCatalog.xml` and `CoreCatalog.xml`, its bundled copies of standard schemas, its templates and its example projects. Our catalogs are written from the OASIS XML Catalogs specification, and our copies of standard schemas come from their original publishers (§1.6).
-- **Never** recreate, trace, redraw or closely imitate an Altova icon or graphic. Our icons come from Lucide, and our visual design is our own.
-- Screenshots of Altova software exist only as private, local observation notes under `plan/xmlspy/`, which is gitignored. They must **never** be committed, published, linked, shown in docs, used as a design source to trace, or placed anywhere else in the repository or its outputs.
-- Altova's *public documentation* (the online manuals) may be read to learn what a feature does. Do not copy its wording, its screenshots or its example files.
+- **Never** use icons, images, artwork, logos, UI graphics, fonts, templates, sample files, schema or catalog files, help text, screenshots or any other asset taken from a commercial XML editor product, installer, website, document or package.
+  - "Commercial XML editor product" includes the desktop editors of the market leaders, their companion tools, and their vendor's website and manuals.
+  - That covers files such an editor installs, such as its XML catalogs, its bundled copies of standard schemas, its templates and its example projects. Our catalogs are written from the OASIS XML Catalogs specification, and our copies of standard schemas come from their original publishers (§1.6).
+- **Never** recreate, trace, redraw or closely imitate a commercial XML editor's icon or graphic. Our icons come from Lucide, and our visual design is our own.
+- Screenshots of commercial XML editors exist only as private, local observation notes under `plan/reference/`, which is gitignored. They must **never** be committed, published, linked, shown in docs, used as a design source to trace, or placed anywhere else in the repository or its outputs.
+- A vendor's *public documentation* (the online manuals) may be read to learn what a feature does. Do not copy its wording, its screenshots or its example files.
 
 ### 1.2 Only open, provable licences
 
@@ -58,7 +58,7 @@ Anything else is forbidden, including assets whose licence you cannot prove from
   - an entry's hash is missing or does not match (translation catalogs carry none);
   - a licence is not on the allowlist;
   - a licence file is missing;
-  - an icon, image, font, schema or data file names Altova or XMLSpy as author, source or title;
+  - an icon, image, font, schema or data file names a commercial XML editor vendor or product as author, source or title;
   - a bundled schema's licence is not on the closed schema allowlist (§1.6).
 
 ### 1.4 Fonts
@@ -69,7 +69,7 @@ Anything else is forbidden, including assets whose licence you cannot prove from
 ### 1.5 Procedure for adding or changing an asset
 
 1. Find an asset under an allowed licence from its **original source**: the author's repository or a release, not a random mirror. Record the exact version or commit.
-2. Confirm the authorship. It must not be Altova (§1.1). Keep the licence text.
+2. Confirm the authorship. It must not be a commercial XML editor vendor (§1.1). Keep the licence text.
 3. Add the file together with its licence file, plus an `ATTRIBUTION.toml` entry. Run `cargo xtask assets --write`, then `cargo xtask assets`.
 4. If an asset's origin or licence is unclear, **do not add it.** Ask the user.
 
@@ -90,10 +90,10 @@ XmlCraft ships a curated set of standard schemas (XSD, DTD, entity sets) under `
 
 ## 2. Clean-room rules
 
-- **Never** install XMLSpy or any other Altova product in order to read, disassemble, decompile, unpack or copy its files. Only names and listings are allowed.
-- Behaviour comes only from public specifications (W3C XML, XML Namespaces, XML Schema, XPath; OASIS XML Catalogs; IETF RFCs), Altova's *public* documentation, and black-box observation of the running product with synthetic fixtures.
+- **Never** install a commercial XML editor or any other proprietary XML tool in order to read, disassemble, decompile, unpack or copy its files. Only names and listings are allowed.
+- Behaviour comes only from public specifications (W3C XML, XML Namespaces, XML Schema, XPath; OASIS XML Catalogs; IETF RFCs), a vendor's *public* documentation, and black-box observation of the running product with synthetic fixtures.
 - **Never copy GPL/AGPL code.** libxml2 and `xmllint`, Xerces, Saxon and the Rust XSD/XML crates may be used **only as black-box oracles**: an external process, or a dev-dependency used by tests. Never read their source to learn how to implement something, and never port it.
-- Observe Altova software only with synthetic fixtures. Never capture personal data, account information, licence keys or recent files.
+- Observe commercial XML editors only with synthetic fixtures. Never capture personal data, account information, licence keys or recent files.
 - Never commit large third-party test suites. The W3C and OASIS conformance suites are fetched by `cargo xtask conformance`, pinned by commit and SHA-256, into the gitignored `conformance/` directory.
 
 ## 3. Agent control (automation and MCP)
@@ -102,7 +102,7 @@ XmlCraft ships a curated set of standard schemas (XSD, DTD, entity sets) under `
 - **The UI control channel is opt-in too.** It runs only when the app is launched with `--control <file>`. It binds to loopback, uses a fresh random token per launch, and writes it to an owner-only file. Never enable it by default, widen the bind address, or log the token.
 - **The MCP server is opt-in.** Never make the app, the CLI or an installer start it, register it with an agent, or listen on a port by default (the same holds for the debugging proxies of §4). It runs only when a user (or an agent the user configured) launches `xmlcraft-cli mcp`. Any future network transport must be off by default, bound to loopback and authenticated with a token.
 - **Safe by default.** Tools must never discard unsaved work silently, must write atomically, must honour `--root`, and must return errors an agent can act on (say what was wrong and what is allowed).
-- **Track parity honestly.** Every user-facing feature has an entry in `parity/xmlspy-features.toml`. Mark it `shipped` only when it works end to end and the entry cites a passing test (`evidence`); `cargo xtask parity` (part of `xtask ci`) rejects claims whose commands, tools or tests don't exist.
+- **Track parity honestly.** Every user-facing feature has an entry in `parity/features.toml`. Mark it `shipped` only when it works end to end and the entry cites a passing test (`evidence`); `cargo xtask parity` (part of `xtask ci`) rejects claims whose commands, tools or tests don't exist.
 - **Use it to test.** Agents should drive the engine through `xmlcraft-cli run --script` or the MCP tools to check their own changes. For UI changes, launch the app with `--control` and use `xmlcraft-cli ui` (`inspect`, `click`, `screenshot`) to check the real interface.
 
 ## 4. Network access

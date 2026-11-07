@@ -136,7 +136,7 @@ fn form_ui(ui: &mut egui::Ui, form: &mut AboutForm) -> bool {
     ui.add(
         egui::Label::new(
             egui::RichText::new(tl!(
-                "Independent of Altova GmbH. XMLSpy is a trademark of Altova GmbH, named only to say what kind of editor this is."
+                "Independent. XmlCraft is not affiliated with any commercial XML editor vendor. It is built from public specifications and black-box behaviour."
             ))
             .font(theme::regular(11.5))
             .color(t.text_faint),

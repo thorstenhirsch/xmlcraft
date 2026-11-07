@@ -1,7 +1,7 @@
 //! The tool table: every headless capability, by name, with its JSON Schema and handler.
 //!
 //! The same table drives `xmlcraft-cli run`, the MCP server and the control channel's headless calls, so an agent, a script and a
-//! person at the terminal see the same tools. A tool is listed only when it works; `parity/xmlspy-features.toml` names the tools a
+//! person at the terminal see the same tools. A tool is listed only when it works; `parity/features.toml` names the tools a
 //! feature is reachable through, and `cargo xtask parity` checks that they exist.
 
 use std::sync::OnceLock;

@@ -8,7 +8,7 @@
 
 **Tile:** `viewBox="0 0 512 512"`, a rounded square with `rx=112`. Windows and Linux icons use the full-bleed tile. macOS icons put it on Apple's grid (an 824 px body centred on a transparent 1024 px canvas). The shapes are flat polygons, strokes and gradients only (no filters), so the same file is drawn by the app (About, Home) and reads down to 16 px.
 
-**Provenance:** an original mark composed with AI assistance at the project owner's direction; no third-party artwork, nothing from any Altova product. Licence: [LICENSE.txt](LICENSE.txt) (`MIT OR Apache-2.0`, like the repo).
+**Provenance:** an original mark composed with AI assistance at the project owner's direction; no third-party artwork, nothing from any commercial XML editor product. Licence: [LICENSE.txt](LICENSE.txt) (`MIT OR Apache-2.0`, like the repo).
 
 ## Files
 

@@ -4,7 +4,7 @@
 //! table. A frontend implements *what* each id does. The registry says what it is called, where it appears, which key runs it,
 //! and when it is enabled, so that every surface agrees.
 //!
-//! A command is listed here only when it works: the table is never a wish list (`parity/xmlspy-features.toml` is).
+//! A command is listed here only when it works: the table is never a wish list (`parity/features.toml` is).
 
 use crate::Session;
 

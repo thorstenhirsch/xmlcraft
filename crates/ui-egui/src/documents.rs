@@ -800,6 +800,22 @@ impl XmlCraftApp {
         }
     }
 
+    /// Close the documents at `indices` that have no unsaved changes; those that do are left open. Returns how many were left.
+    pub(crate) fn close_clean_indices(&mut self, mut indices: Vec<usize>) -> usize {
+        indices.sort_unstable();
+        indices.dedup();
+        let mut left = 0;
+        // Closing from the right keeps the lower indices valid.
+        for index in indices.into_iter().rev() {
+            match self.session.document(index) {
+                Some(doc) if doc.is_dirty() => left += 1,
+                Some(_) => self.close_index(index),
+                None => {}
+            }
+        }
+        left
+    }
+
     // --- saving ----------------------------------------------------------------------------------------------------------------
 
     /// Save the document being shown.

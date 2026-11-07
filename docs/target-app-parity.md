@@ -1,17 +1,17 @@
-# XmlCraft parity with Altova XMLSpy
+# XmlCraft parity with the leading commercial XML editors
 
-> **Last reviewed:** 2026-11-06 · **Last updated:** 2026-11-06 · **Change:** M5.15, SchemaStore lookup (`catalog.schemastore` planned → partial), after M10.2, the tab strip (`view.tabs` partial → shipped), after M9.8, XBRL taxonomies (`xbrl.taxonomy` planned → partial), after M10.1, autosave recovery (`editor.autosave-recovery` planned → shipped) and M8.10, HTML5 editing (`html.editing` planned → partial); the headline is measured by `cargo xtask parity` after the scope of 2026-11-05 (XBRL, e-invoicing, PDF, SOAP, HTML5, OpenAPI, debuggers and profilers, YAML/BSON, conversions, three-way diff, Grid for all formats; duplicates folded): 188 counted features, 11 shipped, 114 partial, 36.7% weighted. What moved before it is in the revision history.
+> **Last reviewed:** 2026-11-07 · **Last updated:** 2026-11-07 · **Change:** M10.2 follow-up, the tab menu (`view.tabs`: close the tab, the others or those to its right, copy its path) and M1, the log file (`app.log-file` planned → shipped); the headline is measured by `cargo xtask parity` after the scope of 2026-11-05 (XBRL, e-invoicing, PDF, SOAP, HTML5, OpenAPI, debuggers and profilers, YAML/BSON, conversions, three-way diff, Grid for all formats; duplicates folded): 189 counted features, 13 shipped, 114 partial, 37.0% weighted. What moved before it is in the revision history.
 
-The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
+The authoritative assessment of how close XmlCraft is to the leading commercial XML editors. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
-**Scope.** Parity means the *desktop editing* feature set. Out of scope and tracked as `na` in `parity/xmlspy-features.toml` (8 entries, excluded from every percentage): the COM/ActiveX API, Visual Studio and Eclipse plug-ins, RaptorXML Server, the Altova AI add-on, database connectors, Authentic view, code generation and archive views. Since 2026-11-05 XBRL and the WSDL/SOAP client are in scope (M8, M9).
+**Scope.** Parity means the *desktop editing* feature set. Out of scope and tracked as `na` in `parity/features.toml` (8 entries, excluded from every percentage): the COM/ActiveX API, Visual Studio and Eclipse plug-ins, the vendor's server product, the vendor's AI add-on, database connectors, the vendor's forms-based editing view, code generation and archive views. Since 2026-11-05 XBRL and the WSDL/SOAP client are in scope (M8, M9).
 
 ## Headline
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **6.4%** shipped, 36.7% with partial counted half (12 shipped + 114 partial of 188 counted; 64 P0, 62 P1, 53 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-05) |
-| Must-have (P0) features | 7.8% shipped, 45.3% weighted (5 shipped + 48 partial of 64) | measured |
+| **Feature breadth**, unweighted | **6.9%** shipped, 37.0% with partial counted half (13 shipped + 114 partial of 189 counted; 64 P0, 62 P1, 54 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-07) |
+| Must-have (P0) features | 9.4% shipped, 46.1% weighted (6 shipped + 47 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **100%** (1017 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): a valid document has no well-formedness or validity error, an invalid one is well-formed and has at least one validity error (which one is not compared; 73 of the 227 are documents with no DOCTYPE, invalid because there is nothing to validate against) | measured (same run) |
 | W3C xsdtests (XSD 1.0) | **98.2%** (37,756 of 38,438 accepted tests: schemas 96.2%, instances 99.3%) | measured (`cargo xtask conformance xsdtests`, 2026-10-29) |
@@ -20,9 +20,9 @@ The authoritative assessment of how close XmlCraft is to XMLSpy. [ROADMAP.md](..
 
 ## How this is measured
 
-- **Feature breadth** is arithmetic over `parity/xmlspy-features.toml`: each feature has a tier (P0–P3), a status (`planned`, `partial`, `shipped`, `na`) and, for `shipped`, evidence that names a passing test. `cargo xtask parity` rejects claims whose commands, tools or tests do not exist.
+- **Feature breadth** is arithmetic over `parity/features.toml`: each feature has a tier (P0–P3), a status (`planned`, `partial`, `shipped`, `na`) and, for `shipped`, evidence that names a passing test. `cargo xtask parity` rejects claims whose commands, tools or tests do not exist.
 - **Conformance** is the pass rate of the W3C and OASIS suites, pinned by commit and fetched by `cargo xtask conformance`. The ratchet lists every known failure in `xtask/baselines/`; the pass-rate tables here are copied from the command's output whenever the baseline changes (the valid and invalid totals cannot be derived from the baseline, which lists failures only).
-- **"Shipped" means exists and tested**, not "as good as XMLSpy".
+- **"Shipped" means exists and tested**, not "as good as the leading commercial XML editor".
 
 ## W3C XML Schema Test Suite (xsdtests, 2007 release for XML Schema 1.0)
 
@@ -131,3 +131,5 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 - 2026-11-06: M10.2: `view.tabs` partial → shipped (tabs share the room, the strip scrolls and tabs are dragged to new places); 12 shipped and 110 partial of 188 counted features, 35.6% weighted.
 
 - 2026-11-06: M5.15: `catalog.schemastore` planned → partial (Assign Schema finds the schemas for a JSON or YAML file in SchemaStore's catalog, fetched when asked); 12 shipped and 111 partial of 188 counted features, 35.9% weighted.
+
+- 2026-11-07: the tab menu (`view.tabs`: close the tab, the others or those to its right, copy its path) and the log file (`app.log-file` shipped); 13 shipped and 114 partial of 189 counted features, 37.0% weighted.

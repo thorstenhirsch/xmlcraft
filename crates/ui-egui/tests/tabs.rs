@@ -65,3 +65,35 @@ fn a_tab_dragged_along_the_strip_goes_where_it_is_let_go() {
     h.run_steps(3);
     assert_eq!(order(&h), ["b.xml", "c.xml", "a.xml"]);
 }
+
+#[test]
+fn a_tab_menu_closes_the_others_but_leaves_unsaved_work_open() {
+    let mut h = shell();
+    open(&mut h, &["a.xml", "b.xml", "c.xml"]);
+    h.state_mut().session.set_active(Some(1));
+    h.state_mut().session.active_document_mut().expect("shown").editor_mut().type_text("x");
+    h.run_steps(2);
+    h.get_by_label_contains("a.xml").click_secondary();
+    h.run_steps(3);
+    h.get_by_label("Close Others").click();
+    h.run_steps(3);
+    assert_eq!(order(&h), ["a.xml", "b.xml"], "c.xml closed, b.xml still has unsaved changes");
+    assert_eq!(h.state().session.active_document().map(|d| d.name().to_owned()).as_deref(), Some("a.xml"));
+    assert!(h.state().status.contains("Left 1 other tabs open"), "{}", h.state().status);
+}
+
+#[test]
+fn a_tab_menu_closes_tabs_to_the_right_and_copies_the_path() {
+    let mut h = shell();
+    open(&mut h, &["a.xml", "b.xml", "c.xml"]);
+    h.get_by_label_contains("a.xml").click_secondary();
+    h.run_steps(3);
+    h.get_by_label("Close Tabs to the Right").click();
+    h.run_steps(3);
+    assert_eq!(order(&h), ["a.xml"]);
+    h.get_by_label_contains("a.xml").click_secondary();
+    h.run_steps(3);
+    h.get_by_label("Copy Path").click();
+    h.run_steps(2);
+    assert_eq!(h.state().status, "Copied /x/a.xml");
+}

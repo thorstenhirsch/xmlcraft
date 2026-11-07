@@ -38,6 +38,7 @@ Options:
 Environment:
   XMLCRAFT_RENDERER=wgpu|gl   Choose the renderer (default: wgpu, then OpenGL if wgpu cannot start)
   RUST_LOG=...                Log filter, e.g. `debug` or `warn,xmlcraft_syntax=trace`
+  XMLCRAFT_LOG_FILE=FILE      Write the log to FILE instead of the app's log folder (`xmlcraft.log`, started again past 5 MiB)
 
 Files named on the command line are opened, each in its own tab. Put `--` before a file whose name starts with a hyphen.";
 
@@ -75,8 +76,8 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Cli {
 }
 
 fn main() -> eframe::Result {
-    // First, so the panic hook and every start-up warning are recorded.
-    logging::install();
+    // First, so the panic hook and every start-up warning are recorded (next to the app's other stored state).
+    logging::install(eframe::storage_dir(APP_NAME).map(|dir| dir.join("logs")));
     // Last-resort guard (AGENTS.md §5): commands, edits, opens and saves catch panics and report them; this hook logs every
     // panic, caught or not, with a backtrace when RUST_BACKTRACE is set.
     std::panic::set_hook(Box::new(|info| {
