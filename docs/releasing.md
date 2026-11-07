@@ -50,4 +50,4 @@ The Finder window's artwork and icon positions come from committed files in `pac
 - 2026-10-29: the credits of the About window (`cargo xtask contributors --write`) are part of the version bump.
 - 2026-11-04: 0.1.0 released from `main` at f5f40ed (run 41894801791): 18 files and `SHA256SUMS.txt` in the draft, all checksums verified, published as v0.1.0. No signing secrets were set, so the Windows builds are unsigned and the macOS app is only ad-hoc signed (not notarised).
 - 2026-11-05: the macOS disk image has a window of its own (background, icon positions), and the app has a new logo (a fox between angle brackets).
-- 2026-11-07: 0.2.1: version bump and refreshed credits; the tab menu and the log file are in it. Pushed to `release` for the draft.
+- 2026-11-07: 0.2.1 released from `main` at 9f08722 (run 42323651053): 19 files and `SHA256SUMS.txt` in the release, published as v0.2.1. It carries generic clean-room wording, the tab menu and the log file. No signing secrets were set, so the Windows builds are unsigned and the macOS app is only ad-hoc signed.
