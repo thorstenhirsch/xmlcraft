@@ -2,8 +2,8 @@
 
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
-use xmlcraft_ui_egui::XmlCraftApp;
 use xmlcraft_ui_egui::theme::ThemePreference;
+use xmlcraft_ui_egui::{Panel, XmlCraftApp};
 
 fn shell() -> Harness<'static, XmlCraftApp> {
     let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).build_eframe(|cc| XmlCraftApp::new(cc));
@@ -64,38 +64,38 @@ fn the_theme_button_cycles_system_light_dark() {
 #[test]
 fn each_pane_closes_with_its_close_button() {
     let mut h = shell_with_document();
-    assert!(h.state().left_open && h.state().bottom_open && h.state().right.is_some());
+    assert!(h.state().panel_visible(Panel::Outline) && h.state().panel_visible(Panel::Problems) && h.state().panel_visible(Panel::EntryHelpers));
     // Three panes, three Close buttons; each click removes one.
     for expected in (1..=3).rev() {
         assert_eq!(h.query_all_by_label("Close").count(), expected);
         h.get_all_by_label("Close").next().expect("a Close button").click();
         h.run_steps(3);
     }
-    assert!(!h.state().left_open && !h.state().bottom_open && h.state().right.is_none());
+    assert!(!h.state().panel_visible(Panel::Outline) && !h.state().panel_visible(Panel::Problems) && !h.state().panel_visible(Panel::EntryHelpers));
     assert!(h.query_by_label("No DTD or schema").is_none());
 }
 
 #[test]
 fn the_rail_toggles_the_panes() {
     let mut h = shell_with_document();
-    h.state_mut().right = None;
+    h.state_mut().set_panel_visible(Panel::EntryHelpers, false);
     h.run_steps(3);
     assert!(h.query_by_label("No DTD or schema").is_none());
     // A rail button toggles the pane it is named after.
     h.get_by_label("Toggle Entry Helpers").click();
     h.run_steps(3);
-    assert!(h.state().right.is_some());
+    assert!(h.state().panel_visible(Panel::EntryHelpers));
     assert!(h.query_by_label("No DTD or schema").is_some());
     h.get_by_label("Toggle Entry Helpers").click();
     h.run_steps(3);
-    assert!(h.state().right.is_none(), "and again closes it");
+    assert!(!h.state().panel_visible(Panel::EntryHelpers), "and again closes it");
     h.get_by_label("Toggle Problems").click();
     h.run_steps(3);
-    assert!(!h.state().bottom_open);
-    let outline = h.state().left_open;
+    assert!(!h.state().panel_visible(Panel::Problems));
+    let outline = h.state().panel_visible(Panel::Outline);
     h.get_by_label("Toggle Outline").click();
     h.run_steps(3);
-    assert_eq!(h.state().left_open, !outline, "the Outline toggles too");
+    assert_eq!(h.state().panel_visible(Panel::Outline), !outline, "the Outline toggles too");
 }
 
 #[test]

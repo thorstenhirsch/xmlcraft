@@ -21,26 +21,31 @@ Label value="Ln 1, Col 2"
 Button "Toggle Outline" [toggled=true]
 Button "Toggle Entry Helpers" [toggled=true]
 Button "Toggle Problems" [toggled=true]
-Pane "Outline"
-Label value="Outline"
+Button "Collapse column to icons"
+Button "Move panel column"
 Button "Close" [toggled=false]
+Tab "Outline" [selected]
+Button "Move tab group"
+Button "Move tab group"
 TextInput "Filter elements" value=""
 Button "invoice"
-Splitter "Resize panels"
-Pane "Entry Helpers"
-Label value="Entry Helpers"
 Button "Close" [toggled=false]
+Tab "Entry Helpers" [selected]
+Button "Move tab group"
+Button "Move tab group"
 Label value="No DTD or schema"
 Label value="Add a DOCTYPE, or name a schema (Assign Schema… in the XML menu), to see what the document allows."
 Splitter "Resize panels"
-Pane "Problems"
-Label value="Problems"
-Button "Close" [toggled=false]
-Label value="No problems"
-Label value="The document is well-formed."
 Splitter "Resize panels"
 Button "Offline"
 Button "Well-formed"
 Button "No schema"
 Button "Select element invoice"
 TextInput "XML editor"
+Button "Close" [toggled=false]
+Tab "Problems" [selected]
+Button "Move tab group"
+Button "Move tab group"
+Label value="No problems"
+Label value="The document is well-formed."
+Splitter "Resize panels" [disabled]

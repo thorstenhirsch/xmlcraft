@@ -502,7 +502,7 @@ impl XmlCraftApp {
             self.validator.submit_as(id, version, doc.editor().buffer(), doc.path(), open, doc.language());
         }
         self.validate_pending = Some((id, version));
-        self.bottom_open = true;
+        self.set_panel_visible(crate::Panel::Problems, true);
         self.status = fmt(tl!("Validating {name}…"), &[("name", &name)]);
         self.report_validation();
     }
@@ -653,7 +653,7 @@ impl XmlCraftApp {
             self.analyzer.submit(id, version, doc.editor().buffer(), doc.language());
         }
         self.check_pending = Some((id, version));
-        self.bottom_open = true;
+        self.set_panel_visible(crate::Panel::Problems, true);
         self.report_check();
     }
 
