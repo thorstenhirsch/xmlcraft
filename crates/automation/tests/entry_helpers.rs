@@ -325,3 +325,22 @@ fn entry_helpers_offer_what_the_xhtml_dtd_that_ships_with_the_app_allows() {
     }
     assert!(!names.contains(&"span"), "a span is not allowed directly in the body of Strict: {names:?}");
 }
+
+#[test]
+fn idref_values_are_the_ids_the_document_has() {
+    let mut a = Automation::new();
+    let dtd = "<!DOCTYPE r [<!ELEMENT r (a*, b)><!ELEMENT a EMPTY><!ATTLIST a id ID #IMPLIED>\
+               <!ELEMENT b EMPTY><!ATTLIST b ref IDREF #IMPLIED refs IDREFS #IMPLIED>]>";
+    let text = format!(
+        "{dtd}<r><a id='one'/><a id='two'/><b />
+
+</r>"
+    );
+    let at = text.find(" />").map(|i| i + 1).expect("a place");
+    let result = call(&mut a, json!({ "text": text, "offset": at })).expect("runs");
+    let attrs = result["attributes"].as_array().expect("attributes");
+    let ref_ = attrs.iter().find(|t| t["name"] == "ref").expect("ref");
+    let refs = attrs.iter().find(|t| t["name"] == "refs").expect("refs");
+    assert_eq!(ref_["values"], json!(["one", "two"]), "{result}");
+    assert_eq!(refs["values"], json!(["one", "two"]), "{result}");
+}

@@ -11,7 +11,8 @@
 //!   and where to put the caret.
 //! - [`xsd_choices_at`] and [`xsd_element_snippet`] are the same for an XML Schema: the element at the position is typed by walking down
 //!   from the root (each child matched to a declaration by the content model of its parent, `xsi:type` honoured), the attributes are
-//!   those of its type (with the values an enumeration, a default or a fixed value gives), and so are the values its text may have.
+//!   those of its type (with the values an enumeration, a boolean, an IDREF/IDREFS or a default or fixed value gives), and so are the
+//!   values its text may have. An IDREF or IDREFS is offered the IDs the document has.
 //!   Names are written as the document writes them (the prefix a namespace has at the place, or the declaration it needs).
 
 mod choices;

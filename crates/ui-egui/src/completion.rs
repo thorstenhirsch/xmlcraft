@@ -147,7 +147,7 @@ fn narrowed(items: Vec<Item>, partial: &str) -> Vec<Item> {
 
 impl XmlCraftApp {
     /// The items for `kind` from what the grammar allows at the caret.
-    fn completion_items(&mut self, kind: &Kind, choices: Option<&Choices>) -> Vec<Item> {
+    fn completion_items(&mut self, kind: &Kind, choices: Option<&Choices>, partial: &str) -> Vec<Item> {
         match (kind, choices) {
             (Kind::Element, Some(choices)) => choices
                 .elements
@@ -188,13 +188,31 @@ impl XmlCraftApp {
                     }
                 })
                 .collect(),
-            (Kind::Value(name), Some(choices)) => choices
-                .attributes
-                .iter()
-                .filter(|a| &a.name == name)
-                .flat_map(|a| a.values.iter())
-                .map(|v| Item { label: v.clone(), detail: String::new(), text: v.clone(), caret: v.len() })
-                .collect(),
+            (Kind::Value(name), Some(choices)) => {
+                let Some(attribute) = choices.attributes.iter().find(|a| &a.name == name) else { return Vec::new() };
+                if !attribute.list {
+                    return attribute
+                        .values
+                        .iter()
+                        .map(|v| Item { label: v.clone(), detail: String::new(), text: v.clone(), caret: v.len() })
+                        .collect();
+                }
+                // A list (IDREFS): what is typed is one of its values, and a choice adds to the ones before it.
+                let token_start = partial
+                    .rfind(char::is_whitespace)
+                    .map_or(0, |i| i.saturating_add(partial.get(i..).and_then(|rest| rest.chars().next()).map_or(0, char::len_utf8)));
+                let before = partial.get(..token_start).unwrap_or_default();
+                let used: Vec<&str> = before.split_whitespace().collect();
+                attribute
+                    .values
+                    .iter()
+                    .filter(|v| !used.contains(&v.as_str()))
+                    .map(|v| {
+                        let text = format!("{before}{v}");
+                        Item { label: text.clone(), detail: String::new(), caret: text.len(), text }
+                    })
+                    .collect()
+            }
             (Kind::Entity, Some(choices)) => {
                 // Inside the start tag (an attribute value) the choices list none: the grammar's own entities are what a value may refer to.
                 let entities = match (choices.entities.is_empty(), self.active_grammar()) {
@@ -316,7 +334,7 @@ impl XmlCraftApp {
         };
         // An element goes where the `<` is (what is typed is not a tag yet); the rest is about the place of the caret.
         let choices = if ctx.kind == Kind::Element { self.helper_choices_at(ctx.start) } else { self.helper_choices() };
-        let mut items = narrowed(self.completion_items(&ctx.kind, choices.as_ref()), &ctx.partial);
+        let mut items = narrowed(self.completion_items(&ctx.kind, choices.as_ref(), &ctx.partial), &ctx.partial);
         if items.is_empty() {
             self.completion = None;
             return;

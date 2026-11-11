@@ -366,7 +366,7 @@ fn groups_of(choices: &Choices) -> Vec<Group> {
             entries: choices
                 .attributes
                 .iter()
-                .map(|AttributeChoice { name, mandatory, used, values, declare }| Entry {
+                .map(|AttributeChoice { name, mandatory, used, values, declare, .. }| Entry {
                     name: name.clone(),
                     detail: (!values.is_empty()).then(|| values.join(" | ")),
                     mandatory: *mandatory,
