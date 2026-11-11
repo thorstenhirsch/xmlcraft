@@ -146,6 +146,7 @@ impl XmlCraftApp {
                 }
             }
             "edit.go_to_matching_tag" => self.when_analysed(Then::GoToMatchingTag),
+            "xml.go_to_definition" => self.go_to_definition(),
             "edit.toggle_comment" => self.toggle_comment(),
             "edit.expand_selection" => {
                 if let Some(doc) = self.session.active_document_mut()

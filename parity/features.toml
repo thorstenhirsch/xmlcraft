@@ -950,11 +950,11 @@ title = "Go to definition for ref, type, base and substitution heads"
 area = "D"
 tier = "P1"
 milestone = "M3"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.go_to_definition"]
+tools = ["xsd_definition"]
+evidence = ["crates/engine/src/xsd_definition.rs::a_type_a_group_and_a_substitution_head_are_found", "crates/engine/src/xsd_definition.rs::a_definition_in_an_included_document_names_that_document_and_its_span", "crates/automation/tests/xsd_definition.rs::the_type_a_name_refers_to_is_found_by_offset_or_by_line_and_column", "crates/automation/tests/xsd_definition.rs::a_definition_in_an_included_document_names_that_file", "crates/automation/tests/xsd_definition.rs::a_definition_in_the_same_file_given_by_path_has_its_line_and_column_and_no_other_file", "crates/ui-egui/tests/definition.rs::f12_selects_the_type_the_name_refers_to", "crates/ui-egui/tests/definition.rs::f12_opens_the_included_document_the_definition_is_in", "crates/ui-egui/tests/definition.rs::f12_does_not_select_a_range_in_an_open_document_that_changed_after_it_was_asked"]
+notes = "F12 (`xml.go_to_definition`) and `xsd_definition` find the global type of a `type`, `base`, `itemType` or `memberTypes`, the global element of a `ref` or `substitutionGroup`, the group of a `group ref`, and the attribute or attribute group of a `ref`. The schema is read through the validation resolver on a worker thread, so definitions in included, imported and redefined documents (open ones as they are edited) are found; the app opens the document that holds one and selects the name, unless that open document changed since it was asked (then it says so). The tool always gives the line and column of the definition, and the file when it is another document. The definitions come from a private index of the schema documents' global declarations (the assembled schema's component origins do not carry the span of the name). Missing: the built-in XML Schema types (no document holds them), key, keyref and unique references, find references, and a definition in a bundled or downloaded document (it is named, not opened) (M3.17)."
 
 [[feature]]
 id = "xsd.version-1-1"

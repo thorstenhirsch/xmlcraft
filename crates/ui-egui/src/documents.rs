@@ -9,6 +9,7 @@ use xmlcraft_code_editor::{CodeEditor, ViewState};
 use xmlcraft_engine::analysis::{Analysis, Skipped};
 use xmlcraft_engine::doc_kind::{DocKind, doc_kind};
 use xmlcraft_engine::validation::{Validation, Verdict};
+use xmlcraft_engine::xsd_definition::{Answer, Definition};
 use xmlcraft_engine::{Document, SaveError};
 use xmlcraft_platform::files::{self, DiskChange};
 use xmlcraft_text::encoding::Encoding;
@@ -227,6 +228,9 @@ impl XmlCraftApp {
             if self.session.position_of(id).is_some() {
                 self.views.entry(id).or_insert_with(|| DocView::new(kind)).set_validation(validation);
             }
+        }
+        for (id, answer) in self.definition.poll() {
+            self.receive_definition(id, answer);
         }
         for (id, schema) in self.schemas.poll() {
             if let Some(view) = self.views.get_mut(&id) {
@@ -652,6 +656,79 @@ impl XmlCraftApp {
             doc.editor_mut().set_selection(range.start, range.end);
             self.focus_editor = true;
         }
+    }
+
+    /// Find the definition of the XML Schema name at the caret (F12), in the schema itself or in a document it includes or imports, on a
+    /// worker thread (the resolver may read files or download).
+    pub(crate) fn go_to_definition(&mut self) {
+        let Some(doc) = self.session.active_document() else { return };
+        if doc.language() != xmlcraft_engine::language::Language::Xml {
+            self.status = tl!("Go to Definition is for names in an XML Schema").to_owned();
+            return;
+        }
+        let (id, version, offset) = (doc.id(), doc.editor().version(), doc.editor().primary().head());
+        let open = self.open_documents();
+        // The versions of the open documents the answer will be about: a definition in one that changes meanwhile is not shown.
+        self.definition_versions =
+            self.session.documents().iter().filter_map(|d| d.path().map(|p| (p.to_string_lossy().into_owned(), d.editor().version()))).collect();
+        self.definition.find(id, version, doc.editor().buffer(), doc.path(), offset, open);
+        self.status = tl!("Finding the definition…").to_owned();
+    }
+
+    fn receive_definition(&mut self, id: u64, answer: Answer) {
+        let still_there = self
+            .session
+            .active_document()
+            .is_some_and(|doc| doc.id() == id && doc.editor().version() == answer.version && doc.editor().primary().head() == answer.offset);
+        if !still_there {
+            return;
+        }
+        if let Some(error) = answer.error {
+            self.status = error;
+            return;
+        }
+        match answer.definition {
+            Some(definition) => self.reveal_definition(id, &definition),
+            None => self.status = tl!("No definition here").to_owned(),
+        }
+    }
+
+    fn reveal_definition(&mut self, current: u64, definition: &Definition) {
+        let open = self.session.documents().iter().find(|doc| doc.path().is_some_and(|path| path.to_string_lossy() == definition.location));
+        let target = if definition.location.is_empty() {
+            Some(current)
+        } else if let Some(doc) = open {
+            // An open document is shown only as it was when the definition was looked for in it.
+            let asked = self.definition_versions.iter().find(|(path, _)| *path == definition.location).map(|(_, version)| *version);
+            if asked != Some(doc.editor().version()) {
+                self.status = tl!("The document changed meanwhile: press F12 again").to_owned();
+                return;
+            }
+            Some(doc.id())
+        } else if definition.location.starts_with("bundled:") || definition.location.contains("://") {
+            None
+        } else if self.open_path(Path::new(&definition.location)) {
+            self.session.active_document().map(Document::id)
+        } else {
+            None
+        };
+        let Some(target) = target else {
+            self.status = fmt(tl!("The definition is in {file}, which is not open"), &[("file", &definition.location)]);
+            return;
+        };
+        let Some(index) = self.session.position_of(target) else { return };
+        let Some(doc) = self.session.document_mut(index) else { return };
+        // The range must still hold the name (a file opened from disk may differ from the text that was read).
+        let local = definition.name.rsplit('}').next().unwrap_or(&definition.name);
+        let holds_name = doc.editor().buffer().slice(definition.start..definition.end).is_ok_and(|t| t == local);
+        if !holds_name {
+            self.status = tl!("The definition is no longer where it was found: press F12 again").to_owned();
+            return;
+        }
+        doc.editor_mut().set_selection(definition.start, definition.end);
+        let name = doc.name().to_owned();
+        self.focus_editor = true;
+        self.status = fmt(tl!("Went to the definition in {name}"), &[("name", &name)]);
     }
 
     /// Go to a position typed as `line` or `line:column` (both counted from 1).

@@ -38,6 +38,7 @@ pub mod validation;
 mod worker;
 pub mod xbrl;
 pub mod xpath;
+pub mod xsd_definition;
 pub mod xsd_schemas;
 pub mod xslt;
 pub mod xslt_complete;
