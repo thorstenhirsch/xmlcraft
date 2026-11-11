@@ -146,6 +146,11 @@ impl XmlCraftApp {
         self.dialog = Some(Dialog::Message { title: title.to_owned(), text });
     }
 
+    /// Something to read that is not a failure.
+    pub(crate) fn information(&mut self, title: &str, text: String) {
+        self.dialog = Some(Dialog::Information { title: title.to_owned(), text });
+    }
+
     fn id_of_active(&self) -> Option<u64> {
         self.session.active_document().map(Document::id)
     }

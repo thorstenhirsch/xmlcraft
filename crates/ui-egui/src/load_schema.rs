@@ -41,13 +41,49 @@ impl XmlCraftApp {
         self.generate_serial += 1;
         let serial = self.generate_serial;
         self.loading_schema = Some(serial);
+        self.resolution_serial = None;
         self.status = fmt(tl!("Loading {name}…"), &[("name", &link.label())]);
+        self.schema_fetcher.submit(FetchJob { serial, link, base, open: self.open_documents() });
+    }
+
+    /// Ask how the schema the document in front names is looked up, and show every place the resolver tries.
+    pub(crate) fn show_schema_resolution(&mut self) {
+        let Some(doc) = self.session.active_document() else { return };
+        let version = doc.editor().version();
+        let base = doc.path().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        let current = self.active_analysis().is_some_and(|a| a.version == version);
+        let Some(link) = self.active_schema_link() else {
+            self.status = tl!("This document names no schema.").to_owned();
+            return;
+        };
+        if !current {
+            self.status = tl!("The document is still being read. Try again in a moment.").to_owned();
+            return;
+        }
+        self.generate_serial += 1;
+        let serial = self.generate_serial;
+        self.resolution_serial = Some(serial);
+        self.loading_schema = None;
+        self.status = fmt(tl!("Resolving {name}…"), &[("name", &link.label())]);
         self.schema_fetcher.submit(FetchJob { serial, link, base, open: self.open_documents() });
     }
 
     /// Collect what the fetcher found and open it. Called every frame.
     pub(crate) fn pump_schema_fetch(&mut self) {
         for outcome in self.schema_fetcher.poll() {
+            if self.resolution_serial == Some(outcome.serial) {
+                self.resolution_serial = None;
+                let answer = match &outcome.result {
+                    Ok(found) => fmt(tl!("Found in {origin}: {location}"), &[("origin", tl!(found.origin_name())), ("location", &found.location)]),
+                    Err(message) => message.clone(),
+                };
+                let text = fmt(
+                    tl!("{link}\n\n{trail}\n\n{answer}"),
+                    &[("link", &outcome.link.label()), ("trail", &outcome.trail.to_string()), ("answer", &answer)],
+                );
+                self.information(tl!("Schema Resolution"), text);
+                continue;
+            }
             if self.loading_schema != Some(outcome.serial) {
                 continue; // asked for before the last request
             }

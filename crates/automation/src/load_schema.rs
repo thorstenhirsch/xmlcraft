@@ -34,7 +34,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
     }]
 }
 
-fn link_json(link: &SchemaLink) -> Value {
+pub(crate) fn link_json(link: &SchemaLink) -> Value {
     match link {
         SchemaLink::ExternalId { public, system } => json!({ "kind": "doctype", "public": public, "system": system }),
         SchemaLink::Uri { location, namespace } => json!({ "kind": "schema_location", "location": location, "namespace": namespace }),

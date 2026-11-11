@@ -54,7 +54,7 @@ impl XmlCraftApp {
         let enabled = commands::is_enabled(spec, &self.session);
         match spec.id {
             // Only an XML document can name a schema, and only one that does.
-            "xml.load_schema" => {
+            "xml.load_schema" | "xml.schema_resolution" => {
                 enabled && self.active_doc_kind() == Some(xmlcraft_engine::doc_kind::DocKind::Xml) && self.active_schema_link().is_some()
             }
             _ => enabled,
@@ -222,6 +222,7 @@ impl XmlCraftApp {
             "xml.generate_schema" => self.open_generate_schema(),
             "xml.generate_sample" => self.open_generate_sample(),
             "xml.load_schema" => self.load_schema(),
+            "xml.schema_resolution" => self.show_schema_resolution(),
             "edit.quick_fix" => self.quick_fix_at_caret(),
             "edit.complete" => self.complete_at_caret(),
             "edit.find_in_files" => self.open_find_files(),

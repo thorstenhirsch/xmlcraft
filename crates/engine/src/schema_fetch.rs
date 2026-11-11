@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use xmlcraft_resolve::{Budget, Origin, Request, file_path};
+use xmlcraft_resolve::{Budget, Origin, Request, Trail, file_path};
 use xmlcraft_text::Buffer;
 use xmlcraft_text::encoding::{decode, sniff};
 
@@ -51,31 +51,45 @@ impl Fetched {
 
 pub struct FetchOutcome {
     pub serial: u64,
+    /// The link that was looked up.
+    pub link: SchemaLink,
     pub result: Result<Fetched, String>,
+    /// Every place the resolver looked in, and what each said.
+    pub trail: Trail,
 }
 
 /// Look `link` up with `resolver`.
 pub fn fetch(resolver: &xmlcraft_resolve::Resolver, link: &SchemaLink, base: &str) -> Result<Fetched, String> {
+    fetch_traced(resolver, link, base).0
+}
+
+/// Look `link` up with `resolver`, and say every place it looked in.
+pub fn fetch_traced(resolver: &xmlcraft_resolve::Resolver, link: &SchemaLink, base: &str) -> (Result<Fetched, String>, Trail) {
     let request = match link {
         SchemaLink::ExternalId { public, system } => Request::external_id(public.as_deref(), system.as_deref(), base),
         SchemaLink::Uri { location, .. } => Request::uri(location, base),
     };
-    let resolved = resolver.resolve(&request, &mut Budget::default()).map_err(|failure| failure.message)?;
-    let decoded = decode(&resolved.bytes, &sniff(&resolved.bytes));
-    let path = if matches!(resolved.origin, Origin::File | Origin::Buffer) { file_path(&resolved.location) } else { None };
-    Ok(Fetched { location: resolved.location, path, text: decoded.text, lossy: decoded.lossy, origin: resolved.origin })
+    match resolver.resolve(&request, &mut Budget::default()) {
+        Ok(resolved) => {
+            let xmlcraft_resolve::Resolved { location, bytes, origin, trail } = resolved;
+            let decoded = decode(&bytes, &sniff(&bytes));
+            let path = if matches!(origin, Origin::File | Origin::Buffer) { file_path(&location) } else { None };
+            (Ok(Fetched { location, path, text: decoded.text, lossy: decoded.lossy, origin }), trail)
+        }
+        Err(failure) => (Err(failure.message), failure.trail),
+    }
 }
 
 fn run(resolvers: &ResolverFactory, job: FetchJob) -> FetchOutcome {
     let resolver = resolvers(Arc::new(OpenDocuments::new(job.open)));
-    let result = match crate::guard(|| fetch(&resolver, &job.link, &job.base)) {
+    let (result, trail) = match crate::guard(|| fetch_traced(&resolver, &job.link, &job.base)) {
         Ok(done) => done,
         Err(panic) => {
             log::error!("loading a schema failed: {panic}");
-            Err("loading the schema failed (a bug); nothing was changed".to_owned())
+            (Err("loading the schema failed (a bug); nothing was changed".to_owned()), Trail::default())
         }
     };
-    FetchOutcome { serial: job.serial, result }
+    FetchOutcome { serial: job.serial, link: job.link, result, trail }
 }
 
 /// Fetches named grammars on a worker thread.

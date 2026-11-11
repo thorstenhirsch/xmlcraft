@@ -183,3 +183,34 @@ fn a_schema_document_is_not_offered_load_schema_even_if_it_names_something() {
     open(&mut h, &file(dir.path(), "s.xsd", &text));
     assert!(!h.state_mut().execute("xml.load_schema"), "Load Schema is for XML documents");
 }
+
+#[test]
+fn schema_resolution_shows_the_places_it_looked_in_and_opens_nothing() {
+    let dir = tempfile::tempdir().expect("dir");
+    file(dir.path(), "n.xsd", SCHEMA);
+    let mut h = shell(&Arc::new(Web::default()));
+    open(&mut h, &file(dir.path(), "n.xml", &format!("<n {XSI} xsi:noNamespaceSchemaLocation=\"n.xsd\">1</n>")));
+    assert!(h.state_mut().execute("xml.schema_resolution"));
+    let started = Instant::now();
+    while h.query_by_label_contains("Found in a file").is_none() {
+        assert!(started.elapsed() < Duration::from_secs(10), "waiting for the trail");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(tab_names(&h), ["n.xml"], "the trail is shown, not opened");
+}
+
+#[test]
+fn schema_resolution_says_which_place_failed() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell(&Arc::new(Web::default()));
+    open(&mut h, &file(dir.path(), "n.xml", &format!("<n {XSI} xsi:noNamespaceSchemaLocation=\"missing.xsd\">1</n>")));
+    assert!(h.state_mut().execute("xml.schema_resolution"));
+    let started = Instant::now();
+    while h.query_by_label_contains("failed (").is_none() {
+        assert!(started.elapsed() < Duration::from_secs(10), "waiting for the trail");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(tab_names(&h), ["n.xml"]);
+}

@@ -31,6 +31,7 @@ mod lines;
 mod load_schema;
 mod openapi;
 mod pdf;
+mod resolution;
 mod sample;
 mod schema;
 mod schemastore;

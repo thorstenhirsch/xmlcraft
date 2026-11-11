@@ -81,6 +81,11 @@ pub(crate) enum Dialog {
         title: String,
         text: String,
     },
+    /// Something to read, not a failure: a resolution trail, for instance.
+    Information {
+        title: String,
+        text: String,
+    },
 }
 
 /// The icon of a question, and how serious it is.
@@ -94,6 +99,7 @@ fn icon_of(dialog: &Dialog) -> (&'static str, Tone) {
         Dialog::Reload { .. } => ("info", Tone::Accent),
         // Messages report a failure (a file that could not be saved or read).
         Dialog::Message { .. } => ("circle-x", Tone::Bad),
+        Dialog::Information { .. } => ("info", Tone::Accent),
         _ => ("info", Tone::Neutral),
     }
 }
@@ -109,6 +115,7 @@ impl Dialog {
             | Dialog::Recover { .. }
             | Dialog::ConfirmRevert { .. }
             | Dialog::Message { .. }
+            | Dialog::Information { .. }
             | Dialog::GoToLine
             | Dialog::AssignSchema(_)
             | Dialog::About(_)
@@ -222,7 +229,7 @@ impl XmlCraftApp {
                 buttons: vec![(tl!("Go"), Choice::Go), (tl!("Cancel"), Choice::Cancel)],
                 input: true,
             },
-            Dialog::Message { title, text } => {
+            Dialog::Message { title, text } | Dialog::Information { title, text } => {
                 Describe { title: title.clone(), text: text.clone(), buttons: vec![(tl!("OK"), Choice::Ok)], input: false }
             }
             // These are forms, drawn by `assign.rs`, `about.rs` and `generate.rs`; this is only here to be total.
