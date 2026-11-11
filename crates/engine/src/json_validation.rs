@@ -201,6 +201,14 @@ pub fn schema_reference(text: &str, language: Language) -> Option<String> {
     if text.len() > MAX_ANALYSED_BYTES || !(text.contains("$schema") || text.contains("openapi") || text.contains("swagger")) {
         return None;
     }
+    if language == Language::Bson {
+        // A BSON file's text is Extended JSON, read here only for the schema it names (its values are not validated).
+        let first = match xmlcraft_bson::layout_of_text(text) {
+            xmlcraft_bson::Layout::Lines => parse_lines(text, &Options::default()).into_iter().find_map(|(_, read)| read.root),
+            xmlcraft_bson::Layout::Single => parse(text, &Options::default()).root,
+        }?;
+        return member_reference(&first).map(|(_, reference)| reference).filter(|r| !r.is_empty());
+    }
     read(text, language)?.reference.map(|(_, reference)| reference).filter(|r| !r.is_empty())
 }
 
@@ -376,6 +384,12 @@ mod tests {
         assert_eq!(v.verdict, Verdict::NotWellFormed);
         assert_eq!(check("{}", Language::Bson).verdict, Verdict::Valid);
         assert_eq!(check("<a/>", Language::Xml).verdict, Verdict::Valid);
+        assert_eq!(schema_reference(r#"{"$schema": "s.json"}"#, Language::Bson).as_deref(), Some("s.json"));
+        assert_eq!(
+            schema_reference("{\"a\": 1}\n{\"$schema\": \"s.json\"}\n", Language::Bson).as_deref(),
+            None,
+            "the first document names it, as in JSON Lines"
+        );
     }
 
     #[test]

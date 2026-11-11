@@ -110,3 +110,27 @@ fn a_file_that_is_not_bson_is_not_opened_as_text() {
     assert!(h.state().tabs().iter().all(|t| t.name != "fake.bson"), "no tab for it");
     assert!(h.query_by_label_contains("this is not a BSON file").is_some(), "and the reason is shown");
 }
+
+#[test]
+fn the_json_schema_a_bson_document_names_completes_its_names() {
+    let dir = tempfile::tempdir().expect("dir");
+    let schema = r#"{"type": "object", "properties": {"name": {"type": "string"}, "kind": {"enum": ["alpha", "beta"]}}}"#;
+    std::fs::write(dir.path().join("s.json"), schema).expect("writes");
+    let path = dir.path().join("named.bson");
+    let docs = vec![Document { fields: vec![("$schema".into(), Bson::String("s.json".into()))] }];
+    std::fs::write(&path, write_all(&docs).expect("writes")).expect("writes");
+    let mut h = shell();
+    open(&mut h, &path);
+    let started = Instant::now();
+    while !h.state().has_data_schema() {
+        assert!(started.elapsed() < Duration::from_secs(10), "waiting for the schema");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let at = text(&h).find('{').map_or(1, |i| i + 1);
+    h.state_mut().session.active_document_mut().expect("a document").editor_mut().set_selection(at, at);
+    assert!(h.state_mut().execute("edit.complete"));
+    h.run_steps(3);
+    assert!(h.query_by_label("Complete name").is_some(), "the schema's names are offered in the Extended JSON text");
+    assert!(h.query_by_label("Complete kind").is_some());
+}

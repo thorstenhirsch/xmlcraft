@@ -354,13 +354,21 @@ fn matches_prefix(label: &str, partial: &str) -> Option<bool> {
 fn dialect_of(language: Language) -> Option<Dialect> {
     match language {
         Language::Json(flavor) => Some(flavor.dialect()),
+        // A BSON file's text is Extended JSON: one document, or one to a line.
+        Language::Bson => Some(Dialect::Json),
         _ => None,
     }
 }
 
+/// Whether the text holds one value to a line (JSON Lines, or a BSON dump of several documents).
+fn one_to_a_line(text: &str, language: Language) -> bool {
+    language == Language::Json(JsonFlavor::Lines)
+        || (language == Language::Bson && xmlcraft_bson::layout_of_text(text) == xmlcraft_bson::Layout::Lines)
+}
+
 /// The start of the text the caret's value is in: the beginning of its line for JSON Lines, else the beginning.
 fn scan_start(text: &str, offset: usize, language: Language) -> usize {
-    if language == Language::Json(JsonFlavor::Lines) { text.get(..offset).and_then(|t| t.rfind(['\n', '\r'])).map_or(0, |n| n + 1) } else { 0 }
+    if one_to_a_line(text, language) { text.get(..offset).and_then(|t| t.rfind(['\n', '\r'])).map_or(0, |n| n + 1) } else { 0 }
 }
 
 /// What may be written at `offset` of `text`, from the schema the document names; nothing when it names none, it cannot be read, or the
@@ -451,17 +459,18 @@ pub fn hover_with(set: &SchemaSet, text: &str, language: Language, offset: usize
     if text.len() > MAX_SCANNED_BYTES || !text.is_char_boundary(offset) {
         return None;
     }
-    let roots: Vec<Value> = match language {
-        Language::Json(JsonFlavor::Lines) => {
+    let roots: Vec<Value> = match (language, dialect_of(language)) {
+        // JSON Lines, and a BSON file of several documents: only the caret's line is read.
+        (_, Some(dialect)) if one_to_a_line(text, language) => {
             let line = scan_start(text, offset, language);
             let end = text.get(line..).and_then(|t| t.find(['\n', '\r'])).map_or(text.len(), |n| line + n);
-            let read = parse(text.get(line..end)?, &Options { dialect: Dialect::Json, ..Options::default() });
+            let read = parse(text.get(line..end)?, &Options { dialect, ..Options::default() });
             // (The values are placed from the start of the line: shift them to the text.)
             read.root.map(|v| shifted(v, line)).into_iter().collect()
         }
-        Language::Json(flavor) => parse(text, &Options { dialect: flavor.dialect(), ..Options::default() }).root.into_iter().collect(),
-        Language::Yaml => xmlcraft_yaml_syntax::parse(text, &xmlcraft_yaml_syntax::Options::default()).documents,
-        Language::Xml | Language::Bson | Language::Html => return None,
+        (_, Some(dialect)) => parse(text, &Options { dialect, ..Options::default() }).root.into_iter().collect(),
+        (Language::Yaml, None) => xmlcraft_yaml_syntax::parse(text, &xmlcraft_yaml_syntax::Options::default()).documents,
+        _ => return None,
     };
     let root = roots.iter().find(|r| r.span.start <= offset && offset <= r.span.end)?;
     let path = root.path_at(offset)?;
@@ -697,6 +706,18 @@ mod tests {
     }
 
     #[test]
+    fn bson_extended_json_is_completed_and_hovered_as_json_one_document_or_one_to_a_line() {
+        assert_eq!(labels(&offer(Language::Bson, "{\n  \"name\": \"x\",\n  |\n}"))[0], "kind");
+        assert_eq!(labels(&offer(Language::Bson, "{\"name\": \"x\"}\n{|}\n"))[0], "name");
+        let (text, offset) = at(r#"{"na|me": "x", "kind": "beta"}"#);
+        let h = hover_with(&schema(), &text, Language::Bson, offset).expect("hover");
+        assert_eq!((&text[h.range.clone()], h.text.lines().next()), ("\"name\"", Some("Name")));
+        let (text, offset) = at("{\"name\": \"x\"}\n{\"ki|nd\": \"beta\"}\n");
+        let h = hover_with(&schema(), &text, Language::Bson, offset).expect("the second document is read by its line");
+        assert_eq!(&text[h.range.clone()], "\"kind\"", "and placed in the whole text");
+    }
+
+    #[test]
     fn yaml_offers_names_and_values_by_indentation() {
         let items = offer(Language::Yaml, "name: x\nhome:\n  |\n");
         assert_eq!(labels(&items), ["city", "zip"]);
@@ -738,7 +759,7 @@ mod tests {
         ];
         let set = schema();
         for text in texts {
-            for language in [JSON, Language::Json(JsonFlavor::Json5), Language::Json(JsonFlavor::Lines), Language::Yaml] {
+            for language in [JSON, Language::Json(JsonFlavor::Json5), Language::Json(JsonFlavor::Lines), Language::Yaml, Language::Bson] {
                 for offset in 0..=text.len() + 1 {
                     let _ = complete_with(&set, text, language, offset);
                     let _ = hover_with(&set, text, language, offset);

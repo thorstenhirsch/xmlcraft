@@ -1,5 +1,6 @@
-//! `json_complete` and `json_hover`: what the JSON Schema a JSON, JSONC, JSON5, JSON Lines or YAML document names says may be written
-//! at a place (names and values) and what it says of the name or value there. The schema is found the way validation finds it (the
+//! `json_complete` and `json_hover`: what the JSON Schema a JSON, JSONC, JSON5, JSON Lines, YAML or BSON document names says may be written
+//! at a place (names and values) and what it says of the name or value there. A BSON file is read as the Extended JSON text it is
+//! shown as. The schema is found the way validation finds it (the
 //! `$schema` member, or the `# yaml-language-server: $schema=` modeline) and read through the same resolver, so a relative path is a
 //! file inside the root confinement.
 
@@ -32,9 +33,9 @@ pub(crate) fn tools() -> Vec<ToolDef> {
         ToolDef {
             name: "json_complete",
             title: "What the JSON Schema allows here",
-            description: "What may be written at a position of a JSON, JSONC, JSON5, JSON Lines or YAML document (an open document `id`, a file `path`, or `text` with `language`; the \
+            description: "What may be written at a position of a JSON, JSONC, JSON5, JSON Lines, YAML or BSON document (an open document `id`, a file `path`, or `text` with `language`; the \
                           position as `line` and `column` from 1, or a byte `offset`), from the JSON Schema the document names (a root `$schema` member, or in YAML the \
-                          `# yaml-language-server: $schema=` comment; a relative path is a file). At a name: the properties of the object the schema declares, those it requires first, \
+                          `# yaml-language-server: $schema=` comment; a relative path is a file; a BSON file is read as its Extended JSON text, the position in that text). At a name: the properties of the object the schema declares, those it requires first, \
                           without the names the object already has; at a value: the values of `enum` and `const`, `true`/`false` for a boolean, `null`, the default and the examples. \
                           Each item has the `label`, the `insert` text, the `cursor` in it, the part of the document it `replace`s (`start`, `end`, what has been typed of a name or \
                           value), a `kind` (property or value), a `detail` (types, or why a value is offered) and the schema's `documentation`. Works on a document that is being typed (an \
@@ -47,7 +48,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
         ToolDef {
             name: "json_hover",
             title: "What the JSON Schema says of a name or value",
-            description: "The words of the JSON Schema a JSON, JSONC, JSON5, JSON Lines or YAML document names about the name or value at a position (see json_complete for how the document, \
+            description: "The words of the JSON Schema a JSON, JSONC, JSON5, JSON Lines, YAML or BSON document names about the name or value at a position (see json_complete for how the document, \
                           the position and the schema are given): the title, the description, the types, the values of an enum, the default, and whether it is deprecated, with the \
                           `start` and `end` of the name or value they are about. Nothing is returned (`found` false) for a place the schema does not describe.",
             input_schema: json!({ "type": "object", "properties": properties(), "additionalProperties": false }),
@@ -65,9 +66,9 @@ fn place(a: &Automation, args: &Value) -> Result<(crate::documents::Source, Lang
         return fail("the text is too large to analyse");
     }
     let language = src.language;
-    if matches!(language, Language::Xml | Language::Bson) {
+    if matches!(language, Language::Xml | Language::Html) {
         return fail(
-            "this reads JSON, JSONC, JSON5, JSON Lines and YAML: give language json, jsonc, json5, jsonl or yaml for text, or a document with such a name",
+            "this reads JSON, JSONC, JSON5, JSON Lines, YAML and BSON: give language json, jsonc, json5, jsonl, yaml or bson for text, or a document with such a name",
         );
     }
     let buffer = Buffer::from_text(&src.text);
@@ -98,7 +99,9 @@ fn json_complete(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
 
 /// Whether the document names a schema (so that an empty list means that nothing may be written, not that there is no schema).
 fn named(text: &str, language: Language) -> bool {
+    // (A BSON file's Extended JSON is not validated, so it is asked only for the schema it names.)
     xmlcraft_engine::json_validation::names_a_schema(text, language)
+        || (language == Language::Bson && xmlcraft_engine::json_validation::schema_reference(text, language).is_some())
 }
 
 fn json_hover(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
