@@ -32,11 +32,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde_json::{Map, Value, json};
 use xmlcraft_automation::control::ControlClient;
+use xmlcraft_automation::file_access::Confinement;
 use xmlcraft_automation::{Automation, Content, Network};
 
 pub const USAGE: &str = "Usage:
-  xmlcraft-cli check FILE... [--root DIR] [--json]
-  xmlcraft-cli validate FILE... [--schema FILE] [--root DIR] [--json]
+  xmlcraft-cli check FILE|DIR... [--root DIR] [--json]
+  xmlcraft-cli validate FILE|DIR... [--schema FILE] [--root DIR] [--json]
   xmlcraft-cli infer FILE... [--dtd] [--layout russian-doll|salami-slice|venetian-blind] [--no-types] [--no-enumerations] [--bounded]
                        [--out DIR [--force]] [--root DIR]
   xmlcraft-cli sample SCHEMA [--element NAME] [--no-optional] [--repeat N] [--rotate] [--named] [--max-depth N] [--kind xsd|dtd]
@@ -530,11 +531,66 @@ fn schema_path(schema: &str, root: Option<&PathBuf>) -> Result<String, String> {
     absolute.to_str().map(str::to_owned).ok_or_else(|| format!("--schema {schema}: the path is not valid UTF-8"))
 }
 
-/// `check` and `validate`: every file through `xml_wellformed` or `xml_validate`. Exit 1 if any file has an error or cannot be read, or, for
+/// The most files one folder on the command line contributes.
+const MAX_FOLDER_FILES: usize = 1000;
+
+/// Whether a file name ends in an extension whose documents are XML: what a folder on the command line contributes. (The engine reads
+/// every name it does not know as XML, so its rule cannot pick the XML files of a folder: this list is the narrower one.)
+fn is_xml_file(name: &str) -> bool {
+    name.rsplit_once('.').is_some_and(|(_, extension)| {
+        matches!(extension.to_ascii_lowercase().as_str(), "xml" | "xsd" | "xsl" | "xslt" | "svg" | "xhtml" | "rng" | "sch" | "wsdl" | "dita")
+    })
+}
+
+/// The files to check: the arguments as given, with every folder replaced by the XML files under it (at most [`MAX_FOLDER_FILES`]), in the
+/// folder's tree order. Each argument is resolved through the root confinement before anything is walked, so a folder outside the root
+/// is never listed: it is passed on as it was typed, and the tool refuses it. Files under the root are named relative to it.
+fn expand_folders(files: &[String], root: Option<&Path>, err: &mut impl Write) -> Result<Vec<String>, String> {
+    let confinement = match root {
+        Some(root) => Confinement::new(root).map_err(|e| e.to_string())?,
+        None => Confinement::none(),
+    };
+    let mut out = Vec::new();
+    for file in files {
+        let folder = confinement.resolve_read(file).ok().filter(|path| path.is_dir());
+        let Some(folder) = folder else {
+            out.push(file.clone());
+            continue;
+        };
+        let walked = xmlcraft_platform::walk::files(&folder, &|name| is_xml_file(name), MAX_FOLDER_FILES);
+        if walked.truncated {
+            let _ = writeln!(err, "xmlcraft-cli: {file}: more than {MAX_FOLDER_FILES} files; the rest are not checked");
+        }
+        if walked.unreadable > 0 {
+            let _ = writeln!(err, "xmlcraft-cli: {file}: {} folder(s) could not be read", walked.unreadable);
+        }
+        for path in walked.files {
+            match confinement.root() {
+                // (The walker follows no links, so a file under a folder inside the root is inside it; a file that is not is left out.)
+                Some(root) => {
+                    if let Ok(relative) = path.strip_prefix(root) {
+                        out.push(relative.display().to_string());
+                    }
+                }
+                None => out.push(path.display().to_string()),
+            }
+        }
+    }
+    if out.is_empty() {
+        return Err("the folders on the command line hold no XML files".to_owned());
+    }
+    Ok(out)
+}
+
+/// `check` and `validate`: every file through `xml_wellformed` or `xml_validate`. A folder is checked file by file. Exit 1 if any file has an error or cannot be read, or, for
 /// `validate`, has no schema or DTD to be valid against, or a schema with errors.
 fn check(tool: &str, files: &[String], schema: Option<&str>, root: Option<PathBuf>, as_json: bool, out: &mut impl Write, err: &mut impl Write) -> u8 {
     let schema = match schema.map(|s| schema_path(s, root.as_ref())).transpose() {
         Ok(schema) => schema,
+        Err(e) => return fail(err, &e),
+    };
+    let files = match expand_folders(files, root.as_deref(), err) {
+        Ok(files) => files,
         Err(e) => return fail(err, &e),
     };
     let mut automation = match automation(root) {
@@ -542,7 +598,7 @@ fn check(tool: &str, files: &[String], schema: Option<&str>, root: Option<PathBu
         Err(e) => return fail(err, &e),
     };
     let (mut code, mut results) = (0u8, Vec::new());
-    for file in files {
+    for file in &files {
         let mut arguments = json!({ "path": file });
         if let (Some(schema), Some(map)) = (&schema, arguments.as_object_mut()) {
             map.insert("schema".into(), json!(schema));
@@ -1382,5 +1438,76 @@ mod tests {
         assert_eq!(code, 1);
         assert!(err.contains("not valid"), "{err}");
         assert_eq!(std::fs::read(&path).expect("reads"), original);
+    }
+}
+
+#[cfg(test)]
+mod folder_tests {
+    use super::*;
+
+    fn write(path: &std::path::Path, text: &str) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("folder");
+        }
+        std::fs::write(path, text).expect("file");
+    }
+
+    fn run(command: Command) -> (u8, String, String) {
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = execute(command, &mut out, &mut err);
+        (code, String::from_utf8(out).expect("utf-8"), String::from_utf8(err).expect("utf-8"))
+    }
+
+    #[test]
+    fn a_folder_is_checked_file_by_file_and_files_that_are_not_xml_are_left_out() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        write(&dir.path().join("a.xml"), "<a/>");
+        write(&dir.path().join("b.xsd"), "<b/>");
+        write(&dir.path().join("sub/c.xml"), "<c/>");
+        write(&dir.path().join("note.txt"), "not XML");
+        write(&dir.path().join("sub/notes.md"), "not XML either");
+        let folder = dir.path().to_str().expect("utf-8").to_owned();
+        let (code, out, err) = run(Command::Check { files: vec![folder], root: None, json: true });
+        assert_eq!(code, 0, "{err}");
+        let results: Value = serde_json::from_str(&out).expect("JSON");
+        let mut files: Vec<String> =
+            results.as_array().expect("array").iter().filter_map(|r| r["file"].as_str()).map(|f| f.replace('\\', "/")).collect();
+        files.sort();
+        assert_eq!(files.len(), 3, "{files:?}");
+        assert!(files[0].ends_with("/a.xml") && files[1].ends_with("/b.xsd") && files[2].ends_with("/sub/c.xml"), "{files:?}");
+    }
+
+    #[test]
+    fn a_folder_with_no_xml_files_is_refused() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        write(&dir.path().join("note.txt"), "not XML");
+        let folder = dir.path().to_str().expect("utf-8").to_owned();
+        let (code, _, err) = run(Command::Check { files: vec![folder], root: None, json: false });
+        assert_eq!(code, 1);
+        assert!(err.contains("hold no XML files"), "{err}");
+    }
+
+    #[test]
+    fn a_folder_under_the_root_is_named_relative_to_it() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        write(&dir.path().join("a.xml"), "<a/>");
+        let (code, out, err) = run(Command::Check { files: vec![".".into()], root: Some(dir.path().to_path_buf()), json: false });
+        assert_eq!(code, 0, "{err}");
+        assert_eq!(out.trim(), "a.xml: well-formed");
+    }
+
+    #[test]
+    fn a_folder_outside_the_root_is_not_walked_and_its_files_are_never_named() {
+        let parent = tempfile::tempdir().expect("temp dir");
+        let root = parent.path().join("root");
+        write(&root.join("in.xml"), "<in/>");
+        write(&parent.path().join("x/secret-name.xml"), "<s/>");
+        let outside = parent.path().join("x");
+        for typed in ["../x".to_owned(), outside.to_str().expect("utf-8").to_owned()] {
+            let (code, out, err) = run(Command::Check { files: vec![typed.clone()], root: Some(root.clone()), json: false });
+            assert_eq!(code, 1, "{typed}: refused: {out}{err}");
+            assert!(!out.contains("secret-name") && !err.contains("secret-name"), "{typed}: nothing under it is named: {out}{err}");
+        }
     }
 }
