@@ -183,9 +183,10 @@ pub struct XmlCraftApp {
     find_files_last: Option<Box<crate::find_files_dialog::FindFilesForm>>,
     /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
     generate_serial: u64,
-    /// Fetches the schema a document names (Load Schema), and the request being waited for.
+    /// Fetches the schema a document names (Load Schema, Schema Resolution), and the request being waited for.
     schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher,
     loading_schema: Option<u64>,
+    resolution_serial: Option<u64>,
     /// The completion being offered at the caret, if any (see `completion.rs`).
     completion: Option<completion::Completion>,
     /// Completion was asked for (Edit ▸ Complete), not set off by typing: the popup opens where nothing has been typed too.
@@ -396,6 +397,7 @@ impl XmlCraftApp {
             generate_serial: 0,
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
             loading_schema: None,
+            resolution_serial: None,
             completion: None,
             completion_explicit: false,
             editor_has_focus: false,

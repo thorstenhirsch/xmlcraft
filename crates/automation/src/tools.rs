@@ -87,6 +87,7 @@ pub fn tools() -> &'static [ToolDef] {
         table.extend(crate::definition::tools());
         table.extend(crate::sample::tools());
         table.extend(crate::load_schema::tools());
+        table.extend(crate::resolution::tools());
         table
     })
 }

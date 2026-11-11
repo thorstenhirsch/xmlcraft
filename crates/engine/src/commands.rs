@@ -259,6 +259,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("xml.soap_debugger", "SOAP Debugger…", XML, None, Needs::Nothing, "cloud"),
     c("xml.generate_schema", "Generate Schema…", XML, None, Needs::Document, "file-code").sep(),
     c("xml.load_schema", "Load Schema", XML, None, Needs::Document, "external-link"),
+    c("xml.schema_resolution", "Schema Resolution…", XML, None, Needs::Document, "search"),
     c("xml.generate_sample", "Generate Sample XML…", XML, None, Needs::Document, "sparkles"),
     c("view.palette", "Find tools and commands…", VIEW, Some(Shortcut::cmd("K")), Nothing, "search"),
     c("view.move_tab_left", "Move Tab Left", VIEW, Some(Shortcut::ctrl_shift("PageUp")), Needs::Document, "chevron-left"),
@@ -426,6 +427,7 @@ mod tests {
                 "xml.soap_debugger",
                 "xml.generate_schema",
                 "xml.load_schema",
+                "xml.schema_resolution",
                 "xml.generate_sample"
             ]
         );

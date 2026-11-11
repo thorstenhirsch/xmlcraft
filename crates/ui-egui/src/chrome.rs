@@ -421,11 +421,11 @@ fn schema_button(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool) {
     for anchor in anchors {
         egui::Popup::menu(&anchor).show(|ui| {
             ui.set_min_width(220.0);
-            for id in ["xml.generate_schema", "xml.load_schema"] {
+            for id in ["xml.generate_schema", "xml.load_schema", "xml.schema_resolution"] {
                 let Some(spec) = xmlcraft_engine::commands::command(id) else { continue };
                 let enabled = app.command_enabled(spec);
                 let mut item = ui.add_enabled(enabled, egui::Button::new(spec.label));
-                if id == "xml.load_schema" && !enabled {
+                if (id == "xml.load_schema" || id == "xml.schema_resolution") && !enabled {
                     item = item.on_disabled_hover_text(tl!("This document names no schema."));
                 }
                 if item.clicked() {

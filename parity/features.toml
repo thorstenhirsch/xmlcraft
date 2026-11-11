@@ -1421,11 +1421,11 @@ title = "Show how each schema was resolved"
 area = "G"
 tier = "P1"
 milestone = "M2"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = "`xmlcraft-resolve` (M2.3) records every place it looked in and what each said (`Trail`); nothing shows it yet."
+status = "partial"
+commands = ["xml.schema_resolution"]
+tools = ["schema_resolution"]
+evidence = ["crates/automation/tests/resolution.rs::a_bundled_schema_is_found_and_the_trail_says_which_place_had_it", "crates/automation/tests/resolution.rs::a_missing_schema_says_every_place_that_did_not_have_it", "crates/ui-egui/tests/schema_button.rs::schema_resolution_shows_the_places_it_looked_in_and_opens_nothing", "crates/ui-egui/tests/schema_button.rs::schema_resolution_says_which_place_failed"]
+notes = "`xmlcraft-resolve` (M2.3) records every place it looked in and what each said (`Trail`). Schema… ▸ Schema Resolution… (`xml.schema_resolution`) looks up the schema or DTD the document names on the fetcher's worker thread and shows the trail (the open documents, the user and bundled catalogs, the bundle, files, the cache and the network, each found, missed, skipped or failed with the reason) and where it was found, without opening it; `schema_resolution` returns the same steps. Looking it up reads it as validation would, so online it may download it into the cache. Missing: the documents a schema includes or imports, the external parts of a DTD, and the trail of a validation that has run (it is looked up again) (M2.14)."
 
 [[feature]]
 id = "catalog.schema-browser"

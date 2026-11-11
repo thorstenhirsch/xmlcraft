@@ -122,6 +122,7 @@ const TOOL_FILES: &[&str] = &[
     "crates/automation/src/einvoice.rs",
     "crates/automation/src/sample.rs",
     "crates/automation/src/load_schema.rs",
+    "crates/automation/src/resolution.rs",
 ];
 
 /// The names of every tool in the automation table.
