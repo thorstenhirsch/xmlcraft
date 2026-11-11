@@ -65,11 +65,11 @@ fn the_theme_button_cycles_system_light_dark() {
 fn each_pane_closes_with_its_close_button() {
     let mut h = shell_with_document();
     assert!(h.state().panel_visible(Panel::Outline) && h.state().panel_visible(Panel::Problems) && h.state().panel_visible(Panel::EntryHelpers));
-    // Three panes, three Close buttons; each click removes one.
-    for expected in (1..=3).rev() {
-        assert_eq!(h.query_all_by_label("Close").count(), expected);
-        h.get_all_by_label("Close").next().expect("a Close button").click();
+    // Three panes, three Close buttons, each named after its pane; each click removes one.
+    for label in ["Close Outline", "Close Entry Helpers", "Close Problems"] {
+        h.get_by_label(label).click();
         h.run_steps(3);
+        assert!(h.query_by_label(label).is_none(), "{label}");
     }
     assert!(!h.state().panel_visible(Panel::Outline) && !h.state().panel_visible(Panel::Problems) && !h.state().panel_visible(Panel::EntryHelpers));
     assert!(h.query_by_label("No DTD or schema").is_none());

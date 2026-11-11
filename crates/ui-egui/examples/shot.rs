@@ -3,9 +3,11 @@
 //! ```text
 //! cargo run -p xmlcraft-ui-egui --example shot -- out.png [--size 1440x900] [--scale 2] [--theme light|dark|system]
 //!     [--tabs a.xml,b.xml] [--active 0] [--width 1200] [--open FILE.xml [--find TEXT] [--goto LINE:COL] [--command ID]]
-//!     [--panes outline,entry_helpers,problems] [--right entry_helpers]
+//!     [--panes outline,entry_helpers,problems,search] [--right entry_helpers] [--search TEXT [--search-in DIR]]
 //! ```
 //! `--panes` shows exactly the panels named (the others are hidden), `--right` moves the panels named to a dock on the right edge.
+//! `--search TEXT` runs Find in Files for TEXT in the folder of the `--open` file (or the working directory) and waits for the hits.
+//! `--search-in DIR` searches DIR instead, as typed (`.` keeps the machine's paths out of the picture).
 //! `--width N` downscales the image to N pixels wide (README screenshots). `--tabs` shows sample document tabs (the engine's
 //! documents replace them with milestone M1.12). `--open` reads a real file from disk and opens it (use a synthetic one), and `--find`,
 //! which needs `--open`, opens the find bar with that text; `--goto`, also with `--open`, puts the caret at a line and column (from 1), and `--command`, also with `--open`, runs a registered command (`edit.fold_all`) once the file has been analysed. Only synthetic names and files are ever shown.
@@ -39,7 +41,8 @@ fn panels(list: &str) -> Result<Vec<Panel>, String> {
             "outline" => Ok(Panel::Outline),
             "entry_helpers" => Ok(Panel::EntryHelpers),
             "problems" => Ok(Panel::Problems),
-            other => Err(format!("unknown panel {other:?} (outline, entry_helpers, problems)")),
+            "search" => Ok(Panel::Search),
+            other => Err(format!("unknown panel {other:?} (outline, entry_helpers, problems, search)")),
         })
         .collect()
 }
@@ -58,6 +61,8 @@ fn main() -> Result<(), String> {
     let mut command: Option<String> = None;
     let mut panes: Option<Vec<Panel>> = None;
     let mut right: Vec<Panel> = Vec::new();
+    let mut search: Option<String> = None;
+    let mut search_in: Option<String> = None;
     while let Some(a) = args.next() {
         match a.strip_prefix("--") {
             Some("size") => {
@@ -70,6 +75,8 @@ fn main() -> Result<(), String> {
             Some("panes") => panes = Some(panels(&args.next().unwrap_or_default())?),
             Some("right") => right = panels(&args.next().ok_or("--right needs panels")?)?,
             Some("command") => command = Some(args.next().ok_or("--command needs a command id")?),
+            Some("search") => search = Some(args.next().ok_or("--search needs the text to look for")?),
+            Some("search-in") => search_in = Some(args.next().ok_or("--search-in needs a folder")?),
             Some("goto") => {
                 let v = args.next().unwrap_or_default();
                 let (line, column) = v.split_once(':').ok_or("--goto LINE:COL")?;
@@ -166,7 +173,7 @@ fn main() -> Result<(), String> {
         harness.run_steps(4);
     }
     if let Some(shown) = &panes {
-        for panel in [Panel::Outline, Panel::EntryHelpers, Panel::Problems] {
+        for panel in [Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search] {
             harness.state_mut().set_panel_visible(panel, shown.contains(&panel));
         }
     }
@@ -180,6 +187,37 @@ fn main() -> Result<(), String> {
         harness.state_mut().apply_layout(vec![action])?;
     }
     harness.run_steps(4);
+    if let Some(text) = &search {
+        use egui_kittest::kittest::Queryable;
+        if !harness.state_mut().execute("edit.find_in_files") {
+            return Err("Find in Files did not run".into());
+        }
+        harness.run_steps(3);
+        if let Some(folder) = &search_in {
+            // A folder as typed (`.`), so the picture shows no path of the machine it was made on.
+            harness.get_by_label("The folder to search").focus();
+            harness.run_steps(1);
+            harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+            harness.get_by_label("The folder to search").type_text(folder);
+            harness.run_steps(1);
+            harness.get_by_label("What to find").focus();
+        }
+        harness.get_by_label("What to find").type_text(text);
+        harness.run_steps(2);
+        harness.key_press(egui::Key::Enter);
+        // The search runs on another thread: wait for its summary (ten seconds at most).
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while harness.query_by_label_contains("files searched").is_none() {
+            if std::time::Instant::now() > deadline {
+                return Err("the search did not finish in ten seconds".into());
+            }
+            std::thread::sleep(Duration::from_millis(20));
+            harness.run_steps(1);
+        }
+        // The pointer is put away from the hits, and the keyboard taken from the field, so the picture has no hover or caret.
+        harness.hover_at(egui::pos2(1.0, 1.0));
+        harness.run_steps(2);
+    }
     std::thread::sleep(Duration::from_millis(250));
     harness.run_steps(4);
     let mut image = harness.render()?;

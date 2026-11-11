@@ -21,15 +21,13 @@ Label value="Ln 1, Col 2"
 Button "Toggle Outline" [toggled=true]
 Button "Toggle Entry Helpers" [toggled=true]
 Button "Toggle Problems" [toggled=true]
-Button "Collapse column to icons"
-Button "Move panel column"
-Button "Close" [toggled=false]
+Button "Close Outline" [toggled=false]
 Tab "Outline" [selected]
 Button "Move tab group"
 Button "Move tab group"
 TextInput "Filter elements" value=""
 Button "invoice"
-Button "Close" [toggled=false]
+Button "Close Entry Helpers" [toggled=false]
 Tab "Entry Helpers" [selected]
 Button "Move tab group"
 Button "Move tab group"
@@ -42,7 +40,7 @@ Button "Well-formed"
 Button "No schema"
 Button "Select element invoice"
 TextInput "XML editor"
-Button "Close" [toggled=false]
+Button "Close Problems" [toggled=false]
 Tab "Problems" [selected]
 Button "Move tab group"
 Button "Move tab group"

@@ -313,6 +313,11 @@ pub fn dialog<R>(
 /// Outlined controls at a shared height, with a focus stroke and 4-point corners. Dialog fills match the theme's field colour, so radio
 /// buttons, check boxes, combo boxes and number fields need the outline or they vanish into the card.
 fn begin_dialog(ui: &mut egui::Ui) {
+    outlined_controls(ui, PILL_HEIGHT, vec2(GAP, GAP - 2.0));
+}
+
+/// The outlined controls of [`begin_dialog`] at `height`, with `spacing` between items.
+fn outlined_controls(ui: &mut egui::Ui, height: f32, spacing: egui::Vec2) {
     let t = Tokens::get(ui.ctx());
     let w = &mut ui.visuals_mut().widgets;
     w.inactive.bg_stroke = Stroke::new(1.0, t.border);
@@ -324,8 +329,64 @@ fn begin_dialog(ui: &mut egui::Ui) {
         state.corner_radius = CornerRadius::same(6);
     }
     ui.visuals_mut().selection.stroke = Stroke::new(1.5, t.accent);
-    ui.spacing_mut().interact_size.y = PILL_HEIGHT;
-    ui.spacing_mut().item_spacing = vec2(GAP, GAP - 2.0);
+    ui.spacing_mut().interact_size.y = height;
+    ui.spacing_mut().item_spacing = spacing;
+}
+
+// --- tool windows ----------------------------------------------------------------------------------------------------------------
+
+/// The padding inside a tool window.
+pub const TOOL_PADDING: f32 = 10.0;
+/// The height of a tool window's fields and of the pill of its footer.
+pub const TOOL_CONTROL: f32 = 28.0;
+/// Narrower than this, a tool window's form puts its labels above the fields.
+pub const NARROW: f32 = 420.0;
+
+/// Whether a tool window is narrow (a side column): its form stacks, labels above the fields.
+pub fn narrow(ui: &egui::Ui) -> bool {
+    ui.available_width() < NARROW
+}
+
+/// The frame of a tool window (a dock panel that is not the editor), the non-modal sibling of [`dialog`]: the rest of the panel with
+/// [`TOOL_PADDING`] around it, compact outlined controls, and, when `scroll` is on, a vertical scroll area of its own. A footer
+/// ([`tool_footer`]) is drawn before it, on the panel's own `ui`.
+pub fn tool_body<R>(ui: &mut egui::Ui, scroll: bool, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let rect = ui.available_rect_before_wrap();
+    let inner = rect.shrink(TOOL_PADDING);
+    let out = ui
+        .scope_builder(egui::UiBuilder::new().max_rect(inner).layout(Layout::top_down(Align::Min)), |ui| {
+            outlined_controls(ui, TOOL_CONTROL, vec2(6.0, 6.0));
+            if scroll { egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, add).inner } else { add(ui) }
+        })
+        .inner;
+    // The whole panel is the tool's, whatever it drew.
+    ui.allocate_rect(rect, Sense::hover());
+    out
+}
+
+/// The footer of a tool window: a row across the bottom of the panel with a hairline above and the primary action at the right, a
+/// [`TOOL_CONTROL`]-high pill. `enabled` false greys it, and `why_not` (when not empty) says why on hover. Draw it first, on the
+/// panel's `ui`: it takes its row from the bottom, and [`tool_body`] fills what is left. True when the action was clicked.
+pub fn tool_footer(ui: &mut egui::Ui, primary: &str, primary_icon: Option<&str>, enabled: bool, why_not: &str) -> bool {
+    let t = Tokens::get(ui.ctx());
+    let margin = TOOL_PADDING as i8;
+    let frame = egui::Frame::NONE.inner_margin(egui::Margin { left: margin, right: margin, top: 0, bottom: 0 });
+    egui::Panel::bottom(ui.scope_id().with("tool-footer"))
+        .exact_size(TOOL_CONTROL + 2.0 * GAP)
+        .resizable(false)
+        .show_separator_line(false)
+        .frame(frame)
+        .show(ui, |ui| {
+            let full = ui.max_rect().expand2(vec2(TOOL_PADDING, 0.0));
+            ui.painter().hline(full.x_range(), full.top(), Stroke::new(1.0, t.divider));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let ok = ui.add_enabled_ui(enabled, |ui| pill_sized(ui, PillKind::Primary, primary_icon, primary, TOOL_CONTROL)).inner;
+                let ok = if !enabled && !why_not.is_empty() { ok.on_disabled_hover_text(why_not) } else { ok };
+                ok.clicked() && enabled
+            })
+            .inner
+        })
+        .inner
 }
 
 /// A form section: a small caps title and the rows under it, with the space above that separates sections.

@@ -67,6 +67,7 @@ impl XmlCraftApp {
             "view.grid" => Some(self.grid_shown()),
             "view.entry_helpers" => Some(self.panel_visible(Panel::EntryHelpers)),
             "view.messages" => Some(self.panel_visible(Panel::Problems)),
+            "view.search" => Some(self.panel_visible(Panel::Search)),
             "xml.validate_typing" => Some(self.validate_typing),
             "xml.work_offline" => Some(self.work_offline),
             "view.theme.system" => Some(self.theme_preference == ThemePreference::System),
@@ -224,7 +225,7 @@ impl XmlCraftApp {
             "xml.schema_resolution" => self.show_schema_resolution(),
             "edit.quick_fix" => self.quick_fix_at_caret(),
             "edit.complete" => self.complete_at_caret(),
-            "edit.find_in_files" => self.open_find_files(),
+            "edit.find_in_files" => self.open_search(),
             "app.preferences" => {
                 // Not over a question that is being asked: its answer would be lost.
                 if self.dialog.is_none() {
@@ -258,6 +259,7 @@ impl XmlCraftApp {
             }
             "view.entry_helpers" => self.set_panel_visible(Panel::EntryHelpers, !self.panel_visible(Panel::EntryHelpers)),
             "view.messages" => self.set_panel_visible(Panel::Problems, !self.panel_visible(Panel::Problems)),
+            "view.search" => self.set_panel_visible(Panel::Search, !self.panel_visible(Panel::Search)),
             "view.theme.system" => self.theme_preference = ThemePreference::System,
             "view.theme.light" => self.theme_preference = ThemePreference::Light,
             "view.theme.dark" => self.theme_preference = ThemePreference::Dark,
