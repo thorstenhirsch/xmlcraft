@@ -423,3 +423,33 @@ fn documents_of_the_namespaces_that_ship_with_the_app_are_validated_against_thos
         assert_eq!((found["validated"].clone(), found["valid"].clone()), (json!(true), json!(false)), "{namespace}: {found}");
     }
 }
+
+#[test]
+fn patterns_and_dates_of_a_schema_are_checked_through_the_tool() {
+    let dir = tempfile::tempdir().expect("dir");
+    let body = "<xs:element name=\"order\"><xs:complexType><xs:sequence>\
+                <xs:element name=\"code\"><xs:simpleType><xs:restriction base=\"xs:string\"><xs:pattern value=\"[A-Z]{2}\\d{3}\"/></xs:restriction></xs:simpleType></xs:element>\
+                <xs:element name=\"due\" type=\"xs:date\"/>\
+                </xs:sequence></xs:complexType></xs:element>";
+    write(dir.path(), "order.xsd", &schema_of(body));
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    for (code, due, valid) in
+        [("AB123", "2026-02-28", true), ("ab123", "2026-02-28", false), ("AB123", "2026-02-30", false), ("AB123", "2024-02-29", true)]
+    {
+        let doc = write(dir.path(), "o.xml", &format!("<order><code>{code}</code><due>{due}</due></order>"));
+        let result = call(&mut a, json!({ "path": doc, "schema": "order.xsd" })).expect("runs");
+        assert_eq!(result["valid"], json!(valid), "{code} {due}: {result}");
+    }
+}
+
+#[test]
+fn an_ambiguous_content_model_is_a_problem_of_the_schema() {
+    let dir = tempfile::tempdir().expect("dir");
+    let body = "<xs:element name=\"r\"><xs:complexType><xs:sequence><xs:element name=\"a\" minOccurs=\"0\"/><xs:element name=\"a\"/></xs:sequence></xs:complexType></xs:element>";
+    write(dir.path(), "r.xsd", &schema_of(body));
+    let doc = write(dir.path(), "r.xml", "<r><a/></r>");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    let result = call(&mut a, json!({ "path": doc, "schema": "r.xsd" })).expect("runs");
+    assert!(result["schema_errors"].as_u64().is_some_and(|n| n > 0), "{result}");
+    assert!(codes(&result).iter().any(|c| c.contains("unique-particle-attribution")), "{result}");
+}

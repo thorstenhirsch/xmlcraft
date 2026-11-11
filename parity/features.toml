@@ -375,7 +375,7 @@ status = "partial"
 commands = []
 tools = []
 evidence = ["crates/ui-egui/tests/completion.rs::after_an_open_bracket_the_elements_that_may_come_are_offered_and_enter_writes_one", "crates/ui-egui/tests/completion.rs::more_letters_narrow_the_list_and_escape_closes_it_without_writing", "crates/ui-egui/tests/completion.rs::attributes_values_and_entities_are_offered_too", "crates/ui-egui/tests/completion.rs::a_click_on_a_row_writes_it_as_one_undoable_step"]
-notes = "DTD-driven at M2, XSD-driven at M3. The choices (what the DTD or the XML Schema allows at a place, and the text to insert) exist as `xmlcraft-complete` and are shown in Entry Helpers (`view.entry-helpers`); Completion while typing (M1.10d, the popup in the editor): after `<` the elements the DTD or the schema allows there (written with what they require when the Entry Helpers option is on), after `&` its entities, and a few letters into an attribute name the attributes it has not got yet; the popup is under the caret, narrows as letters are typed, and a click, Enter or Tab writes the choice as one undoable step. Missing: a key to ask for it, type/ref/base values inside an XSD file, and wildcard and abstract-type names."
+notes = "DTD-driven at M2, XSD-driven at M3. The choices (what the DTD or the XML Schema allows at a place, and the text to insert) exist as `xmlcraft-complete` and are shown in Entry Helpers (`view.entry-helpers`); Completion while typing (M1.10d, the popup in the editor): after `<` the elements the DTD or the schema allows there (written with what they require when the Entry Helpers option is on), after `&` its entities, and a few letters into an attribute name the attributes it has not got yet; the popup is under the caret, narrows as letters are typed, Edit ▸ Complete (⌘I, Ctrl+I) asks for it, and a click, Enter or Tab writes the choice as one undoable step. Missing: type/ref/base values inside an XSD file, and wildcard and abstract-type names."
 
 [[feature]]
 id = "editor.completion-values"
@@ -632,7 +632,7 @@ status = "partial"
 commands = ["view.grid", "xml.rename_element"]
 tools = ["grid_rows", "grid_edit"]
 evidence = ["crates/grid/tests/grid.rs::json_rows_nest_and_show_members_items_and_values", "crates/grid/tests/grid.rs::a_json_value_is_replaced_in_place_with_the_right_literal_for_its_type", "crates/grid/tests/grid.rs::a_json_key_is_renamed_and_a_member_is_removed_with_its_comma", "crates/grid/tests/grid.rs::xml_values_are_replaced_in_place_and_escaped", "crates/grid/tests/grid.rs::yaml_rows_and_edits_write_plain_scalars_where_they_read_back_the_same_and_quote_the_rest", "crates/automation/tests/grid.rs::an_edit_changes_the_open_document_with_the_smallest_edit_and_one_undo_takes_it_back", "crates/ui-egui/tests/grid.rs::a_document_is_shown_as_rows_that_open_and_close", "crates/ui-egui/tests/grid.rs::a_value_is_edited_in_place_and_the_text_changes_by_that_value_only", "crates/ui-egui/tests/grid.rs::a_value_that_does_not_fit_its_type_is_refused_with_the_reason_and_the_text_is_left_alone", "crates/ui-egui/tests/grid.rs::a_row_is_removed_with_delete_and_a_name_is_changed_with_f2"]
-notes = "The nested-box and table displays of the leading commercial editor's grid view for every supported format (rows and columns for repeated elements or array items, sort, add/remove rows and columns, copy and paste as tab-separated text), editing through the same edits as the text view. The table display shows repeated items as rows for every format."
+notes = "View ▸ Grid shows a document of XML, JSON or YAML as a tree table of rows (name, type, value) in place of the text (`xmlcraft-grid`): rows open and close (Right, Left), a value is edited in place (Enter), a name renamed (F2) and a row removed (Delete), each as a minimal edit of the text and one undoable step; a value that does not fit its type is refused with the reason. Headless: `grid_rows` and `grid_edit`. Missing: the table display of repeated elements or array items as rows and columns, sorting, adding rows and columns, copy and paste as tab-separated text, BSON, and the nested-box display."
 
 [[feature]]
 id = "view.schema-design"
@@ -669,11 +669,11 @@ title = "Parse internal and external DTD subsets"
 area = "C"
 tier = "P0"
 milestone = "M2"
-status = "partial"
+status = "shipped"
 commands = []
-tools = ["xml_wellformed"]
-evidence = ["crates/dtd/tests/declarations.rs::the_external_subset_is_read_after_the_internal_one_and_the_internal_declarations_win", "crates/dtd/tests/declarations.rs::what_is_not_a_declaration_is_reported_and_reading_goes_on", "crates/dtd/tests/declarations.rs::spans_say_where_in_the_document_the_problem_is", "crates/engine/src/analysis.rs::the_declarations_of_the_internal_subset_are_read_and_their_mistakes_are_problems", "crates/dtd/src/doctype.rs::the_name_the_identifiers_and_the_subset_are_found"]
-notes = "The DOCTYPE and the declarations of its internal subset are read, and every syntax error is a problem with a code and a place (the editor's Messages and `xml_wellformed` show them); the external subset is read through a loader the caller gives (the xmlconf run gives it the suite's files: not-well-formed 64.7% -> 94.8% with valid and invalid still 100%). Missing: the app does not load external subsets yet (no resolver: M2.3), the declarations are not used for anything else (no validation, completion or Info), and entity references in content and attributes are not checked against them (M2.8)."
+tools = ["xml_wellformed", "xml_validate"]
+evidence = ["crates/dtd/tests/declarations.rs::the_external_subset_is_read_after_the_internal_one_and_the_internal_declarations_win", "crates/dtd/tests/declarations.rs::what_is_not_a_declaration_is_reported_and_reading_goes_on", "crates/dtd/tests/declarations.rs::spans_say_where_in_the_document_the_problem_is", "crates/engine/src/analysis.rs::the_declarations_of_the_internal_subset_are_read_and_their_mistakes_are_problems", "crates/dtd/src/doctype.rs::the_name_the_identifiers_and_the_subset_are_found", "crates/ui-egui/tests/validation.rs::the_external_subset_is_read_from_the_folder_of_the_document_and_its_problems_name_the_file"]
+notes = "The DOCTYPE and the declarations of its internal subset are read, and every syntax error is a problem with a code and a place (the editor's Messages and `xml_wellformed` show them); the external subset is read through the resolver in the app and in the tools (an XHTML page validates offline; xmlconf not-well-formed 64.7% -> 94.8%, valid and invalid still 100%). The declarations drive validation, Entry Helpers and completion, and entity references are checked against them. The app does not show the declarations in an Info window yet (view.info-window)."
 
 [[feature]]
 id = "dtd.parameter-entities"
@@ -693,11 +693,11 @@ title = "INCLUDE and IGNORE conditional sections"
 area = "C"
 tier = "P1"
 milestone = "M2"
-status = "partial"
+status = "shipped"
 commands = []
-tools = ["xml_wellformed"]
-evidence = ["crates/dtd/tests/declarations.rs::a_conditional_section_is_only_for_the_external_subset"]
-notes = "INCLUDE and IGNORE sections (nested ones, the keyword from a parameter entity, a section that is not closed, one in the internal subset) are read in the external subset and in external parameter entities. Not yet read by the app (external parts are not loaded there)."
+tools = ["xml_validate"]
+evidence = ["crates/dtd/tests/declarations.rs::a_conditional_section_is_only_for_the_external_subset", "crates/ui-egui/tests/validation.rs::f8_checks_a_page_against_the_xhtml_dtd_that_ships_with_the_app", "crates/automation/tests/validate.rs::an_xhtml_1_1_document_is_validated_offline_against_the_modular_dtd_that_ships_with_the_app"]
+notes = "INCLUDE and IGNORE sections (nested ones, the keyword from a parameter entity, a section that is not closed, one in the internal subset) are read in the external subset and in external parameter entities. The app and the tools read them through the resolver: the XHTML 1.1 and SVG 1.1 DTDs of the bundle depend on them and validate end to end."
 
 [[feature]]
 id = "dtd.content-models"
@@ -794,11 +794,11 @@ title = "Read XSD 1.0 schema documents"
 area = "D"
 tier = "P0"
 milestone = "M3"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "M3.3: `xmlcraft-xsd::read` reads one schema document into a model (types, groups, elements, attributes, identity constraints, notations, annotations, includes/imports/redefines) with the byte range of everything and the representation constraints reported (where elements and attributes may be, their values, which may not go together); the schemas that ship with the app read without a diagnostic. Missing: following includes and imports (M3.4), resolving names and checking the schema component constraints (M3.5, M3.6), compiling (M3.7) and a tool; the status stays planned until a user can reach it."
+tools = ["xml_validate"]
+evidence = ["crates/xsd/tests/reader.rs::simple_types", "crates/xsd/tests/reader.rs::complex_types", "crates/xsd/tests/reader.rs::includes_imports_and_redefinitions_come_first"]
+notes = "M3.3: `xmlcraft-xsd::read` reads one schema document into a model (types, groups, elements, attributes, identity constraints, notations, annotations, includes/imports/redefines) with the byte range of everything and the representation constraints reported (where elements and attributes may be, their values, which may not go together); the schemas that ship with the app read without a diagnostic. Includes and imports are followed (M3.4), names resolved and the components assembled and compiled (M3.5–M3.7). Reachable through `xml_validate`, `xmlcraft-cli validate` and F8. Missing: `xs:redefine` is loaded but not applied."
 
 [[feature]]
 id = "xsd.simple-types"
@@ -806,11 +806,11 @@ title = "Simple types: all 44 built-ins, facets, list and union"
 area = "D"
 tier = "P0"
 milestone = "M3"
-status = "planned"
+status = "shipped"
 commands = []
-tools = []
-evidence = []
-notes = "M3.2: `xmlcraft-datatypes` has the 45 built-in types (defined by facets, as the specification defines them), the twelve facets with the constraints a restriction must meet, list and union types, and `SimpleType::validate` (white space, patterns on the lexical form, lexical mapping, the facets of every derivation step, violations named by the validity constraint they break); tested per type, per facet and by property. Nothing a user can reach uses it until the XSD engine validates (M3.9), so the status stays planned."
+tools = ["xml_validate"]
+evidence = ["crates/datatypes/tests/lexical.rs::every_built_in_type_is_there_and_its_patterns_are_read", "crates/datatypes/tests/derive.rs::patterns_are_ored_in_a_step_and_anded_between_steps", "crates/validate/tests/xsd.rs::simple_values_are_checked_against_their_types", "crates/automation/tests/validate.rs::a_document_is_validated_against_a_schema_that_is_given", "crates/ui-egui/tests/validation.rs::f8_checks_a_document_against_the_schema_it_names", "crates/automation/tests/validate.rs::patterns_and_dates_of_a_schema_are_checked_through_the_tool"]
+notes = "M3.2: `xmlcraft-datatypes` has the built-in types (defined by facets, as the specification defines them), the twelve facets with the constraints a restriction must meet, list and union types, and `SimpleType::validate` (white space, patterns on the lexical form, lexical mapping, the facets of every derivation step, violations named by the validity constraint they break); tested per type, per facet and by property. Reachable through `xml_validate`, `xmlcraft-cli validate` and F8."
 
 [[feature]]
 id = "xsd.complex-types"
@@ -818,11 +818,11 @@ title = "Complex types: simple and complex content, extension and restriction"
 area = "D"
 tier = "P0"
 milestone = "M3"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "M3.5: `xmlcraft-xsd::assemble` builds complex types (direct content, simple content, complex content by extension and restriction, mixed, abstract, block and final) in any order of definition, with the attribute uses of a type derived from its base's; derivation cycles and `final` are reported. Not yet: a restriction is not checked against its base's content model (particle restriction), `xs:redefine` is not applied. Nothing a user can reach uses it yet (the validator is not wired into the app or a tool), so the status stays planned."
+tools = ["xml_validate"]
+evidence = ["crates/xsd/tests/components.rs::a_type_has_the_content_its_particles_describe", "crates/xsd/tests/components.rs::simple_content_extends_and_restricts", "crates/validate/tests/xsd.rs::the_content_must_be_complete_at_the_end_tag"]
+notes = "M3.5: `xmlcraft-xsd::assemble` builds complex types (direct content, simple content, complex content by extension and restriction, mixed, abstract, block and final) in any order of definition, with the attribute uses of a type derived from its base's; derivation cycles and `final` are reported. Reachable through `xml_validate`, `xmlcraft-cli validate` and F8. Missing: a restriction is not checked against its base's content model (particle restriction), and `xs:redefine` is not applied."
 
 [[feature]]
 id = "xsd.groups"
@@ -830,11 +830,11 @@ title = "Model groups, named groups and attribute groups"
 area = "D"
 tier = "P0"
 milestone = "M3"
-status = "planned"
+status = "shipped"
 commands = []
-tools = []
-evidence = []
-notes = "M3.5: model groups (`sequence`, `choice`, `all`, group references, wildcards) are expanded where they are used, once per group, with cycles of groups reported and the size of all content models bounded (500,000 particles). M3.7: compiled to content-model automata (`xmlcraft-grammar`) and, for `xs:all`, a set of slots. Not reachable by a user yet."
+tools = ["xml_validate"]
+evidence = ["crates/xsd/tests/components.rs::a_group_is_expanded_where_it_is_used", "crates/xsd/tests/components.rs::attribute_groups_are_expanded_and_their_wildcards_intersected", "crates/validate/tests/xsd.rs::an_all_group_takes_its_elements_in_any_order", "crates/automation/tests/validate.rs::a_document_is_validated_against_a_schema_that_is_given", "crates/automation/tests/validate.rs::documents_of_the_namespaces_that_ship_with_the_app_are_validated_against_those_schemas"]
+notes = "Model groups (`sequence`, `choice`, `all`, group references, wildcards) are expanded where they are used, once per group, with cycles of groups reported and the size of all content models bounded (500,000 particles); named groups and attribute groups are supported. M3.7 compiled them to content-model automata (`xmlcraft-grammar`) and, for `xs:all`, a set of slots. Reachable through `xml_validate`, `xmlcraft-cli validate` and F8."
 
 [[feature]]
 id = "xsd.wildcards"
@@ -842,11 +842,11 @@ title = "xs:any and xs:anyAttribute with strict, lax and skip processing"
 area = "D"
 tier = "P0"
 milestone = "M3"
-status = "planned"
+status = "shipped"
 commands = []
-tools = []
-evidence = []
-notes = "M3.5: element and attribute wildcards (`##any`, `##other`, namespace lists, `processContents`) as sets of namespaces; the intersection (attribute groups, a type's own `anyAttribute`) and the union (extensions) are exact over the namespaces and tested exhaustively; one that cannot be written is reported. M3.9: strict, lax and skip are applied by the validator. Not reachable by a user yet."
+tools = ["xml_validate"]
+evidence = ["crates/validate/tests/xsd.rs::a_wildcard_in_a_content_model_validates_as_it_asks", "crates/validate/tests/xsd.rs::an_attribute_wildcard_validates_as_it_asks", "crates/xsd/tests/models.rs::a_wildcard_lets_in_the_elements_of_its_namespaces", "crates/automation/tests/validate.rs::documents_of_the_namespaces_that_ship_with_the_app_are_validated_against_those_schemas"]
+notes = "M3.5: element and attribute wildcards (`##any`, `##other`, namespace lists, `processContents`) as sets of namespaces; the intersection (attribute groups, a type's own `anyAttribute`) and the union (extensions) are exact over the namespaces and tested exhaustively; one that cannot be written is reported. M3.9: strict, lax and skip are applied by the validator. Reachable through `xml_validate`, `xmlcraft-cli validate` and F8 (end to end: the lax wildcard of the SOAP 1.2 Body takes an element of another namespace)."
 
 [[feature]]
 id = "xsd.substitution-groups"
@@ -854,11 +854,11 @@ title = "Substitution groups, abstract types, block and final"
 area = "D"
 tier = "P1"
 milestone = "M3"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "M3.5/M3.7/M3.9: a member takes the type of its head when it has none, must have a type derived from it, groups that come back to themselves are reported; the compiled content models let a member stand in for its head (abstract elements, `block` of the head and of the types on the way respected); the validator accepts a member as the root. Not reachable by a user yet."
+tools = ["xml_validate"]
+evidence = ["crates/validate/tests/xsd.rs::a_member_of_a_substitution_group_takes_the_place_of_its_head", "crates/xsd/tests/components.rs::a_substitution_group_gives_its_members_the_type_of_the_head", "crates/xsd/tests/models.rs::a_substitution_group_may_stand_in_for_its_head"]
+notes = "M3.5/M3.7/M3.9: a member takes the type of its head when it has none, must have a type derived from it, groups that come back to themselves are reported; the compiled content models let a member stand in for its head (abstract elements, `block` of the head and of the types on the way respected); the validator accepts a member as the root. Reachable through `xml_validate`, `xmlcraft-cli validate` and F8. Missing: the `final` of a head is not applied to the type derivations of its members, and no end-to-end test goes through `xml_validate` or F8 yet."
 
 [[feature]]
 id = "xsd.identity-constraints"
@@ -866,11 +866,11 @@ title = "key, keyref and unique"
 area = "D"
 tier = "P1"
 milestone = "M3"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "The XPath subset the specification defines. M3.8: `unique`, `key` and `keyref` (selector and fields in the subset, with `.//`, alternatives, `child::`/`attribute::`, prefixes from the constraint) are parsed with the schema and checked while validating: rows per selected node, values compared in the value space of their primitive types, a field that selects more than one node, `key` fields that are missing, a keyref against the keys of its element and of those below it. Missing: nodes under a wildcard that is skipped or lax have no value (no type). Not reachable by a user yet."
+tools = ["xml_validate"]
+evidence = ["crates/validate/tests/xsd_identity.rs::a_document_that_keeps_its_keys_is_valid", "crates/validate/tests/xsd_identity.rs::a_keyref_needs_a_key_with_its_value", "crates/validate/tests/xsd_identity.rs::values_are_compared_in_the_value_space_of_their_types"]
+notes = "The XPath subset the specification defines. M3.8: `unique`, `key` and `keyref` (selector and fields in the subset, with `.//`, alternatives, `child::`/`attribute::`, prefixes from the constraint) are parsed with the schema and checked while validating: rows per selected node, values compared in the value space of their primitive types, a field that selects more than one node, `key` fields that are missing, a keyref against the keys of its element and of those below it. Reachable through `xml_validate`, `xmlcraft-cli validate` and F8. Missing: nodes under a wildcard that is skipped or lax have no value (no type)."
 
 [[feature]]
 id = "xsd.include-import-redefine"
@@ -878,11 +878,11 @@ title = "include (incl. chameleon), import and redefine"
 area = "D"
 tier = "P0"
 milestone = "M3"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "M3.4: includes, imports and redefinitions are followed through a `SchemaLoader` (every document once, chameleon includes per namespace, the namespaces of includes and imports checked, 256 documents and 64 MiB at most). M3.5: `xs:redefine` is loaded but the redefining definitions are not applied (reported as `xsd.unsupported`). The loader that reads files and the network is the resolver's (M2.4)."
+tools = ["xml_validate"]
+evidence = ["crates/xsd/tests/loader.rs::includes_are_followed_in_the_namespace_of_the_includer", "crates/xsd/tests/loader.rs::a_chameleon_document_is_read_once_for_each_namespace_it_is_included_into", "crates/xsd/tests/loader.rs::imports_name_the_namespace_of_the_document"]
+notes = "M3.4: includes, imports and redefinitions are followed through a `SchemaLoader` (every document once, chameleon includes per namespace, the namespaces of includes and imports checked, 256 documents and 64 MiB at most). The loader that reads files and the network is the resolver's (M2.4). Reachable through `xml_validate`, `xmlcraft-cli validate` and F8. Missing: `xs:redefine` is loaded but the redefining definitions are not applied (reported as `xsd.unsupported`)."
 
 [[feature]]
 id = "xsd.upa-check"
@@ -890,11 +890,11 @@ title = "Unique Particle Attribution check"
 area = "D"
 tier = "P1"
 milestone = "M3"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "M3.7: Unique Particle Attribution and Element Declarations Consistent are checked when the content models are compiled (substitution groups expanded, wildcards competing with elements), reported at the type. The whole schema for schemas (`XMLSchema.xsd`) passes. Not reachable by a user yet."
+tools = ["xml_validate"]
+evidence = ["crates/xsd/tests/models.rs::a_content_model_in_which_an_element_could_be_taken_twice_is_ambiguous", "crates/automation/tests/validate.rs::an_ambiguous_content_model_is_a_problem_of_the_schema"]
+notes = "M3.7: Unique Particle Attribution and Element Declarations Consistent are checked when the content models are compiled (substitution groups expanded, wildcards competing with elements), reported at the type. The whole schema for schemas (`XMLSchema.xsd`) passes. Reachable through `xml_validate`, `xmlcraft-cli validate` and F8 (an ambiguous model is a schema problem of the tool). Missing: 54 of the known xsdtests failures are Unique Particle Attribution reported where the suite says there is none (gap 21)."
 
 [[feature]]
 id = "xsd.component-constraints"
@@ -902,11 +902,11 @@ title = "Schema Component Constraints incl. particle restriction"
 area = "D"
 tier = "P1"
 milestone = "M3"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = "Approximations are listed in docs/gaps.md. M3.5/M3.7: circular definitions, unresolved and wrongly-kinded references, `final`, values of defaults and fixed values against their types, one ID attribute per type, duplicate attribute uses, mixed-content rules of extensions, substitution group types, keyref targets. Not yet: Derivation Valid (Restriction), the `final` of a substitution head applied to its members' type derivations."
+tools = ["xml_validate"]
+evidence = ["crates/xsd/tests/components.rs::a_restriction_keeps_the_attributes_it_does_not_change_and_not_the_wildcard", "crates/xsd/tests/components.rs::mistakes_in_identity_constraints_are_reported", "crates/xsd/tests/components.rs::groups_that_contain_themselves_are_reported_but_elements_may_come_back_to_their_group"]
+notes = "Approximations are listed in docs/gaps.md. M3.5/M3.7: circular definitions, unresolved and wrongly-kinded references, `final`, values of defaults and fixed values against their types, one ID attribute per type, duplicate attribute uses, mixed-content rules of extensions, substitution group types, keyref targets are checked. Reachable through `xml_validate`, `xmlcraft-cli validate` and F8. Missing: Derivation Valid (Restriction) and the `final` of a substitution head applied to its members' type derivations."
 
 [[feature]]
 id = "xsd.regex-patterns"
@@ -914,11 +914,11 @@ title = "XSD regular expressions"
 area = "D"
 tier = "P0"
 milestone = "M3"
-status = "planned"
+status = "shipped"
 commands = []
-tools = []
-evidence = []
-notes = "M3.1: `xmlcraft-pattern` reads XML Schema regular expressions (appendix F: whole-value match, no anchors, `.` without line ends, class subtraction, the 36 categories, `\\p{IsBlock}` by the schema language's block names, `\\i \\c \\I \\C` and the other multi-character escapes) into a regex-syntax tree and matches with regex-automata; errors carry the position and a kind; limits on length, nesting, counts and automaton size; tested against an independent reading of random expressions. Nothing uses it until the XSD engine validates (M3.9), so the status stays planned."
+tools = ["xml_validate"]
+evidence = ["crates/pattern/tests/syntax.rs::the_empty_pattern_matches_only_the_empty_value", "crates/pattern/tests/syntax.rs::what_a_pattern_may_not_say_is_refused_where_it_is_said", "crates/pattern/tests/properties.rs::a_pattern_matches_what_an_independent_reading_of_it_matches", "crates/automation/tests/validate.rs::patterns_and_dates_of_a_schema_are_checked_through_the_tool"]
+notes = "M3.1: `xmlcraft-pattern` reads XML Schema regular expressions (appendix F: whole-value match, no anchors, `.` without line ends, class subtraction, the 36 categories, `\\p{IsBlock}` by the schema language's block names, `\\i \\c \\I \\C` and the other multi-character escapes) into a regex-syntax tree and matches with regex-automata; errors carry the position and a kind; limits on length, nesting, counts and automaton size; tested against an independent reading of random expressions. Reachable through `xml_validate`, `xmlcraft-cli validate` and F8."
 
 [[feature]]
 id = "xsd.date-time-types"
@@ -926,11 +926,11 @@ title = "Date and time types incl. out-of-range years and timezones"
 area = "D"
 tier = "P0"
 milestone = "M3"
-status = "planned"
+status = "shipped"
 commands = []
-tools = []
-evidence = []
-notes = "Through chrono; 400-year cycle shift. M3.2 has the eight types in `xmlcraft-datatypes::Temporal` (the seven-property model with defaults that order the periods; `24:00:00`; no year 0; years of up to 18 digits with the Gregorian leap rule for any of them; the partial order of values with and without a time zone, checked against chrono) and `duration` (the partial order over the four reference dates); nothing a user can reach uses them yet, so the status stays planned."
+tools = ["xml_validate"]
+evidence = ["crates/datatypes/tests/temporal.rs::date_time", "crates/datatypes/tests/temporal.rs::date_time_equality_and_order", "crates/datatypes/tests/properties.rs::dates_with_and_without_a_zone_are_never_ordered_wrongly", "crates/automation/tests/validate.rs::patterns_and_dates_of_a_schema_are_checked_through_the_tool"]
+notes = "Through chrono; 400-year cycle shift. M3.2 has the eight types in `xmlcraft-datatypes::Temporal` (the seven-property model with defaults that order the periods; `24:00:00`; no year 0; years of up to 18 digits with the Gregorian leap rule for any of them; the partial order of values with and without a time zone, checked against chrono) and `duration` (the partial order over the four reference dates). Reachable through `xml_validate`, `xmlcraft-cli validate` and F8."
 
 [[feature]]
 id = "xsd.authoring-completion"
@@ -942,7 +942,7 @@ status = "partial"
 commands = ["view.entry_helpers"]
 tools = ["xml_entry_helpers"]
 evidence = ["crates/automation/tests/entry_helpers.rs::an_xml_schema_document_is_offered_what_xml_schema_allows_though_it_names_no_schema", "crates/ui-egui/tests/entry_helpers.rs::an_xml_schema_file_is_offered_what_xml_schema_allows", "crates/validate/tests/schema_check.rs::the_namespace_of_the_root_element_is_the_one_it_declares_for_its_name"]
-notes = "A document that names no schema is answered from the one that ships with the app for the namespace of its root element (the catalogs and the bundle: a namespace is a name, so nothing is downloaded for it): for an XSD file that is the bundled XMLSchema.xsd, so Entry Helpers (`view.entry-helpers`) and `xml_entry_helpers` offer what each element of a schema may contain, its attributes and the values they may take (`form`, `use`, `maxOccurs` with `unbounded`, booleans), and write an element with what it requires. Missing: a completion popup while typing (M1.10d), the types and elements the schema itself declares as the values of `type`, `ref`, `base` and the like, go to definition (`xsd.go-to-definition`), the documentation of the declaration under the caret (Info pane), and schemas of other namespaces until they are bundled (M4.7)."
+notes = "A document that names no schema is answered from the one that ships with the app for the namespace of its root element (the catalogs and the bundle: a namespace is a name, so nothing is downloaded for it): for an XSD file that is the bundled XMLSchema.xsd, so Entry Helpers (`view.entry-helpers`) and `xml_entry_helpers` offer what each element of a schema may contain, its attributes and the values they may take (`form`, `use`, `maxOccurs` with `unbounded`, booleans), and write an element with what it requires. Go to definition for the names a schema writes is `xsd.go-to-definition`, and the popup while typing offers what XMLSchema.xsd allows (`editor.completion-schema`). Missing: the types and elements the schema itself declares as the values of `type`, `ref`, `base` and the like, the documentation of the declaration under the caret (Info pane), and schemas of other namespaces until they are bundled (M4.7)."
 
 [[feature]]
 id = "xsd.go-to-definition"
@@ -1349,11 +1349,11 @@ title = "OASIS XML Catalogs 1.1 resolution"
 area = "G"
 tier = "P0"
 milestone = "M2"
-status = "partial"
+status = "shipped"
 commands = []
 tools = ["catalog_lookup"]
-evidence = ["crates/catalog/tests/resolution.rs::the_entries_are_tried_in_the_order_of_the_spec_and_the_longest_match_wins", "crates/catalog/tests/resolution.rs::a_delegated_catalog_answers_alone_and_a_failed_delegation_does_not_go_back_to_the_list", "crates/catalog/tests/resolution.rs::delegation_restarts_with_only_the_identifier_that_matched", "crates/catalog/tests/resolution.rs::next_catalogs_are_consulted_right_after_the_catalog_that_names_them_and_cycles_end", "crates/catalog/tests/resolution.rs::prefer_decides_whether_a_public_entry_counts_when_a_system_identifier_is_given_too", "crates/catalog/tests/resolution.rs::publicid_urns_are_unwrapped_in_requests_and_entries", "crates/catalog/tests/resolution.rs::uris_are_resolved_by_uri_rewriteuri_urisuffix_and_delegateuri", "crates/automation/tests/catalog.rs::identifiers_and_uris_are_mapped_through_the_catalogs_in_order"]
-notes = "The resolution rules of XML Catalogs 1.1 are in `xmlcraft-catalog` (system, public, uri, rewrite*, *Suffix, delegate*, nextCatalog, group, xml:base, prefer; urn:publicid: unwrapping; limits on entries and loads) and reachable headlessly through `catalog_lookup`. Not yet: nothing in the editor or the validators asks the catalogs (the resolver of M2.3 will), no user catalogs setting, and the TR9401 text syntax is not read."
+evidence = ["crates/catalog/tests/resolution.rs::the_entries_are_tried_in_the_order_of_the_spec_and_the_longest_match_wins", "crates/catalog/tests/resolution.rs::a_delegated_catalog_answers_alone_and_a_failed_delegation_does_not_go_back_to_the_list", "crates/catalog/tests/resolution.rs::delegation_restarts_with_only_the_identifier_that_matched", "crates/catalog/tests/resolution.rs::next_catalogs_are_consulted_right_after_the_catalog_that_names_them_and_cycles_end", "crates/catalog/tests/resolution.rs::prefer_decides_whether_a_public_entry_counts_when_a_system_identifier_is_given_too", "crates/catalog/tests/resolution.rs::publicid_urns_are_unwrapped_in_requests_and_entries", "crates/catalog/tests/resolution.rs::uris_are_resolved_by_uri_rewriteuri_urisuffix_and_delegateuri", "crates/automation/tests/catalog.rs::identifiers_and_uris_are_mapped_through_the_catalogs_in_order", "crates/resolve/tests/resolution.rs::the_users_catalogs_are_asked_before_the_bundled_ones"]
+notes = "The resolution rules of XML Catalogs 1.1 are in `xmlcraft-catalog` (system, public, uri, rewrite*, *Suffix, delegate*, nextCatalog, group, xml:base, prefer; urn:publicid: unwrapping; limits on entries and loads) and reachable headlessly through `catalog_lookup`. The resolver of the app, the validators and the tools ask them before the bundle or the network, including the catalogs the person adds in Preferences (catalog.user-catalogs). TR9401 text catalogs are another format and are not read."
 
 [[feature]]
 id = "catalog.bundled-schemas"
@@ -1555,7 +1555,7 @@ status = "partial"
 commands = ["xml.pretty_print", "xml.minify"]
 tools = ["xml_wellformed", "xml_outline", "xml_folds", "xml_format"]
 evidence = ["crates/format/tests/json.rs::pretty_printing_gives_what_serde_json_prints_and_minifying_what_it_prints_compactly", "crates/ui-egui/tests/json.rs::pretty_print_and_minify_work_on_json_and_a_text_with_an_error_is_left_alone", "crates/json-syntax/tests/reading.rs::what_serde_json_writes_is_read_back_without_a_problem_and_equal", "crates/engine/src/json_analysis.rs::folds_hide_the_lines_between_the_brackets_and_leave_the_closing_bracket_visible", "crates/ui-egui/tests/json.rs::the_outline_of_a_json_document_lists_its_members", "crates/editor/src/typing.rs::json_quotes_and_brackets_are_paired_and_stepped_over"]
-notes = "A `.json` document is read by its own rules (RFC 8259, with every problem at its place), coloured, outlined (members and containers, with a look at scalar values), folded (objects and arrays, the closing bracket stays visible) and typed in with paired quotes and brackets that are stepped over. Pretty-print and Minify (as minimal edits of the white space between tokens, comments kept in place, one undo step) work on JSON, JSONC and JSON5; JSON Lines can be minified. The tools xml_wellformed, xml_outline, xml_folds and xml_format read it (a `language` argument for text). Still missing: completion, hover, sorting of keys, and a schema (JSON Schema)."
+notes = "A `.json` document is read by its own rules (RFC 8259, with every problem at its place), coloured, outlined (members and containers, with a look at scalar values), folded (objects and arrays, the closing bracket stays visible) and typed in with paired quotes and brackets that are stepped over. Pretty-print and Minify (as minimal edits of the white space between tokens, comments kept in place, one undo step) work on JSON, JSONC and JSON5; JSON Lines can be minified. The tools xml_wellformed, xml_outline, xml_folds and xml_format read it (a `language` argument for text). Completion and hover from a JSON Schema are `json.completion`, validation is `json.schema-validate`. Still missing: sorting of keys."
 
 [[feature]]
 id = "json.jsonc"
@@ -1591,7 +1591,7 @@ status = "partial"
 commands = []
 tools = ["xml_wellformed", "xml_outline", "xml_folds"]
 evidence = ["crates/engine/src/yaml_analysis.rs::the_outline_lists_keys_and_containers_and_the_folds_cover_their_lines", "crates/ui-egui/tests/yaml.rs::yaml_is_checked_as_yaml_outlined_and_offered_no_xml_tools", "crates/yaml-syntax/tests/reading.rs::aliases_become_copies_placed_at_the_alias_and_merge_keys_are_applied", "crates/yaml-syntax/tests/highlighting.rs::keys_values_dashes_and_comments_have_their_classes", "crates/yaml-syntax/tests/highlighting.rs::block_scalars_and_multi_line_quotes_carry_over_the_end_of_a_line", "crates/engine/src/yaml_analysis.rs::problems_are_the_readers_and_a_stream_of_documents_has_an_item_each", "crates/ui-egui/tests/yaml.rs::f8_on_yaml_checks_the_syntax_and_says_so", "crates/editor/src/typing.rs::yaml_gets_no_typing_aids", "crates/automation/tests/documents.rs::yaml_is_read_by_the_same_tools_as_xml_and_json"]
-notes = "`.yaml` and `.yml` documents are read by YAML 1.2 rules (`saphyr-parser`; aliases expanded under a bound, merge keys applied, core-schema scalars), with problems at their places, coloured (keys, strings, numbers, keywords, anchors and aliases, comments; block scalars and quoted scalars that go over lines), outlined (keys and the entries of lists that are containers, with a look at scalar values; a stream of documents has an item each) and folded (blocks and multi-line scalars). Nothing is typed for you and nothing is reformatted: YAML's white space is its structure. The tools xml_wellformed, xml_outline and xml_folds read it (`language` yaml for text). Still missing: completion and hover, validation against a schema in the window, formatting that keeps comments, key sorting."
+notes = "`.yaml` and `.yml` documents are read by YAML 1.2 rules (`saphyr-parser`; aliases expanded under a bound, merge keys applied, core-schema scalars), with problems at their places, coloured (keys, strings, numbers, keywords, anchors and aliases, comments; block scalars and quoted scalars that go over lines), outlined (keys and the entries of lists that are containers, with a look at scalar values; a stream of documents has an item each) and folded (blocks and multi-line scalars). Nothing is typed for you and nothing is reformatted: YAML's white space is its structure. The tools xml_wellformed, xml_outline and xml_folds read it (`language` yaml for text). Completion and hover from a JSON Schema (block and flow style) are `json.completion`, and validation against one is `json.yaml-validate`. Still missing: formatting that keeps comments, key sorting."
 
 [[feature]]
 id = "json.yaml-validate"
