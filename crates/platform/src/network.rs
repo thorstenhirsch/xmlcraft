@@ -6,7 +6,7 @@
 //! - [`Network::offline`] downloads nothing and keeps nothing: what tests and a build with no network use.
 //! - [`Network::new`] takes any fetcher and cache, for tests with a mock.
 //!
-//! Offline is a switch the person can turn at any time ([`Network::set_offline`], XML ▸ Work Offline): downloading stops, and the
+//! Offline is a switch the person can turn at any time ([`Network::set_offline`], Tools ▸ Work Offline): downloading stops, and the
 //! copies already in the cache are used even when they are older than they should be. `XMLCRAFT_OFFLINE` keeps it off whatever the
 //! switch says ([`Network::offline_by_environment`]), and is not something the app remembers.
 

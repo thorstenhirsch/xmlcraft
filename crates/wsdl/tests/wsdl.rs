@@ -1,7 +1,7 @@
 //! WSDL 1.1 and 2.0 read, and SOAP requests made from them.
 
 use xmlcraft_sample::Options;
-use xmlcraft_wsdl::{NoSchemas, SoapVersion, Style, WsdlVersion, parse};
+use xmlcraft_wsdl::{NoSchemas, SoapVersion, Style, WsdlVersion, is_wsdl_namespace, parse};
 
 const CALCULATOR: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
@@ -31,6 +31,14 @@ const CALCULATOR: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
     <wsdl:port name="CalcSoap12" binding="tns:CalcSoap12"><soap12:address location="http://example.com/calc12"/></wsdl:port>
   </wsdl:service>
 </wsdl:definitions>"#;
+
+#[test]
+fn the_two_wsdl_namespaces_are_known_and_nothing_else() {
+    assert!(is_wsdl_namespace("http://schemas.xmlsoap.org/wsdl/") && is_wsdl_namespace("http://www.w3.org/ns/wsdl"));
+    for other in ["", "http://schemas.xmlsoap.org/wsdl", "http://schemas.xmlsoap.org/wsdl/soap/", "http://www.w3.org/2001/XMLSchema"] {
+        assert!(!is_wsdl_namespace(other), "{other}");
+    }
+}
 
 #[test]
 fn a_wsdl_11_description_gives_an_operation_for_each_soap_binding_with_its_endpoint() {

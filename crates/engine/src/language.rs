@@ -53,6 +53,9 @@ const JSONC_NAMES: &[&str] = &[
     ".babelrc",
 ];
 
+/// Why JSON Lines are not pretty-printed.
+const PRETTY_PRINT_LINES: &str = "JSON Lines have one value on each line, so they are not indented (minify keeps them as they are)";
+
 impl Language {
     /// The language of a document called `name` (anything that is not recognised is XML, as before).
     pub fn of_name(name: &str) -> Language {
@@ -79,9 +82,7 @@ impl Language {
             Language::Xml if minify => xmlcraft_format::minify(text),
             Language::Xml => xmlcraft_format::pretty_print_settled(text, options),
             Language::Json(JsonFlavor::Lines) if minify => xmlcraft_format::json::minify_lines(text, Dialect::Json),
-            Language::Json(JsonFlavor::Lines) => Err(FormatError::Refused {
-                message: "JSON Lines have one value on each line, so they are not indented (minify keeps them as they are)".to_owned(),
-            }),
+            Language::Json(JsonFlavor::Lines) => Err(FormatError::Refused { message: PRETTY_PRINT_LINES.to_owned() }),
             Language::Json(flavor) if minify => xmlcraft_format::json::minify(text, flavor.dialect()),
             Language::Json(flavor) => xmlcraft_format::json::pretty_print(text, flavor.dialect(), options),
             // A BSON file's text is one indented document, or one document to a line: formatted as the one it is.
@@ -89,8 +90,20 @@ impl Language {
                 xmlcraft_bson::Layout::Lines => Language::Json(JsonFlavor::Lines).format(text, options, minify),
                 xmlcraft_bson::Layout::Single => Language::Json(JsonFlavor::Json).format(text, options, minify),
             },
-            Language::Yaml => Err(FormatError::Refused { message: "YAML is not reformatted: its white space is its structure".to_owned() }),
-            Language::Html => Err(FormatError::Refused { message: "HTML is not reformatted yet".to_owned() }),
+            Language::Yaml | Language::Html => {
+                Err(FormatError::Refused { message: self.not_formatted().unwrap_or("this language is not reformatted").to_owned() })
+            }
+        }
+    }
+
+    /// Why a document of this language is never pretty-printed, or `None` when it can be (a BSON file or JSON Lines may still refuse
+    /// by what its text is).
+    pub fn not_formatted(self) -> Option<&'static str> {
+        match self {
+            Language::Yaml => Some("YAML is not reformatted: its white space is its structure"),
+            Language::Html => Some("HTML is not reformatted yet"),
+            Language::Json(JsonFlavor::Lines) => Some(PRETTY_PRINT_LINES),
+            Language::Xml | Language::Json(_) | Language::Bson => None,
         }
     }
 
@@ -142,6 +155,18 @@ impl Language {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_language_that_is_never_formatted_says_why_and_formatting_refuses_with_that() {
+        let options = FormatOptions::default();
+        for (language, text) in [(Language::Yaml, "a: 1\n"), (Language::Html, "<p>x</p>"), (Language::Json(JsonFlavor::Lines), "{\"a\":1}\n")] {
+            let why = language.not_formatted().unwrap_or_else(|| panic!("{language:?} says why"));
+            assert!(matches!(language.format(text, &options, false), Err(FormatError::Refused { message }) if message == why), "{language:?}");
+        }
+        for language in [Language::Xml, Language::Json(JsonFlavor::Json), Language::Json(JsonFlavor::Jsonc), Language::Bson] {
+            assert_eq!(language.not_formatted(), None, "{language:?}");
+        }
+    }
 
     #[test]
     fn the_name_of_a_document_says_what_it_is() {

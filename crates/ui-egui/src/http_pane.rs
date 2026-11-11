@@ -194,7 +194,7 @@ impl XmlCraftApp {
             return;
         }
         if self.network.is_offline() || !self.network.can_download() {
-            pane.error = Some(tl!("XmlCraft works offline, so nothing is sent. Turn Work Offline off (XML menu) to send.").to_owned());
+            pane.error = Some(tl!("XmlCraft works offline, so nothing is sent. Turn Work Offline off (Tools menu) to send.").to_owned());
             return;
         }
         let serial = self.next_http_serial();

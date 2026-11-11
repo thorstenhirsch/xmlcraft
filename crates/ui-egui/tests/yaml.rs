@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use xmlcraft_ui_egui::XmlCraftApp;
 
 fn shell() -> Harness<'static, XmlCraftApp> {
@@ -31,13 +31,16 @@ fn open(h: &mut Harness<'static, XmlCraftApp>, path: &Path) {
 }
 
 #[test]
-fn yaml_is_checked_as_yaml_outlined_and_offered_no_xml_tools() {
+fn yaml_is_checked_as_yaml_outlined_and_offered_the_data_tools() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell();
     open(&mut h, &file(dir.path(), "ok.yaml", "alpha:\n  beta: 1\n"));
     assert_eq!(h.state().problems(), Some((0, 0)));
     assert!(h.query_by_label("alpha").is_some() && h.query_by_label("beta 1").is_some(), "the outline names the keys");
-    assert!(h.query_by_label("Schema…").is_none() && h.query_by_label("XML…").is_none());
+    assert!(h.query_by_label("XPath").is_none() && h.query_by_label("Sample XML").is_none(), "no XML tools");
+    assert!(h.query_by_label("Schema…").is_some() && h.query_by_label("Convert").is_some(), "the data tools");
+    // YAML is not reformatted, and the bar says so.
+    assert!(h.get_by_label("Format").accesskit_node().is_disabled());
     open(&mut h, &file(dir.path(), "bad.yml", "a: [1, 2\nb: 3\n"));
     assert!(h.state().problems().is_some_and(|(errors, _)| errors > 0));
     // The same text as a file the XML way is not YAML.

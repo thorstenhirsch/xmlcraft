@@ -174,6 +174,11 @@ fn kid_in<'a>(tree: &'a Dom, el: &El, namespaces: &[&str], local: &str) -> Optio
         .find(|c| c.local == local && c.namespace.as_deref().is_some_and(|n| namespaces.contains(&n)))
 }
 
+/// Whether a root element in `namespace` makes a document a WSDL 1.1 or 2.0 description (a cheap look, before [`parse`] reads it).
+pub fn is_wsdl_namespace(namespace: &str) -> bool {
+    namespace == WSDL11 || namespace == WSDL20
+}
+
 /// Read a WSDL 1.1 or 2.0 description.
 pub fn parse(text: &str) -> Result<Wsdl, WsdlError> {
     let parsed = parse_xml(text);

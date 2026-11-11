@@ -80,7 +80,7 @@ fn the_theme_the_size_and_the_switches_change_at_once() {
     assert_eq!(h.state().command_checked("xml.work_offline"), Some(false));
     h.get_by_label("Work offline").click();
     h.run_steps(2);
-    assert_eq!(h.state().command_checked("xml.work_offline"), Some(true), "the same switch as XML ▸ Work Offline");
+    assert_eq!(h.state().command_checked("xml.work_offline"), Some(true), "the same switch as Tools ▸ Work Offline");
 }
 
 #[test]

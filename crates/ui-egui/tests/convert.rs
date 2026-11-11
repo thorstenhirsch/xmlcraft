@@ -34,6 +34,11 @@ fn names(h: &Harness<'static, XmlCraftApp>) -> Vec<String> {
     h.state().session.documents().iter().map(|d| d.name().to_owned()).collect()
 }
 
+/// The Convert button of the form (the command bar of a data document has a Convert of its own, drawn before the form).
+fn convert_button<'h>(h: &'h Harness<'static, XmlCraftApp>) -> egui_kittest::Node<'h> {
+    h.query_all_by_label("Convert").last().expect("the form's Convert button")
+}
+
 fn text_of(h: &Harness<'static, XmlCraftApp>, name: &str) -> String {
     h.state().session.documents().iter().find(|d| d.name() == name).map(|d| d.editor().text()).unwrap_or_default()
 }
@@ -48,7 +53,7 @@ fn an_xml_document_is_converted_to_json_and_opens_as_a_new_document() {
     assert!(h.query_by_label("Convert document").is_some(), "the form is up");
     h.get_by_label("JSON").click();
     h.run_steps(2);
-    h.get_by_label("Convert").click();
+    convert_button(&h).click();
     h.run_steps(3);
     let json = text_of(&h, "order.json");
     assert!(json.contains("\"@id\": \"7\"") && json.contains("\"item\": \"Tea\""), "{json}");
@@ -66,7 +71,7 @@ fn json_goes_to_yaml_by_default_and_a_refused_conversion_says_why() {
     open(&mut h, &file(dir.path(), "d.json", "{\"a\": [1, 2]}"));
     assert!(h.state_mut().execute("file.convert"));
     h.run_steps(3);
-    h.get_by_label("Convert").click();
+    convert_button(&h).click();
     h.run_steps(3);
     assert_eq!(text_of(&h, "d.yaml"), "a:\n  - 1\n  - 2\n");
     // A list of numbers is not documents: BSON refuses it, and the form stays up with the reason.
@@ -75,7 +80,7 @@ fn json_goes_to_yaml_by_default_and_a_refused_conversion_says_why() {
     h.run_steps(3);
     h.get_by_label("BSON").click();
     h.run_steps(2);
-    h.get_by_label("Convert").click();
+    convert_button(&h).click();
     h.run_steps(3);
     assert!(h.query_by_label_contains("cannot be converted").is_some(), "the reason is shown in the form");
     assert!(!names(&h).contains(&"e.bson".to_owned()));
@@ -98,7 +103,7 @@ fn the_options_of_the_form_reach_the_conversion() {
     h.run_steps(2);
     h.get_by_label("XPath 3.1 (json-to-xml)").click();
     h.run_steps(2);
-    h.get_by_label("Convert").click();
+    convert_button(&h).click();
     h.run_steps(3);
     let xml = text_of(&h, "d.xml");
     assert!(xml.contains("http://www.w3.org/2005/xpath-functions") && xml.contains("<number key=\"a\">1</number>"), "{xml}");
@@ -111,7 +116,7 @@ fn json_lines_are_converted_as_a_list_and_the_same_format_is_not_offered() {
     open(&mut h, &file(dir.path(), "d.jsonl", "{\"a\":1}\n{\"a\":2}\n"));
     assert!(h.state_mut().execute("file.convert"));
     h.run_steps(3);
-    h.get_by_label("Convert").click();
+    convert_button(&h).click();
     h.run_steps(3);
     assert_eq!(text_of(&h, "d.yaml"), "- a: 1\n- a: 2\n");
     // Converting a document to the format it is in does nothing: the button is disabled.
@@ -120,7 +125,7 @@ fn json_lines_are_converted_as_a_list_and_the_same_format_is_not_offered() {
     h.run_steps(3);
     h.get_by_label("XML").click();
     h.run_steps(2);
-    h.get_by_label("Convert").click();
+    convert_button(&h).click();
     h.run_steps(3);
     assert!(h.query_by_label("Convert document").is_some(), "the form is still up");
     assert!(!names(&h).contains(&"e.xml.xml".to_owned()) && names(&h).iter().filter(|n| n.as_str() == "e.xml").count() == 1);
@@ -135,7 +140,7 @@ fn the_indentation_of_the_form_reaches_the_conversion() {
     h.run_steps(3);
     h.get_by_label("4 spaces").click();
     h.run_steps(2);
-    h.get_by_label("Convert").click();
+    convert_button(&h).click();
     h.run_steps(3);
     assert_eq!(text_of(&h, "d.json"), "{\n    \"a\": {\n        \"b\": 1\n    }\n}\n");
 }

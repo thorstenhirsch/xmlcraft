@@ -1,5 +1,5 @@
 //! The chip in the header that says what a business document is (an e-invoice, an XBRL instance): worked out from the text once it has
-//! stood still for a moment, so that typing does not read the whole document on every key.
+//! stood still for a moment, so that typing does not read the whole document on every key ([`Settled`], which the command bar uses too).
 
 use std::time::{Duration, Instant};
 
@@ -7,18 +7,56 @@ use xmlcraft_engine::business::{BusinessChip, chip_for};
 
 use crate::XmlCraftApp;
 
-/// The longest text the chip reads while the window is in use.
-const MAX_BYTES: usize = 2 * 1024 * 1024;
+/// The longest text the chip (and the command bar) reads while the window is in use.
+pub(crate) const MAX_BYTES: usize = 2 * 1024 * 1024;
 /// How long the text stands still before it is read again.
 const QUIET: Duration = Duration::from_millis(400);
 
 /// What is known of the chip of a document.
-#[derive(Default)]
-pub(crate) struct ChipState {
-    /// The version of the text the chip was made from, and the chip (none: the text is not a business document).
-    done: Option<(u64, Option<BusinessChip>)>,
-    /// The version last seen and since when.
+pub(crate) type ChipState = Settled<Option<BusinessChip>>;
+
+/// Something worked out from the text of a document once the text has stood still for a moment (the chip, what the command bar
+/// offers): the value for the version it was made from, and the version last seen and since when.
+pub(crate) struct Settled<T> {
+    done: Option<(u64, T)>,
     seen: Option<(u64, Instant)>,
+}
+
+impl<T> Default for Settled<T> {
+    fn default() -> Self {
+        Self { done: None, seen: None }
+    }
+}
+
+impl<T: Clone> Settled<T> {
+    /// The value for the text at `version`. The first look works it out at once (with `make`); a newer text is worked out once it has
+    /// been left alone for a moment, and until then the value of the older text stays.
+    pub(crate) fn get(&mut self, ctx: &egui::Context, version: u64, make: impl FnOnce() -> T) -> T {
+        if let Some((v, value)) = &self.done
+            && *v == version
+        {
+            return value.clone();
+        }
+        let now = Instant::now();
+        let quiet = match self.seen {
+            Some((v, at)) if v == version => now.saturating_duration_since(at) >= QUIET,
+            _ => {
+                self.seen = Some((version, now));
+                false
+            }
+        };
+        match &self.done {
+            Some((_, value)) if !quiet => {
+                ctx.request_repaint_after(QUIET);
+                value.clone()
+            }
+            _ => {
+                let value = make();
+                self.done = Some((version, value.clone()));
+                value
+            }
+        }
+    }
 }
 
 impl XmlCraftApp {
@@ -31,25 +69,6 @@ impl XmlCraftApp {
         }
         let (id, version, len) = (doc.id(), doc.editor().version(), doc.editor().buffer().len());
         let view = self.views.get_mut(&id)?;
-        let state = &mut view.business;
-        if state.done.as_ref().is_some_and(|(v, _)| *v == version) {
-            return state.done.as_ref().and_then(|(_, chip)| chip.clone());
-        }
-        let now = Instant::now();
-        let first = state.done.is_none();
-        let quiet = match state.seen {
-            Some((v, at)) if v == version => now.saturating_duration_since(at) >= QUIET,
-            _ => {
-                state.seen = Some((version, now));
-                false
-            }
-        };
-        if first || quiet {
-            let chip = if len <= MAX_BYTES { chip_for(&doc.editor().text()) } else { None };
-            state.done = Some((version, chip.clone()));
-            return chip;
-        }
-        ctx.request_repaint_after(QUIET);
-        state.done.as_ref().and_then(|(_, chip)| chip.clone())
+        view.business.get(ctx, version, || if len <= MAX_BYTES { chip_for(&doc.editor().text()) } else { None })
     }
 }

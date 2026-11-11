@@ -358,7 +358,7 @@ pub fn has_include(text: &str) -> bool {
 
 // --- the worker ----------------------------------------------------------------------------------------------------------------
 
-/// One request to expand the includes of a document (XML ▸ Expand XIncludes).
+/// One request to expand the includes of a document (Document ▸ Expand XIncludes).
 pub struct ExpandJob {
     /// The version of the text, so that the edits are applied only to the text they were made for.
     pub version: u64,
