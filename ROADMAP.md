@@ -23,6 +23,7 @@ XmlCraft is a clean-room, open-source XML editor built to match the feature set 
 
 ## Progress log
 
+- 2026-11-11: M10.7, completion of the names a document itself uses. In a document with no DTD or schema the popup completes elements after `<`, end tags after `</`, attribute names after a space in a start tag, the values an attribute has, and entities after `&`; Edit ▸ Complete (⌘I, Ctrl+I) asks for it. Headless: `xml_complete` (`xmlcraft_engine::xml_complete`).
 - 2026-11-11: M3.18, IDREF and IDREFS values are completed from the IDs the document has (DTD or XML Schema): inside the quotes the popup lists them, and an IDREFS adds the chosen ID to those before it; `xml_entry_helpers` returns the same, also for element text.
 - 2026-11-11: M2.14, the resolution trail. Schema… ▸ Schema Resolution… shows every place the resolver looked in for the schema or DTD a document names and what each said, and `schema_resolution` returns the same steps.
 - 2026-11-11: M4.15, browse the bundled schemas and assign one. Assign Schema… lists the XML Schemas and DTDs that ship with the app (a filter by name, set or path); the one chosen is written by its publisher's address, which the bundled catalog maps back to the file (a DTD with its public identifier), never by a `bundled:/` URI. Headless: `bundled_schemas`.

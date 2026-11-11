@@ -13,6 +13,7 @@
 mod assign;
 mod bundled;
 mod catalog;
+mod complete;
 mod convert;
 mod definition;
 mod diff;

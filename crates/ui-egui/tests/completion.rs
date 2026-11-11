@@ -40,6 +40,22 @@ fn open_at(h: &mut Harness<'static, XmlCraftApp>, dir: &Path, marked: &str) {
     h.run_steps(4);
 }
 
+fn open_plain_at(h: &mut Harness<'static, XmlCraftApp>, dir: &Path, marked: &str) {
+    let caret = marked.find('¦').expect("a marker");
+    let text = marked.replacen('¦', "", 1);
+    let n = h.state().session.documents().len();
+    assert!(h.state_mut().open_path(&file(dir, n, &text)));
+    let started = Instant::now();
+    while h.state().problems().is_none() {
+        assert!(started.elapsed() < Duration::from_secs(10), "waiting for the analysis");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    h.run_steps(3);
+    h.state_mut().session.active_document_mut().expect("shown").editor_mut().set_selection(caret, caret);
+    h.run_steps(4);
+}
+
 fn text(h: &Harness<'static, XmlCraftApp>) -> String {
     h.state().session.active_document().expect("shown").editor().text()
 }
@@ -298,4 +314,57 @@ fn an_idrefs_value_adds_the_id_that_was_chosen_to_the_ones_before_it() {
     h.key_press(egui::Key::Enter);
     h.run_steps(4);
     assert!(text(&h).contains("refs='one two'"), "{}", text(&h));
+}
+
+#[test]
+fn without_a_grammar_attribute_names_and_values_the_document_uses_are_offered() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open_plain_at(&mut h, dir.path(), "<lib><book id=\"1\" kind=\"p\"/><book id=\"2\" kind=\"q\"/><book ¦/></lib>");
+    type_text(&mut h, "k");
+    assert!(h.query_by_label("Complete kind").is_some(), "the attribute the other books use");
+    assert!(h.query_by_label("Complete id").is_none(), "id does not fit k");
+    h.key_press(egui::Key::Tab);
+    h.run_steps(4);
+    assert!(text(&h).contains("<book kind=\"\"/>"), "{}", text(&h));
+
+    open_plain_at(&mut h, dir.path(), "<lib><book kind=\"p\"/><book kind=\"q\"/><book kind=¦/></lib>");
+    type_text(&mut h, "\"");
+    assert!(h.query_by_label("Complete p").is_some() && h.query_by_label("Complete q").is_some(), "the values kind has");
+    h.key_press(egui::Key::ArrowDown);
+    h.run_steps(2);
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    assert!(text(&h).contains("kind=\"q\""), "{}", text(&h));
+}
+
+#[test]
+fn without_a_grammar_an_end_tag_is_completed_from_the_element_names() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open_plain_at(&mut h, dir.path(), "<lib><book/>¦");
+    type_text(&mut h, "</l");
+    assert!(h.query_by_label("Complete lib").is_some(), "the element the document uses");
+    assert!(h.query_by_label("Complete book").is_none(), "book does not fit l");
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    assert!(text(&h).ends_with("</lib>"), "{}", text(&h));
+}
+
+#[test]
+fn edit_complete_asks_for_the_popup_in_content_and_after_a_space_in_a_start_tag() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open_plain_at(&mut h, dir.path(), "<lib><book/>¦");
+    assert!(h.query_all_by_label_contains("Complete").count() == 0, "nothing opens by itself");
+    assert!(h.state_mut().execute("edit.complete"));
+    h.run_steps(4);
+    assert!(h.query_by_label("Complete lib").is_some() && h.query_by_label("Complete book").is_some());
+    h.key_press(egui::Key::Escape);
+    h.run_steps(2);
+
+    open_plain_at(&mut h, dir.path(), "<lib><book id=\"1\"/><book ¦/></lib>");
+    assert!(h.state_mut().execute("edit.complete"));
+    h.run_steps(4);
+    assert!(h.query_by_label("Complete id").is_some(), "the attributes the element already has elsewhere");
 }

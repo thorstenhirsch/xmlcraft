@@ -359,11 +359,11 @@ title = "Completion of names that occur in the document"
 area = "A"
 tier = "P0"
 milestone = "M1"
-status = "partial"
-commands = []
-tools = []
-evidence = ["crates/ui-egui/tests/completion.rs::without_a_grammar_the_names_used_in_the_document_are_offered_after_a_bracket", "crates/ui-egui/tests/completion.rs::nothing_is_offered_in_text_or_without_a_typed_character", "crates/ui-egui/src/completion.rs::a_name_after_an_open_bracket_is_an_element_and_after_an_ampersand_an_entity"]
-notes = "Typing `<` in a document that has no DTD or schema offers the element names the document already uses (a popup under the caret; more letters narrow it, prefix matches first; arrow keys choose, Enter or Tab writes `<name></name>`, Escape closes). Missing: attribute names and values from the document, names after `</`, a key to ask for the popup (Ctrl+Space), and a headless tool (completion is the window's popup; the choices are `xml_entry_helpers`)."
+status = "shipped"
+commands = ["edit.complete"]
+tools = ["xml_complete"]
+evidence = ["crates/ui-egui/tests/completion.rs::without_a_grammar_the_names_used_in_the_document_are_offered_after_a_bracket", "crates/ui-egui/tests/completion.rs::without_a_grammar_an_end_tag_is_completed_from_the_element_names", "crates/ui-egui/tests/completion.rs::without_a_grammar_attribute_names_and_values_the_document_uses_are_offered", "crates/ui-egui/tests/completion.rs::edit_complete_asks_for_the_popup_in_content_and_after_a_space_in_a_start_tag", "crates/ui-egui/tests/completion.rs::nothing_is_offered_in_text_or_without_a_typed_character", "crates/engine/src/xml_complete.rs::a_name_after_an_open_bracket_is_an_element_and_after_an_ampersand_an_entity", "crates/automation/tests/complete.rs::elements_end_tags_attributes_values_and_entities_come_from_the_document", "crates/automation/tests/complete.rs::an_explicit_request_opens_the_popup_where_nothing_was_typed"]
+notes = "In a document that has no DTD or schema, the popup offers the element names the document already uses after `<`, the names an end tag can close after `</`, the attribute names it uses after a space in a start tag, the values that attribute has inside its quotes, and the entities it refers to after `&`; each is written with the text around it (`<name></name>`, `name>`, `name=\"\"`), more letters narrow the list (prefix matches first), and Edit ▸ Complete (⌘I, Ctrl+I) asks for it where nothing was typed (M10.7). The same choices are `xml_complete` (the context and names are `xmlcraft_engine::xml_complete`; the grammar's own answer is `xml_entry_helpers`). At most 500 names of each kind and 200 values of an attribute are offered."
 
 [[feature]]
 id = "editor.completion-schema"
