@@ -726,6 +726,10 @@ mod tests {
         assert_eq!(labels(&offer(Language::Yaml, "list:\n  - city: a\n  - |\n")), ["city", "zip"]);
         // (A string that reads as a number stays quoted: plain it would be an integer.)
         assert_eq!(labels(&offer(Language::Yaml, "home:\n  zip: |\n")), ["\"00000\""]);
+        assert_eq!(labels(&offer(Language::Yaml, "home: {|}\n")), ["city", "zip"], "flow mappings are read too");
+        assert_eq!(labels(&offer(Language::Yaml, "home: {city: x, |}\n")), ["zip"]);
+        assert_eq!(labels(&offer(Language::Yaml, "home: {\"city\": x, |}\n")), ["zip"], "a quoted name that is there is not offered again");
+        assert_eq!(labels(&offer(Language::Yaml, "list: [{|}]\n")), ["city", "zip"]);
     }
 
     #[test]
@@ -742,6 +746,8 @@ mod tests {
         assert!(hover_with(&schema(), &text, JSON, offset).is_some_and(|h| h.text.contains("Type: string")));
         let (text, offset) = at("home:\n  ci|ty: c\n");
         assert!(hover_with(&schema(), &text, Language::Yaml, offset).is_some());
+        let (text, offset) = at("home: {ci|ty: c}\n");
+        assert!(hover_with(&schema(), &text, Language::Yaml, offset).is_some(), "flow mappings are laid out by the reader");
         let (text, offset) = at(r#"{"unknown|": 1}"#);
         assert_eq!(hover_with(&schema(), &text, JSON, offset), None);
         assert_eq!(hover_with(&schema(), "<a/>", Language::Xml, 1), None);
