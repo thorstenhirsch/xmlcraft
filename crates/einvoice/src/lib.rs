@@ -112,11 +112,13 @@ pub struct Detection {
 }
 
 /// The path, among the bundled schemas, of the XML Schema a detected document is written against, when XmlCraft ships it (UBL 2.1
-/// Invoice and CreditNote). A document is checked against it when it names no schema of its own.
+/// Invoice and CreditNote; the UN/CEFACT Cross Industry Invoice D16B). A document is checked against it when it names no schema of its
+/// own. FatturaPA has none: its publisher's terms do not allow the schema to be redistributed (AGENTS.md section 1.6).
 pub fn bundled_schema(detection: &Detection) -> Option<&'static str> {
     match (detection.syntax, detection.document.as_str()) {
         (Syntax::Ubl, "Invoice") => Some("ubl/maindoc/UBL-Invoice-2.1.xsd"),
         (Syntax::Ubl, "Credit note") => Some("ubl/maindoc/UBL-CreditNote-2.1.xsd"),
+        (Syntax::Cii, "Invoice") => Some("cii/CrossIndustryInvoice_100pD16B.xsd"),
         _ => None,
     }
 }
@@ -396,7 +398,11 @@ mod tests {
         assert_eq!(path(&ubl_invoice("x", "")), Some("ubl/maindoc/UBL-Invoice-2.1.xsd"));
         assert_eq!(path(&format!("<CreditNote xmlns=\"{UBL_CREDIT_NOTE}\"/>")), Some("ubl/maindoc/UBL-CreditNote-2.1.xsd"));
         assert_eq!(path(&format!("<Order xmlns=\"{UBL_ORDER}\"/>")), None);
-        assert_eq!(path(&cii_invoice("urn:factur-x.eu:1p0:minimum")), None, "the CII schemas are not bundled");
+        assert_eq!(path(&cii_invoice("urn:factur-x.eu:1p0:minimum")), Some("cii/CrossIndustryInvoice_100pD16B.xsd"));
+        let fattura = "<p:FatturaElettronica versione=\"FPR12\" xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\"/>";
+        assert_eq!(path(fattura), None, "the FatturaPA schema is not bundled");
+        let zugferd1 = format!("<rsm:CrossIndustryDocument xmlns:rsm=\"{ZUGFERD_1}\"/>");
+        assert_eq!(path(&zugferd1), None, "ZUGFeRD 1 is another schema");
     }
 
     #[test]

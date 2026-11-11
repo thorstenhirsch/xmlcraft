@@ -93,3 +93,33 @@ fn xml_validate_checks_a_ubl_invoice_against_the_bundled_schema_without_being_to
     assert_eq!(bad["valid"], json!(false), "{bad}");
     assert!(bad.to_string().contains("Bogus"), "{bad}");
 }
+
+/// A synthetic XRechnung invoice in CII (`crates/einvoice/tests/fixtures`).
+const CII_INVOICE: &str = include_str!("../../einvoice/tests/fixtures/xrechnung-cii.xml");
+
+fn validate(a: &mut Automation, text: &str) -> Value {
+    let content = a.call("xml_validate", &json!({ "text": text })).expect("runs");
+    let Some(Content::Json(v)) = content.into_iter().next() else { panic!("json") };
+    v
+}
+
+#[test]
+fn xml_validate_checks_a_cii_invoice_against_the_bundled_d16b_schema_offline() {
+    let mut a = Automation::new();
+    let ok = validate(&mut a, CII_INVOICE);
+    assert_eq!((ok["valid"].clone(), ok["validated"].clone()), (json!(true), json!(true)), "{ok}");
+    // An element the schema does not allow, at a place the problem points to.
+    let broken = CII_INVOICE.replace("<ram:TypeCode>380</ram:TypeCode>", "<ram:TypeCode>380</ram:TypeCode><ram:Bogus/>");
+    let bad = validate(&mut a, &broken);
+    assert_eq!(bad["valid"], json!(false), "{bad}");
+    let problems = bad["problems"].as_array().expect("problems");
+    let at = broken.find("<ram:Bogus/>").expect("there");
+    let line = broken[..at].matches('\n').count() + 1;
+    assert!(problems.iter().any(|p| p.to_string().contains("Bogus") && p["line"].as_u64() == Some(line as u64)), "a problem on line {line}: {bad}");
+    // A value of the wrong type (a date that is no date is text to the decoupled schema, but an amount is a decimal).
+    let bad = validate(
+        &mut a,
+        &CII_INVOICE.replace("<ram:LineTotalAmount>100.00</ram:LineTotalAmount>", "<ram:LineTotalAmount>hundred</ram:LineTotalAmount>"),
+    );
+    assert_eq!(bad["valid"], json!(false), "{bad}");
+}

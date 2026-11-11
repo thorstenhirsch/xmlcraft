@@ -4,4 +4,5 @@
 <catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog" prefer="public">
   <nextCatalog catalog="w3c/catalog.xml"/>
   <nextCatalog catalog="ubl/catalog.xml"/>
+  <nextCatalog catalog="cii/catalog.xml"/>
 </catalog>

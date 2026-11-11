@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The UN/CEFACT Cross Industry Invoice D16B schemas that ship with XmlCraft (OASIS XML Catalogs 1.1), in the decoupled-code-list
+     copy the CEN EN 16931 validation artefacts validate against. Written for XmlCraft; the files are UN/CEFACT's, unmodified. A CII
+     invoice (XRechnung CII, ZUGFeRD 2, Factur-X) finds its schema here without naming it. -->
+<catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog" prefer="public">
+  <uri name="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" uri="CrossIndustryInvoice_100pD16B.xsd"/>
+  <uri name="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" uri="CrossIndustryInvoice_ReusableAggregateBusinessInformationEntity_100pD16B.xsd"/>
+  <uri name="urn:un:unece:uncefact:data:standard:QualifiedDataType:100" uri="CrossIndustryInvoice_QualifiedDataType_100pD16B.xsd"/>
+  <uri name="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100" uri="CrossIndustryInvoice_UnqualifiedDataType_100pD16B.xsd"/>
+  <uriSuffix uriSuffix="/CrossIndustryInvoice_100pD16B.xsd" uri="CrossIndustryInvoice_100pD16B.xsd"/>
+</catalog>
