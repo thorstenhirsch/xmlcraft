@@ -13,6 +13,7 @@
 mod assign;
 mod catalog;
 mod convert;
+mod definition;
 mod diff;
 mod documents;
 mod einvoice;

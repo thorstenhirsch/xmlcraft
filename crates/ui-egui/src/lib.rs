@@ -60,6 +60,7 @@ use xmlcraft_engine::Session;
 use xmlcraft_engine::analysis::Analyzer;
 use xmlcraft_engine::schema::Schemas;
 use xmlcraft_engine::validation::{ResolverFactory, Validator};
+use xmlcraft_engine::xsd_definition::DefinitionFinder;
 pub use xmlcraft_platform::network::Network;
 
 use crate::dialog::Dialog;
@@ -156,6 +157,9 @@ pub struct XmlCraftApp {
     analyzer: Analyzer,
     /// Checks each document against its DTD in the background, when asked (F8).
     validator: Validator,
+    /// Finds where an XML Schema name is defined (F12), and the versions of the open documents when it was asked.
+    definition: DefinitionFinder,
+    definition_versions: Vec<(String, u64)>,
     /// Make schemas and sample documents in the background, when the Generate dialogs ask.
     schema_generator: xmlcraft_engine::generate::SchemaGenerator,
     sample_generator: xmlcraft_engine::generate::SampleGenerator,
@@ -290,6 +294,10 @@ impl XmlCraftApp {
             let repaint = repaint.clone();
             move || repaint.request_repaint()
         });
+        app.definition.on_done({
+            let repaint = repaint.clone();
+            move || repaint.request_repaint()
+        });
         app.schema_generator.on_done({
             let repaint = repaint.clone();
             move || repaint.request_repaint()
@@ -365,6 +373,8 @@ impl XmlCraftApp {
             // (found by their public identifiers and namespaces), files the person can read and, unless they work offline, what the
             // web has (kept on disk).
             validator: Validator::new(resolvers()),
+            definition: DefinitionFinder::new(resolvers()),
+            definition_versions: Vec::new(),
             schema_generator: xmlcraft_engine::generate::SchemaGenerator::new(),
             sample_generator: xmlcraft_engine::generate::SampleGenerator::new(resolvers()),
             json_schema_generator: xmlcraft_engine::json_infer::JsonSchemaGenerator::new(),
