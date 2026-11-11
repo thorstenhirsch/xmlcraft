@@ -243,7 +243,7 @@ impl XmlCraftApp {
                 continue;
             }
             if let Outcome::Files { serial, result } = outcome {
-                self.find_files_answered(serial, result);
+                self.search_answered(serial, result);
                 continue;
             }
             let Some(pane) = self.open_pane() else { continue };

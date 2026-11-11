@@ -75,8 +75,6 @@ pub(crate) enum Dialog {
     OpenApi(Box<crate::openapi_dialog::OpenApiForm>),
     /// The SOAP Debugger window (drawn by `proxy_dialog.rs`).
     Proxy(Box<crate::proxy_dialog::ProxyForm>),
-    /// The Find in Files window (drawn by `find_files_dialog.rs`).
-    FindFiles(Box<crate::find_files_dialog::FindFilesForm>),
     Message {
         title: String,
         text: String,
@@ -131,7 +129,6 @@ impl Dialog {
             | Dialog::Soap(_)
             | Dialog::OpenApi(_)
             | Dialog::Proxy(_)
-            | Dialog::FindFiles(_)
             | Dialog::RenameElement(_) => false,
         }
     }
@@ -247,7 +244,6 @@ impl XmlCraftApp {
             | Dialog::Soap(_)
             | Dialog::OpenApi(_)
             | Dialog::Proxy(_)
-            | Dialog::FindFiles(_)
             | Dialog::RenameElement(_) => {
                 Describe { title: String::new(), text: String::new(), buttons: vec![(tl!("Cancel"), Choice::Cancel)], input: false }
             }
@@ -302,10 +298,6 @@ impl XmlCraftApp {
         }
         if matches!(self.dialog, Some(Dialog::OpenApi(_))) {
             self.show_openapi(ctx);
-            return;
-        }
-        if matches!(self.dialog, Some(Dialog::FindFiles(_))) {
-            self.show_find_files(ctx);
             return;
         }
         if matches!(self.dialog, Some(Dialog::Proxy(_))) {

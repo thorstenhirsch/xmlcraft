@@ -46,7 +46,7 @@ mod status_pickers;
 mod structure;
 pub mod theme;
 pub use control::{ControlClient, Reply as ControlReply};
-mod find_files_dialog;
+mod tools;
 mod widgets;
 mod workbench;
 pub use workbench::{Panel, Place};
@@ -179,8 +179,8 @@ pub struct XmlCraftApp {
     xslt: xmlcraft_engine::xslt::XsltRunner,
     /// The expression last typed in the XPath window, put back when it is opened again.
     xpath_last: String,
-    /// The last Find in Files window, with its query and result.
-    find_files_last: Option<Box<crate::find_files_dialog::FindFilesForm>>,
+    /// The Search tool window (Find in Files): its form and its last result.
+    search: tools::search::SearchTool,
     /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
     generate_serial: u64,
     /// Fetches the schema a document names (Load Schema, Schema Resolution), and the request being waited for.
@@ -396,7 +396,7 @@ impl XmlCraftApp {
             xpath: xmlcraft_engine::xpath::XPathRunner::new(),
             xslt: xmlcraft_engine::xslt::XsltRunner::new(),
             xpath_last: String::new(),
-            find_files_last: None,
+            search: tools::search::SearchTool::default(),
             generate_serial: 0,
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
             loading_schema: None,
@@ -584,15 +584,12 @@ impl eframe::App for XmlCraftApp {
         chrome::status_bar(self, ui);
         // The palette before the editor: its keys are its own while it is open.
         palette::show(self, ui.ctx());
-        // The panes, the rail and the header are about a document: the home view has the whole window.
+        // The rail and the header are about a document; the home view keeps the tool windows that are not (Search).
         if self.session.active().is_some() {
             chrome::activity_rail(self, ui);
-            // The editor (with the document header) and the panels around it, in the docking engine.
-            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.panel)).show(ui, |ui| workbench::show(self, ui));
-        } else {
-            let fill = if self.session.has_document() { editor_view::editor_colors(&t).background } else { t.pasteboard };
-            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| self.central(ui));
         }
+        // The editor (with the document header, or the home view) and the panels around it, in the docking engine.
+        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.panel)).show(ui, |ui| workbench::show(self, ui));
         self.show_dialog(ui.ctx());
         self.show_drop_hint(ui.ctx());
     }
@@ -636,7 +633,8 @@ mod tests {
     fn defaults_open_the_outline_entry_helpers_and_messages() {
         let p = Prefs::default();
         let app = XmlCraftApp::with_prefs(p.clone());
-        assert!(Panel::ALL.iter().all(|panel| app.panel_visible(*panel)));
+        assert!(Panel::ALL.iter().all(|panel| app.panel_visible(*panel) == panel.spec().default_visible));
+        assert!(!app.panel_visible(Panel::Search), "Search waits for a search");
         assert_eq!(p.theme, ThemePreference::System);
     }
 

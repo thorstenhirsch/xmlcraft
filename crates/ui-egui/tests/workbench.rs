@@ -69,7 +69,10 @@ fn the_panels_dock_around_the_editor_move_to_the_right_and_stay_there_after_a_re
     for label in ["Outline", "Entry Helpers", "Problems"] {
         assert!(h.query_all_by_label(label).count() >= 1, "the {label} tab");
     }
-    assert_eq!(h.query_all_by_label("Close").count(), 3);
+    for label in ["Close Outline", "Close Entry Helpers", "Close Problems"] {
+        assert!(h.query_by_label(label).is_some(), "{label}");
+    }
+    assert!(h.query_by_label("Close Editor").is_none(), "the editor stays");
     assert!(h.query_by_label("No DTD or schema").is_some(), "the Entry Helpers draw");
 
     h.state_mut()
