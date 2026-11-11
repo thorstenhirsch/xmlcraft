@@ -276,6 +276,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("view.theme.light", "Light theme", VIEW, None, Nothing, "sun").choice(),
     c("view.theme.dark", "Dark theme", VIEW, None, Nothing, "moon").choice(),
     c("view.search", "Search", VIEW, None, Nothing, "search").toggle().sep(),
+    c("view.reset_layout", "Reset Layout", VIEW, None, Nothing, "panel-left"),
     c("app.about", "About XmlCraft", HELP, None, Nothing, "circle-help"),
 ];
 

@@ -260,6 +260,10 @@ impl XmlCraftApp {
             "view.entry_helpers" => self.set_panel_visible(Panel::EntryHelpers, !self.panel_visible(Panel::EntryHelpers)),
             "view.messages" => self.set_panel_visible(Panel::Problems, !self.panel_visible(Panel::Problems)),
             "view.search" => self.set_panel_visible(Panel::Search, !self.panel_visible(Panel::Search)),
+            "view.reset_layout" => {
+                self.workbench.reset();
+                self.status = tl!("The panels are back in their default places").to_owned();
+            }
             "view.theme.system" => self.theme_preference = ThemePreference::System,
             "view.theme.light" => self.theme_preference = ThemePreference::Light,
             "view.theme.dark" => self.theme_preference = ThemePreference::Dark,

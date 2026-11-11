@@ -21,6 +21,8 @@ Label value="Ln 1, Col 2"
 Button "Toggle Outline" [toggled=true]
 Button "Toggle Entry Helpers" [toggled=true]
 Button "Toggle Problems" [toggled=true]
+Button "Toggle Search" [toggled=false]
+Button "Open Preferences" [toggled=false]
 Button "Close Outline" [toggled=false]
 Tab "Outline" [selected]
 Button "Move tab group"
