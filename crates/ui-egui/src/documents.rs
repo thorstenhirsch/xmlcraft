@@ -52,6 +52,8 @@ pub(crate) struct DocView {
     pub(crate) data_schema: crate::data_assist::DataSchema,
     /// What the header says of a business document (an e-invoice, an XBRL instance).
     pub(crate) business: crate::business_chip::ChipState,
+    /// What the Outline keeps of this document: what is collapsed, the rows it shows.
+    pub(crate) outline: crate::outline::OutlineState,
 }
 
 /// What is known of validating a document while it is typed in.
@@ -79,6 +81,7 @@ impl DocView {
             grid: None,
             data_schema: Default::default(),
             business: Default::default(),
+            outline: Default::default(),
         }
     }
 

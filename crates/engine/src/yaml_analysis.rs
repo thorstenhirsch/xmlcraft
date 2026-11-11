@@ -2,9 +2,9 @@
 
 use xmlcraft_yaml_syntax::{Code, Data, Diagnostic, Options, Value, parse};
 
-use crate::analysis::{Analysis, MAX_OUTLINE_ITEMS, OutlineItem};
+use crate::analysis::{Analysis, MAX_OUTLINE_ITEMS, OutlineItem, count_children};
 use crate::folding::{FoldKind, FoldRange, Lines, MAX_FOLD_RANGES};
-use crate::json_analysis::label_of;
+use crate::json_analysis::{kind_of, label_of};
 use crate::language::Language;
 
 pub(crate) fn analyze_yaml(text: &str, version: u64) -> Analysis {
@@ -25,10 +25,14 @@ pub(crate) fn analyze_yaml(text: &str, version: u64) -> Analysis {
                 start_tag: document.span.start..document.span.start,
                 end_tag: None,
                 end_name_range: None,
+                kind: kind_of(&document.data),
+                children: 0,
+                preview: label_of(document).unwrap_or_default(),
             });
         }
         walk.value(document, usize::from(several), 1);
     }
+    count_children(&mut walk.outline);
     let mut diagnostics = read.diagnostics;
     let capped = diagnostics.iter().position(|d| d.code == Code::TooManyDiagnostics);
     let last = capped.map(|at| diagnostics.remove(at));
@@ -80,15 +84,19 @@ impl Walk<'_> {
                 for m in members {
                     let end = self.content_end(&m.value).max(m.key_span.end);
                     let container = matches!(m.value.data, Data::Object(_) | Data::Array(_));
+                    let label = label_of(&m.value);
                     self.push_item(OutlineItem {
                         depth,
                         name: m.key.clone(),
-                        label: label_of(&m.value),
+                        preview: label.clone().unwrap_or_default(),
+                        label,
                         range: m.key_span.start..end,
                         name_range: m.key_span.clone(),
                         start_tag: m.key_span.clone(),
                         end_tag: None,
                         end_name_range: None,
+                        kind: kind_of(&m.value.data),
+                        children: 0,
                     });
                     // The members of a block mapping are folded from their key; so are multi-line scalars.
                     self.fold(m.key_span.start, end, level, &m.value, container, false);
@@ -110,6 +118,9 @@ impl Walk<'_> {
                             start_tag: v.span.start..v.span.start,
                             end_tag: None,
                             end_name_range: None,
+                            kind: kind_of(&v.data),
+                            children: 0,
+                            preview: String::new(),
                         });
                     }
                     // (An entry that is a block scalar over several lines folds too.)
@@ -156,6 +167,25 @@ impl Walk<'_> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn yaml_items_have_kinds_children_and_previews() {
+        let a = analyze_as(Language::Yaml, "name: Ada\nage: 36\nlist:\n  - a: 1\n  - b\nnothing: ~\n", 1);
+        let got: Vec<(&str, crate::analysis::OutlineKind, u32, &str)> =
+            a.outline.iter().map(|i| (i.name.as_str(), i.kind, i.children, i.preview.as_str())).collect();
+        use crate::analysis::OutlineKind as K;
+        assert_eq!(
+            got,
+            [
+                ("name", K::String, 0, "\"Ada\""),
+                ("age", K::Number, 0, "36"),
+                ("list", K::Array, 1, ""),
+                ("[0]", K::Object, 1, ""),
+                ("a", K::Number, 0, "1"),
+                ("nothing", K::Null, 0, "null"),
+            ]
+        );
+    }
+
     use super::*;
     use crate::analysis::analyze_as;
 

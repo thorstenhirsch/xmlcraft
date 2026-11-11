@@ -203,6 +203,18 @@ fn the_outline_lists_elements_with_positions() {
         .collect();
     assert_eq!(items, [(0, "lib", None, 1), (1, "book", Some("b1"), 2), (1, "book", Some("two"), 3), (2, "t", None, 3)]);
     assert_eq!((r["count"].as_u64(), r["well_formed"].as_bool(), r["truncated"].as_bool()), (Some(4), Some(true), Some(false)));
+    let shape: Vec<(&str, u64, &str)> = r["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|i| (i["kind"].as_str().expect("kind"), i["children"].as_u64().expect("children"), i["preview"].as_str().expect("preview")))
+        .collect();
+    assert_eq!(shape, [("element", 2, ""), ("empty", 0, ""), ("element", 1, ""), ("empty", 0, "")]);
+    let r = ok(&mut a, "xml_outline", json!({ "text": "<a><t>  Hello\n  world </t></a>" }));
+    assert_eq!((r["items"][1]["kind"].as_str(), r["items"][1]["preview"].as_str()), (Some("leaf"), Some("Hello world")));
+    let r = ok(&mut a, "xml_outline", json!({ "text": "{\"n\": 1, \"o\": {\"s\": \"x\"}}", "language": "json" }));
+    let kinds: Vec<&str> = r["items"].as_array().expect("items").iter().filter_map(|i| i["kind"].as_str()).collect();
+    assert_eq!(kinds, ["number", "object", "string"]);
 }
 
 #[test]

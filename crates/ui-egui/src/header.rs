@@ -344,6 +344,9 @@ mod tests {
             end_tag: None,
             end_name_range: None,
             range,
+            kind: xmlcraft_engine::analysis::OutlineKind::Empty,
+            children: 0,
+            preview: String::new(),
         }
     }
 

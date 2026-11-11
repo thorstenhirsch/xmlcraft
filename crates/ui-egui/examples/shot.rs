@@ -4,7 +4,10 @@
 //! cargo run -p xmlcraft-ui-egui --example shot -- out.png [--size 1440x900] [--scale 2] [--theme light|dark|system]
 //!     [--tabs a.xml,b.xml] [--active 0] [--width 1200] [--open FILE.xml [--find TEXT] [--goto LINE:COL] [--command ID]]
 //!     [--panes outline,entry_helpers,problems,search] [--right entry_helpers] [--search TEXT [--search-in DIR]]
+//!     [--activate problems] [--click LABEL]...
 //! ```
+//! `--activate PANEL` makes that panel the shown tab of its group; `--click LABEL` (repeatable) clicks the widget with that accessible
+//! name once everything else is done (`--click "Collapse book b1"` collapses a row of the Outline).
 //! `--panes` shows exactly the panels named (the others are hidden), `--right` moves the panels named to a dock on the right edge.
 //! `--search TEXT` runs Find in Files for TEXT in the folder of the `--open` file (or the working directory) and waits for the hits.
 //! `--search-in DIR` searches DIR instead, as typed (`.` keeps the machine's paths out of the picture).
@@ -63,6 +66,8 @@ fn main() -> Result<(), String> {
     let mut right: Vec<Panel> = Vec::new();
     let mut search: Option<String> = None;
     let mut search_in: Option<String> = None;
+    let mut activate: Vec<Panel> = Vec::new();
+    let mut clicks: Vec<String> = Vec::new();
     while let Some(a) = args.next() {
         match a.strip_prefix("--") {
             Some("size") => {
@@ -76,6 +81,8 @@ fn main() -> Result<(), String> {
             Some("right") => right = panels(&args.next().ok_or("--right needs panels")?)?,
             Some("command") => command = Some(args.next().ok_or("--command needs a command id")?),
             Some("search") => search = Some(args.next().ok_or("--search needs the text to look for")?),
+            Some("activate") => activate = panels(&args.next().ok_or("--activate needs panels")?)?,
+            Some("click") => clicks.push(args.next().ok_or("--click needs an accessible name")?),
             Some("search-in") => search_in = Some(args.next().ok_or("--search-in needs a folder")?),
             Some("goto") => {
                 let v = args.next().unwrap_or_default();
@@ -217,6 +224,19 @@ fn main() -> Result<(), String> {
         // The pointer is put away from the hits, and the keyboard taken from the field, so the picture has no hover or caret.
         harness.hover_at(egui::pos2(1.0, 1.0));
         harness.run_steps(2);
+    }
+    for panel in activate {
+        harness.state_mut().apply_layout(vec![craft_ui::docking::Action::Activate { panel }])?;
+        harness.run_steps(2);
+    }
+    for label in &clicks {
+        use egui_kittest::kittest::Queryable;
+        harness.run_steps(2);
+        harness.get_by_label(label).click();
+        harness.run_steps(3);
+    }
+    if !clicks.is_empty() {
+        harness.hover_at(egui::pos2(1.0, 1.0));
     }
     std::thread::sleep(Duration::from_millis(250));
     harness.run_steps(4);
