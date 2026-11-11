@@ -37,6 +37,7 @@ pub mod templates;
 pub mod validation;
 mod worker;
 pub mod xbrl;
+pub mod xinclude;
 pub mod xpath;
 pub mod xsd_definition;
 pub mod xsd_schemas;

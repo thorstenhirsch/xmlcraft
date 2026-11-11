@@ -501,6 +501,31 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             handler: xml_folds,
         },
         ToolDef {
+            name: "xinclude_expand",
+            title: "Expand XInclude",
+            description: "Expand every `xi:include` of an XML document (an open document `id`, a file `path`, or `text`) into what it names, and return the result as `text`, \
+                          how many includes were replaced (`includes`) and the `edits` that make it (the byte range of each outermost include, `start` and `end`, and \
+                          its replacement `text`, written with the document's line endings). Relative `href`s are resolved against the document's location, or \
+                          against `base` for text; a resource is found as a schema is (open documents, the catalogs, the schemas that ship with the app, and files \
+                          through the root confinement; the network only when the session works online). `parse=\"text\"` content is escaped, a resource that \
+                          cannot be read uses its `xi:fallback` (an empty one includes nothing), and the fatal errors of XInclude 1.0 are refused with the reason: \
+                          an include of the document itself or of one being included, an empty `href` with no `xpointer`, a `parse` that is neither xml nor text. \
+                          `xpointer`, `accept` and namespace fixup are not done: an include that asks for an `xpointer` uses its fallback. Nothing is written.",
+            input_schema: {
+                let mut properties = source_properties();
+                if let Some(map) = properties.as_object_mut() {
+                    map.insert(
+                        "base".into(),
+                        json!({ "type": "string", "description": "What relative hrefs are resolved against when the source is text" }),
+                    );
+                }
+                object(properties, &[])
+            },
+            read_only: true,
+            destructive: false,
+            handler: xinclude_expand,
+        },
+        ToolDef {
             name: "xml_outline",
             title: "Outline of the elements",
             description: "The element tree of an open document (`id`), a file (`path`) or text: each element with its depth, name, a hint from its id, name or key \
@@ -535,6 +560,34 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             handler: xml_format,
         },
     ]
+}
+
+fn xinclude_expand(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let source = source(a, args)?;
+    if source.language != Language::Xml {
+        return fail("xinclude_expand reads XML (an open document or a file is read by its name)");
+    }
+    if source.text.len() > MAX_TEXT_BYTES {
+        return fail("the text is too large to expand");
+    }
+    let base = text_arg(args, "base")
+        .map(str::to_owned)
+        .or_else(|| source.path.as_ref().map(|p| xmlcraft_platform::file_uri::uri_of(&p.to_string_lossy())))
+        .unwrap_or_default();
+    let resolver = crate::validate::schema_resolver(a);
+    let expanded =
+        xmlcraft_engine::xinclude::expand(&source.text, &base, &resolver).map_err(|e| ToolError::Failed(format!("xinclude_expand: {e}")))?;
+    if expanded.text.len() > MAX_TEXT_BYTES {
+        return fail(format!("the expanded text has {} bytes; at most {MAX_TEXT_BYTES} are returned", expanded.text.len()));
+    }
+    let edits: Vec<Value> = expanded.edits.iter().map(|e| json!({ "start": e.range.start, "end": e.range.end, "text": e.text })).collect();
+    json_result(json!({
+        "text": expanded.text,
+        "includes": expanded.includes,
+        "edits": edits,
+        "lossy": source.lossy,
+        "base": base,
+    }))
 }
 
 // --- helpers -------------------------------------------------------------------------------------------------------------------

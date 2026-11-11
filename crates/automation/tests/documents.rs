@@ -831,3 +831,55 @@ fn yaml_is_read_by_the_same_tools_as_xml_and_json() {
     let e = err(&mut a, "xml_format", json!({ "text": text, "language": "yaml" }));
     assert!(e.contains("YAML is not reformatted"), "{e}");
 }
+
+#[test]
+fn xinclude_is_expanded_from_files_next_to_the_document_and_from_text_with_a_base() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = file(dir.path(), "a.xml", br#"<a xmlns:xi="http://www.w3.org/2001/XInclude"><xi:include href="b.xml"/></a>"#);
+    file(dir.path(), "b.xml", b"<b>in</b>");
+    let mut a = Automation::new();
+    let expanded = ok(&mut a, "xinclude_expand", json!({ "path": path }));
+    assert_eq!(expanded["text"], "<a xmlns:xi=\"http://www.w3.org/2001/XInclude\"><b>in</b></a>");
+    assert_eq!(expanded["includes"], 1);
+    assert_eq!(expanded["edits"], json!([{ "start": 46, "end": 72, "text": "<b>in</b>" }]), "one edit, of the include's range");
+    let text =
+        "<a xmlns:xi=\"http://www.w3.org/2001/XInclude\"><xi:include href=\"b.txt\" parse=\"text\"><xi:fallback>no</xi:fallback></xi:include></a>";
+    file(dir.path(), "b.txt", b"a < b");
+    let base = format!("{}/", dir.path().display());
+    let from_text = ok(&mut a, "xinclude_expand", json!({ "text": text, "base": base }));
+    assert_eq!(from_text["text"], "<a xmlns:xi=\"http://www.w3.org/2001/XInclude\">a &lt; b</a>");
+    let fallback = ok(&mut a, "xinclude_expand", json!({ "text": text, "base": "/no/such/folder" }));
+    assert_eq!(fallback["text"], "<a xmlns:xi=\"http://www.w3.org/2001/XInclude\">no</a>");
+    assert!(err(&mut a, "xinclude_expand", json!({ "text": "<a>" })).contains("not well-formed"));
+    assert!(
+        err(
+            &mut a,
+            "xinclude_expand",
+            json!({ "text": "<a xmlns:xi=\"http://www.w3.org/2001/XInclude\"><xi:include href=\"b.xml\" xpointer=\"/b\"/></a>" })
+        )
+        .contains("xpointer")
+    );
+}
+
+#[test]
+fn xinclude_does_not_reach_a_file_outside_the_root() {
+    let parent = tempfile::tempdir().expect("parent");
+    let root = parent.path().join("root");
+    std::fs::create_dir(&root).expect("root");
+    file(parent.path(), "outside.xml", b"<secret>do not read</secret>");
+    let doc = file(&root, "a.xml", br#"<a xmlns:xi="http://www.w3.org/2001/XInclude"><xi:include href="../outside.xml"/></a>"#);
+    let mut a = Automation::with_root(&root).expect("root");
+    let e = err(&mut a, "xinclude_expand", json!({ "path": doc }));
+    assert!(e.contains("outside.xml") && !e.contains("do not read"), "{e}");
+    let with_fallback = file(
+        &root,
+        "b.xml",
+        br#"<a xmlns:xi="http://www.w3.org/2001/XInclude"><xi:include href="../outside.xml"><xi:fallback>kept out</xi:fallback></xi:include></a>"#,
+    );
+    let r = ok(&mut a, "xinclude_expand", json!({ "path": with_fallback }));
+    assert_eq!(r["text"], "<a xmlns:xi=\"http://www.w3.org/2001/XInclude\">kept out</a>", "{r}");
+    // The same file is read when the root allows it.
+    let mut open = Automation::new();
+    let r = ok(&mut open, "xinclude_expand", json!({ "path": doc }));
+    assert!(r["text"].as_str().is_some_and(|t| t.contains("do not read")), "{r}");
+}

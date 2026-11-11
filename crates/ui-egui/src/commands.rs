@@ -181,6 +181,7 @@ impl XmlCraftApp {
             "xml.validate" => self.validate_now(),
             "xml.pretty_print" => self.reformat(false),
             "xml.minify" => self.reformat(true),
+            "xml.xinclude" => self.expand_xincludes(),
             "xml.assign_schema" => self.open_assign_schema(),
             "xml.rename_element" => {
                 // Not over a question that is being asked: its answer would be lost.
