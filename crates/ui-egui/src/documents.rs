@@ -740,12 +740,13 @@ impl XmlCraftApp {
     }
 
     fn reveal_definition(&mut self, current: u64, definition: &Definition) {
-        let open = self.session.documents().iter().find(|doc| doc.path().is_some_and(|path| path.to_string_lossy() == definition.location));
+        let open =
+            self.session.documents().iter().find(|doc| doc.path().is_some_and(|path| same_file(&path.to_string_lossy(), &definition.location)));
         let target = if definition.location.is_empty() {
             Some(current)
         } else if let Some(doc) = open {
             // An open document is shown only as it was when the definition was looked for in it.
-            let asked = self.definition_versions.iter().find(|(path, _)| *path == definition.location).map(|(_, version)| *version);
+            let asked = self.definition_versions.iter().find(|(path, _)| same_file(path, &definition.location)).map(|(_, version)| *version);
             if asked != Some(doc.editor().version()) {
                 self.status = tl!("The document changed meanwhile: press F12 again").to_owned();
                 return;
@@ -1200,6 +1201,18 @@ fn parse_position(input: &str) -> Option<(usize, usize)> {
         None => (input.trim().parse().ok()?, 1),
     };
     (line >= 1 && column >= 1).then_some((line, column))
+}
+
+/// Whether two locations name one file: the same text, or the same real path (a resolver may hand back `\\?\C:\…` or other
+/// spellings of a path a document was opened by).
+fn same_file(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
 }
 
 #[cfg(test)]
