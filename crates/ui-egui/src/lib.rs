@@ -482,6 +482,11 @@ impl XmlCraftApp {
         self.workbench.place(panel)
     }
 
+    /// Whether a hidden tool window has news (the rail's dot): a search that finished while Search was hidden.
+    pub fn panel_attention(&self, panel: Panel) -> bool {
+        self.workbench.attention(panel)
+    }
+
     /// Change the arrangement of the panels, all or none, as a drag or a menu would.
     pub fn apply_layout(&mut self, actions: Vec<craft_ui::docking::Action<Panel>>) -> Result<(), String> {
         self.workbench.apply(actions).map(drop).map_err(|e| e.to_string())
@@ -584,10 +589,8 @@ impl eframe::App for XmlCraftApp {
         chrome::status_bar(self, ui);
         // The palette before the editor: its keys are its own while it is open.
         palette::show(self, ui.ctx());
-        // The rail and the header are about a document; the home view keeps the tool windows that are not (Search).
-        if self.session.active().is_some() {
-            chrome::activity_rail(self, ui);
-        }
+        // The rail is always there (on the home view with the document's tool windows disabled).
+        chrome::activity_rail(self, ui);
         // The editor (with the document header, or the home view) and the panels around it, in the docking engine.
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.panel)).show(ui, |ui| workbench::show(self, ui));
         self.show_dialog(ui.ctx());

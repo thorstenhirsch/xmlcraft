@@ -4,7 +4,7 @@
 use egui::{Align, Align2, Color32, CornerRadius, Layout, Rect, Sense, Stroke, vec2};
 
 use crate::i18n::{fmt, tl};
-use crate::kit::{self, PillKind};
+use crate::kit::{self, PillKind, Tone};
 use crate::theme::{self, ThemePreference, Tokens};
 use crate::{Panel, XmlCraftApp, icons, widgets};
 
@@ -461,71 +461,163 @@ pub(crate) fn problem_counts(app: &XmlCraftApp) -> (usize, usize) {
     (errors, warnings)
 }
 
-/// The width of the rail that opens the panes.
-const RAIL_WIDTH: f32 = 48.0;
+/// The rail on the left: its width, its buttons (and the icons in them), the gap between them and the room above the first.
+const RAIL_WIDTH: f32 = 44.0;
+const RAIL_BUTTON: f32 = 32.0;
+const RAIL_ICON: f32 = 18.0;
+const RAIL_GAP: f32 = 4.0;
+const RAIL_TOP: f32 = 6.0;
+/// How strongly the icon of a tool window that has nothing to say about the document is drawn.
+const IRRELEVANT: f32 = 0.45;
 
-/// The rail on the left: one toggle for each pane (the outline, what the grammar allows here, the problems), with the number of
-/// problems on the last. A pane that is open is marked.
+/// What a rail button shows besides its icon.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RailState {
+    /// The panel is shown.
+    open: bool,
+    /// It can be clicked (the document's tool windows cannot on the home view).
+    enabled: bool,
+    /// It has something to say about the document shown; else its icon is dimmed (it still opens).
+    relevant: bool,
+    /// The problems of the document, for the badge of Problems.
+    errors: usize,
+    warnings: usize,
+    /// News while hidden (a finished search).
+    attention: bool,
+}
+
+/// The activity rail, always on the left: a toggle for each tool window from the panel table, the document's first, a hairline, then
+/// the workspace's; Preferences at the foot. On the home view the document's tool windows are disabled.
 pub fn activity_rail(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
+    use crate::workbench::Zone;
     let t = Tokens::get(ui.ctx());
-    let (errors, warnings) = if app.session.active().is_some() { problem_counts(app) } else { (0, 0) };
-    let syntax = crate::editor_view::SyntaxTokens::for_kind(t.kind);
-    let items = [
-        ("list-tree", tl!("Outline"), "view.outline", app.panel_visible(Panel::Outline), 0usize, syntax.error),
-        ("braces", tl!("Entry Helpers"), "view.entry_helpers", app.panel_visible(Panel::EntryHelpers), 0, syntax.error),
-        (
-            "triangle-alert",
-            tl!("Problems"),
-            "view.messages",
-            app.panel_visible(Panel::Problems),
-            errors + warnings,
-            if errors > 0 { syntax.error } else { syntax.warning },
-        ),
-    ];
+    let home = app.session.active().is_none();
+    let (errors, warnings) = if home { (0, 0) } else { problem_counts(app) };
+    let kind = app.active_doc_kind();
+    let mut clicked: Option<&'static str> = None;
     egui::Panel::left("activity_rail")
         .exact_size(RAIL_WIDTH)
         .resizable(false)
-        .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(0, 10)).stroke(Stroke::new(1.0, t.divider)))
+        .frame(
+            egui::Frame::NONE
+                .fill(t.chrome)
+                .inner_margin(egui::Margin { left: 0, right: 0, top: RAIL_TOP as i8, bottom: RAIL_TOP as i8 })
+                .stroke(Stroke::new(1.0, t.divider)),
+        )
         .show(ui, |ui| {
+            let rail = ui.max_rect();
+            ui.spacing_mut().item_spacing.y = RAIL_GAP;
             ui.vertical_centered(|ui| {
-                ui.spacing_mut().item_spacing.y = 6.0;
-                for (icon, label, command, open, count, badge) in items {
-                    let response = rail_button(ui, icon, label, open, count);
-                    if open {
-                        // The mark of an open pane: a bar on the rail's outer edge.
-                        let bar = Rect::from_min_size(egui::pos2(ui.max_rect().left(), response.rect.top() + 7.0), vec2(3.0, 22.0));
-                        ui.painter().rect_filled(bar, CornerRadius { nw: 0, sw: 0, ne: 2, se: 2 }, t.accent);
+                for (n, zone) in [Zone::Document, Zone::Workspace].into_iter().enumerate() {
+                    if n > 0 {
+                        // The hairline between the zones.
+                        ui.add_space(6.0 - RAIL_GAP);
+                        let y = ui.cursor().top();
+                        ui.painter().hline((rail.left() + 8.0)..=(rail.right() - 8.0), y, Stroke::new(1.0, t.divider));
+                        ui.add_space(6.0 + 1.0);
                     }
-                    if count > 0 {
-                        let text = if count > 99 { "99+".to_owned() } else { count.to_string() };
-                        let galley = ui.painter().layout_no_wrap(text, theme::semibold(9.5), Color32::WHITE);
-                        let size = vec2((galley.size().x + 8.0).max(15.0), 15.0);
-                        let pill = Rect::from_min_size(egui::pos2(response.rect.right() - size.x + 1.0, response.rect.top() + 1.0), size);
-                        ui.painter().rect_filled(pill, CornerRadius::same(8), badge);
-                        ui.painter().galley(pill.center() - galley.size() / 2.0, galley, Color32::WHITE);
-                    }
-                    if response.clicked() {
-                        app.execute(command);
+                    for panel in Panel::tools().filter(|p| p.spec().zone == zone) {
+                        // The document's tool windows are not drawn on the home view: not shown, and not to be clicked.
+                        let enabled = !(home && zone == Zone::Document);
+                        let state = RailState {
+                            open: enabled && app.panel_visible(panel),
+                            enabled,
+                            relevant: panel.relevant(kind),
+                            errors: if panel == Panel::Problems { errors } else { 0 },
+                            warnings: if panel == Panel::Problems { warnings } else { 0 },
+                            attention: app.workbench.attention(panel),
+                        };
+                        let count = state.errors + state.warnings;
+                        let mut name = fmt(tl!("Toggle {pane}"), &[("pane", panel.title())]);
+                        if count > 0 {
+                            name = fmt(tl!("{name}, {count} problems"), &[("name", &name), ("count", &count.to_string())]);
+                        }
+                        let tip = tip(ui.ctx(), panel.title(), panel.spec().command);
+                        let response = rail_button(ui, rail, panel.icon(), &name, &tip, state);
+                        if response.clicked() && state.enabled {
+                            clicked = panel.spec().command;
+                        }
                     }
                 }
             });
+            // The foot, pinned to the bottom.
+            let foot =
+                Rect::from_min_size(egui::pos2(rail.center().x - RAIL_BUTTON / 2.0, rail.bottom() - RAIL_BUTTON), vec2(RAIL_BUTTON, RAIL_BUTTON));
+            let state = RailState { open: false, enabled: true, relevant: true, errors: 0, warnings: 0, attention: false };
+            let tip = tip(ui.ctx(), tl!("Preferences"), Some("app.preferences"));
+            let response = ui
+                .scope_builder(egui::UiBuilder::new().max_rect(foot), |ui| rail_button(ui, rail, "settings", tl!("Open Preferences"), &tip, state))
+                .inner;
+            if response.clicked() {
+                clicked = Some("app.preferences");
+            }
         });
+    if let Some(command) = clicked {
+        app.execute(command);
+    }
 }
 
-/// A toggle on the rail: a rounded square that washes on hover, and is filled with the accent tint (the icon in the accent) while its pane is
-/// open. Its accessible name says it toggles the pane, so that it is not mistaken for the pane's own title.
-fn rail_button(ui: &mut egui::Ui, icon: &str, pane: &str, open: bool, count: usize) -> egui::Response {
+/// A toggle on the rail. Shown: a 2 pt accent bar on the rail's left edge, the accent tint behind the icon and the icon in the accent;
+/// hovered: the hover fill. Problems carries the count of problems as a pill at the top right, a tool window with news a dot at the
+/// bottom right. `name` is for assistive technology (a panel's says it toggles the panel, so that it is not mistaken for the panel's
+/// own tab), `tip` the tooltip.
+fn rail_button(ui: &mut egui::Ui, rail: Rect, icon: &str, name: &str, tip: &str, state: RailState) -> egui::Response {
     let t = Tokens::get(ui.ctx());
-    let (rect, resp) = ui.allocate_exact_size(vec2(36.0, 36.0), Sense::click());
-    let mut name = crate::i18n::fmt(tl!("Toggle {pane}"), &[("pane", pane)]);
-    if count > 0 {
-        name = crate::i18n::fmt(tl!("{name}, {count} problems"), &[("name", &name), ("count", &count.to_string())]);
-    }
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, open, &name));
+    let sense = if state.enabled { Sense::click() } else { Sense::hover() };
+    let (rect, resp) = ui.allocate_exact_size(vec2(RAIL_BUTTON, RAIL_BUTTON), sense);
+    let count = state.errors + state.warnings;
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, state.enabled, state.open, name));
     let press = theme::Press::track(ui, &resp);
-    press.wash(ui, rect, 8, open);
-    icons::paint(ui, rect.translate(press.offset()), icon, 18.0, if open { t.accent_text } else { t.icon });
-    theme::hand(resp).on_hover_text(pane)
+    let radius = CornerRadius::same(6);
+    if state.open {
+        ui.painter().rect_filled(rect, radius, press.fill(t.accent_soft, t.accent_soft.lerp_to_gamma(t.accent, 0.12), t.accent_soft));
+        let bar = Rect::from_min_max(egui::pos2(rail.left(), rect.top() + 6.0), egui::pos2(rail.left() + 2.0, rect.bottom() - 6.0));
+        ui.painter().rect_filled(bar, CornerRadius { nw: 0, sw: 0, ne: 1, se: 1 }, t.accent);
+    } else if state.enabled {
+        ui.painter().rect_filled(rect, radius, press.fill(Color32::TRANSPARENT, t.hover, t.pressed));
+    }
+    icons::paint(ui, rect.translate(press.offset()), icon, RAIL_ICON, rail_tint(&t, state));
+    if let Some(tone) = badge_tone(state) {
+        let (fg, _) = kit::tone_colors(&t, tone);
+        let text = if count > 99 { "99+".to_owned() } else { count.to_string() };
+        let galley = ui.painter().layout_no_wrap(text, theme::semibold(9.0), Color32::WHITE);
+        let size = vec2((galley.size().x + 7.0).max(14.0), 14.0);
+        let pill = Rect::from_min_size(egui::pos2(rect.right() - size.x + 3.0, rect.top() - 3.0), size);
+        ui.painter().rect_filled(pill, CornerRadius::same(7), fg);
+        ui.painter().galley(pill.center() - galley.size() / 2.0, galley, Color32::WHITE);
+    }
+    if state.attention {
+        ui.painter().circle_filled(rect.right_bottom() - vec2(5.0, 5.0), 3.0, t.accent);
+    }
+    if state.enabled { theme::hand(resp).on_hover_text(tip) } else { resp.on_hover_text(tip) }
+}
+
+/// The colour of a rail icon: faint while it cannot be clicked, the accent while its panel is shown, dimmed while the panel has nothing to
+/// say about the document.
+fn rail_tint(t: &Tokens, state: RailState) -> Color32 {
+    let tint = if !state.enabled {
+        return t.text_faint;
+    } else if state.open {
+        t.accent_text
+    } else {
+        t.icon
+    };
+    if state.relevant { tint } else { tint.gamma_multiply(IRRELEVANT) }
+}
+
+/// The tone of the problem badge: errors are bad, warnings alone a warning, none no badge.
+fn badge_tone(state: RailState) -> Option<Tone> {
+    match (state.errors, state.warnings) {
+        (0, 0) => None,
+        (0, _) => Some(Tone::Warn),
+        _ => Some(Tone::Bad),
+    }
+}
+
+/// A rail tooltip: the title, and the shortcut of its command when it has one.
+fn tip(ctx: &egui::Context, title: &str, command: Option<&str>) -> String {
+    let shortcut = command.map(|id| crate::commands::command_shortcut_label(ctx, id)).unwrap_or_default();
+    if shortcut.is_empty() { title.to_owned() } else { format!("{title} ({shortcut})") }
 }
 
 pub fn status_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
@@ -740,5 +832,18 @@ mod tests {
         assert!(cut.ends_with('…'));
         assert_eq!(tab_name(&"x".repeat(28)), "x".repeat(28));
         assert_eq!(tab_name(""), "");
+    }
+
+    #[test]
+    fn rail_icons_say_whether_their_panel_is_shown_usable_and_relevant() {
+        let t = Tokens::for_kind(crate::theme::ThemeKind::Light);
+        let base = RailState { open: false, enabled: true, relevant: true, errors: 0, warnings: 0, attention: false };
+        assert_eq!(rail_tint(&t, base), t.icon);
+        assert_eq!(rail_tint(&t, RailState { open: true, ..base }), t.accent_text, "shown: the accent");
+        assert_eq!(rail_tint(&t, RailState { relevant: false, ..base }), t.icon.gamma_multiply(IRRELEVANT), "not relevant: dimmed");
+        assert_eq!(rail_tint(&t, RailState { enabled: false, relevant: false, ..base }), t.text_faint, "disabled: faint, not dimmed twice");
+        assert_eq!(badge_tone(base), None);
+        assert_eq!(badge_tone(RailState { warnings: 2, ..base }), Some(Tone::Warn));
+        assert_eq!(badge_tone(RailState { errors: 1, warnings: 2, ..base }), Some(Tone::Bad), "errors win");
     }
 }

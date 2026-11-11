@@ -6,6 +6,11 @@ Button "Menu"
 Button "Find tools and commands"
 Label value="Ready"
 Label value="XmlCraft {version}"
+Button "Toggle Outline" [disabled] [toggled=false]
+Button "Toggle Entry Helpers" [disabled] [toggled=false]
+Button "Toggle Problems" [disabled] [toggled=false]
+Button "Toggle Search" [toggled=false]
+Button "Open Preferences" [toggled=false]
 Image
 Label value="XmlCraft"
 Label value="Edit and validate XML against DTDs and XML Schemas, and generate schemas and samples."

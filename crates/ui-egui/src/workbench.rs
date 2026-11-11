@@ -424,6 +424,20 @@ impl Workbench {
         self.change(|w| w.set_visible(panel, true, None, |p| p.permissions()))
     }
 
+    /// Back to the default arrangement (View ▸ Reset Layout); the panels the default does not show are hidden, where they come back.
+    pub fn reset(&mut self) {
+        let mut workspace = self.workspace.clone();
+        workspace.reset(&default_layout());
+        hide_the_hidden_by_default(&mut workspace);
+        self.workspace = if workspace.validate().is_ok() && check(&workspace).is_ok() { workspace } else { default_workspace() };
+        self.attention.clear();
+    }
+
+    /// Whether a hidden tool window has news ([`Self::set_attention`]).
+    pub fn attention(&self, panel: Panel) -> bool {
+        self.attention.contains(&panel) && !self.is_visible(panel)
+    }
+
     /// Apply the actions of a gesture or a command, all or none, with the panels' permissions. Refused: anything that floats a panel or
     /// puts one above the editor.
     pub fn apply(&mut self, actions: Vec<Action<Panel>>) -> Result<Vec<Panel>, DockError> {
@@ -940,5 +954,28 @@ mod tests {
         let only = serde_json::json!({ "workspace": { "layout": { "root": { "Tabs": { "panels": ["Gizmo"], "active": 0 } }, "floating": [] } } });
         let bench = Workbench::load(&only);
         assert!(bench.is_visible(Panel::Editor) && bench.workspace().validate().is_ok());
+    }
+
+    #[test]
+    fn news_is_marked_only_while_hidden_and_reset_brings_back_the_default() {
+        let mut bench = Workbench::default();
+        bench.set_attention(Panel::Search);
+        assert!(bench.attention(Panel::Search), "hidden: marked");
+        bench.reveal(Panel::Search).expect("shows");
+        assert!(!bench.attention(Panel::Search), "shown: seen");
+        bench.set_visible(Panel::Search, false).expect("hides");
+        assert!(!bench.attention(Panel::Search), "and not marked again by hiding it");
+        bench.reveal(Panel::Search).expect("shows");
+        bench.set_attention(Panel::Search);
+        assert!(!bench.attention(Panel::Search), "a shown panel needs no mark");
+        bench
+            .apply(vec![Action::MovePanel { panel: Panel::EntryHelpers, to: craft_ui::docking::Target::NewDock { side: Side::End } }])
+            .expect("moves");
+        bench.set_visible(Panel::Outline, false).expect("hides");
+        bench.reset();
+        assert_eq!(places(&bench), places(&Workbench::default()));
+        assert!(!bench.is_visible(Panel::Search), "hidden again, as by default");
+        bench.reveal(Panel::Search).expect("shows");
+        assert_eq!(bench.place(Panel::Search), Some(Place::Bottom), "where it comes back");
     }
 }

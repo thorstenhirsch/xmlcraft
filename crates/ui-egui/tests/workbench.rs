@@ -91,3 +91,53 @@ fn the_panels_dock_around_the_editor_move_to_the_right_and_stay_there_after_a_re
     let (mut again, c2) = shell(saved);
     assert_eq!(layout(&mut again, &c2), json!({ "editor": "center", "outline": "left", "entry_helpers": "right", "problems": "bottom" }));
 }
+
+#[test]
+fn the_rail_toggles_search_marks_news_and_reset_layout_puts_everything_back() {
+    let (mut h, c) = shell(None);
+    // The rail opens Search from the workspace zone; the panel takes its place next to Problems.
+    assert!(!h.state().panel_visible(Panel::Search));
+    assert_eq!(h.state().command_checked("view.search"), Some(false));
+    h.get_by_label("Toggle Search").click();
+    h.run_steps(3);
+    assert_eq!(layout(&mut h, &c)["search"], "bottom");
+    assert_eq!(h.state().command_checked("view.search"), Some(true));
+    h.get_by_label("Toggle Search").click();
+    h.run_steps(3);
+    assert!(!h.state().panel_visible(Panel::Search));
+
+    // A search that finishes while the panel is hidden marks it, and showing the panel clears the mark.
+    let dir = std::env::temp_dir().join(format!("xmlcraft-rail-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("dir");
+    std::fs::write(dir.join("a.xml"), "<needle/>").expect("writes");
+    let doc = dir.join("a.xml");
+    assert!(h.state_mut().open_path(&doc));
+    h.run_steps(3);
+    assert!(h.state_mut().execute("edit.find_in_files"));
+    h.run_steps(3);
+    h.get_by_label("What to find").type_text("needle");
+    h.run_steps(2);
+    h.get_by_label("Find").click();
+    // One frame takes the click and starts the search; its answer is collected at the start of a later one, after the panel is hidden.
+    h.run_steps(1);
+    h.state_mut().set_panel_visible(Panel::Search, false);
+    let started = std::time::Instant::now();
+    while !h.state().panel_attention(Panel::Search) {
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "the search finishes");
+        h.run_steps(1);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    h.get_by_label("Toggle Search").click();
+    h.run_steps(3);
+    assert!(h.query_by_label_contains("1 hits in 1 files").is_some(), "the result waited in the panel");
+    assert!(!h.state().panel_attention(Panel::Search), "seen");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    // Rearranged, then View ▸ Reset Layout.
+    h.state_mut().apply_layout(vec![Action::MovePanel { panel: Panel::EntryHelpers, to: Target::NewDock { side: Side::End } }]).expect("moves");
+    h.state_mut().set_panel_visible(Panel::Outline, false);
+    h.run_steps(3);
+    assert!(h.state_mut().execute("view.reset_layout"));
+    h.run_steps(3);
+    assert_eq!(layout(&mut h, &c), json!({ "editor": "center", "outline": "left", "entry_helpers": "left", "problems": "bottom" }));
+}

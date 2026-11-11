@@ -25,10 +25,17 @@ fn the_shell_shows_its_chrome_and_the_home_view_has_the_whole_window() {
     for label in ["Home", "Menu", "Find tools and commands", "XmlCraft", "New document", "New from Template…", "Open file…"] {
         assert!(h.query_by_label(label).is_some(), "missing {label:?}");
     }
-    // The panes, the rail and the header are about a document.
-    for label in ["Outline", "Problems", "Entry Helpers", "Toggle Outline", "Validate"] {
+    // The panes and the header are about a document.
+    for label in ["Outline", "Problems", "Entry Helpers", "Validate"] {
         assert!(h.query_by_label(label).is_none(), "{label:?} is for a document");
     }
+    // The rail is there, with the document's tool windows disabled and the others not.
+    for label in ["Toggle Outline", "Toggle Entry Helpers", "Toggle Problems"] {
+        assert!(h.get_by_label(label).accesskit_node().is_disabled(), "{label:?} is for a document");
+        assert_ne!(h.get_by_label(label).accesskit_node().toggled(), Some(egui::accesskit::Toggled::True), "{label:?} is not shown here");
+    }
+    assert!(!h.get_by_label("Toggle Search").accesskit_node().is_disabled());
+    assert!(!h.get_by_label("Open Preferences").accesskit_node().is_disabled());
 }
 
 #[test]
