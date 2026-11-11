@@ -61,6 +61,11 @@ impl Shortcut {
         Self { command: true, shift: true, mac_ctrl: false, alt: false, key }
     }
 
+    /// ⌃⇧ on macOS and Ctrl+Shift elsewhere, with `key`: the shortcuts that browsers and editors give to moving a tab.
+    pub const fn ctrl_shift(key: &'static str) -> Self {
+        Self { command: false, shift: true, mac_ctrl: true, alt: false, key }
+    }
+
     /// `key` on its own (function keys).
     pub const fn key(key: &'static str) -> Self {
         Self { command: false, shift: false, mac_ctrl: false, alt: false, key }
@@ -256,6 +261,8 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("xml.load_schema", "Load Schema", XML, None, Needs::Document, "external-link"),
     c("xml.generate_sample", "Generate Sample XML…", XML, None, Needs::Document, "sparkles"),
     c("view.palette", "Find tools and commands…", VIEW, Some(Shortcut::cmd("K")), Nothing, "search"),
+    c("view.move_tab_left", "Move Tab Left", VIEW, Some(Shortcut::ctrl_shift("PageUp")), Needs::Document, "chevron-left"),
+    c("view.move_tab_right", "Move Tab Right", VIEW, Some(Shortcut::ctrl_shift("PageDown")), Needs::Document, "chevron-right"),
     c("view.outline", "Outline", VIEW, None, Nothing, "list-tree").toggle().sep(),
     c("view.grid", "Grid", VIEW, Some(Shortcut::cmd_alt("G")), Needs::Document, "layout-grid").toggle(),
     c("view.entry_helpers", "Entry Helpers", VIEW, None, Nothing, "braces").toggle(),
@@ -446,6 +453,8 @@ mod tests {
         assert_eq!(Shortcut::cmd_alt("ArrowRight").label(false), "Ctrl+Alt+→");
         assert_eq!(Shortcut::cmd_shift("Backslash").label(true), "⇧⌘\\");
         assert_eq!(Shortcut::cmd_shift("Backslash").label(false), "Ctrl+Shift+\\");
+        assert_eq!(Shortcut::ctrl_shift("PageUp").label(true), "⌃⇧PageUp");
+        assert_eq!(Shortcut::ctrl_shift("PageUp").label(false), "Ctrl+Shift+PageUp");
         // No menu shows the name egui gives a key.
         for c in COMMANDS {
             if let Some(s) = c.shortcut {
