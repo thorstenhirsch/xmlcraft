@@ -130,7 +130,7 @@ impl Panel {
                 tool("entry_helpers", tl!("Entry Helpers"), "braces", Zone::Document, DefaultPlace::Left, true, "view.entry_helpers")
             }
             Self::Problems => tool("problems", tl!("Problems"), "triangle-alert", Zone::Document, DefaultPlace::Bottom, true, "view.messages"),
-            Self::Search => tool("search", tl!("Search"), "search", Zone::Workspace, DefaultPlace::Bottom, false, "view.search"),
+            Self::Search => tool("search", tl!("Search"), "file-search", Zone::Workspace, DefaultPlace::Bottom, false, "view.search"),
         }
     }
 
