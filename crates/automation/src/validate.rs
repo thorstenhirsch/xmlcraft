@@ -21,25 +21,45 @@ use crate::{Automation, Content, Result};
 const MAX_PROBLEMS: usize = 500;
 
 pub(crate) fn tools() -> Vec<ToolDef> {
-    vec![ToolDef {
-        name: "xml_validate",
-        title: "Validate against a DTD or an XML Schema",
-        description: "Check a document (an open document `id`, a file `path`, or `text`) for well-formedness and, when it is well-formed, validity. With `schema` (a path of a \
+    vec![
+        ToolDef {
+            name: "xml_validate",
+            title: "Validate against a DTD or an XML Schema",
+            description: "Check a document (an open document `id`, a file `path`, or `text`) for well-formedness and, when it is well-formed, validity. With `schema` (a path of a \
                       schema document, relative paths from the folder of the document) or, in a document with no DOCTYPE, the schema its root element names with \
                       `xsi:schemaLocation` / `xsi:noNamespaceSchemaLocation`, it is validated against that XML Schema 1.0 (an electronic invoice in UBL 2.1 that names none is checked against the UBL schema that ships with the app; the schema documents it includes and imports \
                       are found as files, in the open documents, or among the schemas that ship with the app); otherwise against the DTD its DOCTYPE declares: the internal \
                       subset and the external subset and parameter entities that are files. Nothing is downloaded. A document with neither has nothing to be valid against. \
                       Returns the counts and the problems with their position and message; `kind` says whether a problem is about well-formedness, validity or the schema \
                       (`schema_errors` counts those), and `file` names the external text a problem is in; `schemas` lists the schema documents that were read.",
-        input_schema: json!({
-            "type": "object",
-            "properties": validate_properties(),
-            "additionalProperties": false,
-        }),
-        read_only: true,
-        destructive: false,
-        handler: xml_validate,
-    }]
+            input_schema: json!({
+                "type": "object",
+                "properties": validate_properties(),
+                "additionalProperties": false,
+            }),
+            read_only: true,
+            destructive: false,
+            handler: xml_validate,
+        },
+        ToolDef {
+            name: "schema_check",
+            title: "Check that an XML Schema is itself valid",
+            description: "Check an XML Schema document (an open document `id`, a file `path`, or `text`) as a schema itself: that it is well-formed, \
+                          that the documents it includes or imports can be read, and that its components assemble (a type or a group it names is \
+                          defined, a derivation is allowed, and so on). Relative locations are taken from the folder of the schema, and the documents \
+                          it names are found among the open documents, the schemas that ship with the app, the catalogs and files through the root \
+                          confinement; nothing is downloaded unless the session works online. A schema that is not well-formed is not assembled: \
+                          its syntax problems are returned (`kind` well-formedness). Returns `valid`, the counts, and the problems with their position and the file they are in.",
+            input_schema: json!({
+                "type": "object",
+                "properties": source_properties(),
+                "additionalProperties": false,
+            }),
+            read_only: true,
+            destructive: false,
+            handler: schema_check,
+        },
+    ]
 }
 
 fn validate_properties() -> Value {
@@ -91,6 +111,45 @@ impl Buffers for OpenDocuments {
         };
         find(location).or_else(|| find(&self.confinement.resolve_read(location).ok()?.to_string_lossy()))
     }
+}
+
+fn schema_check(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let source = source(a, args)?;
+    if source.language != xmlcraft_engine::language::Language::Xml {
+        return fail("schema_check reads an XML Schema document, which is XML");
+    }
+    if source.text.len() > xmlcraft_engine::analysis::MAX_ANALYSED_BYTES {
+        return fail("the text is too large to analyse");
+    }
+    let resolver = schema_resolver(a);
+    let mut loader = ResolvingLoader::new(&resolver);
+    let location = source.path.as_deref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let found = xmlcraft_engine::validation::check_schema(&source.text, 0, &location, &mut loader);
+    let own = Buffer::from_text(&source.text);
+    let read: Vec<(String, Buffer)> = loader.read.iter().map(|(location, text)| (location.clone(), Buffer::from_text(text))).collect();
+    let problems: Vec<Value> = found
+        .problems
+        .iter()
+        .map(|problem| {
+            let (file, buffer) = match &problem.file {
+                None => (None, Some(&own)),
+                Some(file) => (Some(file.clone()), read.iter().find(|(location, _)| location == file).map(|(_, buffer)| buffer)),
+            };
+            let kind = if found.verdict == xmlcraft_engine::validation::Verdict::NotWellFormed { "well-formedness" } else { "schema" };
+            describe_problem(kind, &problem.diagnostic, file, buffer)
+        })
+        .collect();
+    json_result(json!({
+        "kind": "xsd",
+        "well_formed": found.verdict != xmlcraft_engine::validation::Verdict::NotWellFormed,
+        "valid": found.verdict == xmlcraft_engine::validation::Verdict::Valid,
+        "errors": found.error_count(),
+        "warnings": found.warning_count(),
+        "documents": read.iter().map(|(location, _)| location).collect::<Vec<_>>(),
+        "problems": problems.iter().take(MAX_PROBLEMS).collect::<Vec<_>>(),
+        "truncated": problems.len() > MAX_PROBLEMS,
+        "lossy": source.lossy,
+    }))
 }
 
 fn xml_validate(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {

@@ -64,6 +64,49 @@ fn f8_says_a_valid_document_is_valid() {
 }
 
 #[test]
+fn f8_checks_an_xml_schema_as_a_schema_itself() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(
+        &mut h,
+        &file(dir.path(), "ok.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="a" type="xs:string"/></xs:schema>"#),
+    );
+    validate(&mut h);
+    assert_eq!(h.state().validity(), Some((0, 0)));
+    assert!(h.query_by_label("Valid").is_some());
+    open(
+        &mut h,
+        &file(
+            dir.path(),
+            "bad.xsd",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="a" type="xs:notAType"/></xs:schema>"#,
+        ),
+    );
+    validate(&mut h);
+    assert!(h.state().validity().is_some_and(|(errors, _)| errors > 0), "the unknown type is found");
+    assert!(h.state().status.contains("validity"), "{}", h.state().status);
+}
+
+#[test]
+fn an_xml_schema_is_checked_when_it_is_left_alone_without_a_word_in_the_status_bar() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell_validating_after(Duration::from_millis(150));
+    open(
+        &mut h,
+        &file(
+            dir.path(),
+            "bad.xsd",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="a" type="xs:notAType"/></xs:schema>"#,
+        ),
+    );
+    let before = h.state().status.clone();
+    wait(&mut h, "the schema check while typing", |app| app.validity().is_some());
+    assert!(h.state().validity().is_some_and(|(errors, _)| errors > 0));
+    assert_eq!(h.state().status, before, "no word about it in the status bar");
+    assert_eq!(h.state().validations_requested(), 1);
+}
+
+#[test]
 fn validity_problems_are_listed_after_the_others_and_a_click_goes_to_them() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell();

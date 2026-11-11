@@ -15,7 +15,7 @@ use xmlcraft_resolve::{Buffers, Resolver, normalized};
 use xmlcraft_syntax::{Code, Diagnostic, Severity, SyntaxKind, SyntaxNode, parse};
 use xmlcraft_text::Buffer;
 use xmlcraft_validate::{SchemaOutcome, check_against_schema, schema_hints};
-use xmlcraft_xsd::{ResolvingLoader, SchemaLoader};
+use xmlcraft_xsd::{ResolvingLoader, SchemaLoader, assemble, load};
 
 use crate::analysis::{MAX_ANALYSED_BYTES, Skipped};
 use crate::language::Language;
@@ -111,6 +111,43 @@ pub fn validate(text: &str, version: u64, location: &str, loader: &mut dyn Subse
         .map(|p| ValidityProblem { diagnostic: p.diagnostic.clone(), file: (p.source != 0).then(|| found.sources.get(p.source).cloned()).flatten() })
         .collect();
     finish(version, problems)
+}
+
+/// Check that `text`, an XML Schema document, is itself a valid schema: that it is well-formed, that every document it includes or imports
+/// can be read, and that its components assemble (a type it names exists, a group it refers to is defined, and so on). `schemas` reads
+/// the other documents of the schema. Problems in the document itself have no [`ValidityProblem::file`]; those in another document name
+/// the location it was read from.
+pub fn check_schema(text: &str, version: u64, location: &str, schemas: &mut dyn SchemaLoader) -> Validation {
+    if text.len() > MAX_ANALYSED_BYTES {
+        return Validation::skipped(version, Skipped::TooLarge);
+    }
+    let parsed = parse(text);
+    if parsed.diagnostics().iter().any(|d| d.severity() == Severity::Error) {
+        // What is wrong with the syntax is the answer: a schema that is not well-formed is not assembled, but the reasons are kept.
+        let problems: Vec<ValidityProblem> = parsed.diagnostics().iter().map(|d| ValidityProblem { diagnostic: d.clone(), file: None }).collect();
+        let truncated = problems.len() > MAX_PROBLEMS;
+        return Validation { version, verdict: Verdict::NotWellFormed, problems: problems.into_iter().take(MAX_PROBLEMS).collect(), truncated };
+    }
+    let documents = load(text, location, schemas);
+    let assembly = assemble(&documents);
+    let problems = documents
+        .diagnostics
+        .iter()
+        .chain(assembly.diagnostics.iter())
+        .map(|found| ValidityProblem {
+            diagnostic: found.diagnostic.clone(),
+            file: (found.source != 0).then(|| documents.list.get(found.source).map(|d| d.location.clone())).flatten(),
+        })
+        .collect();
+    finish(version, problems)
+}
+
+/// [`check_schema`], with a panic turned into a failed result (the last-resort guard: a bug must not take the app down).
+pub fn check_schema_guarded(text: &str, version: u64, location: &str, schemas: &mut dyn SchemaLoader) -> Validation {
+    crate::guard(|| check_schema(text, version, location, schemas)).unwrap_or_else(|message| {
+        log::error!("schema check failed: {message}");
+        Validation::skipped(version, Skipped::Failed)
+    })
 }
 
 /// The bundled schema (as a `bundled:/` URI) of an electronic invoice that names none, if XmlCraft ships it.
@@ -215,6 +252,8 @@ struct Request {
     location: String,
     open: Vec<(String, Buffer)>,
     language: Language,
+    /// Check the text as an XML Schema document itself, rather than as an XML document against a grammar.
+    self_check: bool,
 }
 
 /// Runs [`validate`] on a worker thread. `submit` returns at once; `poll` collects what has finished.
@@ -248,7 +287,14 @@ impl Validator {
     /// Schema they name (see [`crate::json_validation`]).
     pub fn submit_as(&self, document: u64, version: u64, text: &Buffer, path: Option<&Path>, open: Vec<(String, Buffer)>, language: Language) {
         let location = path.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-        self.worker.submit(document, Request { version, text: text.clone(), location, open, language });
+        self.worker.submit(document, Request { version, text: text.clone(), location, open, language, self_check: false });
+    }
+
+    /// Ask for `text`, an XML Schema document, to be checked as a schema itself: its components and the documents it includes or imports,
+    /// rather than as an XML document against a grammar.
+    pub fn submit_schema(&self, document: u64, version: u64, text: &Buffer, path: Option<&Path>, open: Vec<(String, Buffer)>) {
+        let location = path.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        self.worker.submit(document, Request { version, text: text.clone(), location, open, language: Language::Xml, self_check: true });
     }
 
     /// The validations that finished since the last call, oldest first.
@@ -269,6 +315,15 @@ fn run(resolvers: &ResolverFactory, request: Request) -> Validation {
     let mut subsets = ResolvingSubsetLoader::new(&resolver);
     let mut schemas = ResolvingLoader::new(&resolver);
     let text = request.text.text();
+    if request.self_check {
+        let mut checked = check_schema_guarded(&text, request.version, &request.location, &mut schemas);
+        if checked.verdict == Verdict::NotWellFormed {
+            // (The window lists the syntax problems from its analysis of the same text; they are not listed twice.)
+            checked.problems.clear();
+            checked.truncated = false;
+        }
+        return checked;
+    }
     let mut validation = validate_guarded(&text, request.version, &request.location, &mut subsets, &mut schemas);
     // Schematron rules the document names add to what the grammar found (a document that is not well-formed or was not read is left).
     if matches!(validation.verdict, Verdict::Valid | Verdict::Invalid) && text.contains("xml-model") {
@@ -667,6 +722,37 @@ mod tests {
     fn a_text_that_is_too_large_is_skipped() {
         let big = format!("<r>{}</r>", "a".repeat(MAX_ANALYSED_BYTES));
         assert_eq!(validate(&big, 2, "", &mut NoLoader, &mut NoSchemas).verdict, Verdict::Skipped(Skipped::TooLarge));
+    }
+
+    #[test]
+    fn a_schema_is_checked_as_a_schema() {
+        let valid = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="a" type="xs:string"/></xs:schema>"#;
+        let v = check_schema(valid, 1, "/w/a.xsd", &mut NoSchemas);
+        assert_eq!((v.verdict, v.problems.len()), (Verdict::Valid, 0));
+        let invalid = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="a" type="xs:notAType"/></xs:schema>"#;
+        let v = check_schema(invalid, 2, "/w/a.xsd", &mut NoSchemas);
+        assert_eq!(v.verdict, Verdict::Invalid);
+        assert!(v.error_count() > 0, "{:?}", codes(&v));
+        assert!(v.problems.iter().all(|p| p.file.is_none()));
+    }
+
+    #[test]
+    fn a_schema_that_is_not_well_formed_is_not_assembled() {
+        let v = check_schema("<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element></xs:schema>", 1, "", &mut NoSchemas);
+        assert_eq!(v.verdict, Verdict::NotWellFormed);
+        assert!(!v.problems.is_empty() && v.problems.iter().all(|p| p.file.is_none()), "the syntax problems are the answer: {:?}", codes(&v));
+    }
+
+    #[test]
+    fn the_validator_checks_an_xsd_as_a_schema() {
+        let validator = Validator::inline(no_resolvers());
+        let doc =
+            Buffer::from_text(r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="a" type="xs:notAType"/></xs:schema>"#);
+        validator.submit_schema(1, 1, &doc, Some(Path::new("/w/a.xsd")), Vec::new());
+        let got = validator.poll();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].1.verdict, Verdict::Invalid);
+        assert!(got[0].1.error_count() > 0, "{:?}", codes(&got[0].1));
     }
 
     /// Files by path, for the resolver of a test.

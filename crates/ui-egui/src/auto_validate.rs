@@ -43,6 +43,12 @@ pub(crate) fn ready(analysis: &xmlcraft_engine::analysis::Analysis, version: u64
     analysis.version == version && analysis.is_well_formed() && (analysis.doctype.is_some() || !analysis.schema_hints.is_empty())
 }
 
+/// Whether an XML Schema of version `version` may be checked while it is typed in: its analysis is of this very text and the text is well
+/// formed (a schema names no grammar of its own; it is the schema that is checked).
+pub(crate) fn ready_schema(analysis: &xmlcraft_engine::analysis::Analysis, version: u64) -> bool {
+    analysis.version == version && analysis.is_well_formed()
+}
+
 /// Whether a JSON or YAML text of version `version` may be validated while it is typed in: its analysis is of this very text, the text
 /// is well-formed, and it names a schema (`named`: a `$schema`, a modeline, or an OpenAPI version).
 pub(crate) fn ready_data(analysis: &xmlcraft_engine::analysis::Analysis, version: u64, named: bool) -> bool {
@@ -81,6 +87,14 @@ mod tests {
         assert!(!ready(&analysed(dtd, 5), 4), "nor does one of newer text");
         assert!(!ready(&analysed("<a><b/></a>", 4), 4), "it names no grammar");
         assert!(!ready(&analysed("<!DOCTYPE a [<!ELEMENT a EMPTY>]><a>", 4), 4), "it is not well-formed");
+    }
+
+    #[test]
+    fn an_xml_schema_is_ready_when_its_own_analysis_is_well_formed() {
+        let text = "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"/>";
+        assert!(ready_schema(&analysed(text, 4), 4));
+        assert!(!ready_schema(&analysed(text, 3), 4));
+        assert!(!ready_schema(&analysed("<xs:schema", 4), 4));
     }
 
     #[test]
