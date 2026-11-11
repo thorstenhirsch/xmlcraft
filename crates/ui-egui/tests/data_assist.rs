@@ -103,6 +103,32 @@ fn yaml_is_completed_by_indentation_from_the_schema_of_its_modeline() {
 }
 
 #[test]
+fn yaml_flow_mappings_are_completed_too() {
+    let dir = tempfile::tempdir().expect("dir");
+    file(dir.path(), "s.json", SCHEMA);
+    let mut h = shell();
+    open_at(&mut h, dir.path(), "d.yaml", "# yaml-language-server: $schema=s.json\nname: x\nhome: {¦}\n");
+    type_text(&mut h, "c");
+    assert!(h.query_by_label("Complete city").is_some());
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    assert_eq!(text(&h), "# yaml-language-server: $schema=s.json\nname: x\nhome: {city: }\n");
+}
+
+#[test]
+fn yaml_flow_mappings_are_completed_on_the_lines_after_they_open() {
+    let dir = tempfile::tempdir().expect("dir");
+    file(dir.path(), "s.json", SCHEMA);
+    let mut h = shell();
+    open_at(&mut h, dir.path(), "d.yaml", "# yaml-language-server: $schema=s.json\nname: x\nhome: {\n  ¦\n}\n");
+    type_text(&mut h, "c");
+    assert!(h.query_by_label("Complete city").is_some());
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    assert_eq!(text(&h), "# yaml-language-server: $schema=s.json\nname: x\nhome: {\n  city: \n}\n");
+}
+
+#[test]
 fn edit_complete_opens_the_popup_between_names_and_after_a_colon_where_nothing_was_typed() {
     let dir = tempfile::tempdir().expect("dir");
     file(dir.path(), "s.json", SCHEMA);
