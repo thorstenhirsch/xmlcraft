@@ -4,6 +4,7 @@
 
 use xmlcraft_resolve::Resolver;
 use xmlcraft_sample::Options;
+pub use xmlcraft_wsdl::is_wsdl_namespace;
 use xmlcraft_wsdl::{SoapVersion, Style, Wsdl, parse, read_message};
 use xmlcraft_xsd::ResolvingLoader;
 

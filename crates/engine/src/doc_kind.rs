@@ -1,5 +1,5 @@
-//! What a document is: an XML document, an XML Schema, a DTD, or a JSON or YAML document. The command bar offers Schema… for an XML
-//! document and XML… for a schema or a DTD, and neither for JSON or YAML.
+//! What a document is: an XML document, an XML Schema, a DTD, or a JSON or YAML document. The command bar offers its actions by what a
+//! document is (see the frontend's `bar_actions.rs`).
 
 use xmlcraft_xsd::XSD_NAMESPACE;
 

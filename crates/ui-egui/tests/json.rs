@@ -47,14 +47,19 @@ fn json_is_checked_as_json_and_a_relative_that_allows_the_text_is_not_complained
 }
 
 #[test]
-fn a_json_document_is_not_offered_xml_schema_tools() {
+fn a_json_document_is_offered_its_own_tools_and_not_the_xml_ones() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell();
     open(&mut h, &file(dir.path(), "a.xml", "<a/>"));
-    assert!(h.query_by_label("Schema…").is_some());
+    assert!(h.query_by_label("XPath").is_some() && h.query_by_label("Convert").is_none());
     open(&mut h, &file(dir.path(), "a.json", "{}"));
-    assert!(h.query_by_label("Schema…").is_none());
-    assert!(h.query_by_label("XML…").is_none());
+    assert!(h.query_by_label("Convert").is_some(), "a JSON document can be converted from the bar");
+    assert!(h.query_by_label("XPath").is_none() && h.query_by_label("Sample XML").is_none(), "no XML tools");
+    // Its Schema… menu is the JSON Schema one.
+    h.get_by_label("Schema…").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("Generate JSON Schema…").is_some() && h.query_by_label("Generate Sample JSON…").is_some());
+    assert!(h.query_by_label("Load Schema").is_none(), "XML only");
 }
 
 #[test]

@@ -188,12 +188,14 @@ use Needs::Nothing;
 
 const FILE: Option<&str> = Some("File");
 const EDIT: Option<&str> = Some("Edit");
-const XML: Option<&str> = Some("XML");
+const DOCUMENT: Option<&str> = Some("Document");
+const SCHEMA: Option<&str> = Some("Schema");
+const TOOLS: Option<&str> = Some("Tools");
 const VIEW: Option<&str> = Some("View");
 const HELP: Option<&str> = Some("Help");
 
 /// The top-level menus, in order.
-pub const MENUS: &[&str] = &["File", "Edit", "XML", "View", "Help"];
+pub const MENUS: &[&str] = &["File", "Edit", "Document", "Schema", "Tools", "View", "Help"];
 
 /// Every command, in menu order.
 pub const COMMANDS: &[CommandSpec] = &[
@@ -204,18 +206,12 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("file.save", "Save", FILE, Some(Shortcut::cmd("S")), Needs::Document, "save").sep(),
     c("file.save_as", "Save As…", FILE, Some(Shortcut::cmd_shift("S")), Needs::Document, "save"),
     c("file.revert", "Revert", FILE, None, Needs::Document, "file-text"),
-    c("file.convert", "Convert…", FILE, None, Needs::Document, "wand-sparkles").sep(),
-    c("file.generate_schema", "Generate JSON Schema…", FILE, None, Needs::Document, "file-code"),
-    c("file.generate_sample", "Generate Sample JSON…", FILE, None, Needs::Document, "sparkles"),
-    c("file.compare", "Compare Documents…", FILE, None, Needs::Document, "files").sep(),
-    c("file.merge", "Merge Documents…", FILE, None, Needs::Document, "files"),
     c("file.close", "Close", FILE, Some(Shortcut::cmd("W")), Needs::Document, "x").sep(),
     c("file.quit", "Quit", FILE, Some(Shortcut::cmd("Q")), Nothing, "x"),
     c("edit.undo", "Undo", EDIT, Some(Shortcut::cmd("Z")), Needs::Undo, "undo-2").not_in_text(),
     c("edit.redo", "Redo", EDIT, Some(Shortcut::cmd_shift("Z")), Needs::Redo, "redo-2").not_in_text(),
     c("edit.select_all", "Select All", EDIT, Some(Shortcut::cmd("A")), Needs::Document, "align-left").sep().not_in_text(),
     c("edit.find", "Find…", EDIT, Some(Shortcut::cmd("F")), Needs::Document, "search").sep(),
-    c("edit.find_in_files", "Find in Files…", EDIT, Some(Shortcut::cmd_shift("F")), Nothing, "search"),
     c("edit.replace", "Replace…", EDIT, Some(Shortcut::cmd_shift("H")), Needs::Document, "replace"),
     c("edit.find_next", "Find Next", EDIT, Some(Shortcut::key("F3")), Needs::Document, "chevron-down"),
     c("edit.find_previous", "Find Previous", EDIT, Some(Shortcut::shift_key("F3")), Needs::Document, "chevron-up"),
@@ -236,31 +232,37 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("edit.fold_level_2", "Fold Level 2", EDIT, None, Needs::Document, "chevron-right"),
     c("edit.fold_level_3", "Fold Level 3", EDIT, None, Needs::Document, "chevron-right"),
     c("app.preferences", "Preferences…", EDIT, Some(Shortcut::cmd("Comma")), Nothing, "settings").sep(),
-    c("xml.check", "Check Well-formedness", XML, Some(Shortcut::key("F7")), Needs::Document, "file-check"),
-    c("xml.validate", "Validate", XML, Some(Shortcut::key("F8")), Needs::Document, "shield-check"),
-    c("xml.validate_typing", "Validate While Typing", XML, None, Nothing, "shield-check").toggle(),
-    c("xml.work_offline", "Work Offline", XML, None, Nothing, "external-link").toggle(),
-    c("xml.next_problem", "Next Problem", XML, Some(Shortcut::key("F4")), Needs::Document, "chevron-down").sep(),
-    c("xml.previous_problem", "Previous Problem", XML, Some(Shortcut::shift_key("F4")), Needs::Document, "chevron-up"),
-    c("xml.go_to_definition", "Go to Definition", XML, Some(Shortcut::key("F12")), Needs::Document, "external-link"),
-    c("xml.assign_schema", "Assign Schema…", XML, None, Needs::Document, "book-open"),
-    c("xml.pretty_print", "Pretty-print", XML, None, Needs::Document, "wand-sparkles").sep(),
-    c("xml.minify", "Strip White Space", XML, None, Needs::Document, "align-left"),
-    c("xml.xinclude", "Expand XIncludes", XML, None, Needs::Document, "braces"),
-    c("xml.rename_element", "Rename Element…", XML, Some(Shortcut::key("F2")), Needs::Document, "text-cursor-input").sep(),
-    c("xml.wrap_in_tag", "Wrap in Tag", XML, Some(Shortcut::cmd_alt("W")), Needs::Document, "code-xml"),
-    c("xml.unwrap_element", "Unwrap Element", XML, None, Needs::Document, "scissors"),
-    c("xml.select_element", "Select Element", XML, Some(Shortcut::cmd_alt("E")), Needs::Document, "text-cursor-input"),
-    c("xml.copy_xpath", "Copy XPath", XML, None, Needs::Document, "copy"),
-    c("xml.xpath", "Evaluate XPath…", XML, Some(Shortcut::cmd_alt("X")), Needs::Document, "search"),
-    c("xml.transform", "Transform with XSLT…", XML, Some(Shortcut::key("F10")), Needs::Document, "wand-sparkles"),
-    c("xml.soap", "Send SOAP Request…", XML, None, Needs::Document, "cloud"),
-    c("xml.openapi", "Send OpenAPI Request…", XML, None, Needs::Document, "cloud"),
-    c("xml.soap_debugger", "SOAP Debugger…", XML, None, Needs::Nothing, "cloud"),
-    c("xml.generate_schema", "Generate Schema…", XML, None, Needs::Document, "file-code").sep(),
-    c("xml.load_schema", "Load Schema", XML, None, Needs::Document, "external-link"),
-    c("xml.schema_resolution", "Schema Resolution…", XML, None, Needs::Document, "search"),
-    c("xml.generate_sample", "Generate Sample XML…", XML, None, Needs::Document, "sparkles"),
+    c("xml.pretty_print", "Format", DOCUMENT, None, Needs::Document, "wand-sparkles"),
+    c("xml.minify", "Strip White Space", DOCUMENT, None, Needs::Document, "align-left"),
+    c("xml.xinclude", "Expand XIncludes", DOCUMENT, None, Needs::Document, "braces"),
+    c("xml.rename_element", "Rename Element…", DOCUMENT, Some(Shortcut::key("F2")), Needs::Document, "text-cursor-input").sep(),
+    c("xml.wrap_in_tag", "Wrap in Tag", DOCUMENT, Some(Shortcut::cmd_alt("W")), Needs::Document, "code-xml"),
+    c("xml.unwrap_element", "Unwrap Element", DOCUMENT, None, Needs::Document, "scissors"),
+    c("xml.select_element", "Select Element", DOCUMENT, Some(Shortcut::cmd_alt("E")), Needs::Document, "text-cursor-input"),
+    c("xml.copy_xpath", "Copy XPath", DOCUMENT, None, Needs::Document, "copy"),
+    c("file.convert", "Convert…", DOCUMENT, None, Needs::Document, "wand-sparkles").sep(),
+    c("xml.check", "Check Well-formedness", SCHEMA, Some(Shortcut::key("F7")), Needs::Document, "file-check"),
+    c("xml.validate", "Validate", SCHEMA, Some(Shortcut::key("F8")), Needs::Document, "shield-check"),
+    c("xml.validate_typing", "Validate While Typing", SCHEMA, None, Nothing, "shield-check").toggle(),
+    c("xml.next_problem", "Next Problem", SCHEMA, Some(Shortcut::key("F4")), Needs::Document, "chevron-down").sep(),
+    c("xml.previous_problem", "Previous Problem", SCHEMA, Some(Shortcut::shift_key("F4")), Needs::Document, "chevron-up"),
+    c("xml.go_to_definition", "Go to Definition", SCHEMA, Some(Shortcut::key("F12")), Needs::Document, "external-link"),
+    c("xml.assign_schema", "Assign Schema…", SCHEMA, None, Needs::Document, "book-open").sep(),
+    c("xml.load_schema", "Load Schema", SCHEMA, None, Needs::Document, "external-link"),
+    c("xml.schema_resolution", "Schema Resolution…", SCHEMA, None, Needs::Document, "search"),
+    c("xml.generate_schema", "Generate Schema…", SCHEMA, None, Needs::Document, "file-code").sep(),
+    c("xml.generate_sample", "Generate Sample XML…", SCHEMA, None, Needs::Document, "sparkles"),
+    c("file.generate_schema", "Generate JSON Schema…", SCHEMA, None, Needs::Document, "file-code"),
+    c("file.generate_sample", "Generate Sample JSON…", SCHEMA, None, Needs::Document, "sparkles"),
+    c("xml.xpath", "Evaluate XPath…", TOOLS, Some(Shortcut::cmd_alt("X")), Needs::Document, "search"),
+    c("xml.transform", "Transform with XSLT…", TOOLS, Some(Shortcut::key("F10")), Needs::Document, "wand-sparkles"),
+    c("file.compare", "Compare Documents…", TOOLS, None, Needs::Document, "files").sep(),
+    c("file.merge", "Merge Documents…", TOOLS, None, Needs::Document, "files"),
+    c("xml.openapi", "Send OpenAPI Request…", TOOLS, None, Needs::Document, "cloud").sep(),
+    c("xml.soap", "Send SOAP Request…", TOOLS, None, Needs::Document, "cloud"),
+    c("xml.soap_debugger", "SOAP Debugger…", TOOLS, None, Needs::Nothing, "cloud"),
+    c("edit.find_in_files", "Find in Files…", TOOLS, Some(Shortcut::cmd_shift("F")), Nothing, "search").sep(),
+    c("xml.work_offline", "Work Offline", TOOLS, None, Nothing, "external-link").sep().toggle(),
     c("view.palette", "Find tools and commands…", VIEW, Some(Shortcut::cmd("K")), Nothing, "search"),
     c("view.move_tab_left", "Move Tab Left", VIEW, Some(Shortcut::ctrl_shift("PageUp")), Needs::Document, "chevron-left"),
     c("view.move_tab_right", "Move Tab Right", VIEW, Some(Shortcut::ctrl_shift("PageDown")), Needs::Document, "chevron-right"),
@@ -364,11 +366,6 @@ mod tests {
                 "file.save",
                 "file.save_as",
                 "file.revert",
-                "file.convert",
-                "file.generate_schema",
-                "file.generate_sample",
-                "file.compare",
-                "file.merge",
                 "file.close",
                 "file.quit"
             ]
@@ -380,7 +377,6 @@ mod tests {
                 "edit.redo",
                 "edit.select_all",
                 "edit.find",
-                "edit.find_in_files",
                 "edit.replace",
                 "edit.find_next",
                 "edit.find_previous",
@@ -404,16 +400,8 @@ mod tests {
             ]
         );
         assert_eq!(
-            in_menu("XML").map(|c| c.id).collect::<Vec<_>>(),
+            in_menu("Document").map(|c| c.id).collect::<Vec<_>>(),
             [
-                "xml.check",
-                "xml.validate",
-                "xml.validate_typing",
-                "xml.work_offline",
-                "xml.next_problem",
-                "xml.previous_problem",
-                "xml.go_to_definition",
-                "xml.assign_schema",
                 "xml.pretty_print",
                 "xml.minify",
                 "xml.xinclude",
@@ -422,17 +410,48 @@ mod tests {
                 "xml.unwrap_element",
                 "xml.select_element",
                 "xml.copy_xpath",
-                "xml.xpath",
-                "xml.transform",
-                "xml.soap",
-                "xml.openapi",
-                "xml.soap_debugger",
-                "xml.generate_schema",
-                "xml.load_schema",
-                "xml.schema_resolution",
-                "xml.generate_sample"
+                "file.convert"
             ]
         );
+        assert_eq!(
+            in_menu("Schema").map(|c| c.id).collect::<Vec<_>>(),
+            [
+                "xml.check",
+                "xml.validate",
+                "xml.validate_typing",
+                "xml.next_problem",
+                "xml.previous_problem",
+                "xml.go_to_definition",
+                "xml.assign_schema",
+                "xml.load_schema",
+                "xml.schema_resolution",
+                "xml.generate_schema",
+                "xml.generate_sample",
+                "file.generate_schema",
+                "file.generate_sample"
+            ]
+        );
+        assert_eq!(
+            in_menu("Tools").map(|c| c.id).collect::<Vec<_>>(),
+            [
+                "xml.xpath",
+                "xml.transform",
+                "file.compare",
+                "file.merge",
+                "xml.openapi",
+                "xml.soap",
+                "xml.soap_debugger",
+                "edit.find_in_files",
+                "xml.work_offline"
+            ]
+        );
+        // The separators group each menu by topic.
+        let separated = |menu: &str| in_menu(menu).filter(|c| c.separator_before).map(|c| c.id).collect::<Vec<_>>();
+        assert_eq!(separated("Document"), ["xml.rename_element", "file.convert"]);
+        assert_eq!(separated("Schema"), ["xml.next_problem", "xml.assign_schema", "xml.generate_schema"]);
+        assert_eq!(separated("Tools"), ["file.compare", "xml.openapi", "edit.find_in_files", "xml.work_offline"]);
+        assert_eq!(in_menu("XML").count(), 0, "there is no XML menu any more");
+        assert_eq!(MENUS, ["File", "Edit", "Document", "Schema", "Tools", "View", "Help"]);
         assert_eq!(in_menu("Nope").count(), 0);
     }
 

@@ -328,21 +328,25 @@ fn tab(
 /// How wide the window must be for the command bar to write its actions out; narrower, they are icons.
 const COMPACT_BELOW: f32 = 1000.0;
 
-/// An action of the command bar, drawn from the command registry (its icon, its shortcut in the tooltip, disabled when it cannot run).
-/// True when it was clicked.
-fn action(app: &mut XmlCraftApp, ui: &mut egui::Ui, id: &'static str, label: &str, kind: PillKind, compact: bool) -> bool {
+/// An action of the command bar, drawn from the command registry (its icon, its shortcut in the tooltip, disabled when it cannot run, or
+/// when `unavailable` says why it does nothing for this document). True when it was clicked.
+fn action(app: &mut XmlCraftApp, ui: &mut egui::Ui, id: &'static str, label: &str, kind: PillKind, compact: bool, unavailable: Option<&str>) -> bool {
     let Some(spec) = xmlcraft_engine::commands::command(id) else { return false };
-    let enabled = app.command_enabled(spec);
+    let enabled = app.command_enabled(spec) && unavailable.is_none();
     let tip = match crate::commands::command_shortcut_label(ui.ctx(), id) {
-        s if s.is_empty() => spec.label.to_owned(),
-        s => format!("{} ({s})", spec.label),
+        s if s.is_empty() => crate::i18n::t(spec.label).to_owned(),
+        s => format!("{} ({s})", crate::i18n::t(spec.label)),
     };
     let clicked = ui
         .add_enabled_ui(enabled, |ui| {
-            if compact && kind != PillKind::Primary {
+            let response = if compact && kind != PillKind::Primary {
                 icons::button(ui, spec.icon, 32.0, false, &tip)
             } else {
                 kit::pill(ui, kind, Some(spec.icon), label).on_hover_text(&tip)
+            };
+            match unavailable {
+                Some(why) => response.on_disabled_hover_text(why),
+                None => response,
             }
         })
         .inner
@@ -365,21 +369,16 @@ pub fn command_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                     ui.add_space(4.0);
                     ui.painter().vline(ui.cursor().left(), ui.max_rect().y_range().shrink(12.0), Stroke::new(1.0, t.divider));
                     ui.add_space(8.0);
-                    // What matters most for an XML document, left to right: say whether it is valid; then change it or what it follows.
-                    if action(app, ui, "xml.validate", tl!("Validate"), PillKind::Primary, compact) {
+                    // For every document, left to right: say whether it is valid, then tidy it; then what this kind of document is for.
+                    if action(app, ui, "xml.validate", tl!("Validate"), PillKind::Primary, compact, None) {
                         app.execute("xml.validate");
                     }
-                    if action(app, ui, "xml.check", tl!("Check"), PillKind::Ghost, compact) {
-                        app.execute("xml.check");
-                    }
-                    if action(app, ui, "xml.pretty_print", tl!("Format"), PillKind::Ghost, compact) {
+                    let not_formatted = app.session.active_document().and_then(|d| d.language().not_formatted());
+                    if action(app, ui, "xml.pretty_print", tl!("Format"), PillKind::Ghost, compact, not_formatted) {
                         app.execute("xml.pretty_print");
                     }
-                    if action(app, ui, "xml.assign_schema", tl!("Assign Schema…"), PillKind::Ghost, compact) {
-                        app.execute("xml.assign_schema");
-                    }
                     ui.add_space(2.0);
-                    kind_button(app, ui, compact);
+                    kind_actions(app, ui, compact);
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
@@ -394,22 +393,24 @@ pub fn command_bar(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
         });
 }
 
-/// What the document can be turned into or checked against. An XML document gets Schema… (generate a schema from it, or open the one it
-/// names); a schema or a DTD gets XML… (generate a sample document from it).
-fn kind_button(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool) {
-    use xmlcraft_engine::doc_kind::DocKind;
-    match app.active_doc_kind() {
-        Some(DocKind::Xml) => schema_button(app, ui, compact),
-        Some(DocKind::Xsd | DocKind::Dtd) if action(app, ui, "xml.generate_sample", tl!("XML…"), PillKind::Secondary, compact) => {
-            app.execute("xml.generate_sample");
+/// The actions of the kind of document being shown, from the table in `bar_actions.rs`: the first is a secondary pill, the others ghosts.
+fn kind_actions(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool) {
+    let Some(kind) = app.active_bar_kind(ui.ctx()) else { return };
+    for (n, entry) in crate::bar_actions::kind_actions(kind).iter().enumerate() {
+        match *entry {
+            crate::bar_actions::KindAction::Command { id, label } => {
+                let pill = if n == 0 { PillKind::Secondary } else { PillKind::Ghost };
+                if action(app, ui, id, crate::i18n::t(label), pill, compact, None) {
+                    app.execute(id);
+                }
+            }
+            crate::bar_actions::KindAction::SchemaMenu(ids) => schema_button(app, ui, compact, ids),
         }
-        Some(DocKind::Xsd | DocKind::Dtd | DocKind::Json | DocKind::Yaml | DocKind::Html) => {}
-        None => {}
     }
 }
 
-/// Schema…: the actions on the schema of an XML document, in a menu.
-fn schema_button(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool) {
+/// Schema…: the actions on the schema of the document (`ids`), in a menu.
+fn schema_button(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool, ids: &[&'static str]) {
     let (main, arrow) = if compact {
         let button = icons::button(ui, "file-code", 32.0, false, tl!("Schema…"));
         (button.clone(), button)
@@ -421,10 +422,10 @@ fn schema_button(app: &mut XmlCraftApp, ui: &mut egui::Ui, compact: bool) {
     for anchor in anchors {
         egui::Popup::menu(&anchor).show(|ui| {
             ui.set_min_width(220.0);
-            for id in ["xml.generate_schema", "xml.load_schema", "xml.schema_resolution"] {
+            for &id in ids {
                 let Some(spec) = xmlcraft_engine::commands::command(id) else { continue };
                 let enabled = app.command_enabled(spec);
-                let mut item = ui.add_enabled(enabled, egui::Button::new(spec.label));
+                let mut item = ui.add_enabled(enabled, egui::Button::new(crate::i18n::t(spec.label)));
                 if (id == "xml.load_schema" || id == "xml.schema_resolution") && !enabled {
                     item = item.on_disabled_hover_text(tl!("This document names no schema."));
                 }

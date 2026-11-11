@@ -51,7 +51,7 @@ fn a_bson_file_is_shown_as_its_text_checked_and_saved_with_the_unedited_document
     open(&mut h, &path);
     assert_eq!(h.state().problems(), Some((0, 0)));
     assert!(text(&h).contains("{\"$numberDouble\":\"NaN\"}"), "{}", text(&h));
-    assert!(h.query_by_label("Schema…").is_none());
+    assert!(h.query_by_label("XPath").is_none() && h.query_by_label("Convert").is_some(), "the data tools, not the XML ones");
     // Saved without a change: nothing changes on disk (the NaN keeps its payload although the text cannot say it).
     h.state_mut().execute("file.save");
     h.run_steps(3);

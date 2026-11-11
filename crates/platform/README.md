@@ -12,7 +12,7 @@ Environment:
 
 | Variable | Effect |
 |---|---|
-| `XMLCRAFT_OFFLINE=1` | nothing is downloaded, whatever XML ▸ Work Offline says; copies kept are used |
+| `XMLCRAFT_OFFLINE=1` | nothing is downloaded, whatever Tools ▸ Work Offline says; copies kept are used |
 | `XMLCRAFT_ALLOW_PRIVATE_HOSTS=1` | addresses on this computer and the local network may be downloaded from (an intranet's schema server) |
 | `XMLCRAFT_CACHE_DIR=DIR` | where the copies are kept (else `~/Library/Caches/XmlCraft/schemas`, `%LOCALAPPDATA%\XmlCraft\Cache\schemas`, `$XDG_CACHE_HOME/xmlcraft/schemas` or `~/.cache/xmlcraft/schemas`) |
 | `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, `NO_PROXY` | the proxy, as `ureq` reads them |

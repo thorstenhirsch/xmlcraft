@@ -6,6 +6,7 @@ mod about;
 mod after_analysis;
 mod assign;
 mod auto_validate;
+mod bar_actions;
 mod business_chip;
 mod chrome;
 mod commands;
@@ -108,7 +109,7 @@ struct Prefs {
     entry_mandatory: bool,
     /// A document that names a grammar is validated in the background when it has been left alone for a moment.
     validate_typing: bool,
-    /// Nothing is downloaded (XML ▸ Work Offline): the schemas and DTDs a document names are taken from what is open, the catalogs, the
+    /// Nothing is downloaded (Tools ▸ Work Offline): the schemas and DTDs a document names are taken from what is open, the catalogs, the
     /// bundle, files and the copies downloaded before.
     work_offline: bool,
     /// How much larger or smaller than normal the editor's text is (View ▸ Zoom In, Zoom Out, Actual Size).
@@ -213,9 +214,9 @@ pub struct XmlCraftApp {
     entry_filter: String,
     entry_selected: usize,
     entry_focus: bool,
-    /// Validate a document that names a grammar when it has been left alone for a moment (View: XML ▸ Validate While Typing).
+    /// Validate a document that names a grammar when it has been left alone for a moment (View: Schema ▸ Validate While Typing).
     validate_typing: bool,
-    /// The person's switch for downloading (XML ▸ Work Offline); the network says whether anything is downloaded at all.
+    /// The person's switch for downloading (Tools ▸ Work Offline); the network says whether anything is downloaded at all.
     work_offline: bool,
     /// The editor's text size relative to normal (View ▸ Zoom In, Zoom Out, Actual Size; see [`zoom`]).
     editor_zoom: f32,

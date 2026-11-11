@@ -1,4 +1,4 @@
-//! Schemas that are not files, and XML ▸ Work Offline, in the real shell. The network is a mock: nothing here goes to the web.
+//! Schemas that are not files, and Tools ▸ Work Offline, in the real shell. The network is a mock: nothing here goes to the web.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};

@@ -52,6 +52,8 @@ pub(crate) struct DocView {
     pub(crate) data_schema: crate::data_assist::DataSchema,
     /// What the header says of a business document (an e-invoice, an XBRL instance).
     pub(crate) business: crate::business_chip::ChipState,
+    /// What the command bar found the text to be (a stylesheet, a WSDL, an OpenAPI description).
+    pub(crate) bar_traits: crate::business_chip::Settled<crate::bar_actions::Traits>,
     /// What the Outline keeps of this document: what is collapsed, the rows it shows.
     pub(crate) outline: crate::outline::OutlineState,
 }
@@ -81,6 +83,7 @@ impl DocView {
             grid: None,
             data_schema: Default::default(),
             business: Default::default(),
+            bar_traits: Default::default(),
             outline: Default::default(),
         }
     }
@@ -307,7 +310,7 @@ impl XmlCraftApp {
         }
     }
 
-    /// Work offline, or stop doing so (XML ▸ Work Offline). What was asked for before is asked for again: a schema that could not be
+    /// Work offline, or stop doing so (Tools ▸ Work Offline). What was asked for before is asked for again: a schema that could not be
     /// found while offline may be downloaded now, and one that was downloaded is no longer needed to be.
     pub(crate) fn set_work_offline(&mut self, offline: bool) {
         self.work_offline = offline;
@@ -669,7 +672,7 @@ impl XmlCraftApp {
         }
     }
 
-    /// Expand every `xi:include` of the shown document (XML ▸ Expand XIncludes). The resources are found on a worker thread as a schema's
+    /// Expand every `xi:include` of the shown document (Document ▸ Expand XIncludes). The resources are found on a worker thread as a schema's
     /// are (the open documents as they are being edited, the catalogs, the schemas that ship with the app, files, and the network unless
     /// the app works offline); the result is one minimal edit for each include, applied as one undoable step.
     pub(crate) fn expand_xincludes(&mut self) {

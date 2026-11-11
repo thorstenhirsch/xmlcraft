@@ -81,7 +81,7 @@ fn message_text(message: &Message) -> String {
 }
 
 impl XmlCraftApp {
-    /// Open the SOAP Debugger window (XML ▸ SOAP Debugger…).
+    /// Open the SOAP Debugger window (Tools ▸ SOAP Debugger…).
     pub(crate) fn open_proxy(&mut self) {
         if self.dialog.is_some() {
             return;

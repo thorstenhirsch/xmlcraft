@@ -1,5 +1,5 @@
 //! Load Schema: open the schema or the DTD the document in front names, in a tab of its own; and what kind of document it is, which
-//! decides whether the command bar offers Schema… (for XML) or XML… (for a schema).
+//! decides what the command bar offers.
 
 use std::path::Path;
 

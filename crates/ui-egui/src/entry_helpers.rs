@@ -321,7 +321,7 @@ fn waiting(ui: &mut egui::Ui, app: &XmlCraftApp, id: u64) -> bool {
         ui,
         24.0,
         tl!("No DTD or schema"),
-        tl!("Add a DOCTYPE, or name a schema (Assign Schema… in the XML menu), to see what the document allows."),
+        tl!("Add a DOCTYPE, or name a schema (Assign Schema… in the Schema menu), to see what the document allows."),
     );
     true
 }

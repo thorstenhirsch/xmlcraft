@@ -1,4 +1,5 @@
-//! The command bar offers Schema… for an XML document (Generate Schema, Load Schema) and XML… for a schema or a DTD (Generate Sample).
+//! The command bar offers Schema… for an XML document (Assign, Generate Schema, Load Schema) and Sample XML for a schema or a DTD
+//! (Generate Sample).
 //! The network is a mock: nothing here goes to the web.
 
 use std::path::{Path, PathBuf};
@@ -69,24 +70,24 @@ fn open_menu(h: &mut Harness<'static, XmlCraftApp>) {
 }
 
 #[test]
-fn an_xml_document_has_schema_and_no_generate_or_xml_button() {
+fn an_xml_document_has_schema_and_no_generate_or_sample_button() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell(&Arc::new(Web::default()));
     open(&mut h, &file(dir.path(), "a.xml", "<a/>"));
     assert!(h.query_by_label("Schema…").is_some());
     assert!(h.query_by_label("Generate…").is_none(), "the old button is gone");
-    assert!(h.query_by_label("XML…").is_none(), "XML… is for schemas");
+    assert!(h.query_by_label("Sample XML").is_none(), "Sample XML is for schemas");
 }
 
 #[test]
-fn a_schema_and_a_dtd_have_xml_that_generates_a_sample() {
+fn a_schema_and_a_dtd_have_sample_xml_that_generates_a_sample() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell(&Arc::new(Web::default()));
     for (name, text) in [("s.xsd", SCHEMA), ("d.dtd", "<!ELEMENT r EMPTY>")] {
         open(&mut h, &file(dir.path(), name, text));
-        assert!(h.query_by_label("XML…").is_some(), "{name}");
+        assert!(h.query_by_label("Sample XML").is_some(), "{name}");
         assert!(h.query_by_label("Schema…").is_none(), "{name}");
-        h.get_by_label("XML…").click();
+        h.get_by_label("Sample XML").click();
         h.run_steps(4);
         assert!(h.query_by_label("Generate Sample XML").is_some(), "{name}: the Generate Sample dialog is up");
         h.state_mut().execute("file.close"); // closes the tab (or asks) — the dialog goes first
@@ -100,7 +101,7 @@ fn a_schema_text_without_an_extension_is_still_a_schema() {
     let mut h = shell(&Arc::new(Web::default()));
     h.state_mut().session.open(None, SCHEMA.as_bytes(), None).expect("opens");
     wait(&mut h, "the analysis", |app| app.problems().is_some());
-    assert!(h.query_by_label("XML…").is_some());
+    assert!(h.query_by_label("Sample XML").is_some());
 }
 
 #[test]
@@ -126,7 +127,7 @@ fn load_schema_opens_a_linked_file_in_a_new_tab_and_a_second_time_reuses_it() {
     h.get_by_label("Load Schema").click();
     wait(&mut h, "the schema tab", |app| app.tabs().len() == 2);
     assert_eq!(tab_names(&h), ["n.xml", "n.xsd"]);
-    assert!(h.query_by_label("XML…").is_some(), "the schema is in front, and it offers XML…");
+    assert!(h.query_by_label("Sample XML").is_some(), "the schema is in front, and it offers Sample XML");
     // Back in the XML document, a second Load Schema goes to the tab that is open.
     h.state_mut().session.set_active(Some(0));
     h.run_steps(3);
