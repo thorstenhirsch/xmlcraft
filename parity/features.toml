@@ -1457,11 +1457,11 @@ title = "XInclude processing"
 area = "G"
 tier = "P2"
 milestone = "M10"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.xinclude"]
+tools = ["xinclude_expand"]
+evidence = ["crates/engine/src/xinclude.rs::an_include_is_replaced_by_the_document_element_it_names", "crates/engine/src/xinclude.rs::nested_includes_are_expanded_and_a_cycle_stops", "crates/engine/src/xinclude.rs::each_outermost_include_is_one_edit_of_its_own_range_written_with_the_documents_line_endings", "crates/engine/src/xinclude.rs::the_document_itself_is_on_the_cycle_stack_and_an_empty_href_without_an_xpointer_is_fatal", "crates/engine/src/xinclude.rs::an_empty_fallback_includes_nothing", "crates/automation/tests/documents.rs::xinclude_is_expanded_from_files_next_to_the_document_and_from_text_with_a_base", "crates/automation/tests/documents.rs::xinclude_does_not_reach_a_file_outside_the_root", "crates/ui-egui/tests/xinclude.rs::each_include_is_replaced_by_its_own_edit_in_the_documents_line_endings_and_undone_in_one_step"]
+notes = "XML ▸ Expand XIncludes and the tool `xinclude_expand` replace each outermost `xi:include` with the document element (`parse=\"xml\"`) or the escaped text (`parse=\"text\"`) of the resource `href` names, found through the resolver as a schema is (open documents, the catalogs, the bundled schemas, files inside the root, the network when it is on) against the document or `xml:base`. The result is one minimal edit per include, written with the document's line endings, applied as one undoable step; the app runs it on a worker thread. Nested includes, `xi:fallback` (an empty one includes nothing) and the fatal errors of XInclude 1.0 (an include of the document itself or of one being included, an empty `href` with no `xpointer`, a `parse` that is neither xml nor text) are handled. Missing: XPointer (an include that asks for one uses its fallback), `accept` and `accept-language`, namespace fixup, the `xml:base` of the included content, and expansion while validating (M10.4)."
 
 
 # ==================================================================================================

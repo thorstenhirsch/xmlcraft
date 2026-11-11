@@ -23,6 +23,7 @@ XmlCraft is a clean-room, open-source XML editor built to match the feature set 
 
 ## Progress log
 
+- 2026-11-11: M10.4, XInclude. XML ▸ Expand XIncludes replaces each `xi:include` by what it names (an element, or text for `parse="text"`), found through the resolver on a worker thread, as one minimal edit per include in the document's line endings and one undoable step; `xinclude_expand` does it headlessly inside `--root`.
 - 2026-11-11: M3.17, go to definition in an XML Schema. F12 (XML ▸ Go to Definition) on a `type`, `base`, `ref` or `substitutionGroup` selects the definition, also in an included or imported document (opened when it is a file); `xsd_definition` gives its file, range, line and column.
 - 2026-11-11: M3.16, an XML Schema is checked as a schema. F8 and Validate While Typing on an `.xsd` file read it with the documents it includes and imports and assemble its components (an undefined type or group, a derivation that is not allowed); a problem in another document names that file. Headless: `schema_check`, which returns the syntax problems of a schema that is not well-formed.
 - 2026-11-11: M5.21, a sample from a JSON Schema. `xmlcraft_engine::json_sample` makes JSON, YAML or BSON in the shape a schema describes (names, offered values, the kind of each place), cut at a depth and refused past 10,000 values; File ▸ Generate Sample JSON… runs it on a worker thread, `json_sample` headlessly.

@@ -160,6 +160,8 @@ pub struct XmlCraftApp {
     /// Finds where an XML Schema name is defined (F12), and the versions of the open documents when it was asked.
     definition: DefinitionFinder,
     definition_versions: Vec<(String, u64)>,
+    /// Expands the XIncludes of a document in the background (the resources may be downloaded).
+    xinclude: xmlcraft_engine::xinclude::XIncludeExpander,
     /// Make schemas and sample documents in the background, when the Generate dialogs ask.
     schema_generator: xmlcraft_engine::generate::SchemaGenerator,
     sample_generator: xmlcraft_engine::generate::SampleGenerator,
@@ -298,6 +300,10 @@ impl XmlCraftApp {
             let repaint = repaint.clone();
             move || repaint.request_repaint()
         });
+        app.xinclude.on_done({
+            let repaint = repaint.clone();
+            move || repaint.request_repaint()
+        });
         app.schema_generator.on_done({
             let repaint = repaint.clone();
             move || repaint.request_repaint()
@@ -375,6 +381,7 @@ impl XmlCraftApp {
             validator: Validator::new(resolvers()),
             definition: DefinitionFinder::new(resolvers()),
             definition_versions: Vec::new(),
+            xinclude: xmlcraft_engine::xinclude::XIncludeExpander::new(resolvers()),
             schema_generator: xmlcraft_engine::generate::SchemaGenerator::new(),
             sample_generator: xmlcraft_engine::generate::SampleGenerator::new(resolvers()),
             json_schema_generator: xmlcraft_engine::json_infer::JsonSchemaGenerator::new(),

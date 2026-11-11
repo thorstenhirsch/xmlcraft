@@ -232,6 +232,9 @@ impl XmlCraftApp {
         for (id, answer) in self.definition.poll() {
             self.receive_definition(id, answer);
         }
+        for (id, outcome) in self.xinclude.poll() {
+            self.receive_xinclude(id, outcome);
+        }
         for (id, schema) in self.schemas.poll() {
             if let Some(view) = self.views.get_mut(&id) {
                 view.helpers.accept(schema);
@@ -656,6 +659,44 @@ impl XmlCraftApp {
             doc.editor_mut().set_selection(range.start, range.end);
             self.focus_editor = true;
         }
+    }
+
+    /// Expand every `xi:include` of the shown document (XML ▸ Expand XIncludes). The resources are found on a worker thread as a schema's
+    /// are (the open documents as they are being edited, the catalogs, the schemas that ship with the app, files, and the network unless
+    /// the app works offline); the result is one minimal edit for each include, applied as one undoable step.
+    pub(crate) fn expand_xincludes(&mut self) {
+        let Some(doc) = self.session.active_document() else { return };
+        if doc.language() != xmlcraft_engine::language::Language::Xml {
+            self.status = tl!("XIncludes are an XML feature").to_owned();
+            return;
+        }
+        let text = doc.editor().text();
+        if !xmlcraft_engine::xinclude::has_include(&text) {
+            self.status = tl!("There are no XIncludes to expand").to_owned();
+            return;
+        }
+        let base = doc.path().map(|p| xmlcraft_platform::file_uri::uri_of(&p.to_string_lossy())).unwrap_or_default();
+        let (id, version) = (doc.id(), doc.editor().version());
+        let open = self.open_documents();
+        self.xinclude.submit(id, xmlcraft_engine::xinclude::ExpandJob { version, text, base, open });
+        self.status = tl!("Expanding the XIncludes…").to_owned();
+    }
+
+    fn receive_xinclude(&mut self, id: u64, outcome: xmlcraft_engine::xinclude::ExpandOutcome) {
+        let Some(index) = self.session.position_of(id) else { return };
+        let expanded = match outcome.result {
+            Ok(expanded) => expanded,
+            Err(e) => {
+                self.status = fmt(tl!("The XIncludes were not expanded: {message}"), &[("message", &e.message)]);
+                return;
+            }
+        };
+        let Some(doc) = self.session.document_mut(index) else { return };
+        if doc.editor().version() != outcome.version || !doc.editor_mut().apply_edits(&expanded.edits) {
+            self.status = tl!("The document changed while its XIncludes were expanded; nothing was changed").to_owned();
+            return;
+        }
+        self.status = fmt(tl!("Expanded {count} XIncludes"), &[("count", &expanded.includes.to_string())]);
     }
 
     /// Find the definition of the XML Schema name at the caret (F12), in the schema itself or in a document it includes or imports, on a
