@@ -1063,11 +1063,11 @@ title = "Check that a schema is itself valid"
 area = "E"
 tier = "P0"
 milestone = "M3"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["xml.validate"]
+tools = ["schema_check"]
+evidence = ["crates/ui-egui/tests/validation.rs::f8_checks_an_xml_schema_as_a_schema_itself", "crates/ui-egui/tests/validation.rs::an_xml_schema_is_checked_when_it_is_left_alone_without_a_word_in_the_status_bar", "crates/automation/tests/schema_check.rs::a_valid_schema_is_valid_and_one_with_a_type_that_does_not_exist_is_not", "crates/automation/tests/schema_check.rs::a_problem_in_an_included_document_names_that_document", "crates/automation/tests/schema_check.rs::a_document_that_is_not_a_schema_is_not_valid", "crates/automation/tests/schema_check.rs::a_schema_that_is_not_well_formed_says_what_is_wrong_with_its_syntax", "crates/engine/src/validation.rs::a_schema_is_checked_as_a_schema", "crates/engine/src/validation.rs::a_schema_that_is_not_well_formed_is_not_assembled", "crates/engine/src/validation.rs::the_validator_checks_an_xsd_as_a_schema", "crates/ui-egui/src/auto_validate.rs::an_xml_schema_is_ready_when_its_own_analysis_is_well_formed"]
+notes = "F8 on an XML Schema checks the schema itself: `xmlcraft_engine::validation::check_schema` reads it with the resolver (the documents that are open as they are edited, the schemas that ship with the app, catalogs, files, and in the window the network unless the app works offline), follows its includes and imports and assembles its components, so a type or group it names that is not defined, a derivation that is not allowed and a representation constraint become problems. A problem in an included or imported document names that file and its line. A schema that is not well-formed is not assembled; its syntax problems are the answer (in the window they are the ones the analysis lists). Validate While Typing checks a well-formed schema after the same pause as a document, without a word in the status bar. Headless: `schema_check` (an open document, a path or text; offline unless the session is given a network). Missing: XSD 1.1, `xs:redefine` read but not applied (as in `validate.xsd`), a quick fix for what is found (M3.16)."
 
 [[feature]]
 id = "validate.schema-association"

@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use xmlcraft_code_editor::{CodeEditor, ViewState};
 use xmlcraft_engine::analysis::{Analysis, Skipped};
+use xmlcraft_engine::doc_kind::{DocKind, doc_kind};
 use xmlcraft_engine::validation::{Validation, Verdict};
 use xmlcraft_engine::{Document, SaveError};
 use xmlcraft_platform::files::{self, DiskChange};
@@ -396,6 +397,7 @@ impl XmlCraftApp {
     pub(crate) fn auto_validate(&mut self) {
         let Some(doc) = self.session.active_document() else { return };
         let (id, version, size) = (doc.id(), doc.editor().version(), doc.editor().buffer().len());
+        let is_schema = doc_kind(doc.name(), self.active_analysis()) == DocKind::Xsd;
         let Some(view) = self.views.get_mut(&id) else { return };
         let now = std::time::Instant::now();
         let quiet_for = match view.auto.seen {
@@ -412,6 +414,8 @@ impl XmlCraftApp {
         } else if doc.language().is_data() {
             let named = view.data_schema.names_a_schema_at(version);
             view.analysis.as_ref().is_some_and(|a| crate::auto_validate::ready_data(a, version, named))
+        } else if is_schema {
+            view.analysis.as_ref().is_some_and(|a| crate::auto_validate::ready_schema(a, version))
         } else {
             view.analysis.as_ref().is_some_and(|a| crate::auto_validate::ready(a, version))
         };
@@ -430,7 +434,11 @@ impl XmlCraftApp {
                 view.auto.count += 1;
                 let open = self.open_documents();
                 if let Some(doc) = self.session.active_document() {
-                    self.validator.submit_as(id, version, doc.editor().buffer(), doc.path(), open, doc.language());
+                    if is_schema {
+                        self.validator.submit_schema(id, version, doc.editor().buffer(), doc.path(), open);
+                    } else {
+                        self.validator.submit_as(id, version, doc.editor().buffer(), doc.path(), open, doc.language());
+                    }
                 }
             }
         }
@@ -461,6 +469,7 @@ impl XmlCraftApp {
         }
         let (id, version) = (doc.id(), doc.editor().version());
         let name = doc.name().to_owned();
+        let is_schema = doc_kind(&name, self.active_analysis()) == DocKind::Xsd;
         let view = self.views.entry(id).or_insert_with(|| DocView::new(kind));
         // The well-formedness analysis of the same text is what Messages shows with it.
         if view.requested != Some(version) {
@@ -475,7 +484,11 @@ impl XmlCraftApp {
         view.auto.requested = Some(version);
         view.auto.count += 1;
         let open = self.open_documents();
-        self.validator.submit_as(id, version, doc.editor().buffer(), doc.path(), open, doc.language());
+        if is_schema {
+            self.validator.submit_schema(id, version, doc.editor().buffer(), doc.path(), open);
+        } else {
+            self.validator.submit_as(id, version, doc.editor().buffer(), doc.path(), open, doc.language());
+        }
         self.validate_pending = Some((id, version));
         self.bottom_open = true;
         self.status = fmt(tl!("Validating {name}…"), &[("name", &name)]);
