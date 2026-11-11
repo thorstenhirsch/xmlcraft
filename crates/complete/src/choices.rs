@@ -5,7 +5,7 @@ use std::ops::Range;
 use xmlcraft_grammar::{AttributeDefault, AttributeType, Content, EntityKind, Grammar, Name, Term};
 use xmlcraft_syntax::{SyntaxKind, SyntaxNode};
 
-use crate::scope::Declaration;
+use crate::scope::{Declaration, attributes_of};
 
 /// An element that may come at the position.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,8 +30,10 @@ pub struct AttributeChoice {
     pub mandatory: bool,
     /// It is given already in the start tag.
     pub used: bool,
-    /// The values it can have, when it is an enumeration.
+    /// The values it can have, when it is an enumeration or an ID reference.
     pub values: Vec<String>,
+    /// The values are a list: one value may be several of them, separated by spaces (IDREFS).
+    pub list: bool,
     /// The namespace declaration the name needs where it is put, if the namespace is not in scope there.
     pub declare: Option<Declaration>,
 }
@@ -139,6 +141,9 @@ pub(crate) fn attribute_end(start: &SyntaxNode) -> usize {
         .unwrap_or_else(|| range_of(start).end)
 }
 
+/// The most elements looked at for the IDs of a document, and the most IDs offered.
+const MAX_ID_ELEMENTS: usize = 20_000;
+
 /// What the grammar allows at `offset` of the document `root` is the tree of.
 pub fn choices_at(root: &SyntaxNode, offset: usize, grammar: &Grammar) -> Choices {
     let mut out = Choices::default();
@@ -170,6 +175,11 @@ pub fn choices_at(root: &SyntaxNode, offset: usize, grammar: &Grammar) -> Choice
     // The attributes of the element: those it declares, and which of them the start tag has.
     let start = element.children().find(|c| c.kind() == SyntaxKind::StartTag);
     if let (Some(decl), Some(start)) = (decl, &start) {
+        let ids = if decl.attributes.iter().any(|a| matches!(a.ty, AttributeType::Idref | AttributeType::Idrefs)) {
+            document_ids(root, grammar)
+        } else {
+            Vec::new()
+        };
         let given: Vec<String> = start
             .children()
             .filter(|c| c.kind() == SyntaxKind::Attribute)
@@ -186,8 +196,10 @@ pub fn choices_at(root: &SyntaxNode, offset: usize, grammar: &Grammar) -> Choice
                 used: given.contains(&a.name.local),
                 values: match &a.ty {
                     AttributeType::Enumeration(values) | AttributeType::Notation(values) => values.clone(),
+                    AttributeType::Idref | AttributeType::Idrefs => ids.clone(),
                     _ => Vec::new(),
                 },
+                list: matches!(a.ty, AttributeType::Idrefs),
                 declare: None,
             })
             .collect();
@@ -239,6 +251,29 @@ fn elements_in(element: &SyntaxNode, offset: usize, content: Option<&Content>, g
                 .collect()
         }
     }
+}
+
+/// The values of the ID attributes in the document: what an IDREF or an IDREFS may refer to. They are unique, in document order.
+fn document_ids(root: &SyntaxNode, grammar: &Grammar) -> Vec<String> {
+    let mut ids: Vec<String> = Vec::new();
+    for (seen, element) in root.descendants().filter(|n| n.kind() == SyntaxKind::Element).enumerate() {
+        if seen >= MAX_ID_ELEMENTS || ids.len() >= crate::xsd::MAX_VALUES {
+            break;
+        }
+        let Some(decl) = name_of(&element).and_then(|name| grammar.element(&Name::local(&name))) else { continue };
+        let Some(start) = element.children().find(|c| c.kind() == SyntaxKind::StartTag) else { continue };
+        for (name, value) in attributes_of(&start) {
+            let id = decl.attributes.iter().any(|a| a.name.local == name && matches!(a.ty, AttributeType::Id));
+            let value = value.trim();
+            if id && !value.is_empty() && !ids.iter().any(|v| v == value) {
+                ids.push(value.to_owned());
+                if ids.len() >= crate::xsd::MAX_VALUES {
+                    break;
+                }
+            }
+        }
+    }
+    ids
 }
 
 /// The general entities that can be referred to in text and in attribute values: the parsed ones the grammar declares.

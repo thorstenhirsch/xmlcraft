@@ -424,3 +424,32 @@ fn an_attribute_is_written_with_the_declaration_its_name_needs() {
     // A value is escaped.
     assert_eq!(xsd_attribute_snippet("a", Some("x\"<&"), None).text, " a=\"x&quot;&lt;&amp;\"");
 }
+
+#[test]
+fn idrefs_are_offered_the_ids_the_document_has() {
+    let s = schema(
+        "qualified",
+        "<xs:element name=\"r\"><xs:complexType><xs:sequence>\
+           <xs:element name=\"a\" maxOccurs=\"unbounded\"><xs:complexType><xs:attribute name=\"id\" type=\"xs:ID\"/></xs:complexType></xs:element>\
+           <xs:element name=\"b\"><xs:complexType><xs:attribute name=\"ref\" type=\"xs:IDREF\"/><xs:attribute name=\"refs\" type=\"xs:IDREFS\"/></xs:complexType></xs:element>\
+         </xs:sequence></xs:complexType></xs:element>",
+    );
+    let c = at(&s, "<r xmlns=\"urn:o\"><a id=\"one\"/><a id=\"two\"/><a id=\"one\"/><b |/></r>");
+    let by_name = |n: &str| c.attributes.iter().find(|a| a.name == n).cloned().expect("offered");
+    assert_eq!(by_name("ref").values, ["one", "two"], "each ID once, in document order");
+    assert_eq!(by_name("refs").values, ["one", "two"]);
+    assert!(!by_name("ref").mandatory && !by_name("ref").used);
+}
+
+#[test]
+fn the_text_of_an_idref_element_has_the_ids_the_document_has() {
+    let s = schema(
+        "qualified",
+        "<xs:element name=\"r\"><xs:complexType><xs:sequence>\
+           <xs:element name=\"a\" maxOccurs=\"unbounded\"><xs:complexType><xs:attribute name=\"id\" type=\"xs:ID\"/></xs:complexType></xs:element>\
+           <xs:element name=\"who\" type=\"xs:IDREF\"/>\
+         </xs:sequence></xs:complexType></xs:element>",
+    );
+    let c = at(&s, "<r xmlns=\"urn:o\"><a id=\"one\"/><a id=\"two\"/><who>|</who></r>");
+    assert_eq!(c.values, ["one", "two"]);
+}

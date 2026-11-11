@@ -268,3 +268,34 @@ fn only_the_entities_a_value_may_refer_to_are_offered_in_one() {
     assert!(h.query_by_label("Complete &lt2;").is_none(), "its text holds a bracket");
     assert!(h.query_by_label("Complete &ext;").is_none(), "it is external");
 }
+
+#[test]
+fn idref_values_are_offered_from_the_ids_in_the_document() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    let dtd = "<!DOCTYPE r [<!ELEMENT r (a*, b)><!ELEMENT a EMPTY><!ATTLIST a id ID #IMPLIED>\
+               <!ELEMENT b EMPTY><!ATTLIST b ref IDREF #IMPLIED>]>";
+    open_at(&mut h, dir.path(), &format!("{dtd}<r><a id='one'/><a id='two'/><b ref=¦/></r>"));
+    type_text(&mut h, "\"");
+    assert!(h.query_by_label("Complete one").is_some() && h.query_by_label("Complete two").is_some(), "the IDs the document has");
+    h.key_press(egui::Key::ArrowDown);
+    h.run_steps(2);
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    assert!(text(&h).contains("ref=\"two\""), "{}", text(&h));
+}
+
+#[test]
+fn an_idrefs_value_adds_the_id_that_was_chosen_to_the_ones_before_it() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    let dtd = "<!DOCTYPE r [<!ELEMENT r (a*, b)><!ELEMENT a EMPTY><!ATTLIST a id ID #IMPLIED>\
+               <!ELEMENT b EMPTY><!ATTLIST b refs IDREFS #IMPLIED>]>";
+    open_at(&mut h, dir.path(), &format!("{dtd}<r><a id='one'/><a id='two'/><b refs='one ¦'/></r>"));
+    type_text(&mut h, "t");
+    assert!(h.query_by_label("Complete one two").is_some(), "the IDREF list adds `two`");
+    assert!(h.query_by_label("Complete one one").is_none(), "an ID cannot be repeated in one value");
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    assert!(text(&h).contains("refs='one two'"), "{}", text(&h));
+}

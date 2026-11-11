@@ -385,9 +385,9 @@ tier = "P0"
 milestone = "M3"
 status = "partial"
 commands = []
-tools = []
-evidence = ["crates/ui-egui/tests/completion.rs::the_values_of_an_attribute_are_offered_inside_its_quotes", "crates/ui-egui/tests/completion.rs::an_attribute_that_is_there_already_is_not_offered_and_a_value_is_of_its_own_attribute"]
-notes = "Inside the quotes of an attribute whose type is an enumeration (DTD) or lists values, those values are offered and written. Missing: booleans and other XSD types that list no values in the grammar, IDREF/IDREFS from the IDs the document has, and values of the type of an element."
+tools = ["xml_entry_helpers"]
+evidence = ["crates/ui-egui/tests/completion.rs::the_values_of_an_attribute_are_offered_inside_its_quotes", "crates/ui-egui/tests/completion.rs::an_attribute_that_is_there_already_is_not_offered_and_a_value_is_of_its_own_attribute", "crates/ui-egui/tests/completion.rs::idref_values_are_offered_from_the_ids_in_the_document", "crates/ui-egui/tests/completion.rs::an_idrefs_value_adds_the_id_that_was_chosen_to_the_ones_before_it", "crates/automation/tests/entry_helpers.rs::idref_values_are_the_ids_the_document_has", "crates/complete/tests/choices.rs::idrefs_are_offered_the_ids_the_document_has", "crates/complete/tests/xsd.rs::idrefs_are_offered_the_ids_the_document_has", "crates/complete/tests/xsd.rs::the_text_of_an_idref_element_has_the_ids_the_document_has"]
+notes = "Inside the quotes of an attribute whose type is an enumeration (DTD or XML Schema) or IDREF/IDREFS, the popup offers the values and writes the one chosen; an IDREF or IDREFS gets the IDs the document has (from the DTD's ID attributes, or attributes whose XML Schema type derives from xs:ID), and in an IDREFS a choice adds to the IDs before it (one already there is not offered again) (M3.18). `xml_entry_helpers` returns the same values, also the IDs for the text of an element whose type is IDREF/IDREFS, and `true`/`false` for an XML Schema boolean. Missing: the values of an element's text in the editor popup (they are only in Entry Helpers and the tool), a test of boolean values in the popup, and IDs of elements a schema does not type."
 
 [[feature]]
 id = "editor.hover-info"

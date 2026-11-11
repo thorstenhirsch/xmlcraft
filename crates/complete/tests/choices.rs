@@ -163,3 +163,15 @@ fn any_position_in_any_text_gives_an_answer_without_a_panic() {
         }
     }
 }
+
+#[test]
+fn idrefs_are_offered_the_ids_the_document_has() {
+    let g = grammar(
+        "<!ELEMENT r (a*, b)><!ELEMENT a EMPTY><!ELEMENT b EMPTY>\
+         <!ATTLIST a id ID #IMPLIED><!ATTLIST b ref IDREF #IMPLIED refs IDREFS #IMPLIED>",
+    );
+    let c = at(&g, "<r><a id='one'/><a id='two'/><a id='one'/><b |/></r>");
+    let by_name = |n: &str| c.attributes.iter().find(|a| a.name == n).cloned().expect("offered");
+    assert_eq!(by_name("ref").values, ["one", "two"], "each ID once, in document order");
+    assert_eq!(by_name("refs").values, ["one", "two"]);
+}
