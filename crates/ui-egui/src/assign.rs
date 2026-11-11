@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use xmlcraft_engine::assign::{Assignment, assign, is_dtd_location, relative_location, schema_namespace};
+use xmlcraft_engine::bundled::{self, BundledFormat};
 
 use crate::XmlCraftApp;
 use crate::dialog::Dialog;
@@ -50,6 +51,9 @@ pub(crate) struct AssignForm {
     focus: bool,
     /// The document is JSON or YAML: a JSON Schema is assigned (a `$schema` member, a modeline), not a DTD or an XML Schema.
     data: bool,
+    /// Whether the bundled list is open, and what filters it.
+    browse: bool,
+    filter: String,
     /// What SchemaStore said (JSON and YAML only).
     pub(crate) store: Store,
 }
@@ -75,6 +79,8 @@ impl XmlCraftApp {
             error: None,
             focus: true,
             data: doc.language().is_data(),
+            browse: false,
+            filter: String::new(),
             store: Store::default(),
         })));
     }
@@ -210,14 +216,19 @@ impl XmlCraftApp {
             self.dialog = None;
             return Ok(fmt(tl!("Assigned {location} to {name}"), &[("location", location), ("name", &form.name)]));
         }
+        // A bundled file is named by its publisher's address (the bundled catalog maps it back), never by a bundled:/ URI.
+        let written = bundled::location_to_write(location)?;
+        let location = written.as_str();
         let is_dtd = match form.kind {
             Kind::Dtd => true,
             Kind::Schema => false,
             Kind::Detect => is_dtd_location(location),
         };
-        // The namespace a schema is for is read from the schema document when it is a file that can be read.
+        // The namespace a schema is for is read from the schema document: a bundled one, or a file that can be read.
         let namespace = if is_dtd {
             None
+        } else if let Some(namespace) = bundled::namespace_of(location) {
+            Some(namespace)
         } else {
             let wanted = match &form.document {
                 Some(document) => xmlcraft_resolve::join(&document.to_string_lossy(), location),
@@ -227,7 +238,12 @@ impl XmlCraftApp {
                 schema_namespace(&xmlcraft_text::encoding::decode(&loaded.bytes, &xmlcraft_text::encoding::sniff(&loaded.bytes)).text)
             })
         };
-        let what = if is_dtd { Assignment::Dtd { location } } else { Assignment::Schema { namespace: namespace.as_deref(), location } };
+        let public = if is_dtd { bundled::public_id_of(location) } else { None };
+        let what = if is_dtd {
+            Assignment::Dtd { public: public.as_deref(), location }
+        } else {
+            Assignment::Schema { namespace: namespace.as_deref(), location }
+        };
         let edits = assign(&doc.editor().text(), &what).map_err(|e| e.to_string())?;
         // Nothing to write when it is assigned already: the document stays as it is, with no step to undo.
         if edits.is_empty() {
@@ -278,6 +294,48 @@ fn form_ui(ui: &mut egui::Ui, form: &mut AssignForm) -> Option<Action> {
         });
         kit::help(ui, tl!("A file name is written from the folder of the document. An address starting with http is downloaded when it is needed."));
     });
+    if !form.data {
+        kit::section(ui, tl!("Bundled schemas"), |ui| {
+            if kit::pill(ui, kit::PillKind::Secondary, Some("book-open"), tl!("Browse bundled schemas…")).clicked() {
+                form.browse = !form.browse;
+            }
+            if !form.browse {
+                kit::help(ui, tl!("The XML Schemas and DTDs that ship with XmlCraft, for choosing one without a file."));
+                return;
+            }
+            let field = ui.add(widgets::line(&mut form.filter).hint_text(tl!("Filter by name, set or path")).desired_width(f32::INFINITY));
+            widgets::name_for_assistive_technology(ui, &field, tl!("Filter the bundled schemas"));
+            let found = bundled::matching(&form.filter);
+            if found.is_empty() {
+                kit::help(ui, tl!("No bundled schema or DTD matches."));
+                return;
+            }
+            let mut chosen = None;
+            egui::ScrollArea::vertical().max_height(150.0).show(ui, |ui| {
+                for schema in &found {
+                    let label = format!("{} ({})", schema.name, schema.set);
+                    // A file known only by its namespace has no address to write: it is listed, but cannot be chosen.
+                    let Some(location) = &schema.location else {
+                        ui.add_enabled(false, egui::Button::selectable(false, label))
+                            .on_disabled_hover_text(tl!("Found by its namespace without being named: nothing to assign"));
+                        continue;
+                    };
+                    if ui.selectable_label(form.location == *location, label).on_hover_text(location).clicked() {
+                        chosen = Some(schema);
+                    }
+                }
+            });
+            if let Some(schema) = chosen {
+                form.location = schema.location.clone().unwrap_or_default();
+                form.kind = match schema.format {
+                    BundledFormat::Xsd => Kind::Schema,
+                    BundledFormat::Dtd => Kind::Dtd,
+                };
+                form.error = None;
+                form.browse = false;
+            }
+        });
+    }
     if form.data {
         kit::section(ui, tl!("SchemaStore"), |ui| {
             ui.horizontal(|ui| {

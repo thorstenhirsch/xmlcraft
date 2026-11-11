@@ -5,6 +5,7 @@
 
 pub mod analysis;
 pub mod assign;
+pub mod bundled;
 pub mod business;
 pub mod commands;
 pub mod compare;

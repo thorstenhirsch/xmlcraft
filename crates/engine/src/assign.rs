@@ -17,8 +17,8 @@ const XSI_NAMESPACE: &str = "http://www.w3.org/2001/XMLSchema-instance";
 /// What to assign.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Assignment<'a> {
-    /// A DTD: `<!DOCTYPE root SYSTEM "location">`.
-    Dtd { location: &'a str },
+    /// A DTD: `<!DOCTYPE root SYSTEM "location">`, or `<!DOCTYPE root PUBLIC "public" "location">` with a public identifier.
+    Dtd { public: Option<&'a str>, location: &'a str },
     /// An XML Schema for the namespace (`None`: for no namespace), found at `location`.
     Schema { namespace: Option<&'a str>, location: &'a str },
 }
@@ -129,7 +129,7 @@ fn edits_for(text: &str, what: &Assignment<'_>) -> Result<Vec<Edit>, AssignError
     let syntax = parsed.syntax();
     let root = root_of(&syntax, text).ok_or(AssignError::NoRoot)?;
     match what {
-        Assignment::Dtd { location } => assign_dtd(text, &syntax, &root, location),
+        Assignment::Dtd { public, location } => assign_dtd(text, &syntax, &root, *public, location),
         Assignment::Schema { namespace, location } => {
             if doctype_parts(&syntax).is_some() {
                 return Err(AssignError::HasDoctype);
@@ -139,16 +139,34 @@ fn edits_for(text: &str, what: &Assignment<'_>) -> Result<Vec<Edit>, AssignError
     }
 }
 
-fn assign_dtd(text: &str, syntax: &SyntaxNode, root: &Root, location: &str) -> Result<Vec<Edit>, AssignError> {
-    let literal = quoted(location)?;
+/// Whether `id` is a public identifier XML allows (PubidChar, XML 1.0 [13]): it is written between double quotes.
+fn public_id_ok(id: &str) -> bool {
+    id.chars().all(|c| {
+        c.is_ascii_alphanumeric()
+            || matches!(
+                c,
+                ' ' | '\r' | '\n' | '-' | '\'' | '(' | ')' | '+' | ',' | '.' | '/' | ':' | '=' | '?' | ';' | '!' | '*' | '#' | '@' | '$' | '_' | '%'
+            )
+    })
+}
+
+fn assign_dtd(text: &str, syntax: &SyntaxNode, root: &Root, public: Option<&str>, location: &str) -> Result<Vec<Edit>, AssignError> {
+    let system = quoted(location)?;
+    let literal = match public {
+        Some(id) if !public_id_ok(id) => {
+            return Err(AssignError::BadLocation(format!("{id:?} is not a public identifier: it has a character XML does not allow there")));
+        }
+        Some(id) => format!("PUBLIC \"{id}\" {system}"),
+        None => format!("SYSTEM {system}"),
+    };
     if let Some(parts) = doctype_parts(syntax) {
         // The DOCTYPE stays what it is, with its name and its internal subset; only what it says about an external subset changes.
         // A DOCTYPE without a name is not well-formed, which was refused above: an error is more honest than a name made up.
         let Some(name) = parts.name.clone() else { return Err(AssignError::NotWellFormed) };
         let subset = parts.subset.as_ref().and_then(|r| text.get(r.clone()));
         let new = match subset {
-            Some(subset) => format!("<!DOCTYPE {name} SYSTEM {literal} [{subset}]>"),
-            None => format!("<!DOCTYPE {name} SYSTEM {literal}>"),
+            Some(subset) => format!("<!DOCTYPE {name} {literal} [{subset}]>"),
+            None => format!("<!DOCTYPE {name} {literal}>"),
         };
         return Ok(vec![Edit { range: parts.range, text: new }]);
     }
@@ -156,7 +174,7 @@ fn assign_dtd(text: &str, syntax: &SyntaxNode, root: &Root, location: &str) -> R
     let before = text.get(..root.start).unwrap_or_default();
     let on_a_line_of_its_own = before.is_empty() || before.ends_with('\n') || before.ends_with('\r');
     let eol = if on_a_line_of_its_own { LineEndings::count(text).dominant().as_str() } else { "" };
-    Ok(vec![Edit { range: root.start..root.start, text: format!("<!DOCTYPE {} SYSTEM {literal}>{eol}", root.name) }])
+    Ok(vec![Edit { range: root.start..root.start, text: format!("<!DOCTYPE {} {literal}>{eol}", root.name) }])
 }
 
 fn assign_schema(text: &str, root: &Root, namespace: Option<&str>, location: &str) -> Result<Vec<Edit>, AssignError> {
@@ -290,7 +308,7 @@ mod tests {
 
     #[test]
     fn a_dtd_is_a_doctype_before_the_root_on_a_line_of_its_own() {
-        let dtd = Assignment::Dtd { location: "order.dtd" };
+        let dtd = Assignment::Dtd { public: None, location: "order.dtd" };
         assert_eq!(assigned("<order/>", dtd), "<!DOCTYPE order SYSTEM \"order.dtd\">\n<order/>");
         assert_eq!(
             assigned("<?xml version=\"1.0\"?>\n<!-- c -->\n<order>x</order>\n", dtd),
@@ -298,17 +316,17 @@ mod tests {
         );
         // The line endings of the document are the ones used.
         assert_eq!(
-            assigned("<?xml version=\"1.0\"?>\r\n<a/>\r\n", Assignment::Dtd { location: "a.dtd" }),
+            assigned("<?xml version=\"1.0\"?>\r\n<a/>\r\n", Assignment::Dtd { public: None, location: "a.dtd" }),
             "<?xml version=\"1.0\"?>\r\n<!DOCTYPE a SYSTEM \"a.dtd\">\r\n<a/>\r\n"
         );
         // On the line of the declaration, it stays on it.
         assert_eq!(
-            assigned("<?xml version=\"1.0\"?><a/>", Assignment::Dtd { location: "a.dtd" }),
+            assigned("<?xml version=\"1.0\"?><a/>", Assignment::Dtd { public: None, location: "a.dtd" }),
             "<?xml version=\"1.0\"?><!DOCTYPE a SYSTEM \"a.dtd\"><a/>"
         );
         // A prefixed root name is written as it is.
         assert_eq!(
-            assigned("<p:a xmlns:p=\"urn:p\"/>", Assignment::Dtd { location: "a.dtd" }),
+            assigned("<p:a xmlns:p=\"urn:p\"/>", Assignment::Dtd { public: None, location: "a.dtd" }),
             "<!DOCTYPE p:a SYSTEM \"a.dtd\">\n<p:a xmlns:p=\"urn:p\"/>"
         );
     }
@@ -316,16 +334,23 @@ mod tests {
     #[test]
     fn an_existing_doctype_keeps_its_name_and_its_internal_subset() {
         let before = "<!DOCTYPE a PUBLIC \"-//X//DTD//EN\" \"old.dtd\" [\n<!ENTITY e \"v\">\n]>\n<a>&e;</a>";
-        let after = assigned(before, Assignment::Dtd { location: "new.dtd" });
+        let after = assigned(before, Assignment::Dtd { public: None, location: "new.dtd" });
         assert_eq!(after, "<!DOCTYPE a SYSTEM \"new.dtd\" [\n<!ENTITY e \"v\">\n]>\n<a>&e;</a>");
-        assert_eq!(assigned("<!DOCTYPE a>\n<a/>", Assignment::Dtd { location: "n.dtd" }), "<!DOCTYPE a SYSTEM \"n.dtd\">\n<a/>");
+        assert_eq!(assigned("<!DOCTYPE a>\n<a/>", Assignment::Dtd { public: None, location: "n.dtd" }), "<!DOCTYPE a SYSTEM \"n.dtd\">\n<a/>");
     }
 
     #[test]
     fn a_location_with_a_quote_is_quoted_with_the_other_one() {
-        assert_eq!(assigned("<a/>", Assignment::Dtd { location: "my\"file.dtd" }), "<!DOCTYPE a SYSTEM 'my\"file.dtd'>\n<a/>");
-        assert!(matches!(assign("<a/>", &Assignment::Dtd { location: "a\"b'c.dtd" }), Err(AssignError::BadLocation(_))));
-        assert!(matches!(assign("<a/>", &Assignment::Dtd { location: "" }), Err(AssignError::BadLocation(_))));
+        assert_eq!(assigned("<a/>", Assignment::Dtd { public: None, location: "my\"file.dtd" }), "<!DOCTYPE a SYSTEM 'my\"file.dtd'>\n<a/>");
+        assert!(matches!(assign("<a/>", &Assignment::Dtd { public: None, location: "a\"b'c.dtd" }), Err(AssignError::BadLocation(_))));
+        let public =
+            Assignment::Dtd { public: Some("-//W3C//DTD XHTML 1.0 Strict//EN"), location: "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd" };
+        assert_eq!(
+            assigned("<html/>", public),
+            "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">\n<html/>"
+        );
+        assert!(matches!(assign("<a/>", &Assignment::Dtd { public: Some("a\"b"), location: "a.dtd" }), Err(AssignError::BadLocation(_))));
+        assert!(matches!(assign("<a/>", &Assignment::Dtd { public: None, location: "" }), Err(AssignError::BadLocation(_))));
     }
 
     #[test]
@@ -410,7 +435,7 @@ mod tests {
     #[test]
     fn only_what_is_assigned_changes() {
         let doc = "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n<!-- keep -->\n<a  x = \"1\" >\n\t<b/>\n</a>\n";
-        for what in [Assignment::Dtd { location: "a.dtd" }, Assignment::Schema { namespace: None, location: "a.xsd" }] {
+        for what in [Assignment::Dtd { public: None, location: "a.dtd" }, Assignment::Schema { namespace: None, location: "a.xsd" }] {
             let edits = assign(doc, &what).expect("assigned");
             assert_eq!(edits.len(), 1);
             let changed = apply(doc, &edits);
@@ -450,11 +475,11 @@ mod tests {
             }
         }
         let dtd_doc = "<?xml version=\"1.0\"?>\n<order><item>a</item></order>\n";
-        let with_dtd = assigned(dtd_doc, Assignment::Dtd { location: "../dtds/order.dtd" });
+        let with_dtd = assigned(dtd_doc, Assignment::Dtd { public: None, location: "../dtds/order.dtd" });
         let made = validate(&with_dtd, 1, "/d/order.xml", &mut Dtd, &mut Xsd(""));
         assert_eq!((made.verdict, made.problems.len()), (Verdict::Valid, 0), "{with_dtd}");
         // Another DTD of the same document: still a document that is checked, and found wanting.
-        let wrong = assigned("<order><thing/></order>", Assignment::Dtd { location: "../dtds/order.dtd" });
+        let wrong = assigned("<order><thing/></order>", Assignment::Dtd { public: None, location: "../dtds/order.dtd" });
         assert_eq!(validate(&wrong, 1, "/d/order.xml", &mut Dtd, &mut Xsd("")).verdict, Verdict::Invalid);
         let xsd_doc = "<order xmlns=\"urn:o\"><item>a</item></order>";
         let with_xsd = assigned(xsd_doc, Assignment::Schema { namespace: Some("urn:o"), location: "order.xsd" });
@@ -488,7 +513,7 @@ mod tests {
     #[test]
     fn what_is_assigned_already_needs_no_edit() {
         for what in [
-            Assignment::Dtd { location: "a.dtd" },
+            Assignment::Dtd { public: None, location: "a.dtd" },
             Assignment::Schema { namespace: None, location: "a.xsd" },
             Assignment::Schema { namespace: Some("urn:a"), location: "a.xsd" },
         ] {
@@ -496,13 +521,16 @@ mod tests {
             assert_eq!(assign(&once, &what), Ok(Vec::new()), "{once}");
         }
         // Another location is an edit.
-        let once = assigned("<a/>", Assignment::Dtd { location: "a.dtd" });
-        assert_eq!(assign(&once, &Assignment::Dtd { location: "b.dtd" }).map(|e| e.len()), Ok(1));
+        let once = assigned("<a/>", Assignment::Dtd { public: None, location: "a.dtd" });
+        assert_eq!(assign(&once, &Assignment::Dtd { public: None, location: "b.dtd" }).map(|e| e.len()), Ok(1));
     }
 
     #[test]
     fn a_root_after_a_lone_carriage_return_is_on_a_line_of_its_own() {
-        assert_eq!(assigned("<!-- c -->\r<a/>", Assignment::Dtd { location: "a.dtd" }), "<!-- c -->\r<!DOCTYPE a SYSTEM \"a.dtd\">\r<a/>");
+        assert_eq!(
+            assigned("<!-- c -->\r<a/>", Assignment::Dtd { public: None, location: "a.dtd" }),
+            "<!-- c -->\r<!DOCTYPE a SYSTEM \"a.dtd\">\r<a/>"
+        );
     }
 
     #[test]
