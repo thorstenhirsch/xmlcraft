@@ -101,6 +101,31 @@ fn a_schema_chosen_with_browse_is_written_from_the_folder_of_the_document_and_th
 }
 
 #[test]
+fn a_bundled_dtd_is_chosen_from_the_list_and_assigned() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "page.xml", "<html><head><title>x</title></head><body><p>x</p></body></html>"));
+    assert!(h.state_mut().execute("xml.assign_schema"));
+    h.run_steps(3);
+    h.get_by_label("Browse bundled schemas…").click();
+    h.run_steps(2);
+    h.get_by_label("Filter the bundled schemas").focus();
+    h.run_steps(1);
+    h.get_by_label("Filter the bundled schemas").type_text("xhtml1-strict");
+    h.run_steps(2);
+    h.get_by_label("xhtml1-strict.dtd (w3c)").click();
+    h.run_steps(2);
+    h.get_by_label("Assign").click();
+    h.run_steps(3);
+    assert!(
+        text(&h).starts_with("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">\n"),
+        "the publisher's address and public identifier, not bundled:/: {}",
+        text(&h)
+    );
+    assert!(h.query_by_label("Assign Schema").is_none(), "the form is gone");
+}
+
+#[test]
 fn what_cannot_be_assigned_is_said_in_the_form_and_nothing_changes() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell();

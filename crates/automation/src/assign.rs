@@ -13,7 +13,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
     if let Some(map) = properties.as_object_mut() {
         map.insert(
             "schema".into(),
-            json!({ "type": "string", "description": "The location to write: a path (relative paths are from the folder of the document) or a URL" }),
+            json!({ "type": "string", "description": "The location to write: a path (relative paths are from the folder of the document) or a URL; a bundled:/… uri from bundled_schemas is written as the public address the bundled catalog maps to it" }),
         );
         map.insert("kind".into(), json!({ "type": "string", "enum": ["xsd", "dtd"], "description": "A schema or a DTD (default: a DTD when the location ends in .dtd, .ent or .mod)" }));
         map.insert(
@@ -59,6 +59,9 @@ fn xml_assign_schema(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
             ),
         };
     }
+    // A bundled file is named by its publisher's address, which the bundled catalog maps back to it; a bundled:/ URI is never written.
+    let written = xmlcraft_engine::bundled::location_to_write(location).map_err(ToolError::Failed)?;
+    let location = written.as_str();
     let is_dtd = match args.get("kind").and_then(Value::as_str) {
         Some("dtd") => true,
         Some("xsd") => false,
@@ -69,6 +72,10 @@ fn xml_assign_schema(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let mut namespace: Option<String> = args.get("namespace").and_then(Value::as_str).map(str::to_owned);
     let mut read = false;
     if !is_dtd && namespace.is_none() {
+        namespace = xmlcraft_engine::bundled::namespace_of(location);
+        read = namespace.is_some();
+    }
+    if !is_dtd && namespace.is_none() {
         let base = document.path.as_deref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
         let wanted = xmlcraft_resolve::join(&base, location);
         if let Ok(path) = a.confinement.resolve_read(&wanted)
@@ -78,7 +85,13 @@ fn xml_assign_schema(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
             namespace = schema_namespace(&xmlcraft_text::encoding::decode(&loaded.bytes, &xmlcraft_text::encoding::sniff(&loaded.bytes)).text);
         }
     }
-    let what = if is_dtd { Assignment::Dtd { location } } else { Assignment::Schema { namespace: namespace.as_deref(), location } };
+    // A DTD the bundled catalog knows by a public identifier is named by it too, as its publisher does.
+    let public = if is_dtd { xmlcraft_engine::bundled::public_id_of(location) } else { None };
+    let what = if is_dtd {
+        Assignment::Dtd { public: public.as_deref(), location }
+    } else {
+        Assignment::Schema { namespace: namespace.as_deref(), location }
+    };
     let edits = assign(&document.text, &what).map_err(|e| ToolError::Failed(e.to_string()))?;
     match document.id {
         Some(id) => {

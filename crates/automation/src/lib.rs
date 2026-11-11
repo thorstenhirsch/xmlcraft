@@ -11,6 +11,7 @@
 //!   and reported (AGENTS.md section 5).
 
 mod assign;
+mod bundled;
 mod catalog;
 mod convert;
 mod definition;

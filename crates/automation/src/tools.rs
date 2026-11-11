@@ -69,6 +69,7 @@ pub fn tools() -> &'static [ToolDef] {
         table.extend(crate::json_sample::tools());
         table.extend(crate::entry_helpers::tools());
         table.extend(crate::assign::tools());
+        table.extend(crate::bundled::tools());
         table.extend(crate::infer::tools());
         table.extend(crate::pdf::tools());
         table.extend(crate::pdf::replace_tools());

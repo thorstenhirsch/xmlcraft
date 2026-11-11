@@ -23,6 +23,7 @@ xmlcraft-validate = { workspace = true }
 xmlcraft-syntax = { workspace = true }
 xmlcraft-json = { workspace = true }
 xmlcraft-schemas = { workspace = true }
+xmlcraft-catalog = { workspace = true }
 xmlcraft-json-syntax = { workspace = true }
 xmlcraft-bson = { workspace = true }
 serde_json = { workspace = true }
