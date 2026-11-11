@@ -162,6 +162,9 @@ pub struct XmlCraftApp {
     /// Learns a JSON Schema from a data document in the background (Generate JSON Schema…), and the request it waits for.
     json_schema_generator: xmlcraft_engine::json_infer::JsonSchemaGenerator,
     json_schema_waiting: Option<u64>,
+    /// Makes a sample from a JSON Schema in the background (Generate Sample JSON…), and the request it waits for.
+    json_sample_generator: xmlcraft_engine::json_sample::JsonSampleGenerator,
+    json_sample_waiting: Option<u64>,
     /// Compares the documents of the Compare window.
     comparer: xmlcraft_engine::compare::Comparer,
     /// Evaluates the expressions of the XPath window.
@@ -299,6 +302,10 @@ impl XmlCraftApp {
             let repaint = repaint.clone();
             move || repaint.request_repaint()
         });
+        app.json_sample_generator.on_done({
+            let repaint = repaint.clone();
+            move || repaint.request_repaint()
+        });
         app.comparer.on_done({
             let repaint = repaint.clone();
             move || repaint.request_repaint()
@@ -362,6 +369,8 @@ impl XmlCraftApp {
             sample_generator: xmlcraft_engine::generate::SampleGenerator::new(resolvers()),
             json_schema_generator: xmlcraft_engine::json_infer::JsonSchemaGenerator::new(),
             json_schema_waiting: None,
+            json_sample_generator: xmlcraft_engine::json_sample::JsonSampleGenerator::new(resolvers()),
+            json_sample_waiting: None,
             comparer: xmlcraft_engine::compare::Comparer::new(),
             xpath: xmlcraft_engine::xpath::XPathRunner::new(),
             xslt: xmlcraft_engine::xslt::XsltRunner::new(),

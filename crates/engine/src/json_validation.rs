@@ -219,6 +219,21 @@ pub fn load_schema_set(reference: &str, location: &str, resolver: &Resolver) -> 
     Ok(SchemaSet::new(root, &schema_location, Draft::D2020_12, &documents))
 }
 
+/// The schema in `text` (a file at `location` when it is one: what relative references in it are taken from), read through
+/// `resolver` with the documents it refers to. The text may have comments and trailing commas, as editors allow.
+pub fn load_schema_from_text(text: &str, location: &str, resolver: &Resolver) -> Result<SchemaSet, String> {
+    if text.len() > MAX_ANALYSED_BYTES {
+        return Err("the schema is too large to read".to_owned());
+    }
+    let documents = Documents { resolver, budget: RefCell::new(Budget::default()), failed: RefCell::new(Vec::new()) };
+    let schema = parse(text, &Options { dialect: Dialect::Json5, ..Options::default() });
+    if let Some(d) = schema.diagnostics.iter().find(|d| d.severity() == Severity::Error) {
+        return Err(format!("the schema is not valid JSON: {}", d.message()));
+    }
+    let root = schema.root.ok_or_else(|| "the schema has no value".to_owned())?;
+    Ok(SchemaSet::new(root, location, Draft::D2020_12, &documents))
+}
+
 /// The schema a document names, read through `resolver`, for completion and hover: none when the document names none or it cannot be
 /// read.
 pub(crate) fn schema_set_for(text: &str, language: Language, location: &str, resolver: &Resolver) -> Option<SchemaSet> {

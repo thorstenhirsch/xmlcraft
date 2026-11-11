@@ -3,6 +3,7 @@
 
 use xmlcraft_engine::generate::{GrammarKind, SampleJob, SchemaJob};
 use xmlcraft_engine::json_infer::{InferJob, Options as JsonInferOptions};
+use xmlcraft_engine::json_sample::{Options as JsonSampleOptions, SampleJob as JsonSampleJob};
 use xmlcraft_infer::{EnumerationRule, Layout, Options as InferOptions, Output};
 use xmlcraft_sample::{ChoicePolicy, Fill, Options as SampleOptions};
 use xmlcraft_text::Buffer;
@@ -94,6 +95,23 @@ impl XmlCraftApp {
         self.json_schema_waiting = Some(serial);
         self.json_schema_generator.submit(InferJob { serial, documents, options: JsonInferOptions::default() });
         self.status = tl!("Generating a JSON Schema…").to_owned();
+    }
+
+    /// Make a sample JSON value from the JSON Schema being shown (Generate Sample JSON…), on a worker thread: the documents the
+    /// schema refers to are read through the resolver, which may download them. The sample opens as a new document when it is ready.
+    pub(crate) fn generate_json_sample(&mut self) {
+        let Some(doc) = self.session.active_document() else { return };
+        if !doc.language().is_data() {
+            self.status = tl!("Generate Sample JSON makes a sample from a JSON Schema").to_owned();
+            return;
+        }
+        let schema = doc.editor().text();
+        let location = doc.path().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        let open = self.open_documents();
+        let serial = self.next_serial();
+        self.json_sample_waiting = Some(serial);
+        self.json_sample_generator.submit(JsonSampleJob { serial, schema, location, open, options: JsonSampleOptions::default() });
+        self.status = tl!("Generating a sample…").to_owned();
     }
 
     /// Ask what to generate a schema from, and how (Generate Schema…).
@@ -215,6 +233,22 @@ impl XmlCraftApp {
                 Ok(inferred) => {
                     self.open_generated("schema.json", &inferred.schema);
                     self.status = tl!("Generated schema.json").to_owned();
+                }
+                Err(message) => self.status = message,
+            }
+        }
+        for outcome in self.json_sample_generator.poll() {
+            if self.json_sample_waiting != Some(outcome.serial) {
+                continue; // an answer to something that was asked before
+            }
+            self.json_sample_waiting = None;
+            match outcome.result {
+                Ok(done) => {
+                    self.open_generated("sample.json", &done.text);
+                    self.status = match done.warnings.first() {
+                        Some(first) => fmt(tl!("Generated sample.json; {first}"), &[("first", first)]),
+                        None => tl!("Generated sample.json").to_owned(),
+                    };
                 }
                 Err(message) => self.status = message,
             }

@@ -249,3 +249,28 @@ fn generate_json_schema_makes_a_schema_from_the_data_document_being_shown_on_a_w
     assert_eq!(names(&h).len(), before);
     assert!(h.state().status.contains("JSON, YAML or BSON"), "{}", h.state().status);
 }
+
+#[test]
+fn generate_json_sample_makes_a_value_from_the_schema_being_shown_on_a_worker() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(
+        &mut h,
+        &file(
+            dir.path(),
+            "schema.json",
+            r#"{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"age":{"type":"integer","default":7}}}"#,
+        ),
+    );
+    assert!(h.state_mut().execute("file.generate_sample"));
+    wait(&mut h, "the sample", |h| names(h).contains(&"sample.json".to_owned()));
+    let sample: serde_json::Value = serde_json::from_str(&text_of(&h, "sample.json")).expect("JSON");
+    assert_eq!(sample, serde_json::json!({ "name": "string", "age": 7 }));
+    assert_eq!(h.state().session.active_document().map(|d| d.name().to_owned()), Some("sample.json".to_owned()));
+    // Something that is not a schema is said so, and makes no document.
+    open(&mut h, &file(dir.path(), "plain.json", "{"));
+    let before = names(&h).len();
+    assert!(h.state_mut().execute("file.generate_sample"));
+    wait(&mut h, "the answer", |h| h.state().status.contains("not valid JSON"));
+    assert_eq!(names(&h).len(), before, "nothing was made");
+}

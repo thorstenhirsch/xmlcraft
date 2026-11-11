@@ -23,6 +23,7 @@ XmlCraft is a clean-room, open-source XML editor built to match the feature set 
 
 ## Progress log
 
+- 2026-11-11: M5.21, a sample from a JSON Schema. `xmlcraft_engine::json_sample` makes JSON, YAML or BSON in the shape a schema describes (names, offered values, the kind of each place), cut at a depth and refused past 10,000 values; File ▸ Generate Sample JSON… runs it on a worker thread, `json_sample` headlessly.
 - 2026-11-11: M5.20, JSON Schema inference. `xmlcraft_engine::json_infer` learns a JSON Schema (draft 2020-12) from JSON, YAML and BSON documents: names, required names, types, array items and enumerations. File ▸ Generate JSON Schema… runs it on a worker thread for the document being shown; `json_infer` does it headlessly for up to 1000 documents (32 MiB together, counted while they are read).
 - 2026-11-11: M5.19, empty shapes. Where the schema types a value as an object or an array, completion offers `{}` or `[]` (in JSON and YAML) and puts the caret between the brackets.
 - 2026-11-11: M5.18, YAML flow collections are completed. Inside `{…}` and `[…]` (also when the bracket opened on an earlier line) the popup offers the names and values the schema allows, a quoted name that is there is not offered again, and nothing is offered inside a block scalar or a comment.
