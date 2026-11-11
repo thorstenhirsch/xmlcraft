@@ -18,6 +18,26 @@ pub const MAX_ANALYSED_BYTES: usize = 32 * 1024 * 1024;
 /// The outline shows at most this many elements.
 pub const MAX_OUTLINE_ITEMS: usize = 50_000;
 
+/// The longest [`OutlineItem::preview`], in characters (an `…` follows when the text goes on).
+pub const MAX_PREVIEW: usize = 60;
+
+/// What an outline item is: for XML and HTML an element and what it holds, for the data formats (JSON, YAML, BSON) the kind of value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum OutlineKind {
+    /// An element that holds elements.
+    Element,
+    /// An element that holds text only.
+    Leaf,
+    /// An element that holds nothing but white space, comments or processing instructions.
+    Empty,
+    Object,
+    Array,
+    String,
+    Number,
+    Boolean,
+    Null,
+}
+
 /// One element in the outline.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OutlineItem {
@@ -37,6 +57,59 @@ pub struct OutlineItem {
     pub end_tag: Option<Range<usize>>,
     /// The name in the end tag, if it has one.
     pub end_name_range: Option<Range<usize>>,
+    /// What it is.
+    pub kind: OutlineKind,
+    /// How many items of the outline are directly under it (its child elements; the members or listed entries of a value), saturating.
+    pub children: u32,
+    /// A look at what it holds: a leaf element's text with its white space collapsed, a scalar's value; at most [`MAX_PREVIEW`]
+    /// characters and an `…`. Empty otherwise.
+    pub preview: String,
+}
+
+/// `pieces` of text one after the other, each run of white space as one space and none at the ends, cut after [`MAX_PREVIEW`]
+/// characters with an `…`. Reads no more of the pieces than it shows.
+pub(crate) fn preview_of<'a>(pieces: impl IntoIterator<Item = &'a str>) -> String {
+    let mut out = String::new();
+    let (mut count, mut space) = (0usize, false);
+    for piece in pieces {
+        for c in piece.chars() {
+            if c.is_whitespace() || c.is_control() {
+                space = count > 0;
+                continue;
+            }
+            if count >= MAX_PREVIEW {
+                out.push('…');
+                return out;
+            }
+            if space {
+                if count + 1 >= MAX_PREVIEW {
+                    out.push('…');
+                    return out;
+                }
+                out.push(' ');
+                count += 1;
+                space = false;
+            }
+            out.push(c);
+            count += 1;
+        }
+    }
+    out
+}
+
+/// Fill in [`OutlineItem::children`] from the depths: an item is under the nearest item before it that is less deep. One pass.
+pub(crate) fn count_children(items: &mut [OutlineItem]) {
+    let mut open: Vec<usize> = Vec::new();
+    for i in 0..items.len() {
+        let Some(depth) = items.get(i).map(|item| item.depth) else { break };
+        while open.last().and_then(|&p| items.get(p)).is_some_and(|p| p.depth >= depth) {
+            open.pop();
+        }
+        if let Some(parent) = open.last().and_then(|&p| items.get_mut(p)) {
+            parent.children = parent.children.saturating_add(1);
+        }
+        open.push(i);
+    }
 }
 
 /// An element's start tag and end tag, as the caret sees them: the tag it is in, and the one that goes with it.
@@ -219,7 +292,8 @@ pub fn analyze_as(language: Language, text: &str, version: u64) -> Analysis {
     // DTD are not read here.
     let mut diagnostics = xmlcraft_dtd::problems_in_text(&parsed.syntax(), text, parsed.diagnostics());
     diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
-    let (outline, outline_truncated) = outline_of(&parsed.syntax(), text);
+    let (mut outline, outline_truncated) = outline_of(&parsed.syntax(), text);
+    count_children(&mut outline);
     let (folds, folds_truncated) = fold_ranges(&parsed.syntax(), text);
     let parts = xmlcraft_dtd::doctype_parts(&parsed.syntax());
     let doctype = parts.as_ref().map(|p| p.range.clone());
@@ -294,7 +368,56 @@ fn item_of(node: &xmlcraft_syntax::SyntaxNode, text: &str, depth: usize) -> Opti
         .as_ref()
         .and_then(|e| e.children_with_tokens().filter_map(|c| c.into_token()).find(|t| t.kind() == SyntaxKind::Name))
         .map(|t| usize::from(t.text_range().start())..usize::from(t.text_range().end()));
-    Some(OutlineItem { depth, name: name_token.text().to_owned(), label, range, name_range, start_tag: range_of(&tag), end_tag, end_name_range })
+    let (kind, preview) = content_of(node, text);
+    Some(OutlineItem {
+        depth,
+        name: name_token.text().to_owned(),
+        label,
+        range,
+        name_range,
+        start_tag: range_of(&tag),
+        end_tag,
+        end_name_range,
+        kind,
+        children: 0,
+        preview,
+    })
+}
+
+/// What an element holds, from its direct children: elements, text only (and a look at it), or nothing. Visits each child once.
+fn content_of(node: &xmlcraft_syntax::SyntaxNode, text: &str) -> (OutlineKind, String) {
+    use rowan::NodeOrToken;
+    let mut has_text = false;
+    for child in node.children_with_tokens() {
+        match child {
+            NodeOrToken::Node(n) if n.kind() == SyntaxKind::Element => return (OutlineKind::Element, String::new()),
+            NodeOrToken::Node(n) if n.kind() == SyntaxKind::CData => {
+                has_text |=
+                    n.children_with_tokens().filter_map(|c| c.into_token()).any(|t| t.kind() == SyntaxKind::CdataText && !t.text().trim().is_empty());
+            }
+            NodeOrToken::Token(t) if matches!(t.kind(), SyntaxKind::Text | SyntaxKind::CharRef | SyntaxKind::EntityRef) => {
+                has_text |= !t.text().trim().is_empty();
+            }
+            _ => {}
+        }
+    }
+    if !has_text {
+        return (OutlineKind::Empty, String::new());
+    }
+    // The text as written (references and all), and what CDATA sections hold.
+    let pieces = node.children_with_tokens().filter_map(|child| match child {
+        NodeOrToken::Token(t) if matches!(t.kind(), SyntaxKind::Text | SyntaxKind::CharRef | SyntaxKind::EntityRef | SyntaxKind::Whitespace) => {
+            text.get(usize::from(t.text_range().start())..usize::from(t.text_range().end()))
+        }
+        NodeOrToken::Node(n) if n.kind() == SyntaxKind::CData => n
+            .children_with_tokens()
+            .filter_map(|c| c.into_token())
+            .find(|t| t.kind() == SyntaxKind::CdataText)
+            .and_then(|t| text.get(usize::from(t.text_range().start())..usize::from(t.text_range().end()))),
+        _ => None,
+    });
+    let preview = preview_of(pieces);
+    if preview.is_empty() { (OutlineKind::Empty, preview) } else { (OutlineKind::Leaf, preview) }
 }
 
 /// The largest text analysed in the caller's own thread. On the web there is no other thread and a frame must not wait long, so it
@@ -552,6 +675,57 @@ mod tests {
         assert!(a.error_count() >= 2, "an unclosed element and a second root");
         let warned = analyze("<?xml version=\"1.1\"?><a/>", 1);
         assert_eq!((warned.error_count(), warned.warning_count(), warned.is_well_formed()), (0, 1, true));
+    }
+
+    #[test]
+    fn items_say_what_they_hold_how_many_children_they_have_and_preview_their_text() {
+        let text = "<lib>\n  <book id=\"b1\">\n    <title>  The   Lighthouse\n Keeper </title>\n    <note><![CDATA[a < b]]></note>\n                        <empty>  <!-- c --> <?pi x?> </empty>\n    <e/>\n    <amp>&amp;x</amp>\n  </book>\n</lib>";
+        let a = analyze(text, 1);
+        let got: Vec<(&str, OutlineKind, u32, &str)> = a.outline.iter().map(|i| (i.name.as_str(), i.kind, i.children, i.preview.as_str())).collect();
+        assert_eq!(
+            got,
+            [
+                ("lib", OutlineKind::Element, 1, ""),
+                ("book", OutlineKind::Element, 5, ""),
+                ("title", OutlineKind::Leaf, 0, "The Lighthouse Keeper"),
+                ("note", OutlineKind::Leaf, 0, "a < b"),
+                ("empty", OutlineKind::Empty, 0, ""),
+                ("e", OutlineKind::Empty, 0, ""),
+                ("amp", OutlineKind::Leaf, 0, "&amp;x"),
+            ]
+        );
+        // Mixed content holds elements.
+        let a = analyze("<p>Some <b>bold</b> text</p>", 1);
+        assert_eq!((a.outline[0].kind, a.outline[0].children, a.outline[0].preview.as_str()), (OutlineKind::Element, 1, ""));
+    }
+
+    #[test]
+    fn a_long_preview_is_cut_at_a_character_with_an_ellipsis() {
+        let long = "é".repeat(100);
+        let a = analyze(&format!("<a>{long}</a>"), 1);
+        let preview = &a.outline[0].preview;
+        assert_eq!(preview.chars().count(), MAX_PREVIEW + 1);
+        assert!(preview.ends_with('…') && preview.starts_with("éé"));
+        // Exactly the most that is shown: no ellipsis.
+        assert_eq!(preview_of(["ü".repeat(MAX_PREVIEW).as_str()]), "ü".repeat(MAX_PREVIEW));
+        // A space that would be the last character shown is cut with the rest.
+        let words = format!("{} {}", "x".repeat(MAX_PREVIEW - 1), "y");
+        assert_eq!(preview_of([words.as_str()]), format!("{}…", "x".repeat(MAX_PREVIEW - 1)));
+        assert_eq!(preview_of(["  a\t\n b  ", " ", "c "]), "a b c");
+        assert_eq!(preview_of(["", " \u{0} "]), "");
+    }
+
+    #[test]
+    fn children_are_counted_under_the_cap_and_saturate_their_depths() {
+        let wide = format!("<r>{}</r>", "<x/>".repeat(MAX_OUTLINE_ITEMS + 10));
+        let a = analyze(&wide, 1);
+        assert_eq!((a.outline.len(), a.outline_truncated), (MAX_OUTLINE_ITEMS, true));
+        // Only the items that are listed are counted.
+        assert_eq!(a.outline[0].children as usize, MAX_OUTLINE_ITEMS - 1);
+        let deep = "<a>".repeat(2000);
+        let a = analyze(&deep, 1);
+        assert!(a.outline.iter().rev().skip(1).all(|i| i.children == 1));
+        assert_eq!(a.outline.last().map(|i| i.children), Some(0));
     }
 
     #[test]

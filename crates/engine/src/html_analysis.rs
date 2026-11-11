@@ -2,7 +2,7 @@
 
 use xmlcraft_html::{Close, Document, Element, parse};
 
-use crate::analysis::{Analysis, MAX_OUTLINE_ITEMS, OutlineItem};
+use crate::analysis::{Analysis, MAX_OUTLINE_ITEMS, OutlineItem, OutlineKind, count_children, preview_of};
 use crate::folding::{FoldKind, FoldRange, Lines, MAX_FOLD_RANGES};
 use crate::language::Language;
 
@@ -12,7 +12,7 @@ const MAX_LABEL: usize = 40;
 pub(crate) fn analyze_html(text: &str, version: u64) -> Analysis {
     let doc = parse(text);
     let lines = Lines::new(text);
-    let (outline, outline_truncated) = outline(&doc);
+    let (outline, outline_truncated) = outline(&doc, text);
     let (folds, folds_truncated) = folds(&doc, &lines, text);
     Analysis {
         version,
@@ -41,7 +41,48 @@ fn label(e: &Element) -> Option<String> {
     Some(shown)
 }
 
-fn outline(doc: &Document) -> (Vec<OutlineItem>, bool) {
+fn outline(doc: &Document, text: &str) -> (Vec<OutlineItem>, bool) {
+    let (mut items, cut) = items_of(doc);
+    count_children(&mut items);
+    // What an element holds: elements, text (a look at it, without the comments), or nothing. The text of the leaves does not overlap,
+    // and a look reads no more than it shows, so this is linear in the text.
+    for (item, e) in items.iter_mut().zip(&doc.elements) {
+        if item.children > 0 {
+            item.kind = OutlineKind::Element;
+            continue;
+        }
+        if e.close == Close::Void {
+            continue;
+        }
+        let inner_end = e.end_tag.as_ref().map_or(e.span.end, |t| t.start);
+        let inner = text.get(e.start_tag.end.min(inner_end)..inner_end).unwrap_or_default();
+        item.preview = preview_of(without_comments(inner));
+        if !item.preview.is_empty() {
+            item.kind = OutlineKind::Leaf;
+        }
+    }
+    (items, cut)
+}
+
+/// The pieces of `text` outside `<!--` … `-->` (an unclosed comment runs to the end).
+fn without_comments(text: &str) -> impl Iterator<Item = &str> {
+    let mut rest = Some(text);
+    std::iter::from_fn(move || {
+        let current = rest?;
+        match current.split_once("<!--") {
+            Some((before, after)) => {
+                rest = after.split_once("-->").map(|(_, tail)| tail);
+                Some(before)
+            }
+            None => {
+                rest = None;
+                Some(current)
+            }
+        }
+    })
+}
+
+fn items_of(doc: &Document) -> (Vec<OutlineItem>, bool) {
     let mut items = Vec::new();
     for e in &doc.elements {
         if items.len() >= MAX_OUTLINE_ITEMS {
@@ -56,6 +97,9 @@ fn outline(doc: &Document) -> (Vec<OutlineItem>, bool) {
             start_tag: e.start_tag.clone(),
             end_tag: e.end_tag.clone(),
             end_name_range: e.end_name_span.clone(),
+            kind: OutlineKind::Empty,
+            children: 0,
+            preview: String::new(),
         });
     }
     let cut = doc.truncated && items.len() >= MAX_OUTLINE_ITEMS;
@@ -106,6 +150,23 @@ fn folds(doc: &Document, lines: &Lines<'_>, text: &str) -> (Vec<FoldRange>, bool
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 mod tests {
+    #[test]
+    fn html_items_say_what_they_hold() {
+        let a = analyze_html("<ul><li>One <!-- n --> two</li><li></li><li><br></li></ul><p>x", 1);
+        let got: Vec<(&str, OutlineKind, u32, &str)> = a.outline.iter().map(|i| (i.name.as_str(), i.kind, i.children, i.preview.as_str())).collect();
+        assert_eq!(
+            got,
+            [
+                ("ul", OutlineKind::Element, 3, ""),
+                ("li", OutlineKind::Leaf, 0, "One two"),
+                ("li", OutlineKind::Empty, 0, ""),
+                ("li", OutlineKind::Element, 1, ""),
+                ("br", OutlineKind::Empty, 0, ""),
+                ("p", OutlineKind::Leaf, 0, "x"),
+            ]
+        );
+    }
+
     use super::*;
 
     const PAGE: &str =

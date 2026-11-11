@@ -105,6 +105,109 @@ fn the_outline_lists_elements_filters_and_jumps() {
     assert!(h.query_by_label("magazine m").is_some() && h.query_by_label("book b1").is_none());
 }
 
+const LIBRARY: &str = "<library>\n  <book id=\"b1\">\n    <title>One</title>\n    <year>2019</year>\n  </book>\n  <book id=\"b2\">\n    \
+                       <title>Two</title>\n  </book>\n</library>\n";
+
+/// The labels of the Outline's rows at the last frame.
+fn rows(h: &Harness<'static, XmlCraftApp>) -> Vec<String> {
+    h.state().outline_rows().into_iter().map(|r| r.label).collect()
+}
+
+#[test]
+fn an_outline_row_collapses_by_its_chevron_and_the_rows_after_it_still_work() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "lib.xml", LIBRARY));
+    assert_eq!(rows(&h), ["library", "book b1", "title", "year", "book b2", "title"]);
+    h.get_by_label("Collapse book b1").click();
+    h.run_steps(3);
+    assert_eq!(rows(&h), ["library", "book b1", "book b2", "title"], "the first book's title and year are gone");
+    assert!(h.state().outline_rows().iter().any(|r| r.label == "book b1" && r.collapsed));
+    assert_eq!(h.query_all_by_label("title").count(), 1, "one title row is left");
+    h.get_by_label("book b2").click();
+    h.run_steps(3);
+    let doc = h.state().session.active_document().expect("shown");
+    assert_eq!(doc.editor().buffer().line_of(doc.editor().primary().head()), 5, "the second book is gone to");
+    // And it opens again.
+    h.get_by_label("Expand book b1").click();
+    h.run_steps(3);
+    assert_eq!(rows(&h).len(), 6);
+    // Collapse All, then the caret moved into a hidden element (by the editor, not the outline) opens what hides it.
+    h.get_by_label("Collapse All").click();
+    h.run_steps(3);
+    assert_eq!(rows(&h), ["library"]);
+    let year = LIBRARY.find("2019").expect("year");
+    h.state_mut().session.active_document_mut().expect("shown").editor_mut().set_selection(year, year);
+    h.run_steps(3);
+    assert_eq!(rows(&h), ["library", "book b1", "title", "year", "book b2"], "the caret's element is shown, the second book stays closed");
+    h.get_by_label("Expand All").click();
+    h.run_steps(3);
+    assert_eq!(rows(&h).len(), 6);
+}
+
+#[test]
+fn the_outline_is_worked_with_the_arrow_keys() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "lib.xml", LIBRARY));
+    h.get_by_label("book b1").focus();
+    h.run_steps(2);
+    h.key_press(Key::ArrowLeft);
+    h.run_steps(3);
+    assert_eq!(rows(&h), ["library", "book b1", "book b2", "title"], "Left closes");
+    h.key_press(Key::ArrowDown);
+    h.run_steps(3);
+    assert!(h.get_by_label("book b2").is_focused(), "Down goes to the next row");
+    h.key_press(Key::ArrowLeft);
+    h.run_steps(3);
+    assert_eq!(rows(&h), ["library", "book b1", "book b2"]);
+    h.key_press(Key::ArrowLeft);
+    h.run_steps(3);
+    assert!(h.get_by_label("library").is_focused(), "Left on a closed row goes to its parent");
+    h.key_press(Key::ArrowRight);
+    h.run_steps(3);
+    assert!(h.get_by_label("book b1").is_focused(), "Right on an open row goes to its first child");
+    h.key_press(Key::ArrowRight);
+    h.run_steps(3);
+    assert_eq!(rows(&h).len(), 5, "Right opens");
+    h.key_press(Key::Enter);
+    h.run_steps(4);
+    let doc = h.state().session.active_document().expect("shown");
+    let head = doc.editor().primary().head();
+    assert_eq!(doc.editor().buffer().line_of(head), 1, "Enter goes to the element: {:?}", &doc.editor().text()[head.saturating_sub(10)..head + 10]);
+    assert!(h.get_by_label("XML editor").is_focused(), "and gives the editor the keyboard");
+}
+
+#[test]
+fn the_outline_s_context_menu_selects_the_element() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "lib.xml", LIBRARY));
+    h.get_by_label("book b2").click_secondary();
+    h.run_steps(3);
+    h.get_by_label("Select Element").click();
+    h.run_steps(4);
+    let doc = h.state().session.active_document().expect("shown");
+    let sel = doc.editor().primary().sel;
+    assert_eq!(&doc.editor().text()[sel.start()..sel.end()], "<book id=\"b2\">\n    <title>Two</title>\n  </book>");
+}
+
+#[test]
+fn a_problem_inside_a_collapsed_element_marks_its_row() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    // An unknown entity in the first book's year: an error inside it.
+    open(&mut h, &file(dir.path(), "bad.xml", &LIBRARY.replace("2019", "20&x;19")));
+    assert_eq!(h.state().problems().map(|(errors, _)| errors > 0), Some(true));
+    let marker = |h: &Harness<'static, XmlCraftApp>, label: &str| h.state().outline_rows().into_iter().find(|r| r.label == label).map(|r| r.marker);
+    assert_eq!(marker(&h, "year"), Some(Some("error")));
+    assert_eq!(marker(&h, "book b1"), Some(None), "an open element does not repeat its rows' dots");
+    h.get_by_label("Collapse book b1").click();
+    h.run_steps(3);
+    assert_eq!(marker(&h, "book b1"), Some(Some("error")), "collapsed, it carries the dot of what it hides");
+    assert_eq!(marker(&h, "book b2"), Some(None));
+}
+
 #[test]
 fn f7_checks_now_and_opens_messages() {
     let dir = tempfile::tempdir().expect("dir");

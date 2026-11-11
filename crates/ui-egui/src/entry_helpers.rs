@@ -14,12 +14,14 @@ use xmlcraft_grammar::Grammar;
 use xmlcraft_text::Edit;
 
 use crate::i18n::tl;
+use crate::outline::{MARGIN, TEXT};
 use crate::theme::{self, Tokens};
 use crate::{XmlCraftApp, widgets};
 
 /// Documents larger than this get no Entry Helpers: they are worked out from the whole text each time the caret moves.
 const MAX_TEXT_BYTES: usize = 4 * 1024 * 1024;
-const ROW: f32 = 24.0;
+/// Rows are as tall as the Outline's.
+const ROW: f32 = crate::outline::ROW;
 /// How many places' choices are kept.
 const CACHED_PLACES: usize = 3;
 
@@ -239,12 +241,12 @@ fn row(ui: &mut egui::Ui, name: &str, detail: Option<&str>, mandatory: bool, use
     }
     let color = if used { t.text_faint } else { t.text };
     if mandatory {
-        ui.painter().text(rect.left_center() + vec2(14.0, 0.0), egui::Align2::CENTER_CENTER, "!", theme::semibold(13.0), t.accent);
+        ui.painter().text(rect.left_center() + vec2(MARGIN + 6.0, 0.0), egui::Align2::CENTER_CENTER, "!", theme::semibold(12.0), t.accent);
     }
-    ui.painter().text(rect.left_center() + vec2(28.0, 0.0), egui::Align2::LEFT_CENTER, name, theme::regular(12.5), color);
+    ui.painter().text(rect.left_center() + vec2(MARGIN + 16.0, 0.0), egui::Align2::LEFT_CENTER, name, theme::regular(TEXT), color);
     if let Some(detail) = detail {
-        let galley = ui.painter().layout_no_wrap(detail.to_owned(), theme::regular(11.5), t.text_faint);
-        let at = egui::pos2(rect.right() - 14.0 - galley.size().x, rect.center().y - galley.size().y / 2.0);
+        let galley = ui.painter().layout_no_wrap(detail.to_owned(), theme::regular(TEXT), t.text_faint);
+        let at = egui::pos2(rect.right() - MARGIN - galley.size().x, rect.center().y - galley.size().y / 2.0);
         ui.painter().galley(at, galley, t.text_faint);
     }
     response
@@ -252,7 +254,7 @@ fn row(ui: &mut egui::Ui, name: &str, detail: Option<&str>, mandatory: bool, use
 
 fn hint(ui: &mut egui::Ui, text: &str) {
     let t = Tokens::get(ui.ctx());
-    egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 0)).show(ui, |ui| {
+    egui::Frame::NONE.inner_margin(egui::Margin::symmetric(MARGIN as i8, 0)).show(ui, |ui| {
         ui.label(egui::RichText::new(text).font(theme::regular(12.0)).color(t.text_faint));
     });
 }
@@ -445,7 +447,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     if waiting(ui, app, id) {
         return;
     }
-    egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 6)).show(ui, |ui| {
+    egui::Frame::NONE.inner_margin(egui::Margin::symmetric(MARGIN as i8, 4)).show(ui, |ui| {
         ui.add(widgets::checkbox(&mut app.entry_mandatory, tl!("Insert required content")));
     });
     let Some(choices) = app.helper_choices() else {
@@ -475,10 +477,10 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
         }
     }
     let mut insert = None;
-    egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 0)).show(ui, |ui| {
+    egui::Frame::NONE.inner_margin(egui::Margin::symmetric(MARGIN as i8, 0)).show(ui, |ui| {
         let before = app.entry_filter.clone();
-        let field = ui.add(widgets::line(&mut app.entry_filter).id(field_id).hint_text(tl!("Filter")).desired_width(f32::INFINITY));
-        widgets::name_for_assistive_technology(ui, &field, tl!("Filter Entry Helpers"));
+        let width = ui.available_width();
+        let field = crate::outline::compact_filter(ui, &mut app.entry_filter, field_id, tl!("Filter Entry Helpers"), width);
         if focus_filter {
             field.request_focus();
         }
@@ -539,10 +541,10 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
 /// A section heading, with a note when there is nothing in it.
 fn section(ui: &mut egui::Ui, title: &str, empty: bool) {
     let t = Tokens::get(ui.ctx());
-    egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 0)).show(ui, |ui| {
+    egui::Frame::NONE.inner_margin(egui::Margin::symmetric(MARGIN as i8, 0)).show(ui, |ui| {
         widgets::section_title(ui, title);
         if empty {
-            ui.label(egui::RichText::new(tl!("Nothing here")).font(theme::regular(12.5)).color(t.text_muted));
+            ui.label(egui::RichText::new(tl!("Nothing here")).font(theme::regular(TEXT)).color(t.text_muted));
         }
     });
 }

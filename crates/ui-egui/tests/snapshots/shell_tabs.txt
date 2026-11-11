@@ -27,8 +27,10 @@ Button "Close Outline" [toggled=false]
 Tab "Outline" [selected]
 Button "Move tab group"
 Button "Move tab group"
+Button "Expand All" [toggled=false]
+Button "Collapse All" [toggled=false]
 TextInput "Filter elements" value=""
-Button "invoice"
+Button "invoice" [toggled=true]
 Button "Close Entry Helpers" [toggled=false]
 Tab "Entry Helpers" [selected]
 Button "Move tab group"

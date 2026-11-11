@@ -4,7 +4,7 @@ use std::ops::Range;
 
 use xmlcraft_json_syntax::{Code, Data, Diagnostic, Options, Parse, Value, parse, parse_lines};
 
-use crate::analysis::{Analysis, MAX_OUTLINE_ITEMS, OutlineItem};
+use crate::analysis::{Analysis, MAX_OUTLINE_ITEMS, OutlineItem, OutlineKind, count_children};
 use crate::folding::{FoldKind, FoldRange, Lines, MAX_FOLD_RANGES};
 use crate::language::{JsonFlavor, Language};
 
@@ -64,15 +64,19 @@ fn analyze_json_as(text: &str, version: u64, flavor: JsonFlavor, language: Langu
             if let Some(root) = root {
                 // Each line is an item of its own, named by its number, with the members of its value under it.
                 let number = lines.line_of(range.start) + 1;
+                let label = label_of(&root);
                 out.push_item(OutlineItem {
                     depth: 0,
                     name: format!("#{number}"),
-                    label: label_of(&root),
+                    preview: label.clone().unwrap_or_default(),
+                    label,
                     range: root.span.clone(),
                     name_range: range.start..range.start,
                     start_tag: root.span.start..root.span.start.saturating_add(1).min(root.span.end),
                     end_tag: None,
                     end_name_range: None,
+                    kind: kind_of(&root.data),
+                    children: 0,
                 });
                 out.value(&root, 1, 1);
             }
@@ -84,6 +88,7 @@ fn analyze_json_as(text: &str, version: u64, flavor: JsonFlavor, language: Langu
             out.value(&root, 0, 1);
         }
     }
+    count_children(&mut out.outline);
     diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
     if capped {
         diagnostics.push(Diagnostic::new(Code::TooManyDiagnostics, text.len()..text.len(), vec![]));
@@ -128,6 +133,18 @@ pub(crate) fn label_of(value: &Value) -> Option<String> {
         Data::Array(_) | Data::Object(_) => return None,
     };
     Some(shown)
+}
+
+/// What kind of value `data` is.
+pub(crate) fn kind_of(data: &Data) -> OutlineKind {
+    match data {
+        Data::Null => OutlineKind::Null,
+        Data::Bool(_) => OutlineKind::Boolean,
+        Data::Number(_) => OutlineKind::Number,
+        Data::String(_) => OutlineKind::String,
+        Data::Array(_) => OutlineKind::Array,
+        Data::Object(_) => OutlineKind::Object,
+    }
 }
 
 /// The bracket that closes a container (`}` for an object, `]` for an array): one of the other kind closes nothing.
@@ -211,7 +228,26 @@ impl Walk<'_> {
             (value.span.clone(), None)
         };
         let range = if container { value.span.clone() } else { name_range.start.min(value.span.start)..value.span.end.max(name_range.end) };
-        OutlineItem { depth, name, label: typed.or_else(|| label_of(value)), range, name_range, start_tag, end_tag, end_name_range: None }
+        // An Extended JSON value is a number when its wrapper says so (`$numberInt`, `$numberDouble`, …), else shown as text.
+        let kind = match &typed {
+            Some(t) if t.rsplit_once(" (").is_some_and(|(_, wrapper)| wrapper.starts_with("$number")) => OutlineKind::Number,
+            Some(_) => OutlineKind::String,
+            None => kind_of(&value.data),
+        };
+        let label = typed.or_else(|| label_of(value));
+        OutlineItem {
+            depth,
+            name,
+            preview: label.clone().unwrap_or_default(),
+            label,
+            range,
+            name_range,
+            start_tag,
+            end_tag,
+            end_name_range: None,
+            kind,
+            children: 0,
+        }
     }
 
     /// The fold of an object or array that goes over lines. The closing bracket stays visible when it has a line of its own.
@@ -259,6 +295,38 @@ impl Walk<'_> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn items_have_the_kind_of_their_value_their_child_count_and_a_preview() {
+        let text = r#"{"name": "Ada", "age": 36, "ok": true, "none": null, "tags": [1, 2], "books": [{"t": "x"}, {"t": "y"}], "o": {}}"#;
+        let a = analyze_json(text, 1, JsonFlavor::Json);
+        let got: Vec<(&str, OutlineKind, u32, &str)> = a.outline.iter().map(|i| (i.name.as_str(), i.kind, i.children, i.preview.as_str())).collect();
+        assert_eq!(
+            got,
+            [
+                ("name", OutlineKind::String, 0, "\"Ada\""),
+                ("age", OutlineKind::Number, 0, "36"),
+                ("ok", OutlineKind::Boolean, 0, "true"),
+                ("none", OutlineKind::Null, 0, "null"),
+                // The scalars of a list are not items, so they are not counted.
+                ("tags", OutlineKind::Array, 0, ""),
+                ("books", OutlineKind::Array, 2, ""),
+                ("[0]", OutlineKind::Object, 1, ""),
+                ("t", OutlineKind::String, 0, "\"x\""),
+                ("[1]", OutlineKind::Object, 1, ""),
+                ("t", OutlineKind::String, 0, "\"y\""),
+                ("o", OutlineKind::Object, 0, ""),
+            ]
+        );
+    }
+
+    #[test]
+    fn extended_json_values_are_scalars_of_their_wrapper() {
+        let a = analyze_bson(r#"{"n": {"$numberInt": "7"}, "id": {"$oid": "65a1b2c3d4e5f60718293a4b"}}"#, 1);
+        let got: Vec<(&str, OutlineKind, u32)> = a.outline.iter().map(|i| (i.name.as_str(), i.kind, i.children)).collect();
+        assert_eq!(got, [("n", OutlineKind::Number, 0), ("id", OutlineKind::String, 0)]);
+        assert_eq!(a.outline[0].preview, "7 ($numberInt)");
+    }
+
     use super::*;
     use crate::analysis::analyze_as;
     use crate::language::Language;

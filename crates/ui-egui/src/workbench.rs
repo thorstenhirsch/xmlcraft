@@ -752,12 +752,10 @@ impl DockContent<Panel> for Content<'_> {
             // A tool window draws its own frame (`kit::tool_body`).
             Panel::Search => crate::tools::search::body(ui, self.app),
             // The tab strip names the panel: the bodies start a little below it (they drew their own title above them before).
-            Panel::Outline => {
-                ui.add_space(8.0);
-                crate::side_panels::outline_body(ui, self.app);
-            }
+            // (The Outline's toolbar sits right under the tab strip.)
+            Panel::Outline => crate::outline::body(ui, self.app),
             Panel::EntryHelpers => {
-                ui.add_space(8.0);
+                ui.add_space(2.0);
                 crate::entry_helpers::body(ui, self.app);
             }
             Panel::Problems => {

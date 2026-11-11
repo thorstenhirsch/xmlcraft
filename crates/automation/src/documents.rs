@@ -529,8 +529,10 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             name: "xml_outline",
             title: "Outline of the elements",
             description: "The element tree of an open document (`id`), a file (`path`) or text: each element with its depth, name, a hint from its id, name or key \
-                          attribute, and where it starts and ends. For JSON, JSON Lines and YAML (by name, or `language` for text): each member (and each list entry that is an \
-                          object or list) with its depth, its name and a look at its value.",
+                          attribute, and where it starts and ends; its `kind` (`element` holds elements, `leaf` text only, `empty` nothing), `children` (the items \
+                          directly under it) and `preview` (a leaf's text, white space collapsed, at most 60 characters). For JSON, JSON Lines and YAML (by \
+                          name, or `language` for text): each member (and each list entry that is an object or list) with its depth, its name, a look at its \
+                          value and its `kind` (`object`, `array`, `string`, `number`, `boolean`, `null`).",
             input_schema: object(language_source_properties(), &[]),
             read_only: true,
             destructive: false,
@@ -1429,6 +1431,22 @@ fn xml_matching_tag(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     json_result(json!({ "match": found, "lossy": source.lossy }))
 }
 
+/// The name `xml_outline` gives a kind of item.
+fn kind_name(kind: xmlcraft_engine::analysis::OutlineKind) -> &'static str {
+    use xmlcraft_engine::analysis::OutlineKind as K;
+    match kind {
+        K::Element => "element",
+        K::Leaf => "leaf",
+        K::Empty => "empty",
+        K::Object => "object",
+        K::Array => "array",
+        K::String => "string",
+        K::Number => "number",
+        K::Boolean => "boolean",
+        K::Null => "null",
+    }
+}
+
 fn xml_outline(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let source = source(a, args)?;
     let analysis = analysis_of(&source)?;
@@ -1444,6 +1462,7 @@ fn xml_outline(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
                 "depth": item.depth, "name": item.name, "label": item.label,
                 "line": line, "column": column, "end_line": end_line, "end_column": end_column,
                 "start": item.range.start, "end": item.range.end,
+                "kind": kind_name(item.kind), "children": item.children, "preview": item.preview,
             })
         })
         .collect();
