@@ -6,7 +6,7 @@ use egui::{Align, Align2, Color32, CornerRadius, Layout, Rect, Sense, Stroke, ve
 use crate::i18n::{fmt, tl};
 use crate::kit::{self, PillKind};
 use crate::theme::{self, ThemePreference, Tokens};
-use crate::{XmlCraftApp, icons, widgets};
+use crate::{Panel, XmlCraftApp, icons, widgets};
 
 /// Height of the tab strip when it doubles as the macOS title bar. AppKit draws the traffic lights itself, centred in the standard
 /// 28 pt title-bar band at the top of the window, and moving them takes AppKit calls the workspace forbids (`unsafe`). So on macOS
@@ -471,13 +471,13 @@ pub fn activity_rail(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
     let (errors, warnings) = if app.session.active().is_some() { problem_counts(app) } else { (0, 0) };
     let syntax = crate::editor_view::SyntaxTokens::for_kind(t.kind);
     let items = [
-        ("list-tree", tl!("Outline"), "view.outline", app.left_open, 0usize, syntax.error),
-        ("braces", tl!("Entry Helpers"), "view.entry_helpers", app.right.is_some(), 0, syntax.error),
+        ("list-tree", tl!("Outline"), "view.outline", app.panel_visible(Panel::Outline), 0usize, syntax.error),
+        ("braces", tl!("Entry Helpers"), "view.entry_helpers", app.panel_visible(Panel::EntryHelpers), 0, syntax.error),
         (
             "triangle-alert",
             tl!("Problems"),
             "view.messages",
-            app.bottom_open,
+            app.panel_visible(Panel::Problems),
             errors + warnings,
             if errors > 0 { syntax.error } else { syntax.warning },
         ),

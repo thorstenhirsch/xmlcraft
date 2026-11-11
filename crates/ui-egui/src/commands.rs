@@ -7,11 +7,10 @@ use egui::{Key, Modifiers};
 use xmlcraft_engine::commands::{self, COMMANDS, CommandSpec, Kind, Shortcut};
 use xmlcraft_engine::folding::FoldAction;
 
-use crate::XmlCraftApp;
 use crate::after_analysis::Then;
 use crate::i18n::tl;
-use crate::side_panels::RightPanel;
 use crate::theme::ThemePreference;
+use crate::{Panel, XmlCraftApp};
 
 /// Whether shortcuts are written the macOS way (`⇧⌘S`) rather than `Ctrl+Shift+S`. egui knows the platform from the build target,
 /// and on the web from the browser's user agent.
@@ -64,10 +63,10 @@ impl XmlCraftApp {
     /// The checked state of a toggle or choice command, `None` for a plain action.
     pub fn command_checked(&self, id: &str) -> Option<bool> {
         match id {
-            "view.outline" => Some(self.left_open),
+            "view.outline" => Some(self.panel_visible(Panel::Outline)),
             "view.grid" => Some(self.grid_shown()),
-            "view.entry_helpers" => Some(self.right.is_some()),
-            "view.messages" => Some(self.bottom_open),
+            "view.entry_helpers" => Some(self.panel_visible(Panel::EntryHelpers)),
+            "view.messages" => Some(self.panel_visible(Panel::Problems)),
             "xml.validate_typing" => Some(self.validate_typing),
             "xml.work_offline" => Some(self.work_offline),
             "view.theme.system" => Some(self.theme_preference == ThemePreference::System),
@@ -250,15 +249,15 @@ impl XmlCraftApp {
             "view.move_tab_right" => {
                 self.move_active_tab(1);
             }
-            "view.outline" => self.left_open = !self.left_open,
+            "view.outline" => self.set_panel_visible(Panel::Outline, !self.panel_visible(Panel::Outline)),
             "view.grid" => self.toggle_grid(),
             "view.focus_entry_helpers" => {
                 // Open the pane when it is closed, and give the keyboard to its filter: type, arrows to choose, Enter to insert.
-                self.right = Some(RightPanel::EntryHelpers);
+                self.set_panel_visible(Panel::EntryHelpers, true);
                 self.entry_focus = true;
             }
-            "view.entry_helpers" => self.right = if self.right.is_some() { None } else { Some(RightPanel::EntryHelpers) },
-            "view.messages" => self.bottom_open = !self.bottom_open,
+            "view.entry_helpers" => self.set_panel_visible(Panel::EntryHelpers, !self.panel_visible(Panel::EntryHelpers)),
+            "view.messages" => self.set_panel_visible(Panel::Problems, !self.panel_visible(Panel::Problems)),
             "view.theme.system" => self.theme_preference = ThemePreference::System,
             "view.theme.light" => self.theme_preference = ThemePreference::Light,
             "view.theme.dark" => self.theme_preference = ThemePreference::Dark,

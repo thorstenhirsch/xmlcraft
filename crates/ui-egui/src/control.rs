@@ -12,7 +12,7 @@
 //!   what the user would.
 //!
 //! Methods (JSON in, JSON out):
-//! - `ui.state`: version, theme, tabs, panes, palette, status and the window's size in logical points.
+//! - `ui.state`: version, theme, tabs, panes (and the `layout`: where each shown panel is), palette, status and the window's size in logical points.
 //! - `ui.inspect {query?, role?, focused?, limit?}`: widgets in tree order with `id` (a string), `role`, `label`, `value`, `rect`
 //!   (points), `enabled`, `toggled`, `selected`, `clickable`, `focusable`, `focused`, `depth`.
 //! - `ui.click {id}` | `{label}` | `{x, y, button?}`: click a widget (by its AccessKit action) or a point.
@@ -641,7 +641,13 @@ impl Host for crate::XmlCraftApp {
             }),
             "dialog": self.dialog.as_ref().map(|d| format!("{d:?}").split([' ', '{']).next().unwrap_or("").to_lowercase()),
             "mode": format!("{:?}", self.mode).to_lowercase(),
-            "panes": { "outline": self.left_open, "entry_helpers": self.right.is_some(), "messages": self.bottom_open },
+            "panes": {
+                "outline": self.panel_visible(crate::Panel::Outline),
+                "entry_helpers": self.panel_visible(crate::Panel::EntryHelpers),
+                "messages": self.panel_visible(crate::Panel::Problems),
+            },
+            // Where each shown panel is: "left", "right" or "bottom" (a side dock or below the editor), "center" for the editor.
+            "layout": self.workbench.places().into_iter().map(|(p, place)| (p.key().to_owned(), json!(place.name()))).collect::<serde_json::Map<_, _>>(),
             "palette": { "open": self.palette_open, "query": self.palette_query },
             "status": self.status,
         })

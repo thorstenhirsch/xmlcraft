@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use egui::Modifiers;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
-use xmlcraft_ui_egui::XmlCraftApp;
+use xmlcraft_ui_egui::{Panel, XmlCraftApp};
 
 fn shell() -> Harness<'static, XmlCraftApp> {
     let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).with_step_dt(0.02).build_eframe(|cc| XmlCraftApp::new(cc));
@@ -407,6 +407,8 @@ fn an_attribute_in_a_namespace_brings_the_declaration_of_its_prefix() {
 fn an_xml_schema_file_is_offered_what_xml_schema_allows() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell();
+    // A long list: the Entry Helpers get the whole side column (they share it with the Outline by default), so its rows are drawn.
+    h.state_mut().set_panel_visible(Panel::Outline, false);
     let marked = "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\">¦</xs:schema>";
     // The schema for schemas is the one that ships with the app: nothing in the document names it.
     open_at(&mut h, dir.path(), marked);
@@ -437,6 +439,8 @@ fn a_namespace_no_schema_is_known_for_is_no_problem_to_report() {
 fn entry_helpers_offer_what_the_xhtml_dtd_that_ships_with_the_app_allows() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell();
+    // A long list: the Entry Helpers get the whole side column (they share it with the Outline by default), so its rows are drawn.
+    h.state_mut().set_panel_visible(Panel::Outline, false);
     let page = "<?xml version=\"1.0\"?>\n<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">\n\
         <html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>T</title></head><body>¦</body></html>";
     open_at(&mut h, dir.path(), page);
@@ -499,12 +503,12 @@ fn go_to_entry_helpers_opens_the_pane_and_puts_the_keyboard_in_the_filter() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell();
     open_at(&mut h, dir.path(), &format!("{DTD}<r><a id='1'/>¦</r>"));
-    h.state_mut().right = None;
+    h.state_mut().set_panel_visible(Panel::EntryHelpers, false);
     h.run_steps(3);
     assert!(h.query_by_label("Filter Entry Helpers").is_none());
     assert!(h.state_mut().execute("view.focus_entry_helpers"));
     h.run_steps(4);
-    assert!(h.state().right.is_some(), "the pane is open");
+    assert!(h.state().panel_visible(Panel::EntryHelpers), "the pane is open");
     // The keyboard is in the filter: down and Enter put the second offered (s) in the text, with no click.
     h.key_press(egui::Key::ArrowDown);
     h.run_steps(2);

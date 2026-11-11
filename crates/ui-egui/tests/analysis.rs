@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use egui::{Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use xmlcraft_ui_egui::XmlCraftApp;
+use xmlcraft_ui_egui::{Panel, XmlCraftApp};
 
 fn shell() -> Harness<'static, XmlCraftApp> {
     let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).build_eframe(|cc| XmlCraftApp::new(cc));
@@ -114,7 +114,7 @@ fn f7_checks_now_and_opens_messages() {
     h.run_steps(2);
     h.key_press(Key::F7);
     h.run_steps(3);
-    assert!(h.state().bottom_open, "F7 shows the messages");
+    assert!(h.state().panel_visible(Panel::Problems), "F7 shows the messages");
     assert!(h.query_by_label("bad.xml: 1 errors").is_some());
 }
 
@@ -221,5 +221,5 @@ fn f7_reports_the_text_as_it_is_now_without_waiting_on_the_window() {
     h.get_by_label("XML editor").type_text("</a>");
     h.key_press(Key::F7);
     wait(&mut h, "the check of the new text", |app| app.status == "a.xml is well-formed");
-    assert!(h.state().bottom_open);
+    assert!(h.state().panel_visible(Panel::Problems));
 }

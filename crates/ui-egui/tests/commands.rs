@@ -4,8 +4,8 @@ use egui::{Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use xmlcraft_engine::commands::COMMANDS;
-use xmlcraft_ui_egui::XmlCraftApp;
 use xmlcraft_ui_egui::theme::ThemePreference;
+use xmlcraft_ui_egui::{Panel, XmlCraftApp};
 
 fn shell() -> Harness<'static, XmlCraftApp> {
     let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).build_eframe(|cc| XmlCraftApp::new(cc));
@@ -24,9 +24,9 @@ fn unknown_commands_do_nothing_and_say_so() {
 fn toggles_flip_and_choices_select() {
     let mut h = shell();
     for (id, read) in [
-        ("view.outline", (|a: &XmlCraftApp| a.left_open) as fn(&XmlCraftApp) -> bool),
-        ("view.messages", |a| a.bottom_open),
-        ("view.entry_helpers", |a| a.right.is_some()),
+        ("view.outline", (|a: &XmlCraftApp| a.panel_visible(Panel::Outline)) as fn(&XmlCraftApp) -> bool),
+        ("view.messages", |a| a.panel_visible(Panel::Problems)),
+        ("view.entry_helpers", |a| a.panel_visible(Panel::EntryHelpers)),
     ] {
         let before = read(h.state());
         assert_eq!(h.state().command_checked(id), Some(before), "{id} reports its state");

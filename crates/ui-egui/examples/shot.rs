@@ -3,7 +3,9 @@
 //! ```text
 //! cargo run -p xmlcraft-ui-egui --example shot -- out.png [--size 1440x900] [--scale 2] [--theme light|dark|system]
 //!     [--tabs a.xml,b.xml] [--active 0] [--width 1200] [--open FILE.xml [--find TEXT] [--goto LINE:COL] [--command ID]]
+//!     [--panes outline,entry_helpers,problems] [--right entry_helpers]
 //! ```
+//! `--panes` shows exactly the panels named (the others are hidden), `--right` moves the panels named to a dock on the right edge.
 //! `--width N` downscales the image to N pixels wide (README screenshots). `--tabs` shows sample document tabs (the engine's
 //! documents replace them with milestone M1.12). `--open` reads a real file from disk and opens it (use a synthetic one), and `--find`,
 //! which needs `--open`, opens the find bar with that text; `--goto`, also with `--open`, puts the caret at a line and column (from 1), and `--command`, also with `--open`, runs a registered command (`edit.fold_all`) once the file has been analysed. Only synthetic names and files are ever shown.
@@ -12,7 +14,7 @@ use std::time::Duration;
 
 use egui_kittest::Harness;
 use xmlcraft_ui_egui::theme::ThemePreference;
-use xmlcraft_ui_egui::{Network, TabInfo, XmlCraftApp};
+use xmlcraft_ui_egui::{Network, Panel, TabInfo, XmlCraftApp};
 
 /// A web that is never asked: the pictures show the app online, as a person normally has it, and the documents they are made from name
 /// schemas that are files.
@@ -29,6 +31,19 @@ impl xmlcraft_resolve::Fetcher for NoWeb {
     }
 }
 
+/// `outline,entry_helpers,problems` as panels.
+fn panels(list: &str) -> Result<Vec<Panel>, String> {
+    list.split(',')
+        .filter(|n| !n.is_empty())
+        .map(|n| match n {
+            "outline" => Ok(Panel::Outline),
+            "entry_helpers" => Ok(Panel::EntryHelpers),
+            "problems" => Ok(Panel::Problems),
+            other => Err(format!("unknown panel {other:?} (outline, entry_helpers, problems)")),
+        })
+        .collect()
+}
+
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let out = args.next().ok_or(
@@ -41,6 +56,8 @@ fn main() -> Result<(), String> {
     let mut find: Option<String> = None;
     let mut goto: Option<(usize, usize)> = None;
     let mut command: Option<String> = None;
+    let mut panes: Option<Vec<Panel>> = None;
+    let mut right: Vec<Panel> = Vec::new();
     while let Some(a) = args.next() {
         match a.strip_prefix("--") {
             Some("size") => {
@@ -50,6 +67,8 @@ fn main() -> Result<(), String> {
             }
             Some("open") => open = Some(args.next().ok_or("--open needs a file")?.into()),
             Some("find") => find = Some(args.next().ok_or("--find needs the text to look for")?),
+            Some("panes") => panes = Some(panels(&args.next().unwrap_or_default())?),
+            Some("right") => right = panels(&args.next().ok_or("--right needs panels")?)?,
             Some("command") => command = Some(args.next().ok_or("--command needs a command id")?),
             Some("goto") => {
                 let v = args.next().unwrap_or_default();
@@ -146,6 +165,21 @@ fn main() -> Result<(), String> {
         }
         harness.run_steps(4);
     }
+    if let Some(shown) = &panes {
+        for panel in [Panel::Outline, Panel::EntryHelpers, Panel::Problems] {
+            harness.state_mut().set_panel_visible(panel, shown.contains(&panel));
+        }
+    }
+    for panel in right {
+        let to = craft_ui::docking::Target::NewDock { side: craft_ui::docking::Side::End };
+        let action = match harness.state().panel_place(panel) {
+            // A second panel joins the right dock as a new group below the first.
+            Some(xmlcraft_ui_egui::Place::Right) => continue,
+            _ => craft_ui::docking::Action::MovePanel { panel, to },
+        };
+        harness.state_mut().apply_layout(vec![action])?;
+    }
+    harness.run_steps(4);
     std::thread::sleep(Duration::from_millis(250));
     harness.run_steps(4);
     let mut image = harness.render()?;

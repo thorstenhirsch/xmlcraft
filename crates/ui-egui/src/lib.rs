@@ -48,6 +48,8 @@ pub mod theme;
 pub use control::{ControlClient, Reply as ControlReply};
 mod find_files_dialog;
 mod widgets;
+mod workbench;
+pub use workbench::{Panel, Place};
 mod xpath_dialog;
 mod xslt_dialog;
 pub mod zoom;
@@ -65,9 +67,10 @@ pub use xmlcraft_platform::network::Network;
 
 use crate::dialog::Dialog;
 use crate::documents::DocView;
+use crate::i18n::tl;
 use crate::pickers::Pickers;
-use crate::side_panels::{RightPanel, SidePanels};
 use crate::theme::{ThemeKind, ThemePreference};
+use crate::workbench::Workbench;
 
 pub const APP_NAME: &str = "XmlCraft";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -94,10 +97,10 @@ pub struct TabInfo {
 #[serde(default)]
 struct Prefs {
     theme: ThemePreference,
-    left_open: bool,
-    right: Option<RightPanel>,
-    bottom_open: bool,
-    side_panels: SidePanels,
+    /// Where the panels are, and which are shown. Read by [`Workbench::load`] (which also migrates the pane switches of 0.2.1), not by
+    /// serde: a damaged layout must not cost the other preferences.
+    #[serde(skip_deserializing)]
+    workspace: craft_ui::docking::Workspace<workbench::Panel>,
     /// The files opened or saved lately, newest first (paths that are not valid text are not kept).
     recent: Vec<String>,
     /// Entry Helpers write the content an element requires with it.
@@ -117,10 +120,7 @@ impl Default for Prefs {
     fn default() -> Self {
         Self {
             theme: ThemePreference::System,
-            left_open: true,
-            right: Some(RightPanel::EntryHelpers),
-            bottom_open: true,
-            side_panels: SidePanels::default(),
+            workspace: Workbench::default().workspace().clone(),
             recent: Vec::new(),
             entry_mandatory: true,
             validate_typing: true,
@@ -134,8 +134,9 @@ impl Default for Prefs {
 impl Prefs {
     /// Read saved preferences; anything unreadable gives the defaults rather than an error.
     fn load(saved: Option<&str>) -> Self {
-        let mut prefs: Self = saved.and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default();
-        prefs.side_panels = prefs.side_panels.sanitized();
+        let value: serde_json::Value = saved.and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default();
+        let mut prefs: Self = Self::deserialize(&value).unwrap_or_default();
+        prefs.workspace = Workbench::load(&value).workspace().clone();
         prefs.editor_zoom = zoom::sanitized(prefs.editor_zoom);
         prefs
     }
@@ -144,9 +145,8 @@ impl Prefs {
 pub struct XmlCraftApp {
     pub theme_preference: ThemePreference,
     pub mode: Mode,
-    pub left_open: bool,
-    pub right: Option<RightPanel>,
-    pub bottom_open: bool,
+    /// The editor and the panels around it: where each is, and which are shown.
+    workbench: Workbench,
     pub palette_open: bool,
     pub palette_query: String,
     palette_last_query: String,
@@ -270,7 +270,6 @@ pub struct XmlCraftApp {
     control_file: Option<std::path::PathBuf>,
     /// On macOS the tab strip is the title bar.
     pub integrated_titlebar: bool,
-    side_panels: SidePanels,
     /// The colours currently installed in egui, so they are applied only when they change.
     applied: Option<ThemeKind>,
 }
@@ -283,9 +282,15 @@ impl XmlCraftApp {
 
     /// An app whose schemas and DTDs are downloaded with `network` (unless the person works offline).
     pub fn with_network(cc: &eframe::CreationContext<'_>, network: Network) -> Self {
+        let saved = cc.storage.and_then(|s| s.get_string(STORAGE_KEY));
+        Self::with_saved_preferences(cc, network, saved.as_deref())
+    }
+
+    /// An app made from preferences saved as [`eframe::App::save`] writes them (what a restart reads back), instead of eframe's storage.
+    pub fn with_saved_preferences(cc: &eframe::CreationContext<'_>, network: Network, saved: Option<&str>) -> Self {
         egui_extras::install_image_loaders(&cc.egui_ctx);
         theme::install_fonts(&cc.egui_ctx);
-        let prefs = Prefs::load(cc.storage.and_then(|s| s.get_string(STORAGE_KEY)).as_deref());
+        let prefs = Prefs::load(saved);
         let mut app = Self::with_prefs_and_network(prefs, network);
         app.ctx = Some(cc.egui_ctx.clone());
         let repaint = cc.egui_ctx.clone();
@@ -367,9 +372,7 @@ impl XmlCraftApp {
         Self {
             theme_preference: prefs.theme,
             mode: Mode::default(),
-            left_open: prefs.left_open,
-            right: prefs.right,
-            bottom_open: prefs.bottom_open,
+            workbench: Workbench::from_workspace(prefs.workspace),
             palette_open: false,
             palette_query: String::new(),
             palette_last_query: String::new(),
@@ -441,7 +444,6 @@ impl XmlCraftApp {
             control: None,
             control_file: None,
             integrated_titlebar: cfg!(target_os = "macos"),
-            side_panels: prefs.side_panels,
             applied: None,
         }
     }
@@ -449,10 +451,7 @@ impl XmlCraftApp {
     fn prefs(&self) -> Prefs {
         Prefs {
             theme: self.theme_preference,
-            left_open: self.left_open,
-            right: self.right,
-            bottom_open: self.bottom_open,
-            side_panels: self.side_panels,
+            workspace: self.workbench.workspace().clone(),
             recent: self.session.recent().paths().iter().filter_map(|path| path.to_str().map(str::to_owned)).collect(),
             entry_mandatory: self.entry_mandatory,
             validate_typing: self.validate_typing,
@@ -460,6 +459,32 @@ impl XmlCraftApp {
             editor_zoom: self.editor_zoom,
             user_catalogs: self.user_catalogs.clone(),
         }
+    }
+
+    /// The key under which [`eframe::App::save`] keeps the preferences.
+    pub const STORAGE_KEY: &'static str = STORAGE_KEY;
+
+    /// Whether a panel is shown.
+    pub fn panel_visible(&self, panel: Panel) -> bool {
+        self.workbench.is_visible(panel)
+    }
+
+    /// Show or hide a panel (the editor stays); what went wrong goes to the status bar.
+    pub fn set_panel_visible(&mut self, panel: Panel, visible: bool) {
+        if let Err(e) = self.workbench.set_visible(panel, visible) {
+            self.status =
+                crate::i18n::fmt(tl!("{panel} cannot be shown or hidden: {reason}"), &[("panel", panel.title()), ("reason", &e.to_string())]);
+        }
+    }
+
+    /// Where a panel is, `None` while it is hidden.
+    pub fn panel_place(&self, panel: Panel) -> Option<Place> {
+        self.workbench.place(panel)
+    }
+
+    /// Change the arrangement of the panels, all or none, as a drag or a menu would.
+    pub fn apply_layout(&mut self, actions: Vec<craft_ui::docking::Action<Panel>>) -> Result<(), String> {
+        self.workbench.apply(actions).map(drop).map_err(|e| e.to_string())
     }
 
     /// Whether nothing is downloaded now: the person works offline, `XMLCRAFT_OFFLINE` is on, or this build has no client.
@@ -557,15 +582,17 @@ impl eframe::App for XmlCraftApp {
         chrome::command_bar(self, ui);
         // The status bar is outermost at the bottom, the problems panel sits above it; the rail is outermost on the left.
         chrome::status_bar(self, ui);
+        // The palette before the editor: its keys are its own while it is open.
+        palette::show(self, ui.ctx());
         // The panes, the rail and the header are about a document: the home view has the whole window.
         if self.session.active().is_some() {
             chrome::activity_rail(self, ui);
-            side_panels::show(self, ui);
-            header::show(self, ui);
+            // The editor (with the document header) and the panels around it, in the docking engine.
+            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.panel)).show(ui, |ui| workbench::show(self, ui));
+        } else {
+            let fill = if self.session.has_document() { editor_view::editor_colors(&t).background } else { t.pasteboard };
+            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| self.central(ui));
         }
-        palette::show(self, ui.ctx());
-        let fill = if self.session.has_document() { editor_view::editor_colors(&t).background } else { t.pasteboard };
-        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| self.central(ui));
         self.show_dialog(ui.ctx());
         self.show_drop_hint(ui.ctx());
     }
@@ -608,22 +635,27 @@ mod tests {
     #[test]
     fn defaults_open_the_outline_entry_helpers_and_messages() {
         let p = Prefs::default();
-        assert!(p.left_open && p.bottom_open);
-        assert_eq!(p.right, Some(RightPanel::EntryHelpers));
+        let app = XmlCraftApp::with_prefs(p.clone());
+        assert!(Panel::ALL.iter().all(|panel| app.panel_visible(*panel)));
         assert_eq!(p.theme, ThemePreference::System);
     }
 
     #[test]
     fn preferences_round_trip() {
-        let p = Prefs {
-            theme: ThemePreference::Dark,
-            left_open: false,
-            right: None,
-            side_panels: SidePanels { outline_width: 300.0, ..SidePanels::default() },
-            ..Prefs::default()
-        };
+        let p = Prefs { theme: ThemePreference::Dark, ..Prefs::default() };
+        let mut app = XmlCraftApp::with_prefs(p);
+        app.set_panel_visible(Panel::Outline, false);
+        app.apply_layout(vec![craft_ui::docking::Action::MovePanel {
+            panel: Panel::EntryHelpers,
+            to: craft_ui::docking::Target::NewDock { side: craft_ui::docking::Side::End },
+        }])
+        .expect("moves");
+        let p = app.prefs();
         let json = serde_json::to_string(&p).expect("serialises");
         assert_eq!(Prefs::load(Some(&json)), p);
+        let again = XmlCraftApp::with_prefs(Prefs::load(Some(&json)));
+        assert!(!again.panel_visible(Panel::Outline));
+        assert_eq!(again.panel_place(Panel::EntryHelpers), Some(Place::Right));
     }
 
     #[test]
@@ -688,14 +720,17 @@ mod tests {
 
     #[test]
     fn hostile_preference_values_are_repaired() {
+        // Sizes of 0.2.1 out of range are clamped to what its panes allowed.
         let p = Prefs::load(Some(r#"{"side_panels": {"messages_height": 1e30, "outline_width": -5.0, "helpers_width": 0.0}}"#));
-        assert_eq!(p.side_panels.messages_height, 600.0);
-        assert_eq!(p.side_panels.outline_width, 240.0);
-        assert_eq!(p.side_panels.helpers_width, 260.0);
+        assert!(p.workspace.validate().is_ok());
         // Unknown fields and a missing field are tolerated.
-        let p = Prefs::load(Some(r#"{"future": true, "bottom_open": false}"#));
-        assert!(!p.bottom_open);
-        assert!(p.left_open);
+        let app = XmlCraftApp::with_prefs(Prefs::load(Some(r#"{"future": true, "bottom_open": false}"#)));
+        assert!(!app.panel_visible(Panel::Problems));
+        assert!(app.panel_visible(Panel::Outline));
+        // A damaged layout costs only the layout.
+        let p = Prefs::load(Some(r#"{"theme": "Dark", "workspace": {"layout": 5}}"#));
+        assert_eq!(p.theme, ThemePreference::Dark);
+        assert_eq!(p.workspace, Prefs::default().workspace);
     }
 
     #[test]
