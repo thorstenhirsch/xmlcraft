@@ -203,11 +203,13 @@ pub struct Workbench {
     workspace: Workspace<Panel>,
     /// Tool windows that have news while they are hidden (a search that finished): the rail marks them until they are shown.
     attention: Vec<Panel>,
+    /// The panels whose tab was underlined at the last frame (the shown tab of a group of several), for tests.
+    underlined: Vec<Panel>,
 }
 
 impl Default for Workbench {
     fn default() -> Self {
-        Self { workspace: default_workspace(), attention: Vec::new() }
+        Self { workspace: default_workspace(), attention: Vec::new(), underlined: Vec::new() }
     }
 }
 
@@ -353,7 +355,7 @@ impl Workbench {
                 log::warn!("the saved panel layout breaks the Workbench's rules, using the default");
                 return Self::default();
             }
-            return Self { workspace, attention: Vec::new() };
+            return Self { workspace, attention: Vec::new(), underlined: Vec::new() };
         }
         Self::migrated(&Legacy::read(prefs))
     }
@@ -386,7 +388,7 @@ impl Workbench {
     /// A workspace from the preferences ([`Workbench::load`] has read and repaired it); one that does not validate gives the default.
     pub fn from_workspace(workspace: Workspace<Panel>) -> Self {
         if workspace.validate().is_ok() && check(&workspace).is_ok() && workspace.layout.contains(&Panel::Editor) {
-            Self { workspace, attention: Vec::new() }
+            Self { workspace, attention: Vec::new(), underlined: Vec::new() }
         } else {
             Self::default()
         }
@@ -477,6 +479,11 @@ impl Workbench {
         Panel::ALL.iter().filter_map(|panel| found.iter().find(|(p, _)| p == panel).copied()).collect()
     }
 
+    /// The panels whose tab carries the accent line now: the shown tab of each group of several.
+    pub fn underlined(&self) -> &[Panel] {
+        &self.underlined
+    }
+
     pub fn place(&self, panel: Panel) -> Option<Place> {
         self.places().into_iter().find(|(p, _)| *p == panel).map(|(_, place)| place)
     }
@@ -545,7 +552,8 @@ fn style(ui: &egui::Ui) -> DockStyle {
     style.tab_background = t.chrome;
     style.active_background = t.panel;
     style.text = t.text;
-    style.inactive_text = t.text_faint;
+    // (A tab's own look, its weight and its colour on hover, comes from `Content::label`; the active tab's underline from `show`.)
+    style.inactive_text = t.text_muted;
     style.border = egui::Stroke::new(1.0, t.divider);
     style.accent = t.accent;
     style.font = theme::semibold(12.0);
@@ -602,9 +610,11 @@ pub fn show(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
     let home = app.session.active().is_none();
     let layout = if home { app.workbench.home_layout() } else { app.workbench.workspace.layout.clone() };
     let style = style(ui);
-    let mut content = Content { app, close: Vec::new() };
+    let groups = groups_of(&layout);
+    let mut content = Content { app, close: Vec::new(), groups: &groups, active_text: style.text };
     let output = DockArea::new(egui::Id::unique(AREA)).show_content(ui, &layout, &style, &mut content);
-    let Content { app, close } = content;
+    let Content { app, close, .. } = content;
+    app.workbench.underlined = underline_active_tabs(ui, &groups);
     if let Some(e) = output.error {
         app.status = crate::i18n::fmt(tl!("The panels cannot go there: {reason}"), &[("reason", &e.to_string())]);
     }
@@ -622,6 +632,117 @@ struct Content<'a> {
     app: &'a mut XmlCraftApp,
     /// Panels whose Close button was clicked this frame.
     close: Vec<Panel>,
+    /// The tab groups of the layout being drawn, and the colour the engine gives an active tab's label (and a menu item's).
+    groups: &'a [TabGroup],
+    active_text: Color32,
+}
+
+/// The panels of one tab group, and which of them is shown.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TabGroup {
+    panels: Vec<Panel>,
+    active: usize,
+}
+
+/// Every tab group of `layout`, docked or floating (a stacked panel is a group of its own).
+fn groups_of(layout: &Layout<Panel>) -> Vec<TabGroup> {
+    fn walk(node: &Node<Panel>, depth: usize, out: &mut Vec<TabGroup>) {
+        if depth > MAX_DEPTH {
+            return;
+        }
+        match node {
+            Node::Tabs { panels, active } => out.push(TabGroup { panels: panels.clone(), active: *active }),
+            Node::Stack { entries } => out.extend(entries.iter().map(|e| TabGroup { panels: vec![e.panel], active: 0 })),
+            Node::Dock { columns, .. } => {
+                for column in columns {
+                    out.extend(column.groups.iter().map(|g| TabGroup { panels: g.panels.clone(), active: g.active }));
+                }
+            }
+            Node::Split { first, second, .. } => {
+                walk(first, depth + 1, out);
+                walk(second, depth + 1, out);
+            }
+            // (A kind of node a newer engine adds has no tabs this knows of.)
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    if let Some(root) = &layout.root {
+        walk(root, 0, &mut out);
+    }
+    for window in &layout.floating {
+        walk(&window.root, 0, &mut out);
+    }
+    out
+}
+
+/// How a tab's name is drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TabLook {
+    /// The shown tab of a group of several: semibold, in the text colour, underlined in the accent.
+    Active,
+    /// The one tab of a group: semibold, in the text colour, no underline (there is nothing to tell it from).
+    Single,
+    /// Another tab of a group: regular, muted, in the text colour under the pointer.
+    Inactive { hovered: bool },
+    /// Not a tab: a panel's name in one of the engine's menus.
+    Menu,
+}
+
+impl TabLook {
+    /// `drawn_active`: the engine drew the label in its active colour (an active tab, or a menu item).
+    fn of(groups: &[TabGroup], panel: Panel, drawn_active: bool, hovered: bool) -> Self {
+        let group = groups.iter().find(|g| g.panels.contains(&panel));
+        let shown = group.is_some_and(|g| g.panels.get(g.active) == Some(&panel));
+        match (drawn_active, shown, group.map_or(1, |g| g.panels.len())) {
+            (false, ..) => Self::Inactive { hovered },
+            (true, true, 1) => Self::Single,
+            (true, true, _) => Self::Active,
+            (true, false, _) => Self::Menu,
+        }
+    }
+
+    fn font(self, size: f32) -> egui::FontId {
+        match self {
+            Self::Active | Self::Single => theme::semibold(size),
+            Self::Inactive { .. } | Self::Menu => theme::regular(size),
+        }
+    }
+
+    fn color(self, t: &Tokens) -> Color32 {
+        match self {
+            Self::Inactive { hovered: false } => t.text_muted,
+            Self::Active | Self::Single | Self::Inactive { hovered: true } | Self::Menu => t.text,
+        }
+    }
+}
+
+/// The egui id of a panel's tab. (The engine's convention, `area.with(("tab", panel))`, which its own tests and its focus keeping use;
+/// it has no accessor for it.)
+fn tab_id(panel: Panel) -> egui::Id {
+    egui::Id::unique(AREA).with(("tab", panel))
+}
+
+/// Height of the line under the shown tab of a group of several.
+const UNDERLINE: f32 = 2.0;
+
+/// The accent line under the shown tab of each group that has several (the engine has no style for it, so it is drawn over its strip).
+/// Returns the panels it underlined.
+fn underline_active_tabs(ui: &egui::Ui, groups: &[TabGroup]) -> Vec<Panel> {
+    let t = Tokens::get(ui.ctx());
+    let mut underlined = Vec::new();
+    for group in groups.iter().filter(|g| g.panels.len() > 1) {
+        let Some(panel) = group.panels.get(group.active) else { continue };
+        let Some(tab) = ui.ctx().read_response(tab_id(*panel)) else { continue };
+        let rect = tab.rect;
+        if !rect.is_positive() || !rect.is_finite() {
+            continue;
+        }
+        let line = egui::Rect::from_min_max(egui::pos2(rect.left(), rect.bottom() - UNDERLINE), rect.right_bottom());
+        ui.painter().with_clip_rect(ui.clip_rect()).rect_filled(line, 0.0, t.accent);
+        underlined.push(*panel);
+    }
+    underlined
 }
 
 impl DockContent<Panel> for Content<'_> {
@@ -648,6 +769,13 @@ impl DockContent<Panel> for Content<'_> {
 
     fn logical_label(&self, panel: &Panel) -> String {
         panel.title().to_owned()
+    }
+
+    fn label(&mut self, ui: &egui::Ui, panel: &Panel, logical: &str, font: &egui::FontId, color: Color32) -> egui::WidgetText {
+        let t = Tokens::get(ui.ctx());
+        let hovered = ui.ctx().read_response(tab_id(*panel)).is_some_and(|r| r.hovered());
+        let look = TabLook::of(self.groups, *panel, color == self.active_text, hovered);
+        egui::RichText::new(logical).font(look.font(font.size)).color(look.color(&t)).into()
     }
 
     fn permissions(&self, panel: &Panel) -> Permissions {
@@ -694,6 +822,31 @@ mod tests {
 
     fn places(bench: &Workbench) -> Vec<(Panel, &'static str)> {
         bench.places().into_iter().map(|(p, place)| (p, place.name())).collect()
+    }
+
+    #[test]
+    fn the_shown_tab_of_a_group_of_several_stands_out_and_a_lone_tab_is_not_underlined() {
+        let mut bench = Workbench::default();
+        bench.set_visible(Panel::Search, true).expect("search");
+        let groups = groups_of(&bench.workspace.layout);
+        let bottom = groups.iter().find(|g| g.panels.contains(&Panel::Problems)).expect("the bottom group");
+        assert_eq!(bottom.panels.len(), 2, "{groups:?}");
+        let (shown, other) = match bottom.panels.get(bottom.active) {
+            Some(Panel::Problems) => (Panel::Problems, Panel::Search),
+            _ => (Panel::Search, Panel::Problems),
+        };
+        assert_eq!(TabLook::of(&groups, shown, true, false), TabLook::Active);
+        assert_eq!(TabLook::of(&groups, other, false, false), TabLook::Inactive { hovered: false });
+        assert_eq!(TabLook::of(&groups, other, false, true), TabLook::Inactive { hovered: true });
+        // The same colour on a panel that is not shown is a menu item.
+        assert_eq!(TabLook::of(&groups, other, true, false), TabLook::Menu);
+        assert_eq!(TabLook::of(&groups, Panel::Outline, true, false), TabLook::Single);
+        let t = Tokens::for_kind(theme::ThemeKind::Light);
+        assert_eq!((TabLook::Active.color(&t), TabLook::Active.font(12.0)), (t.text, theme::semibold(12.0)));
+        assert_eq!((TabLook::Single.color(&t), TabLook::Single.font(12.0)), (t.text, theme::semibold(12.0)));
+        let inactive = TabLook::Inactive { hovered: false };
+        assert_eq!((inactive.color(&t), inactive.font(12.0)), (t.text_muted, theme::regular(12.0)));
+        assert_eq!(TabLook::Inactive { hovered: true }.color(&t), t.text);
     }
 
     #[test]
