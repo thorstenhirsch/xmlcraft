@@ -23,6 +23,7 @@ XmlCraft is a clean-room, open-source XML editor built to match the feature set 
 
 ## Progress log
 
+- 2026-11-11: M10.6, `xmlcraft-cli check` and `validate` take folders: each XML file under a folder (at most 1000) is checked, and a folder is resolved through `--root` before it is walked, so nothing outside the root is listed.
 - 2026-11-11: M10.5, tabs move by keyboard: View ▸ Move Tab Left and Move Tab Right (Ctrl+Shift+PageUp/PageDown, ⌃⇧ on macOS) move the shown tab one place; at either end it stays.
 - 2026-11-11: M10.4, XInclude. XML ▸ Expand XIncludes replaces each `xi:include` by what it names (an element, or text for `parse="text"`), found through the resolver on a worker thread, as one minimal edit per include in the document's line endings and one undoable step; `xinclude_expand` does it headlessly inside `--root`.
 - 2026-11-11: M3.17, go to definition in an XML Schema. F12 (XML ▸ Go to Definition) on a `type`, `base`, `ref` or `substitutionGroup` selects the definition, also in an included or imported document (opened when it is a file); `xsd_definition` gives its file, range, line and column.

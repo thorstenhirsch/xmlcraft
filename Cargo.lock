@@ -6572,6 +6572,7 @@ dependencies = [
  "tempfile",
  "xmlcraft-automation",
  "xmlcraft-engine",
+ "xmlcraft-platform",
 ]
 
 [[package]]

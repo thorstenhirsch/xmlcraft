@@ -1171,11 +1171,11 @@ title = "Validate many files or a folder"
 area = "E"
 tier = "P1"
 milestone = "M10"
-status = "planned"
+status = "partial"
 commands = []
-tools = []
-evidence = []
-notes = ""
+tools = ["xml_wellformed", "xml_validate"]
+evidence = ["apps/xmlcraft-cli/src/cli.rs::a_folder_is_checked_file_by_file_and_files_that_are_not_xml_are_left_out", "apps/xmlcraft-cli/src/cli.rs::a_folder_with_no_xml_files_is_refused", "apps/xmlcraft-cli/src/cli.rs::a_folder_under_the_root_is_named_relative_to_it", "apps/xmlcraft-cli/src/cli.rs::a_folder_outside_the_root_is_not_walked_and_its_files_are_never_named"]
+notes = "`xmlcraft-cli check` and `validate` take any number of files and folders: a folder contributes at most 1000 XML files (xml, xsd, xsl, xslt, svg, xhtml, rng, sch, wsdl, dita) from its tree (links are not followed), named relative to `--root` when one is given. Each argument is resolved through the root confinement before a folder is walked, so a folder outside the root is refused as it was typed and nothing under it is named. A folder with no XML files and folders that cannot be read are reported. Missing: a batch window in the app, an automation tool that takes a folder, a choice of the extensions (M10.6)."
 
 [[feature]]
 id = "validate.schematron"
