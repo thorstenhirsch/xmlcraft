@@ -1296,11 +1296,11 @@ title = "Infer a JSON Schema from JSON, YAML or BSON"
 area = "F"
 tier = "P1"
 milestone = "M5"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["file.generate_schema"]
+tools = ["json_infer"]
+evidence = ["crates/engine/src/json_infer.rs::objects_keep_their_names_and_the_names_every_object_has_are_required", "crates/engine/src/json_infer.rs::yaml_and_bson_text_are_read_and_a_broken_document_is_refused", "crates/engine/src/json_infer.rs::too_many_documents_or_bytes_are_refused_before_anything_is_read", "crates/automation/tests/json_infer.rs::several_documents_are_learned_together_from_files_and_open_documents", "crates/automation/tests/json_infer.rs::documents_too_large_together_are_refused_once_the_cap_is_passed", "crates/ui-egui/tests/generate.rs::generate_json_schema_makes_a_schema_from_the_data_document_being_shown_on_a_worker"]
+notes = "`xmlcraft_engine::json_infer` learns a draft 2020-12 schema from JSON, JSONC, JSON5, JSON Lines, YAML and BSON (its Extended JSON text): object names (required when every object seen has them), array items merged, string, integer, number, boolean and null types, and enumerations for strings that repeat (the rule of the XML inference: at most 10 values, each seen twice; configurable or off). At most 1000 documents and 32 MiB together. File ▸ Generate JSON Schema… learns from the document being shown on a worker thread and opens the schema as a new document; the tool `json_infer` takes several documents (open documents, files inside the root, text). Missing: formats (dates, URIs), number ranges and string lengths, `additionalProperties`, `$defs` for repeated shapes, the Extended JSON types of BSON as their own types, a dialog for the options and several documents in the window, an older draft as the output (M5.20)."
 
 [[feature]]
 id = "generate.sample-json"

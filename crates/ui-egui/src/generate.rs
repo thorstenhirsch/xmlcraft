@@ -2,6 +2,7 @@
 //! (`xmlcraft_engine::generate`), so the window does not wait; the results are opened as new documents.
 
 use xmlcraft_engine::generate::{GrammarKind, SampleJob, SchemaJob};
+use xmlcraft_engine::json_infer::{InferJob, Options as JsonInferOptions};
 use xmlcraft_infer::{EnumerationRule, Layout, Options as InferOptions, Output};
 use xmlcraft_sample::{ChoicePolicy, Fill, Options as SampleOptions};
 use xmlcraft_text::Buffer;
@@ -77,6 +78,22 @@ impl XmlCraftApp {
     fn next_serial(&mut self) -> u64 {
         self.generate_serial += 1;
         self.generate_serial
+    }
+
+    /// Learn a JSON Schema from the JSON, YAML or BSON document being shown (Generate JSON Schema…), on a worker thread; the schema
+    /// opens as a new document when it is ready.
+    pub(crate) fn generate_json_schema(&mut self) {
+        let Some(doc) = self.session.active_document() else { return };
+        let language = doc.language();
+        if !language.is_data() {
+            self.status = tl!("Generate JSON Schema learns from a JSON, YAML or BSON document").to_owned();
+            return;
+        }
+        let documents = vec![(doc.editor().text(), language)];
+        let serial = self.next_serial();
+        self.json_schema_waiting = Some(serial);
+        self.json_schema_generator.submit(InferJob { serial, documents, options: JsonInferOptions::default() });
+        self.status = tl!("Generating a JSON Schema…").to_owned();
     }
 
     /// Ask what to generate a schema from, and how (Generate Schema…).
@@ -187,6 +204,19 @@ impl XmlCraftApp {
                     self.status = fmt(tl!("Generated {names}"), &[("names", &names.join(", "))]);
                 }
                 Err(message) => self.set_form_error(&message),
+            }
+        }
+        for outcome in self.json_schema_generator.poll() {
+            if self.json_schema_waiting != Some(outcome.serial) {
+                continue; // an answer to something that was asked before
+            }
+            self.json_schema_waiting = None;
+            match outcome.result {
+                Ok(inferred) => {
+                    self.open_generated("schema.json", &inferred.schema);
+                    self.status = tl!("Generated schema.json").to_owned();
+                }
+                Err(message) => self.status = message,
             }
         }
         for outcome in self.sample_generator.poll() {
