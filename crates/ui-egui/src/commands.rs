@@ -103,6 +103,16 @@ impl XmlCraftApp {
         }
     }
 
+    /// Move the shown tab one place along the strip. At either end it stays where it is.
+    fn move_active_tab(&mut self, by: isize) -> bool {
+        let Some(from) = self.session.active() else { return false };
+        let Some(to) = from.checked_add_signed(by) else { return false };
+        if to >= self.session.documents().len() {
+            return false;
+        }
+        self.session.move_document(from, to)
+    }
+
     fn execute_unguarded(&mut self, id: &str) -> bool {
         // Commands that show a panel or a dialog need the egui context; it is set when the app is created.
         let Some(ctx) = self.ctx.clone() else {
@@ -232,6 +242,12 @@ impl XmlCraftApp {
             "view.palette" => {
                 self.palette_open = !self.palette_open;
                 self.palette_query.clear();
+            }
+            "view.move_tab_left" => {
+                self.move_active_tab(-1);
+            }
+            "view.move_tab_right" => {
+                self.move_active_tab(1);
             }
             "view.outline" => self.left_open = !self.left_open,
             "view.grid" => self.toggle_grid(),

@@ -97,3 +97,20 @@ fn a_tab_menu_closes_tabs_to_the_right_and_copies_the_path() {
     h.run_steps(2);
     assert_eq!(h.state().status, "Copied /x/a.xml");
 }
+
+#[test]
+fn the_keyboard_moves_the_shown_tab_along_the_strip() {
+    let mut h = shell();
+    open(&mut h, &["a.xml", "b.xml", "c.xml"]);
+    assert!(h.state_mut().execute("view.move_tab_left"));
+    h.run_steps(2);
+    assert_eq!(order(&h), ["a.xml", "c.xml", "b.xml"]);
+    assert_eq!(h.state().session.active_document().map(|d| d.name().to_owned()).as_deref(), Some("c.xml"));
+    assert!(h.state_mut().execute("view.move_tab_left"));
+    assert!(h.state_mut().execute("view.move_tab_left"), "the command runs even at the edge");
+    h.run_steps(2);
+    assert_eq!(order(&h), ["c.xml", "a.xml", "b.xml"], "it stays first");
+    assert!(h.state_mut().execute("view.move_tab_right"));
+    h.run_steps(2);
+    assert_eq!(order(&h), ["a.xml", "c.xml", "b.xml"]);
+}
