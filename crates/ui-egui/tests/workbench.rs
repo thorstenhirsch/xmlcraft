@@ -141,3 +141,19 @@ fn the_rail_toggles_search_marks_news_and_reset_layout_puts_everything_back() {
     h.run_steps(3);
     assert_eq!(layout(&mut h, &c), json!({ "editor": "center", "outline": "left", "entry_helpers": "left", "problems": "bottom" }));
 }
+
+#[test]
+fn only_the_shown_tab_of_a_group_of_several_is_underlined() {
+    let (mut h, _c) = shell(None);
+    for panel in [Panel::Outline, Panel::Problems] {
+        h.state_mut().set_panel_visible(panel, true);
+    }
+    h.run_steps(4);
+    // Every group has one panel: the tabs only name them.
+    assert_eq!(h.state().underlined_tabs(), []);
+    h.state_mut().set_panel_visible(Panel::Search, true);
+    h.run_steps(4);
+    let underlined = h.state().underlined_tabs();
+    assert_eq!(underlined.len(), 1, "{underlined:?}");
+    assert!(matches!(underlined.first(), Some(Panel::Problems | Panel::Search)), "{underlined:?}");
+}

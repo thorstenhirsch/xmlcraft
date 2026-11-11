@@ -487,6 +487,11 @@ impl XmlCraftApp {
         self.workbench.attention(panel)
     }
 
+    /// The panels whose tab carries the accent underline at the last frame: the shown tab of each tab group of several.
+    pub fn underlined_tabs(&self) -> Vec<Panel> {
+        self.workbench.underlined().to_vec()
+    }
+
     /// Change the arrangement of the panels, all or none, as a drag or a menu would.
     pub fn apply_layout(&mut self, actions: Vec<craft_ui::docking::Action<Panel>>) -> Result<(), String> {
         self.workbench.apply(actions).map(drop).map_err(|e| e.to_string())
