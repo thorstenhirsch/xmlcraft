@@ -205,6 +205,7 @@ impl XmlCraftApp {
             "xml.soap" => self.open_soap(),
             "xml.openapi" => self.open_openapi(),
             "xml.soap_debugger" => self.open_proxy(),
+            "file.generate_schema" => self.generate_json_schema(),
             "xml.generate_schema" => self.open_generate_schema(),
             "xml.generate_sample" => self.open_generate_sample(),
             "xml.load_schema" => self.load_schema(),

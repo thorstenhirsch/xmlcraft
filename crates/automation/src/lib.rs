@@ -22,6 +22,7 @@ mod files_find;
 mod grid;
 mod infer;
 mod json_assist;
+mod json_infer;
 mod json_schema;
 mod lines;
 mod load_schema;

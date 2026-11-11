@@ -225,3 +225,27 @@ fn a_schema_that_is_open_and_being_edited_is_what_the_sample_is_made_from() {
     h.run_steps(3);
     assert!(h.query_by_label("memo").is_some() && h.query_by_label("note").is_none(), "the unsaved text is what was read");
 }
+
+#[test]
+fn generate_json_schema_makes_a_schema_from_the_data_document_being_shown_on_a_worker() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "order.json", "{\"name\": \"a\", \"age\": 3, \"home\": {\"city\": \"x\"}}"));
+    assert!(h.state_mut().execute("file.generate_schema"));
+    wait(&mut h, "the schema", |h| names(h).contains(&"schema.json".to_owned()));
+    let schema = text_of(&h, "schema.json");
+    assert!(
+        schema.contains("\"$schema\": \"https://json-schema.org/draft/2020-12/schema\"")
+            && schema.contains("\"age\": {\n      \"type\": \"integer\"")
+            && schema.contains("\"required\": [\n    \"age\",\n    \"home\",\n    \"name\"\n  ]"),
+        "{schema}"
+    );
+    assert_eq!(h.state().session.active_document().map(|d| d.name().to_owned()), Some("schema.json".to_owned()));
+    // An XML document is not data to learn from: it is said so, and nothing is made.
+    open(&mut h, &file(dir.path(), "a.xml", "<a/>"));
+    let before = names(&h).len();
+    assert!(h.state_mut().execute("file.generate_schema"));
+    h.run_steps(3);
+    assert_eq!(names(&h).len(), before);
+    assert!(h.state().status.contains("JSON, YAML or BSON"), "{}", h.state().status);
+}
