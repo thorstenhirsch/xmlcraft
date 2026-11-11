@@ -116,6 +116,9 @@ pub const SIDEWAYS: &[(&str, &str)] = &[
     ("openapi", "convert"),
     // Schematron evaluates its rules with the XPath engine.
     ("schematron", "query"),
+    // An e-invoice is checked against the XML Schema of its syntax and the Schematron rules of its standard.
+    ("einvoice", "validate"),
+    ("einvoice", "schematron"),
     // Completion asks the validator for the context at the cursor.
     ("complete", "validate"),
     // Generators write their output through the formatter, and their tests validate it.

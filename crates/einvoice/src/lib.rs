@@ -6,9 +6,12 @@
 //!
 //! - **Layer:** L4, no UI and no I/O, so it compiles for the web.
 //! - Recognition is by what the document *says*: its root element and namespace, the customization or guideline identifier, and the
-//!   version attributes. It does not validate anything; whether a document keeps the rules of the standard it names is for the
-//!   schemas and rules of that standard.
+//!   version attributes; whether a document keeps the rules of the standard it names is for [`validate`].
 //! - A document that is not one of the known syntaxes is `None`, never an error: it is just XML.
+//! - [`validate::validate`] checks a recognised invoice stage by stage against the schemas and rules that ship with XmlCraft (the XML
+//!   Schema of its syntax, the EN 16931 rules, the XRechnung rules).
+
+pub mod validate;
 
 use xmlcraft_syntax::parse;
 use xmlcraft_xsd::dom::{self, Dom, El};
