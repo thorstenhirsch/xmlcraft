@@ -88,3 +88,25 @@ fn a_schema_outside_the_root_is_not_read() {
     let r = call(&mut a, "json_complete", json!({ "path": doc, "line": 2, "column": 2 }));
     assert_eq!(r["count"].as_u64(), Some(0), "{r}");
 }
+
+#[test]
+fn a_bson_file_is_completed_and_hovered_in_its_extended_json_text() {
+    use xmlcraft_bson::{Bson, Document, to_text, write_all};
+    let dir = tempfile::tempdir().expect("dir");
+    file(dir.path(), "s.json", SCHEMA);
+    let docs = vec![Document { fields: vec![("$schema".into(), Bson::String("s.json".into())), ("name".into(), Bson::String("x".into()))] }];
+    let path = dir.path().join("d.bson");
+    std::fs::write(&path, write_all(&docs).expect("writes")).expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    // The positions are in the Extended JSON text the window shows, as the codec lays it out.
+    let (text, _) = to_text(&docs, true).expect("text");
+    let after = text.find('{').expect("an object") + 1;
+    let r = call(&mut a, "json_complete", json!({ "path": path, "offset": after }));
+    assert_eq!(r["schema"].as_bool(), Some(true), "{r}");
+    assert!(["kind", "home"].iter().all(|n| labels(&r).contains(n)), "the schema's names are offered: {r}");
+    let name = text.find("\"name\"").expect("the name") + 2;
+    let r = call(&mut a, "json_hover", json!({ "path": path, "offset": name }));
+    assert_eq!(r["text"].as_str(), Some("The full name.\n\nType: string"), "{r}");
+    let r = call(&mut a, "json_complete", json!({ "text": "{\"$schema\": \"s.json\", }", "language": "bson", "offset": 22 }));
+    assert_eq!(r["schema"].as_bool(), Some(true), "Extended JSON text names its schema too: {r}");
+}
