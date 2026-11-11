@@ -23,6 +23,7 @@ mod grid;
 mod infer;
 mod json_assist;
 mod json_infer;
+mod json_sample;
 mod json_schema;
 mod lines;
 mod load_schema;

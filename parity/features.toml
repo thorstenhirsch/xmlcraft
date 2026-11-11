@@ -1308,11 +1308,11 @@ title = "Generate sample JSON, YAML or BSON from a JSON Schema"
 area = "F"
 tier = "P1"
 milestone = "M5"
-status = "planned"
-commands = []
-tools = []
-evidence = []
-notes = ""
+status = "partial"
+commands = ["file.generate_sample"]
+tools = ["json_sample"]
+evidence = ["crates/engine/src/json_sample.rs::required_names_and_the_kind_of_each_place_make_the_shape", "crates/engine/src/json_sample.rs::an_offered_value_is_used_before_the_kind", "crates/engine/src/json_sample.rs::a_recursive_schema_stops_at_the_depth_and_the_formats_are_written", "crates/engine/src/json_sample.rs::a_schema_that_refers_to_itself_through_many_names_is_refused_quickly_rather_than_made_huge", "crates/automation/tests/json_sample.rs::a_schema_gives_a_sample_in_each_output_format", "crates/automation/tests/json_sample.rs::a_schema_that_refers_to_itself_through_many_names_ends_with_an_error_or_a_bounded_sample", "crates/ui-egui/tests/generate.rs::generate_json_sample_makes_a_value_from_the_schema_being_shown_on_a_worker"]
+notes = "`xmlcraft_engine::json_sample` makes a value that shows the shape a JSON Schema describes: the names it declares (the required ones, and the others unless asked not to), the first value it offers (enum, const, a default, an example), an object from `properties`, one item from `items`, a string, a number, a boolean or null; `$ref` and the combinators are followed as completion follows them. A recursive schema is cut at a depth (default 6, at most 32) and a sample of more than 10,000 values is refused with the reason. It is written as JSON, YAML or BSON (Extended JSON). File ▸ Generate Sample JSON… makes one from the schema being shown on a worker thread (the documents it refers to go through the resolver) and opens it as a new document; the tool `json_sample` takes the format, the depth and whether to make the optional names. Missing: values that satisfy `pattern`, `format`, `minimum`/`maximum` and lengths, `if`/`then` evaluated, more than one item, a dialog for the options in the window, a promise that the sample validates (M5.21)."
 
 [[feature]]
 id = "generate.convert-xml-json"

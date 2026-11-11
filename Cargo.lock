@@ -6679,6 +6679,7 @@ dependencies = [
  "rowan",
  "serde_json",
  "xmlcraft-bson",
+ "xmlcraft-convert",
  "xmlcraft-diff",
  "xmlcraft-dtd",
  "xmlcraft-editor",
