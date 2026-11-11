@@ -60,6 +60,10 @@ pub struct File {
     pub path: String,
     pub title: String,
     pub url: String,
+    /// When the publisher releases the file inside a zip archive (a GitHub release asset), `url` is the archive and this is the path of
+    /// the file inside it; empty for a file that is served on its own.
+    #[serde(default)]
+    pub member: String,
     /// Empty until `--update` has fetched the file.
     pub sha256: String,
     /// The day the file was fetched (`YYYY-MM-DD`); empty until then.
@@ -91,8 +95,9 @@ pub fn render_manifest(m: &Manifest) -> String {
         ));
     }
     for f in &m.file {
+        let member = if f.member.is_empty() { String::new() } else { format!("member = {}\n", quote(&f.member)) };
         out.push_str(&format!(
-            "\n[[file]]\nset = {}\npath = {}\ntitle = {}\nurl = {}\nsha256 = {}\nretrieved = {}\n",
+            "\n[[file]]\nset = {}\npath = {}\ntitle = {}\nurl = {}\n{member}sha256 = {}\nretrieved = {}\n",
             quote(&f.set),
             quote(&f.path),
             quote(&f.title),
@@ -102,6 +107,15 @@ pub fn render_manifest(m: &Manifest) -> String {
         ));
     }
     out
+}
+
+/// Where a file comes from, in words: its URL, and the member of the archive when it is released in one.
+fn source_of(f: &File) -> String {
+    if f.member.is_empty() {
+        format!("{} (retrieved {})", f.url, f.retrieved)
+    } else {
+        format!("{}, the file {} of the archive (retrieved {})", f.url, f.member, f.retrieved)
+    }
 }
 
 /// The schema entries of `ATTRIBUTION.toml`, between the markers.
@@ -116,7 +130,7 @@ pub fn render_attribution(m: &Manifest) -> String {
             quote(&format!("{SCHEMA_DIR}{}", f.path)),
             quote(&f.title),
             quote(&set.author),
-            quote(&format!("{} (retrieved {})", f.url, f.retrieved)),
+            quote(&source_of(f)),
             quote(&set.licence),
             quote(&set.licence_file),
             quote("Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"),
@@ -192,6 +206,9 @@ pub fn problems(m: &Manifest, files: &BTreeMap<String, Vec<u8>>, attribution: &s
         }
         if !(f.url.starts_with("https://") || f.url.starts_with("http://")) {
             out.push(format!("{}: the url must be http or https", f.path));
+        }
+        if !f.member.is_empty() && (f.member.starts_with('/') || f.member.split('/').any(|part| part.is_empty() || part == "..")) {
+            out.push(format!("{}: the member {} must be a plain path inside the archive", f.path, f.member));
         }
         if f.sha256.is_empty() || f.retrieved.is_empty() {
             out.push(format!("{}: not fetched yet: run `cargo xtask schemas --update`", f.path));
@@ -332,18 +349,55 @@ fn download(url: &str, to: &Path) -> Result<Vec<u8>> {
     std::fs::read(to).with_context(|| format!("reading {}", to.display()))
 }
 
+/// The archives downloaded in this run, by URL (a release archive holds many files of a set; it is fetched once).
+type Archives = BTreeMap<String, std::path::PathBuf>;
+
+/// Fetch the file `f` into `to`: download it, or download its archive (once per run) and take the member out with `unzip`.
+fn fetch_file(f: &File, to: &Path, archives: &mut Archives) -> Result<Vec<u8>> {
+    if f.member.is_empty() {
+        return download(&f.url, to);
+    }
+    let archive = match archives.get(&f.url) {
+        Some(path) => path.clone(),
+        None => {
+            let path = std::env::temp_dir().join(format!("xmlcraft-schemas-{}-{}.zip", std::process::id(), archives.len()));
+            download(&f.url, &path)?;
+            archives.insert(f.url.clone(), path.clone());
+            path
+        }
+    };
+    let out = Command::new("unzip").arg("-p").arg(&archive).arg(&f.member).output().context("running unzip (is it installed?)")?;
+    if !out.status.success() || out.stdout.is_empty() {
+        bail!("{}: the archive {} has no file {}", f.path, f.url, f.member);
+    }
+    if let Some(dir) = to.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(to, &out.stdout).with_context(|| format!("writing {}", to.display()))?;
+    Ok(out.stdout)
+}
+
 pub fn run(args: &[String]) -> Result<()> {
     let root = root();
     let mut manifest = load_manifest(&root)?;
     let dir = root.join(SCHEMA_DIR);
     let flag = |name: &str| args.iter().any(|a| a == name);
+    let mut archives = Archives::new();
+    let result = run_with(args, &root, &mut manifest, &dir, &flag, &mut archives);
+    for path in archives.values() {
+        let _ = std::fs::remove_file(path);
+    }
+    result
+}
+
+fn run_with(args: &[String], root: &Path, manifest: &mut Manifest, dir: &Path, flag: &dyn Fn(&str) -> bool, archives: &mut Archives) -> Result<()> {
     if flag("--fetch") {
         for f in &manifest.file {
             let to = dir.join(&f.path);
             if to.is_file() {
                 continue;
             }
-            let bytes = download(&f.url, &to)?;
+            let bytes = fetch_file(f, &to, archives)?;
             if !f.sha256.is_empty() && sha256_hex(&bytes) != f.sha256 {
                 let _ = std::fs::remove_file(&to);
                 bail!("{}: the publisher serves a different file now (SHA-256 differs); `cargo xtask schemas --update` records it", f.path);
@@ -358,7 +412,7 @@ pub fn run(args: &[String]) -> Result<()> {
             if !(f.sha256.is_empty() || named.contains(f.set.as_str())) {
                 continue;
             }
-            let bytes = download(&f.url, &dir.join(&f.path))?;
+            let bytes = fetch_file(f, &dir.join(&f.path), archives)?;
             let hash = sha256_hex(&bytes);
             if hash != f.sha256 {
                 println!("schemas: {} {}", if f.sha256.is_empty() { "added" } else { "changed" }, f.path);
@@ -366,15 +420,15 @@ pub fn run(args: &[String]) -> Result<()> {
                 f.retrieved = today.clone();
             }
         }
-        std::fs::write(root.join(MANIFEST), render_manifest(&manifest))?;
+        std::fs::write(root.join(MANIFEST), render_manifest(manifest))?;
         let attribution_path = root.join("ATTRIBUTION.toml");
         let existing = std::fs::read_to_string(&attribution_path).context("reading ATTRIBUTION.toml")?;
-        std::fs::write(&attribution_path, with_attribution(&existing, &manifest))?;
+        std::fs::write(&attribution_path, with_attribution(&existing, manifest))?;
         println!("schemas: wrote {MANIFEST} and the schema entries of ATTRIBUTION.toml; run `cargo xtask assets --write` for ATTRIBUTION.md");
     }
-    let files = read_all(&dir)?;
+    let files = read_all(dir)?;
     let attribution = std::fs::read_to_string(root.join("ATTRIBUTION.toml")).context("reading ATTRIBUTION.toml")?;
-    let found = problems(&manifest, &files, &attribution);
+    let found = problems(manifest, &files, &attribution);
     if found.is_empty() {
         println!("schemas: ok ({} files in {} set(s), at most {MAX_FILES})", manifest.file.len(), manifest.set.len());
         Ok(())
@@ -405,6 +459,7 @@ mod tests {
                 path: "w3c/a.dtd".into(),
                 title: "A".into(),
                 url: "https://example.org/a.dtd".into(),
+                member: String::new(),
                 sha256: sha256_hex(bytes),
                 retrieved: "2026-10-28".into(),
             }],
@@ -558,5 +613,25 @@ mod tests {
         let text = render_manifest(&m);
         assert_eq!(toml::from_str::<Manifest>(&text).expect("parses"), m);
         assert_eq!(render_manifest(&toml::from_str::<Manifest>(&text).expect("parses")), text);
+        assert!(!text.contains("member"), "a file served on its own says nothing of an archive");
+        // A file of a release archive keeps its member, and the attribution names both.
+        let mut m = manifest();
+        m.file[0].member = "schematron/a.sch".into();
+        let text = render_manifest(&m);
+        assert_eq!(toml::from_str::<Manifest>(&text).expect("parses"), m);
+        assert!(render_attribution(&m).contains("the file schematron/a.sch of the archive"));
+    }
+
+    #[test]
+    fn a_member_of_an_archive_is_a_plain_path() {
+        for member in ["/a.sch", "../a.sch", "a//b.sch", "a/../../b.sch"] {
+            let mut m = manifest();
+            m.file[0].member = member.into();
+            let p = problems(&m, &files(), &attribution(&m));
+            assert!(p.iter().any(|p| p.contains("plain path inside the archive")), "{member}: {p:?}");
+        }
+        let mut m = manifest();
+        m.file[0].member = "schematron/abstract/a.sch".into();
+        assert_eq!(problems(&m, &files(), &attribution(&m)), Vec::<String>::new());
     }
 }

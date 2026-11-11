@@ -776,6 +776,182 @@ sha256 = "122806555c73df7cef55aa1d945289ae27fbc4dbbd31abbb4204ee0cda829cc8"
 # BEGIN bundled schemas: generated from schemas/manifest.toml by `cargo xtask schemas --update`; do not edit by hand
 
 [[asset]]
+path = "schemas/cii/CrossIndustryInvoice_100pD16B.xsd"
+title = "CII D16B: the Cross Industry Invoice message"
+author = "UN/CEFACT (United Nations Centre for Trade Facilitation and Electronic Business); the copy shipped with the CEN EN 16931 validation artefacts"
+source = "https://raw.githubusercontent.com/ConnectingEurope/eInvoicing-EN16931/validation-1.3.17/cii/schema/D16B%20SCRDM%20(Subset)/uncoupled%20clm/CII/uncefact/data/standard/CrossIndustryInvoice_100pD16B.xsd (retrieved 2026-11-11)"
+licence = "LicenseRef-UNCEFACT"
+licence_file = "schemas/cii/LICENSE-UNCEFACT-Notice.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "b9798aafcba039d0630f0015ffae5092a1758bf924d19d97b6bf0bf9d95f22a0"
+
+[[asset]]
+path = "schemas/cii/CrossIndustryInvoice_QualifiedDataType_100pD16B.xsd"
+title = "CII D16B: qualified data types"
+author = "UN/CEFACT (United Nations Centre for Trade Facilitation and Electronic Business); the copy shipped with the CEN EN 16931 validation artefacts"
+source = "https://raw.githubusercontent.com/ConnectingEurope/eInvoicing-EN16931/validation-1.3.17/cii/schema/D16B%20SCRDM%20(Subset)/uncoupled%20clm/CII/uncefact/data/standard/CrossIndustryInvoice_QualifiedDataType_100pD16B.xsd (retrieved 2026-11-11)"
+licence = "LicenseRef-UNCEFACT"
+licence_file = "schemas/cii/LICENSE-UNCEFACT-Notice.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "a39e0662c31fbdca22237118d6b6bbfa16f69efbd1ee5b23787366349c5b924d"
+
+[[asset]]
+path = "schemas/cii/CrossIndustryInvoice_ReusableAggregateBusinessInformationEntity_100pD16B.xsd"
+title = "CII D16B: reusable aggregate business information entities"
+author = "UN/CEFACT (United Nations Centre for Trade Facilitation and Electronic Business); the copy shipped with the CEN EN 16931 validation artefacts"
+source = "https://raw.githubusercontent.com/ConnectingEurope/eInvoicing-EN16931/validation-1.3.17/cii/schema/D16B%20SCRDM%20(Subset)/uncoupled%20clm/CII/uncefact/data/standard/CrossIndustryInvoice_ReusableAggregateBusinessInformationEntity_100pD16B.xsd (retrieved 2026-11-11)"
+licence = "LicenseRef-UNCEFACT"
+licence_file = "schemas/cii/LICENSE-UNCEFACT-Notice.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "cc682d67791ffe16c45320619ff089a1c8f3ad22691fc426e4056f2e67909fe0"
+
+[[asset]]
+path = "schemas/cii/CrossIndustryInvoice_UnqualifiedDataType_100pD16B.xsd"
+title = "CII D16B: unqualified data types"
+author = "UN/CEFACT (United Nations Centre for Trade Facilitation and Electronic Business); the copy shipped with the CEN EN 16931 validation artefacts"
+source = "https://raw.githubusercontent.com/ConnectingEurope/eInvoicing-EN16931/validation-1.3.17/cii/schema/D16B%20SCRDM%20(Subset)/uncoupled%20clm/CII/uncefact/data/standard/CrossIndustryInvoice_UnqualifiedDataType_100pD16B.xsd (retrieved 2026-11-11)"
+licence = "LicenseRef-UNCEFACT"
+licence_file = "schemas/cii/LICENSE-UNCEFACT-Notice.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "5d4ce8a6445caa4b7691f6fba6ad08e312e6a853cd3a422666d121ee2d13ef8c"
+
+[[asset]]
+path = "schemas/en16931/cii/CII/EN16931-CII-model.sch"
+title = "EN 16931 CII 1.3.17: the model rules bound to CII"
+author = "CEN/TC 434 and the European Commission (Connecting Europe Facility eInvoicing)"
+source = "https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/validation-1.3.17/en16931-cii-1.3.17.zip, the file schematron/CII/EN16931-CII-model.sch of the archive (retrieved 2026-11-11)"
+licence = "EUPL-1.2"
+licence_file = "schemas/en16931/LICENSE-EUPL-1.2.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "864f96dff4819b39e0bdbda76c5396c78aee26d0f12676bb0b689df3230965ed"
+
+[[asset]]
+path = "schemas/en16931/cii/CII/EN16931-CII-syntax.sch"
+title = "EN 16931 CII 1.3.17: the syntax rules bound to CII"
+author = "CEN/TC 434 and the European Commission (Connecting Europe Facility eInvoicing)"
+source = "https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/validation-1.3.17/en16931-cii-1.3.17.zip, the file schematron/CII/EN16931-CII-syntax.sch of the archive (retrieved 2026-11-11)"
+licence = "EUPL-1.2"
+licence_file = "schemas/en16931/LICENSE-EUPL-1.2.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "b006ef8689822e5c26b9700591651f5f41a722c9b0e26b363611ba9f7269de9b"
+
+[[asset]]
+path = "schemas/en16931/cii/EN16931-CII-validation.sch"
+title = "EN 16931 CII 1.3.17: the rules of EN 16931 bound to CII (main schema)"
+author = "CEN/TC 434 and the European Commission (Connecting Europe Facility eInvoicing)"
+source = "https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/validation-1.3.17/en16931-cii-1.3.17.zip, the file schematron/EN16931-CII-validation.sch of the archive (retrieved 2026-11-11)"
+licence = "EUPL-1.2"
+licence_file = "schemas/en16931/LICENSE-EUPL-1.2.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "7f3dc5e824cb945f4d630f4b93915166eb61b2bc5fd358f7bd0e5c2f22cd0741"
+
+[[asset]]
+path = "schemas/en16931/cii/abstract/EN16931-CII-model.sch"
+title = "EN 16931 CII 1.3.17: the business rules of the semantic model (abstract)"
+author = "CEN/TC 434 and the European Commission (Connecting Europe Facility eInvoicing)"
+source = "https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/validation-1.3.17/en16931-cii-1.3.17.zip, the file schematron/abstract/EN16931-CII-model.sch of the archive (retrieved 2026-11-11)"
+licence = "EUPL-1.2"
+licence_file = "schemas/en16931/LICENSE-EUPL-1.2.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "0b3e3e54380ee473b674c22051d63b8e06e7e8113470ea2d1de13052a97ff41c"
+
+[[asset]]
+path = "schemas/en16931/cii/abstract/EN16931-CII-syntax.sch"
+title = "EN 16931 CII 1.3.17: the syntax rules (abstract)"
+author = "CEN/TC 434 and the European Commission (Connecting Europe Facility eInvoicing)"
+source = "https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/validation-1.3.17/en16931-cii-1.3.17.zip, the file schematron/abstract/EN16931-CII-syntax.sch of the archive (retrieved 2026-11-11)"
+licence = "EUPL-1.2"
+licence_file = "schemas/en16931/LICENSE-EUPL-1.2.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "a4e3ef691ae2178d52034062015f89453fe8f065451465d3069e946ef0fca6ca"
+
+[[asset]]
+path = "schemas/en16931/cii/codelist/EN16931-CII-codes.sch"
+title = "EN 16931 CII 1.3.17: the code list rules"
+author = "CEN/TC 434 and the European Commission (Connecting Europe Facility eInvoicing)"
+source = "https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/validation-1.3.17/en16931-cii-1.3.17.zip, the file schematron/codelist/EN16931-CII-codes.sch of the archive (retrieved 2026-11-11)"
+licence = "EUPL-1.2"
+licence_file = "schemas/en16931/LICENSE-EUPL-1.2.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "e9c574ac66e083822b14f7e948a2ce188a817ee05412a0c02f3471ae5cf23958"
+
+[[asset]]
+path = "schemas/en16931/ubl/EN16931-UBL-validation.sch"
+title = "EN 16931 UBL 1.3.17: the rules of EN 16931 bound to UBL (main schema)"
+author = "CEN/TC 434 and the European Commission (Connecting Europe Facility eInvoicing)"
+source = "https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/validation-1.3.17/en16931-ubl-1.3.17.zip, the file schematron/EN16931-UBL-validation.sch of the archive (retrieved 2026-11-11)"
+licence = "EUPL-1.2"
+licence_file = "schemas/en16931/LICENSE-EUPL-1.2.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "210bcd857ff342841e341b6e27ab9b0bb806e2a2ae4235451d57bc8ab541f75a"
+
+[[asset]]
+path = "schemas/en16931/ubl/UBL/EN16931-UBL-model.sch"
+title = "EN 16931 UBL 1.3.17: the model rules bound to UBL"
+author = "CEN/TC 434 and the European Commission (Connecting Europe Facility eInvoicing)"
+source = "https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/validation-1.3.17/en16931-ubl-1.3.17.zip, the file schematron/UBL/EN16931-UBL-model.sch of the archive (retrieved 2026-11-11)"
+licence = "EUPL-1.2"
+licence_file = "schemas/en16931/LICENSE-EUPL-1.2.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "895b0e412bf16d13ca22530844937ca9d93511ca587c2d12dbef4a6b2f37b0ff"
+
+[[asset]]
+path = "schemas/en16931/ubl/UBL/EN16931-UBL-syntax.sch"
+title = "EN 16931 UBL 1.3.17: the syntax rules bound to UBL"
+author = "CEN/TC 434 and the European Commission (Connecting Europe Facility eInvoicing)"
+source = "https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/validation-1.3.17/en16931-ubl-1.3.17.zip, the file schematron/UBL/EN16931-UBL-syntax.sch of the archive (retrieved 2026-11-11)"
+licence = "EUPL-1.2"
+licence_file = "schemas/en16931/LICENSE-EUPL-1.2.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "6179091ec82fdf131cf3ba6d71aa47d9c5215a2bbcc4616b46f278a759cc05b5"
+
+[[asset]]
+path = "schemas/en16931/ubl/abstract/EN16931-model.sch"
+title = "EN 16931 UBL 1.3.17: the business rules of the semantic model (abstract)"
+author = "CEN/TC 434 and the European Commission (Connecting Europe Facility eInvoicing)"
+source = "https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/validation-1.3.17/en16931-ubl-1.3.17.zip, the file schematron/abstract/EN16931-model.sch of the archive (retrieved 2026-11-11)"
+licence = "EUPL-1.2"
+licence_file = "schemas/en16931/LICENSE-EUPL-1.2.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "949095661fada023665f5d8589d85cc0543f8c50d47c0b214616622b05b3eb72"
+
+[[asset]]
+path = "schemas/en16931/ubl/abstract/EN16931-syntax.sch"
+title = "EN 16931 UBL 1.3.17: the syntax rules (abstract)"
+author = "CEN/TC 434 and the European Commission (Connecting Europe Facility eInvoicing)"
+source = "https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/validation-1.3.17/en16931-ubl-1.3.17.zip, the file schematron/abstract/EN16931-syntax.sch of the archive (retrieved 2026-11-11)"
+licence = "EUPL-1.2"
+licence_file = "schemas/en16931/LICENSE-EUPL-1.2.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "e1bb698a2cae0ea492d15256f404841abd449c2d55df77f59b7b9050eed123b9"
+
+[[asset]]
+path = "schemas/en16931/ubl/codelist/EN16931-UBL-codes.sch"
+title = "EN 16931 UBL 1.3.17: the code list rules"
+author = "CEN/TC 434 and the European Commission (Connecting Europe Facility eInvoicing)"
+source = "https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/validation-1.3.17/en16931-ubl-1.3.17.zip, the file schematron/codelist/EN16931-UBL-codes.sch of the archive (retrieved 2026-11-11)"
+licence = "EUPL-1.2"
+licence_file = "schemas/en16931/LICENSE-EUPL-1.2.txt"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "933c2ec261f7fc219aa0c7fa9f0b67c7fe156600b6fbb9a0eb045f583d173bd9"
+
+[[asset]]
 path = "schemas/json-schema/draft-04/schema.json"
 title = "JSON Schema draft-04: the meta-schema"
 author = "JSON Schema Specification Authors (dual-licensed BSD-3-Clause or AFL-3.0; redistributed under BSD-3-Clause)"
@@ -2347,6 +2523,39 @@ licence_file = "schemas/w3c/LICENSE-W3C-20150513.html"
 kind = "schema"
 usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
 sha256 = "6946432ca7af2e9584f91b48564111fd2c73c8debbbcd9a0e3f5ddd382eeb51c"
+
+[[asset]]
+path = "schemas/xrechnung/cii/XRechnung-CII-validation.sch"
+title = "XRechnung 3.0.2 Schematron 2.6.0: the rules for CII"
+author = "Koordinierungsstelle für IT-Standards (KoSIT)"
+source = "https://github.com/itplr-kosit/xrechnung-schematron/releases/download/v2.6.0/xrechnung-3.0.2-schematron-2.6.0.zip, the file schematron/cii/XRechnung-CII-validation.sch of the archive (retrieved 2026-11-11)"
+licence = "Apache-2.0"
+licence_file = "schemas/xrechnung/LICENSE-Apache-2.0"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "53bb5c0664fc603bbaaddeed26eb59525a05d3359d1a63f148876b2f2eedde1d"
+
+[[asset]]
+path = "schemas/xrechnung/common.sch"
+title = "XRechnung 3.0.2 Schematron 2.6.0: the variables shared by the UBL and CII rules"
+author = "Koordinierungsstelle für IT-Standards (KoSIT)"
+source = "https://github.com/itplr-kosit/xrechnung-schematron/releases/download/v2.6.0/xrechnung-3.0.2-schematron-2.6.0.zip, the file schematron/common.sch of the archive (retrieved 2026-11-11)"
+licence = "Apache-2.0"
+licence_file = "schemas/xrechnung/LICENSE-Apache-2.0"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "7443d2f4c12d3e1ffa6b38f7f83cea89a9b03343f31f726083018d8985492a12"
+
+[[asset]]
+path = "schemas/xrechnung/ubl/XRechnung-UBL-validation.sch"
+title = "XRechnung 3.0.2 Schematron 2.6.0: the rules for UBL"
+author = "Koordinierungsstelle für IT-Standards (KoSIT)"
+source = "https://github.com/itplr-kosit/xrechnung-schematron/releases/download/v2.6.0/xrechnung-3.0.2-schematron-2.6.0.zip, the file schematron/ubl/XRechnung-UBL-validation.sch of the archive (retrieved 2026-11-11)"
+licence = "Apache-2.0"
+licence_file = "schemas/xrechnung/LICENSE-Apache-2.0"
+kind = "schema"
+usage = "Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"
+sha256 = "e143facbe9e6a39cc89d68de0576e81806f21a64830b102250c706a524f35ee6"
 # END bundled schemas
 
 [[asset]]

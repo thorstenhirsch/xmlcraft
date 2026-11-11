@@ -152,8 +152,11 @@ pub fn check_schema_guarded(text: &str, version: u64, location: &str, schemas: &
 
 /// The bundled schema (as a `bundled:/` URI) of an electronic invoice that names none, if XmlCraft ships it.
 pub fn implicit_schema(text: &str) -> Option<String> {
-    // (Only UBL documents have a schema of their own to find; looking costs a second reading of the text, so the others are not read.)
-    if !text.contains("urn:oasis:names:specification:ubl:schema:xsd:") {
+    // (Only UBL and CII documents have a schema of their own to find; looking costs a second reading of the text, so the others are not
+    // read.)
+    if !text.contains("urn:oasis:names:specification:ubl:schema:xsd:")
+        && !text.contains("urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100")
+    {
         return None;
     }
     let detection = xmlcraft_einvoice::detect(text)?;

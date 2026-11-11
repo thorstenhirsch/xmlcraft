@@ -50,6 +50,10 @@ pub const SCHEMA_LICENCES: &[&str] = &[
     "BSD-3-Clause",
     "CC0-1.0",
     "LicenseRef-Unicode",
+    // Approved by the owner on 2026-11-11 for the e-invoice sets: the CEN EN 16931 validation artefacts, and the UN/CEFACT notice of
+    // the Cross Industry Invoice schemas (verbatim redistribution).
+    "EUPL-1.2",
+    "LicenseRef-UNCEFACT",
 ];
 
 /// Kind of a bundled schema entry.

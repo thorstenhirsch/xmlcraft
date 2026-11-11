@@ -2359,9 +2359,9 @@ tier = "P2"
 milestone = "M9"
 status = "partial"
 commands = []
-tools = ["einvoice_detect"]
-evidence = ["crates/einvoice/src/lib.rs::factur_x_and_zugferd_profiles_are_read_from_the_guideline"]
-notes = "Recognised by the CrossIndustryInvoice root and the guideline ID (XRechnung in CII). Missing: validation against the CII schema and the XRechnung rules."
+tools = ["einvoice_detect", "xml_validate"]
+evidence = ["crates/einvoice/src/lib.rs::factur_x_and_zugferd_profiles_are_read_from_the_guideline", "crates/automation/tests/einvoice.rs::xml_validate_checks_a_cii_invoice_against_the_bundled_d16b_schema_offline"]
+notes = "Recognised by the CrossIndustryInvoice root and the guideline ID (XRechnung in CII). F8 and `xml_validate` check a CII invoice that names no grammar against the UN/CEFACT CII D16B schemas that ship with the app (the decoupled-code-list copy of the CEN EN 16931 artefacts, unmodified, found by namespace), offline. Missing: the XRechnung rules (Schematron)."
 
 [[feature]]
 id = "einvoice.en16931"
@@ -2385,7 +2385,7 @@ status = "partial"
 commands = []
 tools = ["einvoice_detect"]
 evidence = ["crates/einvoice/src/lib.rs::peppol_en16931_and_unknown_identifiers_are_told_apart", "crates/engine/src/validation.rs::a_ubl_invoice_that_names_no_schema_is_checked_against_the_bundled_one"]
-notes = "Peppol BIS Billing 3.0 (and PINT) is recognised by its CustomizationID, with the process from ProfileID. The UBL 2.1 schema check applies to it. Missing: the Peppol rules (Schematron)."
+notes = "Peppol BIS Billing 3.0 (and PINT) is recognised by its CustomizationID, with the process from ProfileID. The UBL 2.1 schema check applies to it. Missing: the Peppol rules (Schematron). They are not bundled: OpenPeppol publishes them with no licence and its statement of copyright forbids redistribution without consent (AGENTS.md 1.6)."
 
 [[feature]]
 id = "einvoice.fatturapa"
@@ -2397,7 +2397,7 @@ status = "partial"
 commands = []
 tools = ["einvoice_detect"]
 evidence = ["crates/einvoice/src/lib.rs::zugferd_1_fatturapa_and_order_x_are_recognised_by_their_roots"]
-notes = "FatturaElettronica is recognised with its schema version and transmission format (FPR12, FPA12). Missing: validation against the FatturaPA schema."
+notes = "FatturaElettronica is recognised with its schema version and transmission format (FPR12, FPA12). Missing: validation against the FatturaPA schema. The schema is not bundled: fatturapa.gov.it reserves redistribution to the prior written consent of the Sistema di Interscambio, so it ships only when that consent or another licence is on record (AGENTS.md 1.6); a document that names a local copy validates against it."
 
 [[feature]]
 id = "einvoice.zugferd-facturx"
