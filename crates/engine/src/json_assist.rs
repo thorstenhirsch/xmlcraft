@@ -441,6 +441,34 @@ pub fn complete_with(set: &SchemaSet, text: &str, language: Language, offset: us
                     },
                 ));
             }
+            // An object or an array is still a shape to write when the schema offers no value for it: `{}` or `[]`, the caret inside.
+            if let Some(docs) = set.describe_at(&context.path) {
+                for (kind, empty) in [("object", "{}"), ("array", "[]")] {
+                    if !docs.types.iter().any(|t| t == kind) {
+                        continue;
+                    }
+                    let shown = if yaml { crate::yaml_assist::value_text(empty) } else { empty.to_owned() };
+                    let Some(prefix) = matches_prefix(&shown, &context.partial) else { continue };
+                    if ranked.iter().any(|(_, c)| c.kind == CompletionKind::Value && c.insert == shown) {
+                        continue;
+                    }
+                    ranked.push((
+                        prefix,
+                        Completion {
+                            // (Between the brackets: both are one byte.)
+                            cursor: 1,
+                            label: shown.clone(),
+                            insert: shown,
+                            replace: context.replace.clone(),
+                            kind: CompletionKind::Value,
+                            detail: kind.to_owned(),
+                            documentation: None,
+                            required: false,
+                            deprecated: false,
+                        },
+                    ));
+                }
+            }
         }
     }
     // Those that start with what was typed come before those that only contain it; the schema's order is kept within each.
@@ -695,6 +723,9 @@ mod tests {
         assert_eq!(labels(&offer(JSON, r#"{"kind": "b|"}"#)), ["\"beta\""], "typing filters, and the whole string is replaced");
         assert_eq!(labels(&offer(JSON, r#"{"active": t|}"#)), ["true"]);
         assert_eq!(labels(&offer(JSON, r#"{"list": [{"city": "a"}, {|}]}"#)), ["city", "zip"]);
+        assert_eq!(labels(&offer(JSON, r#"{"home": |}"#)), ["{}"], "an object with no value to offer is an empty object");
+        assert_eq!(labels(&offer(JSON, r#"{"list": |}"#)), ["[]"]);
+        assert_eq!(offer(JSON, r#"{"home": |}"#)[0].cursor, 1, "the caret goes between the brackets");
     }
 
     #[test]
@@ -730,6 +761,8 @@ mod tests {
         assert_eq!(labels(&offer(Language::Yaml, "home: {city: x, |}\n")), ["zip"]);
         assert_eq!(labels(&offer(Language::Yaml, "home: {\"city\": x, |}\n")), ["zip"], "a quoted name that is there is not offered again");
         assert_eq!(labels(&offer(Language::Yaml, "list: [{|}]\n")), ["city", "zip"]);
+        assert_eq!(labels(&offer(Language::Yaml, "home: |\n")), ["{}"]);
+        assert_eq!(labels(&offer(Language::Yaml, "list: |\n")), ["[]"]);
     }
 
     #[test]
