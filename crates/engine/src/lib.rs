@@ -11,6 +11,7 @@ pub mod commands;
 pub mod compare;
 pub mod doc_kind;
 mod document;
+pub mod einvoice;
 pub mod elements;
 pub mod folding;
 pub mod generate;

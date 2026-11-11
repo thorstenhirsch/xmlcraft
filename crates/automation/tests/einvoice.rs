@@ -123,3 +123,67 @@ fn xml_validate_checks_a_cii_invoice_against_the_bundled_d16b_schema_offline() {
     );
     assert_eq!(bad["valid"], json!(false), "{bad}");
 }
+
+const UBL_XRECHNUNG: &str = include_str!("../../einvoice/tests/fixtures/xrechnung-ubl.xml");
+
+fn einvoice_validate(a: &mut Automation, args: Value) -> Value {
+    let content = a.call("einvoice_validate", &args).expect("runs");
+    let Some(Content::Json(v)) = content.into_iter().next() else { panic!("json") };
+    v
+}
+
+#[test]
+fn einvoice_validate_reports_each_stage_and_the_rules_a_broken_invoice_breaks() {
+    let mut a = Automation::new();
+    let ok = einvoice_validate(&mut a, json!({ "text": UBL_XRECHNUNG }));
+    assert_eq!(ok["valid"], json!(true), "{ok}");
+    let stages: Vec<(&str, &str)> =
+        ok["stages"].as_array().expect("stages").iter().map(|s| (s["stage"].as_str().unwrap_or(""), s["status"].as_str().unwrap_or(""))).collect();
+    assert_eq!(stages, [("well-formedness", "passed"), ("detection", "passed"), ("schema", "passed"), ("en16931", "passed"), ("cius", "passed")]);
+    assert_eq!(ok["detection"]["standard"], json!("XRechnung"));
+    assert_eq!(ok["totals"]["failed"], json!(0));
+    assert_eq!(ok["not_evaluated_total"], json!(0));
+    assert!(ok["totals"]["passed"].as_u64().is_some_and(|n| n > 800), "{}", ok["totals"]);
+    // BR-CO-15, at the invoice element.
+    let broken = UBL_XRECHNUNG
+        .replace("<cbc:TaxInclusiveAmount currencyID=\"EUR\">119.00", "<cbc:TaxInclusiveAmount currencyID=\"EUR\">118.00")
+        .replace("<cbc:PayableAmount currencyID=\"EUR\">119.00", "<cbc:PayableAmount currencyID=\"EUR\">118.00");
+    let bad = einvoice_validate(&mut a, json!({ "text": broken, "stages": ["en16931"], "max_findings": 5 }));
+    assert_eq!(bad["valid"], json!(false), "{bad}");
+    let findings = bad["findings"].as_array().expect("findings");
+    let rules: Vec<&str> = findings.iter().filter(|f| f["severity"] == json!("fatal")).filter_map(|f| f["rule"].as_str()).collect();
+    assert_eq!(rules, ["BR-CO-15"], "{bad}");
+    assert_eq!(findings[0]["line"], json!(3), "the invoice element starts on line 3: {}", findings[0]);
+    assert!(findings[0]["test"].as_str().is_some_and(|t| t.contains("TaxInclusiveAmount")));
+    let stage = |name: &str| bad["stages"].as_array().and_then(|s| s.iter().find(|s| s["stage"] == json!(name)).cloned()).expect("stage");
+    assert_eq!((stage("schema")["status"].clone(), stage("schema")["reason"].clone()), (json!("not-run"), json!("not asked for")));
+    assert_eq!(stage("en16931")["status"], json!("failed"));
+}
+
+#[test]
+fn einvoice_validate_reads_a_file_in_the_root_and_an_open_document_and_refuses_what_is_wrong() {
+    let dir = tempfile::tempdir().expect("dir");
+    std::fs::write(dir.path().join("rechnung.xml"), UBL_XRECHNUNG).expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    let by_file = einvoice_validate(&mut a, json!({ "path": "rechnung.xml" }));
+    assert_eq!(by_file["valid"], json!(true), "{by_file}");
+    let opened = a.call("doc_open", &json!({ "path": "rechnung.xml" })).expect("opens");
+    let Some(Content::Json(opened)) = opened.into_iter().next() else { panic!("json") };
+    let by_id = einvoice_validate(&mut a, json!({ "id": opened["id"] }));
+    assert_eq!(by_id["totals"], by_file["totals"]);
+    // Outside the root, bad arguments, and something that is not XML are errors an agent can act on.
+    for args in [
+        json!({ "path": "../outside.xml" }),
+        json!({}),
+        json!({ "text": "<a/>", "stages": ["everything"] }),
+        json!({ "text": "<a/>", "stages": "schema" }),
+        json!({ "text": "<a/>", "max_findings": -1 }),
+        json!({ "text": "<a/>", "max_findings": 100000 }),
+    ] {
+        assert!(a.call("einvoice_validate", &args).is_err(), "{args}");
+    }
+    let not_invoice = einvoice_validate(&mut a, json!({ "text": "<a/>" }));
+    assert_eq!((not_invoice["valid"].clone(), not_invoice["detection"]["recognised"].clone()), (json!(false), json!(false)));
+    let broken = einvoice_validate(&mut a, json!({ "text": "<a>" }));
+    assert_eq!(broken["stages"][0]["status"], json!("failed"), "{broken}");
+}

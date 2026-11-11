@@ -164,6 +164,17 @@ impl Prepared {
     }
 }
 
+/// Compile `expression` without running it: whether the engine reads it (its syntax, its functions and their arities, the prefixes it
+/// uses, the variables it names).
+pub fn compile(expression: &str, options: &Options) -> Result<(), QueryError> {
+    let mut builder = StaticContextBuilder::default();
+    for (prefix, uri) in &options.namespaces {
+        builder.add_namespace(prefix, uri);
+    }
+    let queries = Queries::new(builder);
+    queries.sequence(expression).map(|_| ()).map_err(|e| error_of(Phase::Compile, &e))
+}
+
 /// Evaluate `expression` with the document `xml` as the context item.
 pub fn evaluate(xml: &str, expression: &str, options: &Options) -> Result<Evaluated, QueryError> {
     Prepared::new(xml)?.evaluate(expression, options)

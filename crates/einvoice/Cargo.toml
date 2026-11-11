@@ -13,6 +13,11 @@ workspace = true
 [dependencies]
 xmlcraft-syntax = { workspace = true }
 xmlcraft-xsd = { workspace = true }
+xmlcraft-text = { workspace = true }
+xmlcraft-resolve = { workspace = true }
+xmlcraft-schemas = { workspace = true }
+xmlcraft-validate = { workspace = true }
+xmlcraft-schematron = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
