@@ -153,3 +153,25 @@ fn edit_complete_opens_the_popup_between_names_and_after_a_colon_where_nothing_w
     assert!(h.query_by_label("Complete name").is_none());
     assert!(h.state().status.contains("Nothing to complete"), "{}", h.state().status);
 }
+
+#[test]
+fn an_object_or_an_array_with_no_value_is_completed_as_an_empty_shape() {
+    let dir = tempfile::tempdir().expect("dir");
+    file(dir.path(), "s.json", SCHEMA);
+    let mut h = shell();
+    open_at(&mut h, dir.path(), "d.json", "{\"$schema\": \"s.json\", \"home\": ¦}");
+    assert!(h.state_mut().execute("edit.complete"));
+    h.run_steps(3);
+    assert!(h.query_by_label("Complete {}").is_some(), "an object to write");
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    assert_eq!(text(&h), "{\"$schema\": \"s.json\", \"home\": {}}");
+    file(dir.path(), "a.json", "{\"type\": \"object\", \"properties\": {\"list\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}}}");
+    open_at(&mut h, dir.path(), "e.json", "{\"$schema\": \"a.json\", \"list\": ¦}");
+    assert!(h.state_mut().execute("edit.complete"));
+    h.run_steps(3);
+    assert!(h.query_by_label("Complete []").is_some(), "an array to write");
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    assert_eq!(text(&h), "{\"$schema\": \"a.json\", \"list\": []}");
+}

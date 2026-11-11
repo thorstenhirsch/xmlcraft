@@ -110,3 +110,14 @@ fn a_bson_file_is_completed_and_hovered_in_its_extended_json_text() {
     let r = call(&mut a, "json_complete", json!({ "text": "{\"$schema\": \"s.json\", }", "language": "bson", "offset": 22 }));
     assert_eq!(r["schema"].as_bool(), Some(true), "Extended JSON text names its schema too: {r}");
 }
+
+#[test]
+fn an_object_or_an_array_the_schema_offers_no_value_for_is_offered_as_an_empty_shape() {
+    let dir = tempfile::tempdir().expect("dir");
+    file(dir.path(), "s.json", SCHEMA);
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    let doc = file(dir.path(), "d.json", "{\"$schema\": \"s.json\", \"home\": }");
+    let r = call(&mut a, "json_complete", json!({ "path": doc, "offset": 30 }));
+    assert_eq!(labels(&r), ["{}"], "{r}");
+    assert_eq!((r["items"][0]["cursor"].as_u64(), r["items"][0]["detail"].as_str()), (Some(1), Some("object")));
+}
