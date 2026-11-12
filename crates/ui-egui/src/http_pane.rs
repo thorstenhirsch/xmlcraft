@@ -46,6 +46,11 @@ pub(crate) enum Outcome {
         serial: u64,
         result: Result<xmlcraft_platform::search::Found, String>,
     },
+    /// The start of a conversion, for the Transform tool's preview.
+    Preview {
+        serial: u64,
+        result: Result<crate::tools::transform::Preview, String>,
+    },
     /// SchemaStore's schemas for a file (the Assign Schema window).
     Catalog {
         serial: u64,
@@ -240,6 +245,10 @@ impl XmlCraftApp {
         while let Ok(outcome) = self.http.rx.try_recv() {
             if let Outcome::Catalog { serial, result } = outcome {
                 self.schemastore_answered(serial, result);
+                continue;
+            }
+            if let Outcome::Preview { serial, result } = outcome {
+                self.preview_answered(serial, result);
                 continue;
             }
             if let Outcome::Files { serial, result } = outcome {

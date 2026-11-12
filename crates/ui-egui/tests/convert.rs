@@ -1,10 +1,11 @@
-//! Convert in the real shell: the form, its options, and the document it opens.
+//! The Transform tool window (convert between formats) in the real shell: the form, its options, the preview beside it, and the
+//! document it opens.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use xmlcraft_ui_egui::XmlCraftApp;
 
 fn shell() -> Harness<'static, XmlCraftApp> {
@@ -34,9 +35,19 @@ fn names(h: &Harness<'static, XmlCraftApp>) -> Vec<String> {
     h.state().session.documents().iter().map(|d| d.name().to_owned()).collect()
 }
 
-/// The Convert button of the form (the command bar of a data document has a Convert of its own, drawn before the form).
+/// The primary action of the tool (the command bar of a data document has a Convert of its own).
 fn convert_button<'h>(h: &'h Harness<'static, XmlCraftApp>) -> egui_kittest::Node<'h> {
-    h.query_all_by_label("Convert").last().expect("the form's Convert button")
+    h.get_by_label("Open as New Document")
+}
+
+/// Run frames until the preview of the result has come back from its thread (a quarter of a second of quiet comes first).
+fn wait_for(h: &mut Harness<'static, XmlCraftApp>, what: &str) {
+    let started = Instant::now();
+    while h.query_by_label_contains(what).is_none() {
+        assert!(started.elapsed() < Duration::from_secs(10), "waiting for {what:?}");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }
 
 fn text_of(h: &Harness<'static, XmlCraftApp>, name: &str) -> String {
@@ -50,7 +61,8 @@ fn an_xml_document_is_converted_to_json_and_opens_as_a_new_document() {
     open(&mut h, &file(dir.path(), "order.xml", "<order id=\"7\"><item>Tea</item></order>"));
     assert!(h.state_mut().execute("file.convert"));
     h.run_steps(3);
-    assert!(h.query_by_label("Convert document").is_some(), "the form is up");
+    assert!(h.query_by_label("Close Transform").is_some(), "the tool window is up");
+    assert!(h.query_by_label("→ order.xml").is_some(), "it says which document it works on");
     h.get_by_label("JSON").click();
     h.run_steps(2);
     convert_button(&h).click();
@@ -82,7 +94,8 @@ fn json_goes_to_yaml_by_default_and_a_refused_conversion_says_why() {
     h.run_steps(2);
     convert_button(&h).click();
     h.run_steps(3);
-    assert!(h.query_by_label_contains("cannot be converted").is_some(), "the reason is shown in the form");
+    wait_for(&mut h, "cannot be converted");
+    assert!(h.query_by_label("Close Transform").is_some(), "the panel stays, with the reason");
     assert!(!names(&h).contains(&"e.bson".to_owned()));
 }
 
@@ -127,7 +140,8 @@ fn json_lines_are_converted_as_a_list_and_the_same_format_is_not_offered() {
     h.run_steps(2);
     convert_button(&h).click();
     h.run_steps(3);
-    assert!(h.query_by_label("Convert document").is_some(), "the form is still up");
+    assert!(h.query_by_label("Close Transform").is_some(), "the panel is still up");
+    assert!(convert_button(&h).accesskit_node().is_disabled(), "converting to the format the document is in is not offered");
     assert!(!names(&h).contains(&"e.xml.xml".to_owned()) && names(&h).iter().filter(|n| n.as_str() == "e.xml").count() == 1);
 }
 
@@ -143,4 +157,51 @@ fn the_indentation_of_the_form_reaches_the_conversion() {
     convert_button(&h).click();
     h.run_steps(3);
     assert_eq!(text_of(&h, "d.json"), "{\n    \"a\": {\n        \"b\": 1\n    }\n}\n");
+}
+
+#[test]
+fn the_preview_shows_the_start_of_the_result_and_follows_the_options_and_the_document() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "d.json", "{\"a\": [1, 2], \"b\": \"x\"}"));
+    assert!(h.state_mut().execute("file.convert"));
+    h.run_steps(3);
+    // JSON goes to YAML first: the preview is the YAML, before anything is opened.
+    wait_for(&mut h, "Preview");
+    let started = Instant::now();
+    while h.query_by_label("The preview of the result").map(|n| n.accesskit_node().value().unwrap_or_default().to_string()).as_deref()
+        != Some("a:\n  - 1\n  - 2\nb: x")
+    {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "waiting for the preview: {:?}",
+            h.query_by_label("The preview of the result").map(|n| (n.accesskit_node().value(), n.accesskit_node().label()))
+        );
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(names(&h), ["d.json"], "a preview opens nothing");
+    // Another option makes another preview.
+    h.get_by_label("XML").click();
+    h.run_steps(2);
+    let started = Instant::now();
+    while !h.query_by_label("The preview of the result").is_some_and(|n| n.accesskit_node().value().unwrap_or_default().contains("<a>1</a>")) {
+        assert!(started.elapsed() < Duration::from_secs(10), "waiting for the XML preview");
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(names(&h), ["d.json"]);
+}
+
+#[test]
+fn a_long_result_is_previewed_by_its_first_lines_only() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    let items: Vec<String> = (0..400).map(|n| n.to_string()).collect();
+    open(&mut h, &file(dir.path(), "big.json", &format!("{{\"n\": [{}]}}", items.join(","))));
+    assert!(h.state_mut().execute("file.convert"));
+    h.run_steps(3);
+    wait_for(&mut h, "The first 200 of");
+    let shown = h.get_by_label("The preview of the result").accesskit_node().value().unwrap_or_default().to_string();
+    assert_eq!(shown.lines().count(), 200, "{}", shown.lines().count());
 }

@@ -12,6 +12,7 @@ use crate::{Panel, XmlCraftApp, widgets};
 pub(crate) mod compare;
 pub(crate) mod query;
 pub(crate) mod search;
+pub(crate) mod transform;
 
 /// The document a tool follows: the one being shown.
 #[derive(Clone, Debug, PartialEq, Eq)]
