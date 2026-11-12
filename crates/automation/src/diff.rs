@@ -1,10 +1,13 @@
-//! `diff_compare` and `diff_merge`: two documents compared, and a base with two versions merged.
+//! `diff_compare`, `diff_hunks` and `diff_merge`: two documents compared (as a list of differences, or side by side in rows), and a base
+//! with two versions merged.
 //!
 //! Each document is an open document (`id`), a file (`path`, through the root confinement) or `text`. Nothing is written: the merged
 //! text is returned for the caller to open or save.
 
 use serde_json::{Value, json};
-use xmlcraft_diff::{Choice, Family, HunkKind, LineOptions, TreeOptions, Whitespace, compare_mixed, diff_lines, diff_words, merge3};
+use xmlcraft_diff::{
+    Choice, Family, HunkKind, LineOptions, Row, TreeOptions, Whitespace, compare_mixed, diff_lines, diff_words, merge3, side_by_side,
+};
 use xmlcraft_engine::language::Language;
 use xmlcraft_text::Buffer;
 
@@ -46,6 +49,11 @@ fn option_properties() -> Value {
 pub(crate) fn tools() -> Vec<ToolDef> {
     let mut compare = option_properties();
     let mut merge = option_properties();
+    let mut hunks = option_properties();
+    if let Some(h) = hunks.as_object_mut() {
+        h.insert("old".into(), document_schema("The first document (the left side)"));
+        h.insert("new".into(), document_schema("The second document (the right side)"));
+    }
     if let (Some(c), Some(m)) = (compare.as_object_mut(), merge.as_object_mut()) {
         c.insert("old".into(), document_schema("The first document"));
         c.insert("new".into(), document_schema("The second document"));
@@ -78,6 +86,19 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             read_only: true,
             destructive: false,
             handler: diff_compare,
+        },
+        ToolDef {
+            name: "diff_hunks",
+            title: "Compare two documents side by side",
+            description: "Compare two documents (open, files or text) as two texts side by side: `rows` pair the lines (1-based) of the old (left) and the new \
+                          (right) document - equal, changed (with the parts of each line that differ, as 1-based columns and text), left_only or right_only - \
+                          and `hunks` are the runs of rows that are not equal, with their rows and lines. In tree mode (auto, when both documents can be read \
+                          as trees) a hunk is `significant` when a difference of the trees is in it; one that differs only in the text (white space between \
+                          elements, a line broken elsewhere) is not, and `count` counts the significant hunks. Options as for diff_compare. Nothing is written.",
+            input_schema: json!({ "type": "object", "properties": hunks, "required": ["old", "new"], "additionalProperties": false }),
+            read_only: true,
+            destructive: false,
+            handler: diff_hunks,
         },
         ToolDef {
             name: "diff_merge",
@@ -282,4 +303,100 @@ fn diff_merge(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     };
     let merged = merge3(&base.text, &ours.text, &theirs.text, &line_options(args)?);
     json_result(json!({ "text": merged.render(choice), "conflicts": merged.conflict_count(), "clean": merged.conflict_count() == 0 }))
+}
+
+/// The most rows one `diff_hunks` answer lists (the hunks are listed up to [`MAX_LISTED`]).
+const MAX_ROWS: usize = 5000;
+
+/// The parts of a line that differ, as 1-based columns (characters, as everywhere else) with their text.
+fn parts_json(line: &str, parts: &[std::ops::Range<usize>]) -> Value {
+    parts
+        .iter()
+        .filter_map(|p| {
+            let text = line.get(p.clone())?;
+            let column = line.get(..p.start)?.chars().count() + 1;
+            Some(json!({ "column": column, "length": text.chars().count(), "text": text }))
+        })
+        .collect()
+}
+
+fn diff_hunks(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let (old, new) = (document(a, args, "old")?, document(a, args, "new")?);
+    let by_name = |key: &str, d: &crate::documents::Source| args[key].get("text").is_none().then(|| family_of(d.language));
+    let (old_family, new_family) = formats_of(args, [by_name("old", &old), by_name("new", &new)])?;
+    let mode = args.get("mode").and_then(Value::as_str).unwrap_or("auto");
+    if !matches!(mode, "auto" | "lines" | "tree") {
+        return Err(ToolError::InvalidArgs(format!("mode is auto, lines or tree, not {mode:?}")));
+    }
+    let (tree_options, line_options) = (tree_options(args)?, line_options(args)?);
+    let mut aligned = side_by_side(&old.text, &new.text, &line_options);
+    if aligned.too_large {
+        return fail(format!("a document has more than {} lines: too many to put side by side", xmlcraft_diff::MAX_LINES));
+    }
+    let mut used = "lines";
+    if mode != "lines" {
+        match compare_mixed(&old.text, old_family, &new.text, new_family, &tree_options) {
+            Ok(changes) => {
+                let left: Vec<_> = changes.iter().filter_map(|c| c.old.clone()).collect();
+                let right: Vec<_> = changes.iter().filter_map(|c| c.new.clone()).collect();
+                aligned.mark(&left, &right);
+                used = "tree";
+            }
+            Err(e) if mode == "tree" => return fail(format!("a document cannot be compared as a tree: {e}")),
+            Err(_) => {}
+        }
+    }
+    let line = |text: &str, lines: &[std::ops::Range<usize>], i: usize| lines.get(i).and_then(|r| text.get(r.clone())).unwrap_or_default().to_owned();
+    let rows: Vec<Value> = aligned
+        .rows
+        .iter()
+        .take(MAX_ROWS)
+        .map(|row| match row {
+            Row::Equal(l, r) => json!({ "kind": "equal", "left": l + 1, "right": r + 1 }),
+            Row::LeftOnly(l) => json!({ "kind": "left_only", "left": l + 1, "text": line(&old.text, &aligned.left_lines, *l) }),
+            Row::RightOnly(r) => json!({ "kind": "right_only", "right": r + 1, "text": line(&new.text, &aligned.right_lines, *r) }),
+            Row::Changed { left, right, left_parts, right_parts } => {
+                let (lt, rt) = (line(&old.text, &aligned.left_lines, *left), line(&new.text, &aligned.right_lines, *right));
+                json!({
+                    "kind": "changed",
+                    "left": left + 1,
+                    "right": right + 1,
+                    "left_text": lt,
+                    "right_text": rt,
+                    "left_parts": parts_json(&lt, left_parts),
+                    "right_parts": parts_json(&rt, right_parts),
+                })
+            }
+        })
+        .collect();
+    let hunks: Vec<Value> = aligned
+        .hunks
+        .iter()
+        .take(MAX_LISTED)
+        .map(|h| {
+            let kind = match (h.left.is_empty(), h.right.is_empty()) {
+                (true, _) => "added",
+                (_, true) => "removed",
+                _ => "changed",
+            };
+            json!({
+                "kind": kind,
+                "rows": { "first": h.first_row + 1, "last": h.last_row + 1 },
+                "left": lines_json(h.left.start, h.left.end),
+                "right": lines_json(h.right.start, h.right.end),
+                "significant": h.significant,
+            })
+        })
+        .collect();
+    json_result(json!({
+        "mode": used,
+        "identical": aligned.significant_count() == 0,
+        "count": aligned.significant_count(),
+        "hunk_count": aligned.hunks.len(),
+        "row_count": aligned.rows.len(),
+        "truncated": aligned.rows.len() > MAX_ROWS || aligned.hunks.len() > MAX_LISTED,
+        "words_skipped": aligned.words_skipped,
+        "hunks": hunks,
+        "rows": rows,
+    }))
 }

@@ -134,3 +134,26 @@ fn a_change_says_where_its_parents_are_and_the_merge_offers_only_what_it_reads()
         assert!(!properties.contains(&ignored.to_owned()), "{ignored} is not read by a merge");
     }
 }
+
+#[test]
+fn side_by_side_rows_pair_the_lines_and_hunks_say_which_differences_count() {
+    let mut a = Automation::new();
+    // The value changes on line 2; line 4 differs only in the order of its attributes, which is no difference of the trees.
+    let (old, new) = ("<r>\n<a>Milk</a>\n<m/>\n<b x=\"1\" y=\"2\"/>\n</r>\n", "<r>\n<a>Oat milk</a>\n<m/>\n<b y=\"2\" x=\"1\"/>\n<n/>\n</r>\n");
+    let r = call(&mut a, "diff_hunks", json!({ "old": { "text": old }, "new": { "text": new } })).expect("runs");
+    assert_eq!((r["mode"].as_str(), r["hunk_count"].as_u64(), r["count"].as_u64()), (Some("tree"), Some(2), Some(2)), "{r}");
+    let row = &r["rows"][1];
+    assert_eq!((row["kind"].as_str(), row["left"].as_u64(), row["right"].as_u64()), (Some("changed"), Some(2), Some(2)), "{r}");
+    assert_eq!(row["left_parts"], json!([{ "column": 4, "length": 4, "text": "Milk" }]));
+    assert_eq!(row["right_parts"], json!([{ "column": 4, "length": 8, "text": "Oat milk" }]));
+    assert_eq!(r["hunks"][1]["right"], json!({ "first": 4, "last": 5 }), "{r}");
+    // Only the order of the attributes: one hunk, not significant.
+    let (old, new) = ("<r>\n<a/>\n<b x=\"1\" y=\"2\"/>\n</r>\n", "<r>\n<a/>\n<b y=\"2\" x=\"1\"/>\n</r>\n");
+    let r = call(&mut a, "diff_hunks", json!({ "old": { "text": old }, "new": { "text": new } })).expect("runs");
+    assert_eq!((r["hunk_count"].as_u64(), r["count"].as_u64(), r["identical"].as_bool()), (Some(1), Some(0), Some(true)), "{r}");
+    assert_eq!(r["hunks"][0]["significant"], false);
+    let r = call(&mut a, "diff_hunks", json!({ "old": { "text": old }, "new": { "text": new }, "mode": "lines" })).expect("runs");
+    assert_eq!((r["mode"].as_str(), r["count"].as_u64()), (Some("lines"), Some(1)), "lines count every hunk: {r}");
+    assert!(matches!(call(&mut a, "diff_hunks", json!({ "old": { "text": "a" } })), Err(ToolError::InvalidArgs(_))));
+    assert!(call(&mut a, "diff_hunks", json!({ "old": { "text": "<a>" }, "new": { "text": "<a/>" }, "mode": "tree" })).is_err());
+}
