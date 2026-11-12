@@ -38,6 +38,7 @@ xmlcraft-einvoice = { workspace = true }
 xmlcraft-invoice-pdf = { workspace = true }
 xmlcraft-schematron = { workspace = true }
 xmlcraft-diff = { workspace = true }
+xmlcraft-grid = { workspace = true }
 xmlcraft-pdf = { workspace = true }
 xmlcraft-query = { workspace = true }
 rowan = { workspace = true }
