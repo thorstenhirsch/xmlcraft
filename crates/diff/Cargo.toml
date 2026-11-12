@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 xmlcraft-syntax = { workspace = true }
+xmlcraft-text = { workspace = true }
 xmlcraft-json-syntax = { workspace = true }
 xmlcraft-yaml-syntax = { workspace = true }
 rowan = { workspace = true }

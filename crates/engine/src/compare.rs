@@ -4,7 +4,7 @@
 
 use std::ops::Range;
 
-use xmlcraft_diff::{ChangeKind, Family, HunkKind, LineOptions, TreeOptions, Whitespace, compare_mixed, diff_lines};
+use xmlcraft_diff::{Aligned, ChangeKind, Family, HunkKind, LineOptions, TreeOptions, Whitespace, compare_mixed, diff_lines, side_by_side};
 
 use crate::language::Language;
 use crate::worker::Worker;
@@ -75,6 +75,8 @@ pub struct Compared {
     /// How many differences there are.
     pub count: usize,
     pub differences: Vec<Difference>,
+    /// The two texts side by side (from their lines; in tree mode the hunks that hold a difference of the trees are the significant ones).
+    pub aligned: Aligned,
 }
 
 /// What came of a request.
@@ -134,7 +136,7 @@ fn by_lines(job: &CompareJob, note: Option<String>) -> Compared {
             Difference { kind, label, old: diff.old_span(h), new: diff.new_span(h) }
         })
         .collect();
-    Compared { mode: Mode::Lines, note, count: diff.hunks.len(), differences }
+    Compared { mode: Mode::Lines, note, count: diff.hunks.len(), differences, aligned: Aligned::from_diff(&diff, &job.old, &job.new) }
 }
 
 /// Compare the two texts of a job.
@@ -164,7 +166,11 @@ pub fn compare(job: &CompareJob) -> Result<Compared, String> {
                     new: c.new.clone().unwrap_or_else(|| c.new_parent.clone()),
                 })
                 .collect();
-            Ok(Compared { mode: Mode::Tree, note: None, count: changes.len(), differences })
+            let mut aligned = side_by_side(&job.old, &job.new, &line_options(job.ignore));
+            let left: Vec<Range<usize>> = changes.iter().filter_map(|c| c.old.clone()).collect();
+            let right: Vec<Range<usize>> = changes.iter().filter_map(|c| c.new.clone()).collect();
+            aligned.mark(&left, &right);
+            Ok(Compared { mode: Mode::Tree, note: None, count: changes.len(), differences, aligned })
         }
         Err(e) if job.mode == Mode::Tree => Err(format!("a document cannot be compared as a tree: {e}")),
         Err(e) => Ok(by_lines(job, Some(format!("A document cannot be read as a tree ({e}), so they are compared line by line.")))),
@@ -238,6 +244,16 @@ mod tests {
         assert_eq!(&a[d.old.clone()], "n=\"2\"");
         assert_eq!(&b[d.new.clone()], "n=\"3\"");
         assert!(d.label.contains("@n"), "{}", d.label);
+    }
+
+    #[test]
+    fn the_side_by_side_rows_count_only_the_hunks_with_a_tree_difference() {
+        // The second line differs in a value, the fourth only in the order of its attributes (no difference of the trees).
+        let (a, b) = ("<r>\n<a>1</a>\n<m/>\n<b x=\"1\" y=\"2\"/>\n</r>\n", "<r>\n<a>2</a>\n<m/>\n<b y=\"2\" x=\"1\"/>\n</r>\n");
+        let tree = compare(&job(a, Language::Xml, b, Language::Xml, Mode::Auto)).expect("compares");
+        assert_eq!((tree.aligned.hunks.len(), tree.aligned.significant_count()), (2, 1));
+        let lines = compare(&job(a, Language::Xml, b, Language::Xml, Mode::Lines)).expect("compares");
+        assert_eq!((lines.aligned.hunks.len(), lines.aligned.significant_count()), (2, 2));
     }
 
     #[test]
