@@ -413,3 +413,29 @@ fn new_lines_use_the_documents_line_ending_and_indentation() {
     assert_eq!(apply(xml, &g.set_cell(xml, &t, 0, 1, "y").expect("edits")), xml.replace("<i n=\"1\"/>", "<i n=\"1\">\r\n\t\t<v>y</v>\r\n\t</i>"));
     assert_eq!(apply(xml, &g.delete_rows(xml, &t, &[0]).expect("edits")), "<r>\r\n\t<i n=\"2\"><v>x</v></i>\r\n</r>");
 }
+
+#[test]
+fn several_cells_of_a_row_are_cleared_together_with_the_right_commas_and_lines() {
+    let json = "[{\"x\": 1, \"a\": 2, \"b\": 3}, {\"x\": 4}]";
+    let (g, t) = table(json, Family::Json, Flavor::Plain, &[]);
+    let (out, _) = after(json, &g.clear_cells(json, &t, &[(0, 1), (0, 2)]).expect("edits"), Family::Json, Flavor::Plain, &[]);
+    assert_eq!(out, "[{\"x\": 1}, {\"x\": 4}]");
+    let (out, _) = after(json, &g.clear_cells(json, &t, &[(0, 0), (0, 1), (0, 2), (1, 0)]).expect("edits"), Family::Json, Flavor::Plain, &[]);
+    assert_eq!(out, "[{}, {}]");
+    let (g, t) = table(YAML, Family::Yaml, Flavor::Plain, &[0]);
+    let (out, _) = after(YAML, &g.clear_cells(YAML, &t, &[(1, 0), (1, 1)]).expect("edits"), Family::Yaml, Flavor::Plain, &[0]);
+    assert_eq!(out, YAML.replace("  - name: Milk\n    qty: 10\n    tags: [a]\n", "  - tags: [a]\n"));
+    let (out, _) = after(YAML, &g.clear_cells(YAML, &t, &[(0, 0), (0, 1)]).expect("edits"), Family::Yaml, Flavor::Plain, &[0]);
+    assert_eq!(out, YAML.replace("  - name: Tea\n    qty: 2\n", "  - {}\n"));
+    let (g, t) = table(XML, Family::Xml, Flavor::Plain, &[0]);
+    let out = apply(XML, &g.clear_cells(XML, &t, &[(0, 0), (0, 1), (0, 2)]).expect("edits"));
+    assert_eq!(out, XML.replace("<book id=\"b1\" lang=\"en\">", "<book>").replace("    <title>Almanac</title>\n", ""));
+}
+
+#[test]
+fn an_item_with_only_white_space_has_an_empty_text_cell_that_typing_fills() {
+    let text = "<r>\n  <i>\n  </i>\n  <i>x</i>\n</r>";
+    let (g, t) = table(text, Family::Xml, Flavor::Plain, &[0]);
+    assert_eq!(cells(&t, 0), [(CellKind::Missing, String::new())]);
+    assert_eq!(apply(text, &g.set_cell(text, &t, 0, 0, "y").expect("edits")), "<r>\n  <i>y</i>\n  <i>x</i>\n</r>");
+}

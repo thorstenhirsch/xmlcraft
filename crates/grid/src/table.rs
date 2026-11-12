@@ -385,6 +385,8 @@ impl Grid {
                 None => Cell::missing(at),
             },
             ColumnKind::Text => match text_only(item) {
+                // (White space alone is layout, not a value: the cell is empty, and typing into it replaces the white space.)
+                Some(Some(t)) if blank(t) => Cell::missing(at),
                 Some(Some(t)) => scalar(t, t.span.clone()),
                 Some(None) => Cell::missing(at),
                 None if item.children.iter().any(|c| c.kind == NodeKind::Text && !blank(c)) => {

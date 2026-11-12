@@ -94,6 +94,7 @@ fn document(style: Style, rows: &[Vec<(usize, String)>]) -> String {
 enum Op {
     Set(usize, usize, String),
     Clear(usize, usize),
+    ClearRow(usize),
     Insert(Option<usize>),
     Duplicate(usize),
     Delete(usize),
@@ -111,6 +112,7 @@ fn op() -> impl Strategy<Value = Op> {
     prop_oneof![
         3 => (0..8usize, 0..6usize, value()).prop_map(|(r, c, v)| Op::Set(r, c, v)),
         1 => (0..8usize, 0..6usize).prop_map(|(r, c)| Op::Clear(r, c)),
+        1 => (0..8usize).prop_map(Op::ClearRow),
         1 => proptest::option::of(0..8usize).prop_map(Op::Insert),
         1 => (0..8usize).prop_map(Op::Duplicate),
         1 => (0..8usize).prop_map(Op::Delete),
@@ -178,6 +180,7 @@ proptest! {
             let result = match &op {
                 Op::Set(r, c, v) => g.set_cell(&text, &t, r % n, c % cols, v),
                 Op::Clear(r, c) => g.clear_cell(&text, &t, r % n, c % cols),
+                Op::ClearRow(r) => g.clear_cells(&text, &t, &(0..cols).map(|c| (r % n, c)).collect::<Vec<_>>()),
                 Op::Insert(a) => g.insert_row(&text, &t, a.map(|a| a % n)),
                 Op::Duplicate(r) => g.duplicate_row(&text, &t, r % n),
                 Op::Delete(r) if n > 1 => g.delete_rows(&text, &t, &[r % n]),
@@ -241,6 +244,12 @@ proptest! {
                     x.sort();
                     y.sort();
                     prop_assert_eq!(x, y, "the same rows: {} → {}", text, out);
+                }
+                Op::ClearRow(r) => {
+                    for i in (0..n).filter(|i| *i != r % n) {
+                        prop_assert_eq!(&before[i], &after[i], "row {} changed: {} → {}", i, text, out);
+                    }
+                    prop_assert!(t2.rows[r % n].cells.iter().all(|c| c.kind == CellKind::Missing), "{} → {}", text, out);
                 }
                 Op::Rename(c) => {
                     prop_assert!(t2.column_index(&label(*c)).is_none(), "{} → {}", text, out);

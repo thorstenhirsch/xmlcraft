@@ -625,59 +625,87 @@ impl Grid {
 
     /// The edits that remove the cell `column` of `item` (the attribute with the space before it; the elements, each with its line when it
     /// is alone on it; the member with its comma, or its line).
-    fn clear_edits(&self, ctx: &Ctx<'_>, item: &Node, column: usize) -> Result<Vec<Edit>, GridError> {
+    /// The edits that remove the cells `columns` of `item`: attributes with the space before them; elements, each with its line when it
+    /// is alone on it; members with their commas, or their lines (YAML); an item left with no member becomes `{}`.
+    fn clear_edits(&self, ctx: &Ctx<'_>, item: &Node, columns: &[usize]) -> Result<Vec<Edit>, GridError> {
         let text = ctx.text;
-        let col = ctx.columns.get(column).ok_or_else(|| GridError("no such column".to_owned()))?;
-        let ranges: Vec<Range<usize>> = match col.kind {
-            ColumnKind::Attribute => item
-                .children
-                .iter()
-                .filter(|c| c.kind == NodeKind::Attribute && c.name == col.name)
-                .map(|a| {
-                    let before = text.get(..a.span.start).unwrap_or_default();
-                    (a.span.start - (before.len() - before.trim_end().len()))..a.span.end
-                })
-                .collect(),
-            ColumnKind::Element => {
-                item.children.iter().filter(|c| c.kind == NodeKind::Element && c.name == col.name).map(|e| element_removal(text, &e.span)).collect()
+        let mut ranges: Vec<Range<usize>> = Vec::new();
+        // The members to remove, by their index in the item.
+        let mut members = vec![false; item.children.len()];
+        for &column in columns {
+            let col = ctx.columns.get(column).ok_or_else(|| GridError("no such column".to_owned()))?;
+            match col.kind {
+                ColumnKind::Attribute => {
+                    ranges.extend(item.children.iter().filter(|c| c.kind == NodeKind::Attribute && c.name == col.name).map(|a| {
+                        let before = text.get(..a.span.start).unwrap_or_default();
+                        (a.span.start - (before.len() - before.trim_end().len()))..a.span.end
+                    }))
+                }
+                ColumnKind::Element => ranges.extend(
+                    item.children.iter().filter(|c| c.kind == NodeKind::Element && c.name == col.name).map(|e| element_removal(text, &e.span)),
+                ),
+                ColumnKind::Text => {
+                    if let Some(Some(t)) = text_only(item) {
+                        ranges.push(t.span.clone());
+                    }
+                }
+                ColumnKind::Value => return fail("an item of an array of values is deleted as a row"),
+                ColumnKind::Member => {
+                    if let Some(k) = item.children.iter().position(|m| m.name == col.name)
+                        && let Some(m) = members.get_mut(k)
+                    {
+                        *m = true;
+                    }
+                }
             }
-            ColumnKind::Text => match text_only(item) {
-                Some(Some(t)) => vec![t.span.clone()],
-                _ => Vec::new(),
-            },
-            ColumnKind::Value => return fail("an item of an array of values is deleted as a row"),
-            ColumnKind::Member => {
-                let Some(k) = item.children.iter().position(|m| m.name == col.name) else { return Ok(Vec::new()) };
-                let member = item.children.get(k).ok_or_else(|| GridError("no such member".to_owned()))?;
-                if ctx.family == Family::Json || ctx.is_yaml_flow(item) {
-                    let entries: Vec<Range<usize>> = item.children.iter().map(|m| entry_start(m)..ctx.extent(m).end).collect();
-                    let deleted: Vec<bool> = (0..entries.len()).map(|i| i == k).collect();
-                    let inner = item.span.start + 1..item.span.end.saturating_sub(1).max(item.span.start + 1);
-                    comma_removal(&entries, &deleted, inner)
-                } else {
+        }
+        if members.iter().any(|m| *m) {
+            if ctx.family == Family::Json || ctx.is_yaml_flow(item) {
+                let entries: Vec<Range<usize>> = item.children.iter().map(|m| entry_start(m)..ctx.extent(m).end).collect();
+                let inner = item.span.start + 1..item.span.end.saturating_sub(1).max(item.span.start + 1);
+                ranges.extend(comma_removal(&entries, &members, inner));
+            } else {
+                let kept = members.iter().position(|m| !*m);
+                for (k, member) in item.children.iter().enumerate().filter(|(k, _)| members.get(*k).copied().unwrap_or(false)) {
                     let key_start = entry_start(member);
                     let start = line_start(text, key_start);
                     let end = ctx.extent(member).end.max(member.name_span.end);
                     if text.get(start..key_start).is_some_and(|p| p.trim().is_empty()) {
-                        vec![Range { start, end: after_line(text, end) }]
-                    } else {
-                        // The first member, after `- `: the next one takes its place, or the item becomes `{}`.
-                        match item.children.get(k + 1) {
-                            Some(next) => vec![Range { start: key_start, end: entry_start(next) }],
-                            None => return Ok(vec![Edit::replace(key_start..end, "{}")]),
+                        ranges.push(Range { start, end: after_line(text, end) });
+                        continue;
+                    }
+                    // The first member, after `- `: the first one kept takes its place, or the item becomes `{}`.
+                    match kept.and_then(|i| item.children.get(i)) {
+                        Some(next) if kept.is_some_and(|i| i > k) => ranges.push(Range { start: key_start, end: entry_start(next) }),
+                        _ => {
+                            let last_end = item.children.last().map_or(end, |l| ctx.extent(l).end.max(l.name_span.end));
+                            return Ok(vec![Edit::replace(key_start..last_end, "{}")]);
                         }
                     }
                 }
             }
-        };
+        }
         Ok(merge(ranges).into_iter().map(Edit::delete).collect())
     }
 
     /// The edits that remove the cell (the attribute, the elements of the column, the member). An empty cell changes nothing.
     pub fn clear_cell(&self, text: &str, table: &Table, row: usize, column: usize) -> Result<Vec<Edit>, GridError> {
+        self.clear_cells(text, table, &[(row, column)])
+    }
+
+    /// The edits that remove the cells `cells` (row, column), as one change: two members of one object go with the right commas.
+    pub fn clear_cells(&self, text: &str, table: &Table, cells: &[(usize, usize)]) -> Result<Vec<Edit>, GridError> {
         let ctx = self.table_ctx(text, table)?;
-        let item = self.item_of(&ctx, table, row)?;
-        normalize(self.clear_edits(&ctx, item, column)?)
+        let mut by_row: std::collections::BTreeMap<usize, Vec<usize>> = std::collections::BTreeMap::new();
+        for &(row, column) in cells {
+            by_row.entry(row).or_default().push(column);
+        }
+        let mut edits = Vec::new();
+        for (row, columns) in by_row {
+            let item = self.item_of(&ctx, table, row)?;
+            edits.extend(self.clear_edits(&ctx, item, &columns)?);
+        }
+        normalize(edits)
     }
 
     // --- rows ----------------------------------------------------------------------------------------------------------------
@@ -978,7 +1006,7 @@ impl Grid {
         let mut edits = Vec::new();
         for r in 0..table.rows.len() {
             let item = self.item_of(&ctx, table, r)?;
-            edits.extend(self.clear_edits(&ctx, item, column)?);
+            edits.extend(self.clear_edits(&ctx, item, &[column])?);
         }
         normalize(edits)
     }
