@@ -206,3 +206,34 @@ fn a_doctype_with_non_ascii_text_does_not_move_the_places_after_it() {
     assert_eq!(&doc[r.items[0].span.clone().expect("a place")], "<a>é</a>");
     assert_eq!(r.items[0].text, "<a>é</a>");
 }
+
+/// XPath 3.1 §3.7.1 and F&O 3.1 §4.2 (`op:numeric-equal`, `op:numeric-less-than`, `op:numeric-greater-than`): every comparison
+/// with NaN is false except `ne` / `!=`, which is true. The published `xee` compared `xs:double` as `OrderedFloat`, which orders
+/// NaN above every number, so `NaN gt 0` and `NaN ge 0` were true (gap 23; the vendored `xee-interpreter` fixes it). E-invoice
+/// rules compare `number()` of amounts that may be missing, so a wrong `true` lets a rule pass that must fail.
+#[test]
+fn every_comparison_with_nan_is_false_except_not_equal() {
+    let nans = ["number('x')", "xs:double('NaN')", "xs:float('NaN')", "number(/r/missing)"];
+    let others = ["0", "1", "-1", "xs:double('INF')", "xs:double('-INF')", "xs:double('NaN')"];
+    let value_ops = ["eq", "ne", "lt", "le", "gt", "ge"];
+    let general_ops = ["=", "!=", "<", "<=", ">", ">="];
+    for nan in nans {
+        for other in others {
+            for (pair, (value, general)) in
+                [(nan, other), (other, nan)].into_iter().flat_map(|p| value_ops.iter().zip(general_ops).map(move |o| (p, o)))
+            {
+                let expected = if *value == "ne" { "true()" } else { "false()" };
+                for op in [*value, general] {
+                    let expression = format!("{} {op} {}", pair.0, pair.1);
+                    let r = run(&expression);
+                    assert_eq!(r.items.len(), 1, "{expression}");
+                    assert_eq!(r.items[0].text, expected, "{expression}");
+                }
+            }
+        }
+    }
+    // Ordering still works around NaN: `max`/`min` give NaN, and `sort` puts NaN first (F&O 3.1 §14.2.1 / XPath `order by`).
+    assert_eq!(run("string(max((1, xs:double('NaN'), 3)))").items[0].text, "\"NaN\"");
+    assert_eq!(run("string-join(sort((3, xs:double('NaN'), 1)) ! string(.), ' ')").items[0].text, "\"NaN 1 3\"");
+    assert_eq!(run("1 lt 2 and 2 gt 1 and 1 le 1 and 1 ge 1 and 1e0 lt 2e0").items[0].text, "true()");
+}

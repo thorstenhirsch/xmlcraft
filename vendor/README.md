@@ -29,3 +29,14 @@ is returned as `WgpuError::CreateRenderer`, allowing PdfCraft's existing startup
 The regression `pdfcraft` `tests::pipeline_creation_error_is_returned_and_device_remains_usable`
 uses an invalid three-sample pipeline, then valid and invalid pipelines again on the same device.
 Later rendering errors, device loss, and non-winit renderer construction are unchanged.
+
+## The XPath interpreter (`xee-interpreter`)
+
+`vendor/xee-interpreter` is a **path patch** (root `[patch.crates-io]`), unlike the window-stack copies above. It is the published
+`xee-interpreter` 0.2.0 from crates.io (Paligo's xee, upstream commit `ba0b38b14ef526966ccdf28ba39e64a7a85e8960`, MIT; `LICENSE-MIT`
+unchanged), with the patches below, each marked `XmlCraft patch:` in the source. It should be proposed upstream and the copy removed
+once a release carries the fix.
+
+| Crate | Version | Licence | Patches | Test |
+|---|---|---|---|---|
+| xee-interpreter | 0.2.0 | MIT | (1) `op_gt`, `op_ge`, `op_lt`, `op_le` compare `xs:float` and `xs:double` as IEEE values: they compared the `OrderedFloat` wrappers, which order NaN above every number, so `NaN gt 0`, `NaN ge 0`, `0 lt NaN`, `0 le NaN` (and the general `>` `>=` `<` `<=`) were true, where XPath 3.1 §3.7 and F&O 3.1 §4.3 make every comparison with NaN false except `ne`/`!=` (`op_eq` already compared the raw values). E-invoice Schematron rules compare `number()` of amounts that may be missing, so a rule could pass wrongly. (2) `Atomic::fallible_compare` (the ordering of `fn:sort`, `array:sort`, `order by`) puts NaN equal to itself and before every other number, as F&O 3.1 `fn:sort` and XQuery 3.1 `order by` ask; with (1) alone NaN would compare less than everything from both sides and sorting would be inconsistent. `fn:min`/`fn:max` already handled NaN themselves | `xmlcraft-query` `tests/xpath.rs` `every_comparison_with_nan_is_false_except_not_equal`; `xtask` `the_xpath_interpreter_is_the_vendored_copy` keeps the path patch in the build |

@@ -225,3 +225,31 @@ fn deeply_nested_and_huge_invoices_are_answered() {
     eprintln!("300 lines: {:?}, {} findings", started.elapsed(), report.findings_total);
     assert!(report.stage(Stage::En16931).is_some_and(|s| s.status == Status::Failed), "the totals no longer add up");
 }
+
+/// A rule that compares `number()` of an amount the invoice lacks must not pass: `number()` of nothing is NaN, and every comparison
+/// with NaN is false except `!=` (XPath 3.1 §3.7). The published XPath engine answered `NaN ge 0` with true, so such a rule passed on
+/// an invoice without the amount (vendor/README.md, `xee-interpreter`). The bundled EN 16931 and XRechnung rules convert with
+/// `xs:decimal`, which fails on a missing value instead; this is the shape of a user's or a CIUS's own rule.
+#[test]
+fn a_rule_comparing_a_missing_amount_does_not_pass() {
+    use xmlcraft_schematron::Schema;
+    let rules = r#"<schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">
+        <ns prefix="ram" uri="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100"/>
+        <pattern><rule context="ram:SpecifiedTradeSettlementHeaderMonetarySummation">
+          <assert id="R-GE" test="number(ram:DuePayableAmount) ge 0">The amount due shall not be negative.</assert>
+          <assert id="R-GT" test="number(ram:DuePayableAmount) &gt; -1">The amount due shall be more than -1.</assert>
+          <assert id="R-LE" test="0 &lt;= number(ram:DuePayableAmount)">The amount due shall be at least 0.</assert>
+          <assert id="R-NE" test="number(ram:DuePayableAmount) != 0">The amount due shall not be zero.</assert>
+        </rule></pattern></schema>"#;
+    let schema = Schema::parse(rules, &|_| None).expect("reads");
+    let ids = |text: &str| -> BTreeSet<String> {
+        let report = schema.validate(text, None).expect("validates");
+        assert!(report.problems.is_empty(), "{:?}", report.problems);
+        report.findings.iter().filter_map(|f| f.id.clone()).collect()
+    };
+    assert!(ids(CII).is_empty(), "the amount is there: every rule holds");
+    let without = CII.replace("<ram:DuePayableAmount>119.00</ram:DuePayableAmount>", "");
+    assert_ne!(without, CII);
+    let expected: BTreeSet<String> = ["R-GE", "R-GT", "R-LE"].map(str::to_owned).into();
+    assert_eq!(ids(&without), expected, "NaN compares false, except `!=`");
+}
