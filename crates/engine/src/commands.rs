@@ -280,6 +280,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("view.search", "Search", VIEW, None, Nothing, "file-search").toggle().sep(),
     c("view.reset_layout", "Reset Layout", VIEW, None, Nothing, "panel-left"),
     c("view.tool.query", "Query", VIEW, None, Nothing, "square-terminal").toggle().sep(),
+    c("view.tool.compare", "Compare", VIEW, None, Nothing, "git-compare").toggle(),
     c("app.about", "About XmlCraft", HELP, None, Nothing, "circle-help"),
 ];
 
