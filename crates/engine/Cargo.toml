@@ -35,6 +35,7 @@ xmlcraft-html = { workspace = true }
 xmlcraft-wsdl = { workspace = true }
 xmlcraft-openapi = { workspace = true }
 xmlcraft-einvoice = { workspace = true }
+xmlcraft-invoice-pdf = { workspace = true }
 xmlcraft-schematron = { workspace = true }
 xmlcraft-diff = { workspace = true }
 xmlcraft-pdf = { workspace = true }

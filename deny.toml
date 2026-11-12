@@ -38,6 +38,8 @@ allow-git = [
     # The reviewed egui 0.37 and winit 0.30.13 fork revisions (immutable pins in Cargo.toml), the ones PdfCraft builds against.
     "https://github.com/storytold/egui",
     "https://github.com/storytold/winit",
+    # PdfCraft (same owner): `pdfcraft-cos` writes the invoice PDF (xmlcraft-invoice-pdf), and its patched `hayro-jbig2`; immutable pin in Cargo.toml.
+    "https://github.com/storytold/pdfcraft",
 ]
 
 [advisories]

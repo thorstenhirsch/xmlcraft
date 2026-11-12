@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- XmlCraft's built-in English invoice template (written for XmlCraft; MIT OR Apache-2.0). -->
+<invoice-template version="1" page="A4" margin="20mm" font-size="9.5" lang="en">
+  <header>
+    <block style="heading" align="right">{seller.name}</block>
+    <block style="small" align="right">{seller.address.line1} · {seller.address.postcode} {seller.address.city}</block>
+  </header>
+  <body>
+    <columns widths="55% 45%" top="40mm">
+      <column>
+        <block style="small">{seller.name} · {seller.address.line1} · {seller.address.postcode} {seller.address.city}</block>
+        <block/>
+        <block>{buyer.name}</block>
+        <block if="buyer.contact.name">{buyer.contact.name}</block>
+        <block if="buyer.address.line1">{buyer.address.line1}</block>
+        <block if="buyer.address.line2">{buyer.address.line2}</block>
+        <block if="buyer.address.line3">{buyer.address.line3}</block>
+        <block>{buyer.address.postcode} {buyer.address.city}</block>
+        <block if="buyer.address.country">{buyer.address.country}</block>
+      </column>
+      <column>
+        <fields>
+          <field label="Invoice number" value="{number}"/>
+          <field label="Invoice date" value="{issue_date|date}"/>
+          <field label="Delivery date" value="{delivery.date|date}" if="delivery.date"/>
+          <field label="Due date" value="{due_date|date}" if="due_date"/>
+          <field label="Buyer reference" value="{buyer.reference}" if="buyer.reference"/>
+          <field label="Order" value="{order_reference}" if="order_reference"/>
+          <field label="Contact" value="{seller.contact.name}" if="seller.contact.name"/>
+          <field label="Phone" value="{seller.contact.phone}" if="seller.contact.phone"/>
+          <field label="Email" value="{seller.contact.email}" if="seller.contact.email"/>
+        </fields>
+      </column>
+    </columns>
+    <block style="title" top="90mm">{document_name} {number}</block>
+    <block if="notes">{notes}</block>
+    <block/>
+    <table rows="lines" widths="7% 43% 13% 13% 9% 15%">
+      <col title="No." value="{id}"/>
+      <col title="Description" value="{name}" sub="{description}"/>
+      <col title="Quantity" value="{quantity|number} {unit|unit}" align="right"/>
+      <col title="Unit price" value="{net_price|money}" align="right"/>
+      <col title="VAT" value="{vat_rate|percent}" align="right"/>
+      <col title="Amount" value="{line_total|money}" align="right"/>
+    </table>
+    <block/>
+    <table rows="allowances_charges" widths="55% 15% 30%" if="allowances_charges">
+      <col title="Allowance / charge" value="{reason}"/>
+      <col title="VAT" value="{vat_rate|percent}" align="right"/>
+      <col title="Amount" value="{amount|money}" align="right"/>
+    </table>
+    <columns widths="55% 45%">
+      <column>
+        <table rows="vat_breakdown" widths="18% 22% 30% 30%">
+          <col title="Cat." value="{category}"/>
+          <col title="Rate" value="{rate|percent}" align="right"/>
+          <col title="Net" value="{taxable|money}" align="right"/>
+          <col title="VAT" value="{tax|money}" align="right"/>
+        </table>
+      </column>
+      <column>
+        <totals/>
+      </column>
+    </columns>
+    <block/>
+    <block style="heading" if="payment.iban">Payment</block>
+    <fields>
+      <field label="Account name" value="{payment.account_name}" if="payment.account_name"/>
+      <field label="IBAN" value="{payment.iban}" if="payment.iban"/>
+      <field label="BIC" value="{payment.bic}" if="payment.bic"/>
+      <field label="Reference" value="{payment.reference}" if="payment.reference"/>
+      <field label="Mandate" value="{payment.mandate}" if="payment.mandate"/>
+    </fields>
+    <block/>
+    <block>{payment_terms}</block>
+  </body>
+  <footer>
+    <block style="small" align="center">{seller.name} · {seller.address.line1} · {seller.address.postcode} {seller.address.city} · VAT ID {seller.vat_id} · {seller.legal_id}</block>
+    <block style="small" align="center">Page {page} of {pages}</block>
+  </footer>
+</invoice-template>

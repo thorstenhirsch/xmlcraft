@@ -10,7 +10,7 @@ use xmlcraft_einvoice::{Detection, Standard, Syntax, detect};
 use xmlcraft_einvoice::validate::{MAX_FINDINGS, Report, Stage, Status};
 use xmlcraft_text::Buffer;
 
-use crate::documents::{json_result, language_source_properties, source, source_properties};
+use crate::documents::{fail, json_result, language_source_properties, source, source_properties};
 
 use crate::tools::ToolDef;
 use crate::{Automation, Content, Result, ToolError};
@@ -70,6 +70,25 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             read_only: true,
             destructive: false,
             handler: einvoice_model,
+        },
+        ToolDef {
+            name: "einvoice_render_pdf",
+            title: "Make a PDF of an electronic invoice (ZUGFeRD / Factur-X hybrid)",
+            description: "Make a PDF that shows an electronic invoice to people and carries its XML unchanged (byte for byte), and write it to `out` \
+                      (inside the root; an existing file is replaced only with `overwrite: true`). The invoice is an open document (`id`), a file \
+                      (`path`, whose bytes are embedded as they are) or `text`. `template` is `de` (the built-in German layout, address in the \
+                      DIN 5008 window), `en`, or the path of a template file (the `invoice-template` format: header, body and footer of blocks, \
+                      columns, fields, tables and totals with `{path|filter}` placeholders). A UN/CEFACT CII invoice with a Factur-X profile \
+                      is embedded as `factur-x.xml` (`xrechnung.xml` for XRechnung) with the Factur-X XMP metadata and the `/AFRelationship` the \
+                      specification gives; a UBL invoice is attached as `invoice.xml` (Factur-X is CII only). PDF/A-3 needs an output intent with \
+                      an ICC profile, which XmlCraft does not ship: give `icc_profile` (the path of an RGB, gray or CMYK output or display profile) \
+                      for the file to say it is PDF/A-3b. Returns `pages`, `bytes`, `warnings` (placeholders that name nothing, characters the \
+                      font lacks), `facturx` (`hybrid`, `profile`, `file_name`, `relationship`, `reason`) and `pdfa` (with `pdfa_reason`). \
+                      Neither PDF/A nor Factur-X conformance is verified: check the file with a validator before relying on it.",
+            input_schema: json!({ "type": "object", "properties": render_properties(), "required": ["out"], "additionalProperties": false }),
+            read_only: false,
+            destructive: false,
+            handler: einvoice_render_pdf,
         },
     ]
 }
@@ -290,4 +309,120 @@ fn einvoice_model(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     value["cut"] = json!(invoice.cut);
     value["lossy"] = json!(s.lossy);
     json_result(value)
+}
+
+fn render_properties() -> Value {
+    let mut properties = source_properties();
+    if let Some(map) = properties.as_object_mut() {
+        map.insert(
+            "template".into(),
+            json!({ "type": "string", "description": "`de` (default), `en`, or the path of an invoice template file inside the root" }),
+        );
+        map.insert("out".into(), json!({ "type": "string", "description": "The PDF file to write, inside the root" }));
+        map.insert("overwrite".into(), json!({ "type": "boolean", "description": "Replace `out` when it exists (default false)" }));
+        map.insert(
+            "icc_profile".into(),
+            json!({ "type": "string", "description": "The path of an ICC output or display profile for the PDF/A-3 output intent" }),
+        );
+    }
+    properties
+}
+
+/// The largest template or ICC profile read.
+const MAX_SIDE_FILE: usize = 4 * 1024 * 1024;
+
+fn read_side_file(a: &Automation, path: &str, what: &str) -> Result<Vec<u8>> {
+    let resolved = a.confinement.resolve_read(path)?;
+    let loaded = xmlcraft_platform::files::read_file(&resolved).map_err(|e| ToolError::Failed(format!("{what} {}: {e}", resolved.display())))?;
+    if loaded.bytes.len() > MAX_SIDE_FILE {
+        return Err(ToolError::Failed(format!("{what} {} is larger than {} MiB", resolved.display(), MAX_SIDE_FILE / (1024 * 1024))));
+    }
+    Ok(loaded.bytes)
+}
+
+fn einvoice_render_pdf(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let out = args.get("out").and_then(Value::as_str).ok_or_else(|| ToolError::InvalidArgs("`out` (the PDF to write) is required".into()))?;
+    let overwrite = match args.get("overwrite") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(ToolError::InvalidArgs("overwrite is true or false".into())),
+    };
+    let template_text = match args.get("template") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(t)) if t == "de" || t == "en" => None,
+        Some(Value::String(path)) => {
+            let bytes = read_side_file(a, path, "the template")?;
+            Some(String::from_utf8(bytes).map_err(|_| ToolError::Failed(format!("the template {path} is not UTF-8")))?)
+        }
+        Some(_) => return Err(ToolError::InvalidArgs("template is `de`, `en` or the path of a template file".into())),
+    };
+    let template = match (args.get("template").and_then(Value::as_str), template_text.as_deref()) {
+        (_, Some(t)) => xmlcraft_invoice_pdf::TemplateSource::Text(t),
+        (Some("en"), None) => xmlcraft_invoice_pdf::TemplateSource::En,
+        _ => xmlcraft_invoice_pdf::TemplateSource::De,
+    };
+    let icc = match args.get("icc_profile") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(path)) => Some(read_side_file(a, path, "the ICC profile")?),
+        Some(_) => return Err(ToolError::InvalidArgs("icc_profile is the path of an ICC profile".into())),
+    };
+    let target = a.confinement.resolve_write(out)?;
+    if std::fs::symlink_metadata(&target).is_ok_and(|m| m.file_type().is_symlink()) {
+        return fail(format!("{} is a symbolic link, and is not written through", target.display()));
+    }
+    if target.exists() && !overwrite {
+        return fail(format!("{} exists: pass overwrite: true to replace it", target.display()));
+    }
+    let s = source(a, args)?;
+    if !s.language.is_xml() {
+        return Err(ToolError::InvalidArgs("einvoice_render_pdf reads XML documents".into()));
+    }
+    if s.lossy {
+        return fail("the file has bytes that are not valid in its encoding; it would not be embedded unchanged, so it is not rendered");
+    }
+    // The bytes embedded: a file's own bytes (whatever its encoding); otherwise the text, which is UTF-8.
+    let file_bytes = match args.get("path").and_then(Value::as_str) {
+        Some(path) => Some(read_side_file_any(a, path)?).filter(|b| !b.starts_with(b"%PDF")),
+        None => None,
+    };
+    let bytes = match file_bytes {
+        Some(b) => b,
+        None => {
+            if let Some(encoding) = crate::pdf::declared_encoding(&s.text)
+                && !encoding.eq_ignore_ascii_case("utf-8")
+                && !encoding.eq_ignore_ascii_case("utf8")
+            {
+                return fail(format!(
+                    "the document declares the encoding {encoding}, and its text would be embedded as UTF-8: give the file by `path` to embed its bytes"
+                ));
+            }
+            s.text.as_bytes().to_vec()
+        }
+    };
+    let time = xmlcraft_resolve::Clock::now(&xmlcraft_platform::network::SystemClock);
+    let options = xmlcraft_invoice_pdf::Options { template, time, icc_profile: icc.as_deref() };
+    let rendered = xmlcraft_engine::einvoice::einvoice_render_pdf(&s.text, &bytes, &options)
+        .map_err(|why| ToolError::Failed(format!("rendering the invoice failed: {why}")))?
+        .map_err(|e| match e {
+            xmlcraft_invoice_pdf::RenderError::NotAnInvoice(why) => ToolError::InvalidArgs(why),
+            other => ToolError::Failed(other.to_string()),
+        })?;
+    xmlcraft_platform::files::write_file(&target, &rendered.bytes).map_err(|e| ToolError::Failed(format!("{}: {e}", target.display())))?;
+    let f = &rendered.facturx;
+    json_result(json!({
+        "written": target.display().to_string(),
+        "pages": rendered.pages,
+        "bytes": rendered.bytes.len(),
+        "warnings": rendered.warnings,
+        "facturx": { "hybrid": f.hybrid, "profile": f.profile, "file_name": f.file_name, "relationship": f.relationship, "reason": f.reason },
+        "pdfa": rendered.pdfa,
+        "pdfa_reason": rendered.pdfa_reason,
+        "verified": false,
+    }))
+}
+
+/// The bytes of the invoice file given by `path` (bounded like the documents the tools read).
+fn read_side_file_any(a: &Automation, path: &str) -> Result<Vec<u8>> {
+    let resolved = a.confinement.resolve_read(path)?;
+    xmlcraft_platform::files::read_file(&resolved).map(|l| l.bytes).map_err(|e| ToolError::Failed(format!("{}: {e}", resolved.display())))
 }

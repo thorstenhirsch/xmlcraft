@@ -148,7 +148,7 @@ pub(crate) fn replace_tools() -> Vec<ToolDef> {
 
 /// The encoding an XML declaration at the start of `text` names, if it has one (`<?xml`, white space, then the pseudo-attributes
 /// `version`, `encoding` and `standalone`; a processing instruction that only starts alike, `<?xml-stylesheet`, is not one).
-fn declared_encoding(text: &str) -> Option<String> {
+pub(crate) fn declared_encoding(text: &str) -> Option<String> {
     let head = text.trim_start_matches('\u{feff}').strip_prefix("<?xml")?;
     if !head.starts_with([' ', '\t', '\r', '\n']) {
         return None;
