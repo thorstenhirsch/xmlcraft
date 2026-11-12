@@ -4,10 +4,12 @@
 //! cargo run -p xmlcraft-ui-egui --example shot -- out.png [--size 1440x900] [--scale 2] [--theme light|dark|system]
 //!     [--tabs a.xml,b.xml] [--active 0] [--width 1200] [--open FILE.xml [--find TEXT] [--goto LINE:COL] [--command ID]]
 //!     [--panes outline,entry_helpers,problems,search] [--right entry_helpers] [--search TEXT [--search-in DIR]]
-//!     [--activate problems] [--click LABEL]...
+//!     [--activate problems] [--also FILE]... [--type LABEL=TEXT]... [--click LABEL]... [--wait TEXT]
 //! ```
 //! `--activate PANEL` makes that panel the shown tab of its group; `--click LABEL` (repeatable) clicks the widget with that accessible
 //! name once everything else is done (`--click "Collapse book b1"` collapses a row of the Outline).
+//! `--also FILE` (repeatable) opens another file before `--open` (which stays in front). `--type LABEL=TEXT` types TEXT into the field with
+//! that accessible name, `--wait TEXT` waits (ten seconds at most) until a label contains TEXT; both run around the clicks.
 //! `--panes` shows exactly the panels named (the others are hidden), `--right` moves the panels named to a dock on the right edge.
 //! `--search TEXT` runs Find in Files for TEXT in the folder of the `--open` file (or the working directory) and waits for the hits.
 //! `--search-in DIR` searches DIR instead, as typed (`.` keeps the machine's paths out of the picture).
@@ -36,18 +38,9 @@ impl xmlcraft_resolve::Fetcher for NoWeb {
     }
 }
 
-/// `outline,entry_helpers,problems` as panels.
+/// `outline,entry_helpers,problems` as panels (any panel by its key).
 fn panels(list: &str) -> Result<Vec<Panel>, String> {
-    list.split(',')
-        .filter(|n| !n.is_empty())
-        .map(|n| match n {
-            "outline" => Ok(Panel::Outline),
-            "entry_helpers" => Ok(Panel::EntryHelpers),
-            "problems" => Ok(Panel::Problems),
-            "search" => Ok(Panel::Search),
-            other => Err(format!("unknown panel {other:?} (outline, entry_helpers, problems, search)")),
-        })
-        .collect()
+    list.split(',').filter(|n| !n.is_empty()).map(|n| Panel::from_name(n).ok_or(format!("unknown panel {n:?}"))).collect()
 }
 
 fn main() -> Result<(), String> {
@@ -68,6 +61,9 @@ fn main() -> Result<(), String> {
     let mut search_in: Option<String> = None;
     let mut activate: Vec<Panel> = Vec::new();
     let mut clicks: Vec<String> = Vec::new();
+    let mut also: Vec<std::path::PathBuf> = Vec::new();
+    let mut types: Vec<(String, String)> = Vec::new();
+    let mut waits: Vec<String> = Vec::new();
     while let Some(a) = args.next() {
         match a.strip_prefix("--") {
             Some("size") => {
@@ -82,6 +78,13 @@ fn main() -> Result<(), String> {
             Some("command") => command = Some(args.next().ok_or("--command needs a command id")?),
             Some("search") => search = Some(args.next().ok_or("--search needs the text to look for")?),
             Some("activate") => activate = panels(&args.next().ok_or("--activate needs panels")?)?,
+            Some("also") => also.push(args.next().ok_or("--also needs a file")?.into()),
+            Some("type") => {
+                let v = args.next().ok_or("--type needs LABEL=TEXT")?;
+                let (label, text) = v.split_once('=').ok_or("--type LABEL=TEXT")?;
+                types.push((label.to_owned(), text.to_owned()));
+            }
+            Some("wait") => waits.push(args.next().ok_or("--wait needs the text of a label")?),
             Some("click") => clicks.push(args.next().ok_or("--click needs an accessible name")?),
             Some("search-in") => search_in = Some(args.next().ok_or("--search-in needs a folder")?),
             Some("goto") => {
@@ -144,6 +147,12 @@ fn main() -> Result<(), String> {
     });
     // Let fonts install and layout settle; hover and press washes ease for a moment.
     harness.run_steps(8);
+    for path in &also {
+        if !harness.state_mut().open_path(path) {
+            return Err(format!("could not open {}", path.display()));
+        }
+        harness.run_steps(6);
+    }
     if let Some(path) = &open {
         use egui_kittest::kittest::Queryable;
         if !harness.state_mut().open_path(path) {
@@ -180,7 +189,7 @@ fn main() -> Result<(), String> {
         harness.run_steps(4);
     }
     if let Some(shown) = &panes {
-        for panel in [Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search] {
+        for panel in Panel::tools() {
             harness.state_mut().set_panel_visible(panel, shown.contains(&panel));
         }
     }
@@ -229,13 +238,32 @@ fn main() -> Result<(), String> {
         harness.state_mut().apply_layout(vec![craft_ui::docking::Action::Activate { panel }])?;
         harness.run_steps(2);
     }
+    for (label, text) in &types {
+        use egui_kittest::kittest::Queryable;
+        harness.get_by_label(label).focus();
+        harness.run_steps(2);
+        harness.get_by_label(label).type_text(text);
+        harness.run_steps(2);
+    }
     for label in &clicks {
         use egui_kittest::kittest::Queryable;
         harness.run_steps(2);
         harness.get_by_label(label).click();
         harness.run_steps(3);
     }
-    if !clicks.is_empty() {
+    for text in &waits {
+        use egui_kittest::kittest::Queryable;
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while harness.query_all_by_label_contains(text).next().is_none() {
+            if std::time::Instant::now() > deadline {
+                return Err(format!("nothing labelled {text:?} appeared in ten seconds"));
+            }
+            std::thread::sleep(Duration::from_millis(20));
+            harness.run_steps(1);
+        }
+        harness.run_steps(3);
+    }
+    if !clicks.is_empty() || !types.is_empty() || !waits.is_empty() {
         harness.hover_at(egui::pos2(1.0, 1.0));
     }
     std::thread::sleep(Duration::from_millis(250));
