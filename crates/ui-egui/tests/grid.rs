@@ -169,3 +169,164 @@ fn a_document_that_cannot_be_read_says_so_instead_of_a_grid_and_xml_and_yaml_hav
     h.run_steps(3);
     assert!(h.query_by_label("k: v (string)").is_some() && h.query_by_label("n: 1 (number)").is_some());
 }
+
+// --- tables ------------------------------------------------------------------------------------------------------------------
+
+const ITEMS: &str = "[\n  {\"name\": \"Tea\", \"qty\": 2},\n  {\"name\": \"Milk\", \"qty\": 10, \"tags\": [\"a\"]},\n  {\"qty\": 1}\n]\n";
+
+/// Open `text` as `name` and show it as a grid.
+fn grid_of(h: &mut Harness<'static, XmlCraftApp>, dir: &Path, name: &str, text: &str) {
+    open(h, &file(dir, name, text));
+    assert!(h.state_mut().execute("view.grid"));
+    h.run_steps(3);
+}
+
+/// Type into the cell field that is open, replacing what is in it, and commit with Enter.
+fn type_cell(h: &mut Harness<'static, XmlCraftApp>, typed: &str) {
+    let field = h.get_by_label("The value of the cell");
+    field.focus();
+    h.run_steps(1);
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    h.get_by_label("The value of the cell").type_text(typed);
+    h.run_steps(2);
+    h.key_press(egui::Key::Enter);
+    h.run_steps(3);
+}
+
+fn select_cell(h: &mut Harness<'static, XmlCraftApp>, label: &str) {
+    h.get_by_label(label).click_accesskit();
+    h.run_steps(2);
+}
+
+#[test]
+fn a_json_array_of_objects_opens_as_a_table_with_the_union_of_its_keys() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    grid_of(&mut h, dir.path(), "items.json", ITEMS);
+    for column in ["Column name", "Column qty", "Column tags"] {
+        assert!(h.query_by_label(column).is_some(), "{column}");
+    }
+    assert!(h.query_by_label("Row 2, qty: 10").is_some() && h.query_by_label("Row 3, name: empty").is_some());
+    assert!(h.query_by_label("Row 2, tags: [1]").is_some(), "a nested cell shows what it holds");
+    assert_eq!(text(&h), ITEMS, "looking changed nothing");
+}
+
+#[test]
+fn a_cell_edited_in_place_changes_that_value_only_and_one_undo_restores_the_bytes() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    grid_of(&mut h, dir.path(), "items.json", ITEMS);
+    select_cell(&mut h, "Row 1, qty: 2");
+    h.key_press(egui::Key::Enter);
+    h.run_steps(3);
+    assert_eq!(h.get_by_label("The value of the cell").accesskit_node().value().as_deref(), Some("2"));
+    type_cell(&mut h, "15");
+    assert_eq!(text(&h), ITEMS.replace("\"qty\": 2}", "\"qty\": 15}"));
+    assert!(h.query_by_label("Row 1, qty: 15").is_some(), "the table shows the new value");
+    h.state_mut().execute("edit.undo");
+    h.run_steps(3);
+    assert_eq!(text(&h), ITEMS);
+}
+
+#[test]
+fn typing_into_a_missing_cell_creates_the_member_in_that_row_only() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    grid_of(&mut h, dir.path(), "items.json", ITEMS);
+    select_cell(&mut h, "Row 3, name: empty");
+    // Typing on a chosen cell starts editing it with what was typed.
+    h.event(egui::Event::Text("O".into()));
+    h.run_steps(3);
+    assert_eq!(h.get_by_label("The value of the cell").accesskit_node().value().as_deref(), Some("O"));
+    type_cell(&mut h, "Oat");
+    assert_eq!(text(&h), ITEMS.replace("{\"qty\": 1}", "{\"name\": \"Oat\", \"qty\": 1}"));
+}
+
+#[test]
+fn a_sorted_view_changes_nothing_until_its_order_is_applied() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    grid_of(&mut h, dir.path(), "items.json", ITEMS);
+    h.get_by_label("Column qty").click_accesskit();
+    h.run_steps(3);
+    assert!(h.query_by_label("Column qty, sorted ascending").is_some());
+    assert_eq!(text(&h), ITEMS, "a view");
+    h.get_by_label("Apply order to document").click_accesskit();
+    h.run_steps(3);
+    assert_eq!(text(&h), "[\n  {\"qty\": 1},\n  {\"name\": \"Tea\", \"qty\": 2},\n  {\"name\": \"Milk\", \"qty\": 10, \"tags\": [\"a\"]}\n]\n");
+    assert!(h.query_by_label("Apply order to document").is_none(), "no longer sorted: the text is in that order");
+    h.state_mut().execute("edit.undo");
+    h.run_steps(3);
+    assert_eq!(text(&h), ITEMS, "one undo");
+}
+
+#[test]
+fn cells_copied_as_tab_separated_text_paste_back_and_add_rows() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    grid_of(&mut h, dir.path(), "items.json", ITEMS);
+    select_cell(&mut h, "Row 1, name: Tea");
+    h.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::ArrowRight);
+    h.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::ArrowDown);
+    h.run_steps(2);
+    h.event(egui::Event::Copy);
+    h.step();
+    let copied = h.output().platform_output.commands.iter().find_map(|c| match c {
+        egui::OutputCommand::CopyText(t) => Some(t.clone()),
+        _ => None,
+    });
+    assert_eq!(copied.as_deref(), Some("Tea\t2\nMilk\t10\n"));
+    h.run_steps(2);
+    select_cell(&mut h, "Row 3, name: empty");
+    h.event(egui::Event::Paste("Tea\t2\nMilk\t10\n".into()));
+    h.run_steps(4);
+    assert_eq!(
+        text(&h),
+        "[\n  {\"name\": \"Tea\", \"qty\": 2},\n  {\"name\": \"Milk\", \"qty\": 10, \"tags\": [\"a\"]},\n  {\"name\": \"Tea\", \"qty\": 2},\n  {\"name\": \"Milk\", \"qty\": 10}\n]\n"
+    );
+    h.state_mut().execute("edit.undo");
+    h.run_steps(3);
+    assert_eq!(text(&h), ITEMS, "the paste is one undoable step");
+}
+
+const LIBRARY: &str = "<library>\n  <book id=\"b1\" language=\"en\">\n    <title>Almanac</title>\n    <author>Ada</author>\n    <author>Bo</author>\n  </book>\n  <book id=\"b2\">\n    <title>Nebel</title>\n    <author>Jonas</author>\n  </book>\n</library>\n";
+
+#[test]
+fn repeated_xml_elements_show_attribute_columns_and_a_nested_cell_drills_in_and_back() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    grid_of(&mut h, dir.path(), "library.xml", LIBRARY);
+    h.get_by_label("Open library as a table").click_accesskit();
+    h.run_steps(3);
+    for column in ["Column @id", "Column @language", "Column title", "Column author"] {
+        assert!(h.query_by_label(column).is_some(), "{column}");
+    }
+    assert!(h.query_by_label("Row 2, @language: empty").is_some());
+    // Two authors: a nested cell, opened as the table of those authors.
+    h.get_by_label("Row 1, author: <2>").click_accesskit();
+    h.run_steps(3);
+    assert!(h.query_by_label("book › author").is_some(), "the breadcrumb names the step below the books");
+    assert!(h.query_by_label("Column #text").is_some() && h.query_by_label("Row 2, #text: Bo").is_some(), "the authors of b1");
+    assert!(h.query_by_label("Column @id").is_none());
+    // The breadcrumb leads back.
+    h.get_by_label("library › book").click_accesskit();
+    h.run_steps(3);
+    assert!(h.query_by_label("Column @id").is_some(), "back in the table of the books");
+    h.get_by_label("Tree").click_accesskit();
+    h.run_steps(3);
+    assert!(h.query_by_label("Column @id").is_none() && h.query_by_label("library (element)").is_some(), "back in the tree");
+    assert_eq!(text(&h), LIBRARY);
+}
+
+#[test]
+fn json_lines_open_as_their_table_and_delete_clears_the_chosen_cell() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    let lines = "{\"id\": 1}\n{\"id\": 2}\n{\"id\": 3}\n";
+    grid_of(&mut h, dir.path(), "events.jsonl", lines);
+    assert!(h.query_by_label("Column id").is_some() && h.query_by_label("Row 3, id: 3").is_some());
+    select_cell(&mut h, "Row 2, id: 2");
+    h.key_press(egui::Key::Delete);
+    h.run_steps(3);
+    assert_eq!(text(&h), "{\"id\": 1}\n{}\n{\"id\": 3}\n", "Delete clears the cell");
+}
