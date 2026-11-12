@@ -283,6 +283,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("view.tool.compare", "Compare", VIEW, None, Nothing, "git-compare").toggle(),
     c("view.tool.transform", "Transform", VIEW, None, Nothing, "arrow-left-right").toggle(),
     c("view.tool.http", "HTTP & OpenAPI", VIEW, None, Nothing, "send").toggle(),
+    c("view.tool.soap", "SOAP", VIEW, None, Nothing, "cloud").toggle(),
     c("app.about", "About XmlCraft", HELP, None, Nothing, "circle-help"),
 ];
 
