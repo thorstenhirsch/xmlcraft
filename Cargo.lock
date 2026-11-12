@@ -6790,6 +6790,7 @@ dependencies = [
  "serde_json",
  "xmlcraft-json-syntax",
  "xmlcraft-syntax",
+ "xmlcraft-text",
  "xmlcraft-yaml-syntax",
 ]
 
