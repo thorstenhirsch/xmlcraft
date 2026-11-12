@@ -484,6 +484,17 @@ usage = "UI icon, embedded via crates/ui-egui/src/icon_data.rs"
 sha256 = "2ec21196b84989fe072c282b94060cf244eaba4cf21f63c08aa587ee326fec71"
 
 [[asset]]
+path = "assets/icc/sRGB-v2-micro.icc"
+title = "sRGB v2 micro ICC profile"
+author = "Clinton Ingram (saucecontrol/Compact-ICC-Profiles)"
+source = "https://github.com/saucecontrol/Compact-ICC-Profiles (profiles/sRGB-v2-micro.icc, fetched 2026-11-12, 456 bytes)"
+licence = "CC0-1.0"
+licence_file = "assets/icc/LICENSE-CC0.txt"
+kind = "data"
+usage = "PDF/A output intent of the invoice PDFs XmlCraft writes (xmlcraft-invoice-pdf)"
+sha256 = "0a8a33aea66a6f154a5642ebe168ef287e73265d9f7b51c42a45e6eedbacda7a"
+
+[[asset]]
 path = "assets/fonts/Inter-Regular.ttf"
 title = "Inter Regular"
 author = "The Inter Project Authors (Rasmus Andersson)"
