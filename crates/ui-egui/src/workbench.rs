@@ -41,6 +41,8 @@ pub enum Panel {
     Search,
     /// XPath and XSLT.
     Query,
+    /// Compare and merge documents.
+    Compare,
 }
 
 /// Which part of the rail a tool window belongs to.
@@ -104,7 +106,7 @@ impl Place {
 
 impl Panel {
     /// Every panel, in the order the rail, the default layout and `ui.state` list them.
-    pub const ALL: [Panel; 6] = [Panel::Editor, Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search, Panel::Query];
+    pub const ALL: [Panel; 7] = [Panel::Editor, Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search, Panel::Query, Panel::Compare];
 
     /// The panel table: the one place a panel is described.
     pub fn spec(self) -> PanelSpec {
@@ -134,6 +136,7 @@ impl Panel {
             Self::Problems => tool("problems", tl!("Problems"), "triangle-alert", Zone::Document, DefaultPlace::Bottom, true, "view.messages"),
             Self::Search => tool("search", tl!("Search"), "file-search", Zone::Workspace, DefaultPlace::Bottom, false, "view.search"),
             Self::Query => tool("query", tl!("Query"), "square-terminal", Zone::Workspace, DefaultPlace::Right, false, "view.tool.query"),
+            Self::Compare => tool("compare", tl!("Compare"), "git-compare", Zone::Workspace, DefaultPlace::Bottom, false, "view.tool.compare"),
         }
     }
 
@@ -763,6 +766,7 @@ impl Content<'_> {
             // A tool window draws its own frame (`kit::tool_body`).
             Panel::Search => crate::tools::search::body(ui, self.app),
             Panel::Query => crate::tools::query::body(ui, self.app),
+            Panel::Compare => crate::tools::compare::body(ui, self.app),
             // The tab strip names the panel: the bodies start a little below it (they drew their own title above them before).
             // (The Outline's toolbar sits right under the tab strip.)
             Panel::Outline => crate::outline::body(ui, self.app),
@@ -1053,7 +1057,10 @@ mod tests {
                 assert!(xmlcraft_engine::commands::command(command).is_some(), "{command} is registered");
             }
         }
-        assert_eq!(Panel::tools().collect::<Vec<_>>(), [Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search, Panel::Query]);
+        assert_eq!(
+            Panel::tools().collect::<Vec<_>>(),
+            [Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search, Panel::Query, Panel::Compare]
+        );
         assert_eq!(Panel::Search.spec().zone, Zone::Workspace);
         assert!(Panel::from_name("Gizmo").is_none() && Panel::from_name("").is_none());
     }
