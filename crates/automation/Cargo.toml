@@ -27,6 +27,7 @@ xmlcraft-schematron = { workspace = true }
 xmlcraft-diff = { workspace = true }
 xmlcraft-grid = { workspace = true }
 xmlcraft-einvoice = { workspace = true }
+xmlcraft-invoice-pdf = { workspace = true }
 xmlcraft-complete = { workspace = true }
 xmlcraft-dtd = { workspace = true }
 xmlcraft-infer = { workspace = true }

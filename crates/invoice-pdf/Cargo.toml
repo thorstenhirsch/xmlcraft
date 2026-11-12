@@ -1,0 +1,24 @@
+[package]
+name = "xmlcraft-invoice-pdf"
+description = "XmlCraft's visual rendering of an electronic invoice as a PDF that carries the invoice XML (ZUGFeRD / Factur-X hybrid)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-einvoice = { workspace = true }
+xmlcraft-syntax = { workspace = true }
+xmlcraft-xsd = { workspace = true }
+xmlcraft-text = { workspace = true }
+xmlcraft-pdf = { workspace = true }
+chrono = { workspace = true }
+pdfcraft-cos = { workspace = true }
+skrifa = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

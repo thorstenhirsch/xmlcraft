@@ -59,6 +59,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("wsdl", Class::Layer(4)),
     ("grid", Class::Layer(4)),
     ("einvoice", Class::Layer(4)),
+    ("invoice-pdf", Class::Layer(4)),
     ("infer", Class::Layer(4)),
     ("sample", Class::Layer(4)),
     ("format", Class::Layer(4)),
@@ -119,6 +120,8 @@ pub const SIDEWAYS: &[(&str, &str)] = &[
     // An e-invoice is checked against the XML Schema of its syntax and the Schematron rules of its standard.
     ("einvoice", "validate"),
     ("einvoice", "schematron"),
+    // The visual invoice reads the neutral model of an e-invoice.
+    ("invoice-pdf", "einvoice"),
     // Completion asks the validator for the context at the cursor.
     ("complete", "validate"),
     // Generators write their output through the formatter, and their tests validate it.

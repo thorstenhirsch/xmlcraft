@@ -51,6 +51,12 @@ xmlcraft-openapi = { path = "crates/openapi", version = "0.2.1" }
 xmlcraft-grid = { path = "crates/grid", version = "0.2.1" }
 xmlcraft-einvoice = { path = "crates/einvoice", version = "0.2.1" }
 xmlcraft-pdf = { path = "crates/pdf", version = "0.2.1" }
+xmlcraft-invoice-pdf = { path = "crates/invoice-pdf", version = "0.2.1" }
+# PdfCraft's PDF object layer (the sibling project, same owner; MIT OR Apache-2.0), at an immutable revision of its public repository:
+# the invoice PDF is written with it (`xmlcraft-invoice-pdf`).
+pdfcraft-cos = { git = "https://github.com/storytold/pdfcraft", version = "0.21.0", rev = "619a239cebe25054ba59486ce2b878b66613c0ce" }
+# Font tables (metrics, character map) for the embedded Inter face of the invoice PDF; already in the tree through egui.
+skrifa = "0.44"
 xmlcraft-infer = { path = "crates/infer", version = "0.2.1" }
 xmlcraft-sample = { path = "crates/sample", version = "0.2.1" }
 xmlcraft-editor = { path = "crates/editor", version = "0.2.1" }
@@ -138,3 +144,6 @@ eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc79968157
 winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
 # The XPath engine with its NaN comparisons fixed (vendor/README.md): `NaN gt 0` was true.
 xee-interpreter = { path = "vendor/xee-interpreter" }
+# PdfCraft's patched JBIG2 decoder (a bounded `decode_within`), which `pdfcraft-filters` (under `pdfcraft-cos`) needs: PdfCraft patches it in
+# from its `vendor/`, and a dependent must do the same. The same immutable revision as `pdfcraft-cos`.
+hayro-jbig2 = { git = "https://github.com/storytold/pdfcraft", rev = "619a239cebe25054ba59486ce2b878b66613c0ce" }

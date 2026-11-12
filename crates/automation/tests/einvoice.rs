@@ -249,3 +249,40 @@ fn einvoice_model_answers_other_documents_and_reads_a_file() {
     assert!(a.call("einvoice_model", &json!({ "path": "../outside.xml" })).is_err(), "the root confines the path");
     assert!(a.call("einvoice_model", &json!({})).is_err());
 }
+
+fn render(a: &mut Automation, args: Value) -> Value {
+    match a.call("einvoice_render_pdf", &args).expect("runs").into_iter().next() {
+        Some(Content::Json(v)) => v,
+        None => Value::Null,
+    }
+}
+
+#[test]
+fn einvoice_render_pdf_writes_a_hybrid_that_carries_the_file_byte_for_byte() {
+    let dir = tempfile::tempdir().expect("dir");
+    std::fs::write(dir.path().join("i.xml"), CII_INVOICE).expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    let r = render(&mut a, json!({ "path": "i.xml", "template": "de", "out": "i.pdf" }));
+    assert_eq!(r["pages"], json!(1), "{r}");
+    assert_eq!(r["facturx"]["profile"], json!("XRECHNUNG"));
+    assert_eq!(r["facturx"]["file_name"], json!("xrechnung.xml"));
+    assert_eq!((r["pdfa"].clone(), r["facturx"]["hybrid"].clone(), r["verified"].clone()), (json!(false), json!(false), json!(false)));
+    let pdf = xmlcraft_pdf::Pdf::open(std::fs::read(dir.path().join("i.pdf")).expect("written")).expect("a PDF");
+    let files = pdf.embedded_files();
+    assert_eq!(files.len(), 1);
+    assert_eq!(pdf.embedded_data(&files[0]).expect("data"), CII_INVOICE.as_bytes());
+    // An existing file is kept unless asked; the root confines `out`, the template and the profile.
+    assert!(a.call("einvoice_render_pdf", &json!({ "path": "i.xml", "out": "i.pdf" })).is_err());
+    assert!(a.call("einvoice_render_pdf", &json!({ "path": "i.xml", "out": "i.pdf", "overwrite": true })).is_ok());
+    assert!(a.call("einvoice_render_pdf", &json!({ "path": "i.xml", "out": "../escape.pdf" })).is_err());
+    assert!(a.call("einvoice_render_pdf", &json!({ "path": "i.xml", "out": "t.pdf", "template": "../t.xml" })).is_err());
+    assert!(a.call("einvoice_render_pdf", &json!({ "path": "i.xml", "out": "t.pdf", "icc_profile": "../p.icc" })).is_err());
+    // A template file, with an error located in it.
+    std::fs::write(dir.path().join("t.xml"), "<invoice-template version=\"1\">\n<body><nope/></body></invoice-template>").expect("writes");
+    let e = a.call("einvoice_render_pdf", &json!({ "path": "i.xml", "out": "t.pdf", "template": "t.xml" })).expect_err("refused");
+    assert!(e.to_string().contains("line 2"), "{e}");
+    // A UBL invoice given as text, in English.
+    let r = render(&mut a, json!({ "text": UBL_XRECHNUNG, "template": "en", "out": "u.pdf" }));
+    assert_eq!((r["facturx"]["file_name"].clone(), r["facturx"]["hybrid"].clone()), (json!("invoice.xml"), json!(false)), "{r}");
+    assert!(a.call("einvoice_render_pdf", &json!({ "text": "<a/>", "out": "x.pdf" })).is_err(), "no invoice");
+}

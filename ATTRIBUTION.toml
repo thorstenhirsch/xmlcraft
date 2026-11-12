@@ -491,7 +491,7 @@ source = "https://github.com/rsms/inter"
 licence = "OFL-1.1"
 licence_file = "assets/fonts/OFL-Inter.txt"
 kind = "font"
-usage = "UI font (regular weight), embedded in the app"
+usage = "UI font (regular weight), embedded in the app; subset-embedded in the invoice PDFs XmlCraft writes (xmlcraft-invoice-pdf; the OFL allows embedding)"
 sha256 = "40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82"
 
 [[asset]]
@@ -513,7 +513,7 @@ source = "https://github.com/rsms/inter"
 licence = "OFL-1.1"
 licence_file = "assets/fonts/OFL-Inter.txt"
 kind = "font"
-usage = "UI font (semibold weight, headings), embedded in the app"
+usage = "UI font (semibold weight, headings), embedded in the app; subset-embedded in the invoice PDFs XmlCraft writes (bold text; xmlcraft-invoice-pdf)"
 sha256 = "78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3"
 
 [[asset]]

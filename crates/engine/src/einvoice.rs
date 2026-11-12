@@ -38,6 +38,16 @@ pub fn einvoice_model(text: &str) -> Result<Option<xmlcraft_einvoice::model::Inv
     crate::guard(|| xmlcraft_einvoice::model::read(text))
 }
 
+/// The visual PDF of the invoice `text`, embedding `bytes` (its original bytes) unchanged (`xmlcraft_invoice_pdf::render`). An escaped panic
+/// is an error.
+pub fn einvoice_render_pdf(
+    text: &str,
+    bytes: &[u8],
+    options: &xmlcraft_invoice_pdf::Options<'_>,
+) -> Result<Result<xmlcraft_invoice_pdf::Rendered, xmlcraft_invoice_pdf::RenderError>, String> {
+    crate::guard(|| xmlcraft_invoice_pdf::render(text, bytes, options))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
