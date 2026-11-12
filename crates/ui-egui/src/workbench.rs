@@ -25,7 +25,7 @@ use crate::{XmlCraftApp, editor_view, icons};
 /// Width of the side column in the default layout.
 pub const COLUMN_WIDTH: f32 = 264.0;
 /// Height of the bottom frame (Problems, Search) in the default layout: the Search form and a handful of hits.
-pub const BOTTOM_HEIGHT: f32 = 260.0;
+pub const BOTTOM_HEIGHT: f32 = 300.0;
 /// Width of the right column in the default layout: the tool windows put forms in it.
 pub const RIGHT_COLUMN_WIDTH: f32 = 340.0;
 /// The egui id of the dock area.
