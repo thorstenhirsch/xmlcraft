@@ -39,6 +39,8 @@ pub enum Panel {
     Problems,
     /// Find in Files.
     Search,
+    /// XPath and XSLT.
+    Query,
 }
 
 /// Which part of the rail a tool window belongs to.
@@ -102,7 +104,7 @@ impl Place {
 
 impl Panel {
     /// Every panel, in the order the rail, the default layout and `ui.state` list them.
-    pub const ALL: [Panel; 5] = [Panel::Editor, Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search];
+    pub const ALL: [Panel; 6] = [Panel::Editor, Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search, Panel::Query];
 
     /// The panel table: the one place a panel is described.
     pub fn spec(self) -> PanelSpec {
@@ -131,6 +133,7 @@ impl Panel {
             }
             Self::Problems => tool("problems", tl!("Problems"), "triangle-alert", Zone::Document, DefaultPlace::Bottom, true, "view.messages"),
             Self::Search => tool("search", tl!("Search"), "file-search", Zone::Workspace, DefaultPlace::Bottom, false, "view.search"),
+            Self::Query => tool("query", tl!("Query"), "square-terminal", Zone::Workspace, DefaultPlace::Right, false, "view.tool.query"),
         }
     }
 
@@ -152,6 +155,11 @@ impl Panel {
         self.spec().key
     }
 
+    /// The tool window that the command `id` toggles.
+    pub fn of_command(id: &str) -> Option<Panel> {
+        Self::tools().find(|p| p.spec().command == Some(id))
+    }
+
     /// The panel saved under `name`: its key, or the variant name the M11.1 builds saved.
     pub fn from_name(name: &str) -> Option<Panel> {
         Self::ALL.into_iter().find(|p| p.key() == name || format!("{p:?}") == name)
@@ -163,6 +171,8 @@ impl Panel {
         match (self.spec().zone, kind) {
             (Zone::Document, None) => false,
             _ if self == Panel::EntryHelpers => matches!(kind, Some(DocKind::Xml | DocKind::Xsd | DocKind::Dtd)),
+            // XPath and XSLT work on XML documents (a schema is one).
+            _ if self == Panel::Query => matches!(kind, Some(DocKind::Xml | DocKind::Xsd)),
             _ => true,
         }
     }
@@ -214,12 +224,13 @@ impl Default for Workbench {
 }
 
 /// The default arrangement, from the panel table: a column on the left with the `Left` panels stacked one above the other, the
-/// `Right` panels likewise on the right, the editor, and the `Bottom` panels as tabs of one group below it. Panels the table does not
+/// `Right` panels as the tabs of one group in a column on the right, the editor, and the `Bottom` panels as tabs of one group below it. Panels the table does not
 /// show by default are in it too (where they come back); [`default_workspace`] hides them.
 pub fn default_layout() -> Layout<Panel> {
     let at = |place: DefaultPlace| Panel::tools().filter(move |p| p.spec().default_place == place).collect::<Vec<_>>();
+    // The left column stacks its panels, one group each; the right column's panels are the tabs of one group.
     let dock = |side: Side, panels: Vec<Panel>| {
-        let groups = panels.into_iter().map(|p| Group::new(vec![p], 0)).collect();
+        let groups = if side == Side::End { vec![Group::new(panels, 0)] } else { panels.into_iter().map(|p| Group::new(vec![p], 0)).collect() };
         Node::Dock { side, columns: vec![Column::new(groups, COLUMN_WIDTH)] }
     };
     let editor = Node::Tabs { panels: vec![Panel::Editor], active: 0 };
@@ -745,12 +756,13 @@ fn underline_active_tabs(ui: &egui::Ui, groups: &[TabGroup]) -> Vec<Panel> {
     underlined
 }
 
-impl DockContent<Panel> for Content<'_> {
-    fn body(&mut self, ui: &mut egui::Ui, panel: &Panel) {
+impl Content<'_> {
+    fn panel_body(&mut self, ui: &mut egui::Ui, panel: &Panel) {
         match panel {
             Panel::Editor => editor_body(ui, self.app),
             // A tool window draws its own frame (`kit::tool_body`).
             Panel::Search => crate::tools::search::body(ui, self.app),
+            Panel::Query => crate::tools::query::body(ui, self.app),
             // The tab strip names the panel: the bodies start a little below it (they drew their own title above them before).
             // (The Outline's toolbar sits right under the tab strip.)
             Panel::Outline => crate::outline::body(ui, self.app),
@@ -762,6 +774,21 @@ impl DockContent<Panel> for Content<'_> {
                 ui.add_space(8.0);
                 crate::problems::body(ui, self.app);
             }
+        }
+    }
+}
+
+impl DockContent<Panel> for Content<'_> {
+    fn body(&mut self, ui: &mut egui::Ui, panel: &Panel) {
+        // Escape in a field of a tool window gives the keyboard back to the editor (the window stays).
+        let tool = panel.spec().zone == Zone::Workspace;
+        let escape = tool && crate::tools::escape_pending(ui, *panel);
+        self.panel_body(ui, panel);
+        if tool {
+            crate::tools::note_focus(ui, *panel);
+        }
+        if escape {
+            self.app.focus_editor = true;
         }
     }
 
@@ -857,6 +884,21 @@ mod tests {
         assert_eq!(columns.len(), 1, "one column");
         assert_eq!(columns[0].groups.len(), 2, "two stacked groups");
         assert_eq!(columns[0].width, COLUMN_WIDTH);
+    }
+
+    #[test]
+    fn the_tools_placed_on_the_right_are_the_tabs_of_one_group_and_hidden_by_default() {
+        let mut bench = Workbench::default();
+        let right: Vec<Panel> = Panel::tools().filter(|p| p.spec().default_place == DefaultPlace::Right).collect();
+        assert!(!right.is_empty());
+        assert!(right.iter().all(|p| !p.spec().default_visible && !bench.is_visible(*p)), "all hidden by default");
+        for panel in &right {
+            bench.set_visible(*panel, true).expect("shows");
+            assert_eq!(bench.place(*panel), Some(Place::Right), "{panel:?}");
+        }
+        let groups = groups_of(&bench.workspace.layout);
+        let group = groups.iter().find(|g| g.panels.contains(&right[0])).expect("a group");
+        assert_eq!(group.panels, right, "one group of tabs, in table order: {groups:?}");
     }
 
     #[test]
@@ -1011,7 +1053,7 @@ mod tests {
                 assert!(xmlcraft_engine::commands::command(command).is_some(), "{command} is registered");
             }
         }
-        assert_eq!(Panel::tools().collect::<Vec<_>>(), [Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search]);
+        assert_eq!(Panel::tools().collect::<Vec<_>>(), [Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search, Panel::Query]);
         assert_eq!(Panel::Search.spec().zone, Zone::Workspace);
         assert!(Panel::from_name("Gizmo").is_none() && Panel::from_name("").is_none());
     }
@@ -1021,6 +1063,7 @@ mod tests {
         assert!(Panel::EntryHelpers.relevant(Some(DocKind::Xsd)) && !Panel::EntryHelpers.relevant(Some(DocKind::Json)));
         assert!(!Panel::Outline.relevant(None), "no document, no outline");
         assert!(Panel::Outline.relevant(Some(DocKind::Yaml)) && Panel::Search.relevant(None));
+        assert!(Panel::Query.relevant(Some(DocKind::Xml)) && !Panel::Query.relevant(Some(DocKind::Json)) && !Panel::Query.relevant(None));
     }
 
     #[test]

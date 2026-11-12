@@ -67,10 +67,6 @@ pub(crate) enum Dialog {
     Compare(Box<crate::compare_dialog::CompareForm>),
     /// Three documents merged (drawn by `merge_dialog.rs`).
     Merge(Box<crate::merge_dialog::MergeForm>),
-    /// The XPath window (drawn by `xpath_dialog.rs`).
-    XPath(Box<crate::xpath_dialog::XPathForm>),
-    /// The Transform window (drawn by `xslt_dialog.rs`).
-    Transform(Box<crate::xslt_dialog::XsltForm>),
     Soap(Box<crate::soap_dialog::SoapForm>),
     OpenApi(Box<crate::openapi_dialog::OpenApiForm>),
     /// The SOAP Debugger window (drawn by `proxy_dialog.rs`).
@@ -124,8 +120,6 @@ impl Dialog {
             | Dialog::Convert(_)
             | Dialog::Compare(_)
             | Dialog::Merge(_)
-            | Dialog::XPath(_)
-            | Dialog::Transform(_)
             | Dialog::Soap(_)
             | Dialog::OpenApi(_)
             | Dialog::Proxy(_)
@@ -239,8 +233,6 @@ impl XmlCraftApp {
             | Dialog::Convert(_)
             | Dialog::Compare(_)
             | Dialog::Merge(_)
-            | Dialog::XPath(_)
-            | Dialog::Transform(_)
             | Dialog::Soap(_)
             | Dialog::OpenApi(_)
             | Dialog::Proxy(_)
@@ -282,14 +274,6 @@ impl XmlCraftApp {
         }
         if matches!(self.dialog, Some(Dialog::Merge(_))) {
             self.show_merge(ctx);
-            return;
-        }
-        if matches!(self.dialog, Some(Dialog::XPath(_))) {
-            self.show_xpath(ctx);
-            return;
-        }
-        if matches!(self.dialog, Some(Dialog::Transform(_))) {
-            self.show_transform(ctx);
             return;
         }
         if matches!(self.dialog, Some(Dialog::Soap(_))) {
