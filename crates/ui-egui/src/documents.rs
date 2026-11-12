@@ -235,8 +235,11 @@ impl XmlCraftApp {
     /// was waiting for its result. Called every frame, after whatever changes a text.
     pub(crate) fn pump_analysis(&mut self) {
         let kind = self.applied.unwrap_or(ThemeKind::Light);
-        for (id, validation) in self.validator.poll() {
+        for (id, mut validation) in self.validator.poll() {
             if self.session.position_of(id).is_some() {
+                // The report of an invoice's rules goes to the E-Rechnung tool; the problems stay with the document.
+                let report = validation.invoice.take();
+                self.invoice_validated(id, validation.version, report);
                 self.views.entry(id).or_insert_with(|| DocView::new(kind)).set_validation(validation);
             }
         }
@@ -504,6 +507,10 @@ impl XmlCraftApp {
         let open = self.open_documents();
         if is_schema {
             self.validator.submit_schema(id, version, doc.editor().buffer(), doc.path(), open);
+        } else if doc.language().is_xml() {
+            // An electronic invoice is checked with the rules of its standard too (seconds for a long one: F8 asks, typing does not).
+            self.validator.submit_with_invoice_rules(id, version, doc.editor().buffer(), doc.path(), open);
+            self.invoice_validation_asked((id, version));
         } else {
             self.validator.submit_as(id, version, doc.editor().buffer(), doc.path(), open, doc.language());
         }
@@ -1236,7 +1243,7 @@ mod tests {
 
     #[test]
     fn a_validation_that_comes_late_does_not_replace_a_newer_one() {
-        let validation = |version| Validation { version, verdict: Verdict::Valid, problems: Vec::new(), truncated: false };
+        let validation = |version| Validation { version, verdict: Verdict::Valid, problems: Vec::new(), truncated: false, invoice: None };
         let mut view = DocView::new(ThemeKind::Light);
         view.set_validation(validation(5));
         view.set_validation(validation(3));

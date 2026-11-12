@@ -18,6 +18,8 @@ pollster = { workspace = true }
 [dependencies]
 xmlcraft-convert = { workspace = true }
 xmlcraft-engine = { workspace = true }
+xmlcraft-einvoice = { workspace = true }
+xmlcraft-invoice-pdf = { workspace = true }
 xmlcraft-diff = { workspace = true }
 xmlcraft-grid = { workspace = true }
 xmlcraft-infer = { workspace = true }
