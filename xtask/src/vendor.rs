@@ -1,11 +1,11 @@
 //! Keeps the patched window stack in the build: winit and the egui crates are the storytold forks at immutable revisions (the ones
 //! PdfCraft builds against; see vendor/README.md). An eframe upgrade that asked for another winit or egui than the pinned fork would
 //! make cargo resolve it from crates.io again, silently dropping the patches. The vendored copies of winit and egui-wgpu are
-//! provenance for the patches XmlCraft carried before the forks. The checks are tests, so `cargo xtask test` and the CI gate run them.
+//! provenance for the patches XmlCraft carried before the forks. `xee-interpreter` is a path patch with the XPath NaN comparison fix. The checks are tests, so `cargo xtask test` and the CI gate run them.
 
 /// The vendored crates and their directory names under `vendor/`.
 #[cfg(test)]
-const VENDORED: &[&str] = &["winit", "egui-wgpu"];
+const VENDORED: &[&str] = &["winit", "egui-wgpu", "xee-interpreter"];
 
 /// The stanza of `Cargo.lock` for the package `name`: from its `name = ` line to the next blank line.
 #[cfg(test)]
@@ -79,6 +79,18 @@ mod tests {
             let source = format!("source = \"git+{repository}?rev={revision}#{revision}\"");
             assert!(stanza.contains(&source), "{name} is not resolved from {repository} at {revision}:\n{stanza}");
         }
+    }
+
+    /// The XPath engine is the vendored copy with the NaN comparison fix (vendor/README.md), not the registry crate.
+    #[test]
+    fn the_xpath_interpreter_is_the_vendored_copy() {
+        let manifest = read("Cargo.toml");
+        let patch = manifest.split("[patch.crates-io]").nth(1).expect("the root manifest has a [patch.crates-io] table");
+        assert!(patch.contains("xee-interpreter = { path = \"vendor/xee-interpreter\" }"), "xee-interpreter is not patched in from vendor/");
+        let lock = read("Cargo.lock");
+        let stanza = lock_stanza(&lock, "xee-interpreter").expect("xee-interpreter is in Cargo.lock");
+        assert!(!stanza.contains("source ="), "xee-interpreter resolves from a registry, not vendor/:\n{stanza}");
+        assert!(read("vendor/xee-interpreter/src/atomic/op_gt.rs").contains("XmlCraft patch"), "the vendored op_gt carries the patch");
     }
 
     #[test]
