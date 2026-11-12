@@ -1,10 +1,10 @@
-//! The Transform window in the real shell: a stylesheet applied, the result opened as a new document.
+//! The XSLT tab of the Query tool window in the real shell: a stylesheet applied, the result opened as a new document.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use xmlcraft_ui_egui::XmlCraftApp;
 
 fn shell() -> Harness<'static, XmlCraftApp> {
@@ -44,7 +44,9 @@ fn the_stylesheet_a_document_names_is_applied_and_the_result_opens_as_a_new_docu
     open(&mut h, &file(dir.path(), "d.xml", "<?xml-stylesheet type=\"text/xsl\" href=\"style.xsl\"?>\n<doc><item>a</item><item>b</item></doc>"));
     assert!(h.state_mut().execute("xml.transform"));
     h.run_steps(3);
-    assert!(h.query_by_label("Transform with XSLT").is_some(), "the window is up");
+    assert!(h.query_by_label("Close Query").is_some(), "the tool window is up, on its XSLT tab");
+    assert!(h.query_by_label("→ d.xml").is_some());
+    assert!(h.query_by_label("This document is the source").is_some());
     h.get_by_label("Transform").click();
     let started = Instant::now();
     while !names(&h).contains(&"d-result.xml".to_owned()) {
@@ -90,8 +92,30 @@ fn a_stylesheet_that_is_not_one_is_said_in_the_window_which_stays() {
         h.run_steps(1);
         std::thread::sleep(Duration::from_millis(5));
     }
-    assert!(h.query_by_label("Transform with XSLT").is_some(), "the window stays so that another stylesheet can be chosen");
+    assert!(h.query_by_label("Close Query").is_some(), "the panel stays so that another stylesheet can be chosen");
     assert_eq!(names(&h), ["bad.xml", "e.xml"], "no document was made");
+}
+
+#[test]
+fn a_stylesheet_in_front_is_the_stylesheet_and_the_source_is_chosen_from_the_open_documents() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "d.xml", "<doc><item>x</item><item>y</item></doc>"));
+    open(&mut h, &file(dir.path(), "style.xsl", XSL));
+    assert!(h.state_mut().execute("xml.transform"));
+    h.run_steps(3);
+    assert!(h.query_by_label("→ style.xsl").is_some());
+    assert!(h.query_by_label("This document is the stylesheet").is_some(), "the roles follow the document in front");
+    h.get_by_label("Transform").click();
+    let started = Instant::now();
+    while !names(&h).contains(&"d-result.xml".to_owned()) {
+        assert!(started.elapsed() < Duration::from_secs(10), "waiting for the result: {:?} {}", names(&h), h.state().status);
+        h.run_steps(1);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let shown = h.state().session.active_document().expect("shown");
+    assert_eq!((shown.name(), shown.editor().text().as_str()), ("d-result.xml", "<out><i>x</i><i>y</i></out>"), "named after the source");
+    assert!(names(&h).contains(&"style.xsl".to_owned()) && names(&h).contains(&"d.xml".to_owned()), "both are untouched");
 }
 
 #[test]
@@ -101,11 +125,15 @@ fn nothing_to_transform_with_says_so_and_a_json_document_is_not_transformed() {
     open(&mut h, &file(dir.path(), "d.xml", "<doc/>"));
     assert!(h.state_mut().execute("xml.transform"));
     h.run_steps(3);
-    assert!(h.query_by_label("Transform with XSLT").is_none());
-    assert!(h.state().status.contains("no stylesheet"), "{}", h.state().status);
-    open(&mut h, &file(dir.path(), "a.json", "{}"));
-    assert!(h.state_mut().execute("xml.transform"));
+    assert!(h.query_by_label("Close Query").is_some());
+    assert!(h.query_by_label_contains("names no stylesheet").is_some(), "the panel says what is missing");
+    assert!(h.get_by_label("Transform").accesskit_node().is_disabled(), "and the action waits for a stylesheet");
+    // The tool follows the document: a stylesheet opened later is on offer at once.
+    open(&mut h, &file(dir.path(), "s.xsl", XSL));
+    h.state_mut().session.set_active(Some(0));
     h.run_steps(3);
-    assert!(h.query_by_label("Transform with XSLT").is_none());
-    assert!(h.state().status.contains("XML"), "{}", h.state().status);
+    assert!(h.query_by_label_contains("names no stylesheet").is_none(), "the list is recomputed from the open documents");
+    open(&mut h, &file(dir.path(), "a.json", "{}"));
+    h.run_steps(3);
+    assert!(h.query_by_label_contains("Query needs an XML document").is_some());
 }
