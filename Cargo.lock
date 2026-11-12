@@ -6819,6 +6819,7 @@ dependencies = [
  "xmlcraft-einvoice",
  "xmlcraft-format",
  "xmlcraft-grammar",
+ "xmlcraft-grid",
  "xmlcraft-html",
  "xmlcraft-infer",
  "xmlcraft-invoice-pdf",

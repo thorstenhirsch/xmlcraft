@@ -15,6 +15,7 @@ pub mod einvoice;
 pub mod elements;
 pub mod folding;
 pub mod generate;
+pub mod grid;
 mod html_analysis;
 pub mod html_complete;
 mod json_analysis;
