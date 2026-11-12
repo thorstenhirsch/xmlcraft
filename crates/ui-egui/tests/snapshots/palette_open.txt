@@ -13,6 +13,7 @@ Button "Toggle Search" [toggled=false]
 Button "Toggle Query" [toggled=false]
 Button "Toggle Compare" [toggled=false]
 Button "Toggle Transform" [toggled=false]
+Button "Toggle HTTP & OpenAPI" [toggled=false]
 Button "Open Preferences" [toggled=false]
 Image
 Label value="XmlCraft"
