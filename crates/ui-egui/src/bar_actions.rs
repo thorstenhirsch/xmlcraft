@@ -22,6 +22,8 @@ pub(crate) enum BarKind {
     /// An OpenAPI description, in JSON or YAML.
     OpenApi,
     Html,
+    /// An electronic invoice (UBL, CII, FatturaPA: XRechnung, Factur-X, Peppol BIS…), or the XML of a PDF document (a hybrid invoice).
+    Invoice,
 }
 
 /// One action of the command bar after the fixed ones.
@@ -50,6 +52,10 @@ pub(crate) fn kind_actions(kind: BarKind) -> &'static [KindAction] {
         BarKind::Data => &[DATA_SCHEMA_MENU, CONVERT],
         BarKind::OpenApi => &[KindAction::Command { id: "xml.openapi", label: "Try Operation" }, DATA_SCHEMA_MENU, CONVERT],
         BarKind::Html => &[],
+        BarKind::Invoice => &[
+            KindAction::Command { id: "xml.einvoice", label: "Invoice" },
+            KindAction::Command { id: "xml.validate_invoice", label: "Validate invoice" },
+        ],
     }
 }
 
@@ -59,11 +65,16 @@ pub(crate) struct Traits {
     pub stylesheet: bool,
     pub wsdl: bool,
     pub openapi: bool,
+    /// An electronic invoice (`xmlcraft_engine::einvoice::detect_einvoice`).
+    pub invoice: bool,
+    /// The document is the XML embedded in a PDF.
+    pub pdf: bool,
 }
 
 /// What the bar takes a document of `kind` with `traits` for.
 pub(crate) fn bar_kind(kind: DocKind, traits: Traits) -> BarKind {
     match kind {
+        DocKind::Xml if traits.invoice || traits.pdf => BarKind::Invoice,
         DocKind::Xml if traits.stylesheet => BarKind::Stylesheet,
         DocKind::Xml if traits.wsdl => BarKind::Wsdl,
         DocKind::Xml => BarKind::Xml,
@@ -81,13 +92,19 @@ impl XmlCraftApp {
         let root_namespace = self.active_analysis().and_then(|a| a.root_namespace.clone()).filter(|_| kind == DocKind::Xml);
         let doc = self.session.active_document()?;
         let (id, version, len, language) = (doc.id(), doc.editor().version(), doc.editor().buffer().len(), doc.language());
+        let pdf = doc.pdf_embedded_name().is_some();
         let view = self.views.get_mut(&id)?;
         let traits = view.bar_traits.get(ctx, version, || {
             let small = len <= crate::business_chip::MAX_BYTES;
             match kind {
                 // (Only the start of the text is read for the XSLT namespace.)
                 DocKind::Xml => {
-                    Traits { stylesheet: xmlcraft_engine::xslt_complete::xslt_prefix(&doc.editor().text()).is_some(), ..Traits::default() }
+                    let text = doc.editor().text();
+                    Traits {
+                        stylesheet: xmlcraft_engine::xslt_complete::xslt_prefix(&text).is_some(),
+                        invoice: small && xmlcraft_engine::einvoice::detect_einvoice(&text).is_some(),
+                        ..Traits::default()
+                    }
                 }
                 DocKind::Json | DocKind::Yaml if small && (language.is_json_like() || language.is_yaml()) => Traits {
                     openapi: xmlcraft_engine::rest::describe(&doc.editor().text(), language.is_yaml()).is_ok_and(|d| !d.operations.is_empty()),
@@ -97,7 +114,8 @@ impl XmlCraftApp {
             }
         });
         // The root namespace is the analysis's, which arrives after the text: looked at every time (a comparison), not kept.
-        let traits = Traits { wsdl: root_namespace.as_deref().is_some_and(xmlcraft_engine::soap::is_wsdl_namespace), ..traits };
+        // (Whether it is the XML of a PDF does not change with the text.)
+        let traits = Traits { wsdl: root_namespace.as_deref().is_some_and(xmlcraft_engine::soap::is_wsdl_namespace), pdf, ..traits };
         Some(bar_kind(kind, traits))
     }
 }
@@ -126,11 +144,14 @@ mod tests {
         assert_eq!(ids(BarKind::Data), ["[xml.assign_schema file.generate_schema file.generate_sample]", "file.convert"]);
         assert_eq!(ids(BarKind::OpenApi), ["xml.openapi", "[xml.assign_schema file.generate_schema file.generate_sample]", "file.convert"]);
         assert!(ids(BarKind::Html).is_empty());
+        assert_eq!(ids(BarKind::Invoice), ["xml.einvoice", "xml.validate_invoice"]);
     }
 
     #[test]
     fn every_action_is_a_registry_command_so_the_palette_has_it_too() {
-        for kind in [BarKind::Xml, BarKind::Grammar, BarKind::Stylesheet, BarKind::Wsdl, BarKind::Data, BarKind::OpenApi, BarKind::Html] {
+        for kind in
+            [BarKind::Xml, BarKind::Grammar, BarKind::Stylesheet, BarKind::Wsdl, BarKind::Data, BarKind::OpenApi, BarKind::Html, BarKind::Invoice]
+        {
             for action in kind_actions(kind) {
                 let ids: &[&str] = match action {
                     KindAction::Command { id, .. } => std::slice::from_ref(id),
@@ -155,5 +176,8 @@ mod tests {
         assert_eq!(bar_kind(DocKind::Yaml, Traits { openapi: true, ..none }), BarKind::OpenApi);
         assert_eq!(bar_kind(DocKind::Xml, Traits { openapi: true, ..none }), BarKind::Xml, "OpenAPI is JSON or YAML");
         assert_eq!(bar_kind(DocKind::Html, none), BarKind::Html);
+        assert_eq!(bar_kind(DocKind::Xml, Traits { invoice: true, ..none }), BarKind::Invoice);
+        assert_eq!(bar_kind(DocKind::Xml, Traits { pdf: true, ..none }), BarKind::Invoice, "the XML of a PDF is an invoice's");
+        assert_eq!(bar_kind(DocKind::Json, Traits { invoice: true, ..none }), BarKind::Data, "an invoice is XML");
     }
 }
