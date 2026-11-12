@@ -1,4 +1,4 @@
-//! The XPath window in the real shell: an expression typed, evaluated on the worker, the result listed, a node selected in the text.
+//! The XPath tab of the Query tool window in the real shell: an expression typed, evaluated on the worker, the result listed, a node selected in the text.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -54,7 +54,8 @@ fn an_expression_is_evaluated_and_its_items_are_listed() {
     open(&mut h, &file(dir.path(), "order.xml", ORDER));
     assert!(h.state_mut().execute("xml.xpath"));
     h.run_steps(3);
-    assert!(h.query_by_label("Evaluate XPath").is_some(), "the window is up");
+    assert!(h.query_by_label("Close Query").is_some(), "the tool window is up");
+    assert!(h.query_by_label("→ order.xml").is_some(), "it says which document it works on");
     evaluate(&mut h, "count(//p:item)", "xs:integer");
     assert!(h.query_by_label_contains("xs:integer   2").is_some(), "the prefix of the root element is known to the expression");
 }
@@ -77,36 +78,71 @@ fn a_node_is_selected_in_the_text_when_clicked() {
     let selection = doc.editor().selections()[0];
     let (start, end) = (selection.start().min(selection.end()), selection.start().max(selection.end()));
     assert_eq!(&text[start..end], "<p:item n=\"2\">Milk</p:item>");
-    assert!(h.query_by_label("Evaluate XPath").is_none(), "the window closes");
+    assert!(h.query_by_label("Close Query").is_some(), "the panel stays open");
+    assert!(h.query_by_label_contains("1 items").is_some(), "with its result, for the next click");
 }
 
 #[test]
-fn an_error_shows_its_code_and_the_expression_is_kept_for_next_time() {
+fn an_error_shows_its_code_and_escape_gives_the_keyboard_back_to_the_editor_while_the_panel_stays() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell();
     open(&mut h, &file(dir.path(), "order.xml", ORDER));
     assert!(h.state_mut().execute("xml.xpath"));
     h.run_steps(3);
     evaluate(&mut h, "//item[", "XPST0003");
-    h.key_press(egui::Key::Escape);
-    h.run_steps(3);
+    // (The keyboard is in the expression field again, as it is for someone who evaluates with Ctrl/Cmd+Enter.)
+    h.get_by_label("The XPath expression").focus();
     h.run_steps(2);
-    assert!(h.query_by_label("Evaluate XPath").is_none());
+    assert!(!h.state().editor_focused());
+    h.key_press(egui::Key::Escape);
+    h.run_steps(5);
+    assert!(h.query_by_label("Close Query").is_some(), "Escape does not close the panel");
+    assert!(h.state().editor_focused(), "the editor has the keyboard again");
+    // The panel is closed with its x; hidden, it keeps the expression.
+    h.get_by_label("Close Query").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("Close Query").is_none());
     assert!(h.state_mut().execute("xml.xpath"));
     h.run_steps(3);
     let field = h.get_by_label("The XPath expression");
-    assert_eq!(field.accesskit_node().value().as_deref(), Some("//item["), "the last expression is back");
+    assert_eq!(field.accesskit_node().value().as_deref(), Some("//item["), "the expression is still there");
 }
 
 #[test]
-fn a_json_document_is_not_evaluated() {
+fn a_json_document_is_not_evaluated_and_the_panel_says_what_it_needs() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell();
     open(&mut h, &file(dir.path(), "a.json", "{\"a\": 1}"));
     assert!(h.state_mut().execute("xml.xpath"));
     h.run_steps(3);
-    assert!(h.query_by_label("Evaluate XPath").is_none(), "no window for a JSON document");
-    assert!(h.state().status.contains("XML"), "{}", h.state().status);
+    assert!(h.query_by_label("Close Query").is_some());
+    assert!(h.query_by_label("The XPath expression").is_none(), "no expression field for a JSON document");
+    assert!(h.query_by_label_contains("Query needs an XML document").is_some());
+    // The tool follows the document: back on an XML document it works again.
+    open(&mut h, &file(dir.path(), "order.xml", ORDER));
+    h.run_steps(2);
+    assert!(h.query_by_label("The XPath expression").is_some());
+    assert!(h.query_by_label("→ order.xml").is_some());
+}
+
+#[test]
+fn the_result_belongs_to_the_document_it_was_asked_on() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "order.xml", ORDER));
+    open(&mut h, &file(dir.path(), "other.xml", "<o><p:item xmlns:p=\"urn:p\">x</p:item></o>"));
+    assert!(h.state_mut().execute("xml.xpath"));
+    h.run_steps(3);
+    assert!(h.query_by_label("→ other.xml").is_some());
+    evaluate(&mut h, "count(//*)", "xs:integer   2");
+    // Another document is shown: its panel has no result yet, and the first one's is back when its tab is.
+    h.state_mut().session.set_active(Some(0));
+    h.run_steps(3);
+    assert!(h.query_by_label("→ order.xml").is_some(), "the tool follows the shown document");
+    assert!(h.query_by_label_contains("xs:integer").is_none(), "another document's result is not shown here");
+    h.state_mut().session.set_active(Some(1));
+    h.run_steps(3);
+    assert!(h.query_by_label_contains("xs:integer   2").is_some());
 }
 
 #[test]

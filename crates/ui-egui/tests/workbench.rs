@@ -157,3 +157,23 @@ fn only_the_shown_tab_of_a_group_of_several_is_underlined() {
     assert_eq!(underlined.len(), 1, "{underlined:?}");
     assert!(matches!(underlined.first(), Some(Panel::Problems | Panel::Search)), "{underlined:?}");
 }
+
+#[test]
+fn the_query_tool_is_hidden_until_asked_for_docks_on_the_right_and_is_toggled_by_the_rail_and_its_command() {
+    let (mut h, c) = shell(None);
+    assert!(!h.state().panel_visible(Panel::Query));
+    assert_eq!(h.state().command_checked("view.tool.query"), Some(false));
+    h.get_by_label("Toggle Query").click();
+    h.run_steps(3);
+    assert_eq!(layout(&mut h, &c)["query"], "right");
+    assert_eq!(h.state().command_checked("view.tool.query"), Some(true));
+    assert!(h.query_by_label("Close Query").is_some());
+    // The command that opened the modal window shows the panel on its tab, and the toggle command hides it again.
+    assert!(h.state_mut().execute("view.tool.query"));
+    h.run_steps(3);
+    assert!(!h.state().panel_visible(Panel::Query));
+    // Hidden, it is still on offer from its commands, and it comes back where it was.
+    assert!(h.state_mut().execute("view.tool.query"));
+    h.run_steps(3);
+    assert_eq!(layout(&mut h, &c)["query"], "right");
+}

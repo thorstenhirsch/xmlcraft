@@ -68,6 +68,7 @@ impl XmlCraftApp {
             "view.entry_helpers" => Some(self.panel_visible(Panel::EntryHelpers)),
             "view.messages" => Some(self.panel_visible(Panel::Problems)),
             "view.search" => Some(self.panel_visible(Panel::Search)),
+            _ if Panel::of_command(id).is_some() => Panel::of_command(id).map(|panel| self.panel_visible(panel)),
             "xml.validate_typing" => Some(self.validate_typing),
             "xml.work_offline" => Some(self.work_offline),
             "view.theme.system" => Some(self.theme_preference == ThemePreference::System),
@@ -268,8 +269,12 @@ impl XmlCraftApp {
             "view.theme.light" => self.theme_preference = ThemePreference::Light,
             "view.theme.dark" => self.theme_preference = ThemePreference::Dark,
             _ => {
-                log::warn!("command {id} is registered but not implemented in this frontend");
-                return false;
+                // The toggle of a tool window (View ▸ Query…).
+                let Some(panel) = Panel::of_command(id) else {
+                    log::warn!("command {id} is registered but not implemented in this frontend");
+                    return false;
+                };
+                self.set_panel_visible(panel, !self.panel_visible(panel));
             }
         }
         true
