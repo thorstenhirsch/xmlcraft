@@ -12,7 +12,6 @@ mod chrome;
 mod commands;
 mod completion;
 mod control;
-mod convert_dialog;
 mod data_assist;
 mod dialog;
 mod documents;
@@ -179,6 +178,8 @@ pub struct XmlCraftApp {
     query: tools::query::QueryTool,
     /// The Compare tool window (compare and merge): its forms and the last comparison.
     compare: tools::compare::CompareTool,
+    /// The Transform tool window (convert between formats): its form and the preview.
+    transform: tools::transform::TransformTool,
     /// The Search tool window (Find in Files): its form and its last result.
     search: tools::search::SearchTool,
     /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
@@ -395,6 +396,7 @@ impl XmlCraftApp {
             xslt: xmlcraft_engine::xslt::XsltRunner::new(),
             query: tools::query::QueryTool::default(),
             compare: tools::compare::CompareTool::default(),
+            transform: tools::transform::TransformTool::default(),
             search: tools::search::SearchTool::default(),
             generate_serial: 0,
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),

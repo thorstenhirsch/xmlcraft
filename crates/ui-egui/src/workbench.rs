@@ -24,6 +24,8 @@ use crate::{XmlCraftApp, editor_view, icons};
 pub const COLUMN_WIDTH: f32 = 264.0;
 /// Height of the bottom frame (Problems, Search) in the default layout: the Search form and a handful of hits.
 pub const BOTTOM_HEIGHT: f32 = 260.0;
+/// Width of the right column in the default layout: the tool windows put forms in it.
+pub const RIGHT_COLUMN_WIDTH: f32 = 340.0;
 /// The egui id of the dock area.
 const AREA: &str = "xmlcraft-workbench";
 /// Height of a group's tab strip, and width of the group header at its end (the Close button).
@@ -43,6 +45,8 @@ pub enum Panel {
     Query,
     /// Compare and merge documents.
     Compare,
+    /// Convert between formats.
+    Transform,
 }
 
 /// Which part of the rail a tool window belongs to.
@@ -106,7 +110,8 @@ impl Place {
 
 impl Panel {
     /// Every panel, in the order the rail, the default layout and `ui.state` list them.
-    pub const ALL: [Panel; 7] = [Panel::Editor, Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search, Panel::Query, Panel::Compare];
+    pub const ALL: [Panel; 8] =
+        [Panel::Editor, Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search, Panel::Query, Panel::Compare, Panel::Transform];
 
     /// The panel table: the one place a panel is described.
     pub fn spec(self) -> PanelSpec {
@@ -137,6 +142,9 @@ impl Panel {
             Self::Search => tool("search", tl!("Search"), "file-search", Zone::Workspace, DefaultPlace::Bottom, false, "view.search"),
             Self::Query => tool("query", tl!("Query"), "square-terminal", Zone::Workspace, DefaultPlace::Right, false, "view.tool.query"),
             Self::Compare => tool("compare", tl!("Compare"), "git-compare", Zone::Workspace, DefaultPlace::Bottom, false, "view.tool.compare"),
+            Self::Transform => {
+                tool("transform", tl!("Transform"), "arrow-left-right", Zone::Workspace, DefaultPlace::Right, false, "view.tool.transform")
+            }
         }
     }
 
@@ -234,7 +242,7 @@ pub fn default_layout() -> Layout<Panel> {
     // The left column stacks its panels, one group each; the right column's panels are the tabs of one group.
     let dock = |side: Side, panels: Vec<Panel>| {
         let groups = if side == Side::End { vec![Group::new(panels, 0)] } else { panels.into_iter().map(|p| Group::new(vec![p], 0)).collect() };
-        Node::Dock { side, columns: vec![Column::new(groups, COLUMN_WIDTH)] }
+        Node::Dock { side, columns: vec![Column::new(groups, if side == Side::End { RIGHT_COLUMN_WIDTH } else { COLUMN_WIDTH })] }
     };
     let editor = Node::Tabs { panels: vec![Panel::Editor], active: 0 };
     let bottom = at(DefaultPlace::Bottom);
@@ -248,7 +256,7 @@ pub fn default_layout() -> Layout<Panel> {
     if !right.is_empty() {
         root = Node::Split {
             axis: SplitAxis::Horizontal,
-            size: SplitSize::FixedSecond(COLUMN_WIDTH),
+            size: SplitSize::FixedSecond(RIGHT_COLUMN_WIDTH),
             first: Box::new(root),
             second: Box::new(dock(Side::End, right)),
         };
@@ -767,6 +775,7 @@ impl Content<'_> {
             Panel::Search => crate::tools::search::body(ui, self.app),
             Panel::Query => crate::tools::query::body(ui, self.app),
             Panel::Compare => crate::tools::compare::body(ui, self.app),
+            Panel::Transform => crate::tools::transform::body(ui, self.app),
             // The tab strip names the panel: the bodies start a little below it (they drew their own title above them before).
             // (The Outline's toolbar sits right under the tab strip.)
             Panel::Outline => crate::outline::body(ui, self.app),
@@ -1059,7 +1068,7 @@ mod tests {
         }
         assert_eq!(
             Panel::tools().collect::<Vec<_>>(),
-            [Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search, Panel::Query, Panel::Compare]
+            [Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search, Panel::Query, Panel::Compare, Panel::Transform]
         );
         assert_eq!(Panel::Search.spec().zone, Zone::Workspace);
         assert!(Panel::from_name("Gizmo").is_none() && Panel::from_name("").is_none());
