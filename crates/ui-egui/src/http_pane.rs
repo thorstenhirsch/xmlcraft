@@ -11,7 +11,6 @@ use xmlcraft_platform::client::{Request, send};
 
 use crate::Panel;
 use crate::XmlCraftApp;
-use crate::dialog::Dialog;
 use crate::i18n::{fmt, tl};
 use crate::kit::{self, Tone};
 
@@ -232,17 +231,14 @@ impl XmlCraftApp {
         }
     }
 
-    /// The pane that waits for the answer `serial`, and the tool window it belongs to (`None`: the SOAP dialog's). Whatever else is
+    /// The pane that waits for the answer `serial`, and the tool window it belongs to. Whatever else is
     /// open, an answer finds its pane.
-    fn pane_waiting_for(&mut self, serial: u64) -> Option<(&mut Pane, Option<Panel>)> {
+    fn pane_waiting_for(&mut self, serial: u64) -> Option<(&mut Pane, Panel)> {
         let waits = |pane: &Pane| pane.preparing == Some(serial) || pane.sending == Some(serial);
         if waits(&self.http_tool.pane) {
-            return Some((&mut self.http_tool.pane, Some(Panel::Http)));
+            return Some((&mut self.http_tool.pane, Panel::Http));
         }
-        match &mut self.dialog {
-            Some(Dialog::Soap(form)) if waits(&form.pane) => Some((&mut form.pane, None)),
-            _ => None,
-        }
+        waits(&self.soap_tool.pane).then_some((&mut self.soap_tool.pane, Panel::Soap))
     }
 
     /// Collect what the threads finished. Called every frame.
@@ -282,8 +278,8 @@ impl XmlCraftApp {
                 _ => {}
             }
             // An answer that comes while the panel is hidden marks its rail icon.
-            if news && let Some(panel) = owner {
-                self.workbench.set_attention(panel);
+            if news {
+                self.workbench.set_attention(owner);
             }
         }
     }

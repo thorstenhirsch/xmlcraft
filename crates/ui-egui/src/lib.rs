@@ -36,10 +36,8 @@ mod palette;
 mod pickers;
 mod preferences;
 mod problems;
-mod proxy_dialog;
 mod quick_fix;
 mod recovery;
-mod soap_dialog;
 mod status_pickers;
 mod structure;
 pub mod theme;
@@ -181,6 +179,8 @@ pub struct XmlCraftApp {
     transform: tools::transform::TransformTool,
     /// The HTTP & OpenAPI tool window: the operation, the request and the answer.
     http_tool: tools::http::HttpTool,
+    /// The SOAP tool window: the request, the answer and the debugger's proxy (which runs whether or not the panel is shown).
+    soap_tool: tools::soap::SoapTool,
     /// The Search tool window (Find in Files): its form and its last result.
     search: tools::search::SearchTool,
     /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
@@ -399,6 +399,7 @@ impl XmlCraftApp {
             compare: tools::compare::CompareTool::default(),
             transform: tools::transform::TransformTool::default(),
             http_tool: tools::http::HttpTool::default(),
+            soap_tool: tools::soap::SoapTool::default(),
             search: tools::search::SearchTool::default(),
             generate_serial: 0,
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
@@ -491,7 +492,7 @@ impl XmlCraftApp {
 
     /// Whether the SOAP debugger's proxy is listening.
     pub(crate) fn soap_running(&self) -> bool {
-        false
+        self.soap_tool.proxy_running()
     }
 
     /// Whether a hidden tool window has news (the rail's dot): a search that finished while Search was hidden.
@@ -579,6 +580,7 @@ impl eframe::App for XmlCraftApp {
         self.pump_xpath();
         self.pump_transform();
         self.pump_http();
+        self.tick_proxy();
         self.recovery_tick(ctx);
         self.pump_schema_fetch();
         for command in self.viewport_commands.drain(..) {

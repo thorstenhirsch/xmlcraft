@@ -1,4 +1,4 @@
-//! The SOAP window in the real shell: the request made for an operation, sent to a server on this computer (which the person allows
+//! The Request tab of the SOAP tool window in the real shell: the request made for an operation, sent to a server on this computer (which the person allows
 //! for the request), and refused while the app works offline. The server is a local socket; nothing goes to the web.
 
 use std::io::{Read, Write};
@@ -105,6 +105,8 @@ fn open_window(h: &mut Harness<'static, XmlCraftApp>, dir: &Path, address: &str)
     h.run_steps(3);
     assert!(h.state_mut().execute("xml.soap"));
     wait(h, "the request", |app| app.soap_window().is_some_and(|(body, _, _)| !body.is_empty()));
+    assert!(h.query_by_label("Close SOAP").is_some(), "a tool window");
+    assert!(h.query_by_label("→ calc.wsdl").is_some(), "it says which document it works on");
 }
 
 #[test]
@@ -166,4 +168,21 @@ fn a_document_that_is_not_a_wsdl_says_so_and_opens_no_window() {
     h.run_steps(3);
     assert!(h.state().soap_window().is_none());
     assert!(h.state().status.contains("not a WSDL"), "{}", h.state().status);
+    assert!(h.query_by_label_contains("needs a WSDL document").is_some(), "the panel says what it needs");
+}
+
+#[test]
+fn the_request_follows_the_document_in_front_and_waits_for_a_wsdl() {
+    let dir = tempfile::tempdir().expect("dir");
+    let (address, _received) = serve();
+    let mut h = shell(true);
+    open_window(&mut h, dir.path(), &address);
+    // Another document in front: the panel says what it needs; the WSDL back in front, its request is as it was.
+    assert!(h.state_mut().open_path(&file(dir.path(), "a.xml", "<a/>")));
+    h.run_steps(4);
+    assert!(h.query_by_label_contains("needs a WSDL document").is_some());
+    h.state_mut().session.set_active(Some(0));
+    h.run_steps(4);
+    assert!(h.query_by_label("→ calc.wsdl").is_some());
+    assert!(h.state().soap_window().is_some_and(|(body, _, _)| !body.is_empty()), "the request is still there");
 }

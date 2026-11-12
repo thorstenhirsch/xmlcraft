@@ -13,6 +13,7 @@ pub(crate) mod compare;
 pub(crate) mod http;
 pub(crate) mod query;
 pub(crate) mod search;
+pub(crate) mod soap;
 pub(crate) mod transform;
 
 /// The document a tool follows: the one being shown.
