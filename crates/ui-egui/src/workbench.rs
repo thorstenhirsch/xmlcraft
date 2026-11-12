@@ -51,6 +51,8 @@ pub enum Panel {
     Transform,
     /// HTTP requests made from an OpenAPI description.
     Http,
+    /// SOAP requests made from a WSDL, and the SOAP debugger.
+    Soap,
 }
 
 /// Which part of the rail a tool window belongs to.
@@ -114,7 +116,7 @@ impl Place {
 
 impl Panel {
     /// Every panel, in the order the rail, the default layout and `ui.state` list them.
-    pub const ALL: [Panel; 9] = [
+    pub const ALL: [Panel; 10] = [
         Panel::Editor,
         Panel::Outline,
         Panel::EntryHelpers,
@@ -124,6 +126,7 @@ impl Panel {
         Panel::Compare,
         Panel::Transform,
         Panel::Http,
+        Panel::Soap,
     ];
 
     /// The panel table: the one place a panel is described.
@@ -159,6 +162,7 @@ impl Panel {
                 tool("transform", tl!("Transform"), "arrow-left-right", Zone::Workspace, DefaultPlace::Right, false, "view.tool.transform")
             }
             Self::Http => tool("http", tl!("HTTP & OpenAPI"), "send", Zone::Workspace, DefaultPlace::Right, false, "view.tool.http"),
+            Self::Soap => tool("soap", tl!("SOAP"), "cloud", Zone::Workspace, DefaultPlace::Right, false, "view.tool.soap"),
         }
     }
 
@@ -198,7 +202,7 @@ impl Panel {
 
     /// [`Self::relevant`] with what the command bar knows about the document ([`BarKind`]: a WSDL, an OpenAPI description), and whether
     /// the SOAP debugger's proxy is listening (the SOAP panel has something to say then, whatever the document).
-    pub(crate) fn relevant_in(self, kind: Option<DocKind>, bar: Option<BarKind>, _proxy_running: bool) -> bool {
+    pub(crate) fn relevant_in(self, kind: Option<DocKind>, bar: Option<BarKind>, proxy_running: bool) -> bool {
         match (self.spec().zone, kind) {
             (Zone::Document, None) => false,
             _ if self == Panel::EntryHelpers => matches!(kind, Some(DocKind::Xml | DocKind::Xsd | DocKind::Dtd)),
@@ -206,6 +210,7 @@ impl Panel {
             _ if self == Panel::Query => matches!(kind, Some(DocKind::Xml | DocKind::Xsd)),
             _ if matches!(self, Panel::Compare | Panel::Transform) => kind.is_some(),
             _ if self == Panel::Http => bar == Some(BarKind::OpenApi),
+            _ if self == Panel::Soap => bar == Some(BarKind::Wsdl) || proxy_running,
             _ => true,
         }
     }
@@ -799,6 +804,7 @@ impl Content<'_> {
             Panel::Compare => crate::tools::compare::body(ui, self.app),
             Panel::Transform => crate::tools::transform::body(ui, self.app),
             Panel::Http => crate::tools::http::body(ui, self.app),
+            Panel::Soap => crate::tools::soap::body(ui, self.app),
             // The tab strip names the panel: the bodies start a little below it (they drew their own title above them before).
             // (The Outline's toolbar sits right under the tab strip.)
             Panel::Outline => crate::outline::body(ui, self.app),
@@ -1112,6 +1118,7 @@ mod tests {
                 Panel::Compare => 6,
                 Panel::Transform => 7,
                 Panel::Http => 8,
+                Panel::Soap => 9,
             }
         }
         assert_eq!(Panel::ALL.iter().map(|p| place(*p)).collect::<Vec<_>>(), (0..Panel::ALL.len()).collect::<Vec<_>>());

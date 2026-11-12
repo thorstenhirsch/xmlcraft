@@ -1,4 +1,4 @@
-//! The SOAP Debugger window in the real shell: a proxy on this computer in front of a target on this computer. A client's request
+//! The Debugger tab of the SOAP tool window in the real shell: a proxy on this computer in front of a target on this computer. A client's request
 //! comes through and is listed; with requests held it waits until it is released from the window. Everything is on local sockets.
 
 use std::io::{Read, Write};
@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use xmlcraft_ui_egui::XmlCraftApp;
+use xmlcraft_ui_egui::{Panel, XmlCraftApp};
 
 /// A target that answers every request with a small SOAP envelope and sends what it got to the test.
 fn target() -> (String, std::sync::mpsc::Receiver<String>) {
@@ -81,6 +81,7 @@ fn a_request_comes_through_the_proxy_and_is_listed_with_its_path_and_stage() {
     let mut h = shell();
     assert!(h.state_mut().execute("xml.soap_debugger"));
     h.run_steps(3);
+    assert!(h.query_by_label("Close SOAP").is_some(), "a tool window");
     assert_eq!(h.state().soap_debugger(), Some((None, Vec::new())), "not listening until Start");
     h.state_mut().soap_debugger_start("0", &url, true, false);
     wait(&mut h, "the proxy to listen", |app| app.soap_debugger().is_some_and(|(a, _)| a.is_some()));
@@ -91,13 +92,22 @@ fn a_request_comes_through_the_proxy_and_is_listed_with_its_path_and_stage() {
     let (_, rows) = h.state().soap_debugger().expect("window");
     assert_eq!(rows.iter().map(|r| r.2.as_str()).collect::<Vec<_>>(), ["/call"]);
     assert!(h.query_by_label_contains("POST /call").is_some(), "the list shows it");
-    // Closing the window stops the proxy: nothing listens any more.
+    // Hiding the panel does not stop the proxy: it keeps listening and answering.
     let listening = address(&h);
-    h.get_all_by_label("Close").next().expect("a close button").click_accesskit();
+    h.get_by_label("Close SOAP").click_accesskit();
     h.run_steps(3);
-    assert!(h.state().soap_debugger().is_none());
+    assert!(!h.state().panel_visible(Panel::Soap));
+    assert!(h.state().soap_debugger().is_some_and(|(a, _)| a.is_some()), "still listening");
+    let second = client(listening, "<again/>").join().expect("client");
+    assert!(second.ends_with("<answer/>"), "{second}");
+    // Stop stops it.
+    assert!(h.state_mut().execute("xml.soap_debugger"));
+    h.run_steps(3);
+    h.get_by_label("Stop").click_accesskit();
+    h.run_steps(4);
+    assert!(h.state().soap_debugger().is_some_and(|(a, _)| a.is_none()), "not listening");
     std::thread::sleep(Duration::from_millis(300));
-    assert!(TcpStream::connect_timeout(&listening, Duration::from_millis(500)).is_err(), "the proxy stopped with the window");
+    assert!(TcpStream::connect_timeout(&listening, Duration::from_millis(500)).is_err(), "the proxy stopped with Stop");
 }
 
 #[test]
@@ -118,4 +128,29 @@ fn a_held_request_is_released_from_the_window_and_only_then_reaches_the_target()
     let answer = pending.join().expect("client");
     assert!(answer.ends_with("<answer/>"), "{answer}");
     assert!(seen.recv_timeout(Duration::from_secs(5)).expect("target").ends_with("<held/>"));
+}
+
+#[test]
+fn a_message_held_while_the_panel_is_hidden_marks_the_rail_icon_until_the_panel_is_shown() {
+    let (url, _seen) = target();
+    let mut h = shell();
+    assert!(h.state_mut().execute("xml.soap_debugger"));
+    h.run_steps(3);
+    h.state_mut().soap_debugger_start("0", &url, true, true);
+    wait(&mut h, "the proxy to listen", |app| app.soap_debugger().is_some_and(|(a, _)| a.is_some()));
+    let listening = address(&h);
+    h.state_mut().set_panel_visible(Panel::Soap, false);
+    h.run_steps(3);
+    assert!(!h.state().panel_attention(Panel::Soap), "nothing is held yet");
+    let pending = client(listening, "<held/>");
+    wait(&mut h, "the rail icon to be marked", |app| app.panel_attention(Panel::Soap));
+    // Showing the panel clears the mark; the message is there to be released.
+    h.get_by_label("Toggle SOAP").click();
+    h.run_steps(3);
+    assert!(!h.state().panel_attention(Panel::Soap));
+    h.get_by_label_contains("#1").click_accesskit();
+    h.run_steps(3);
+    h.get_by_label("Release").click_accesskit();
+    h.run_steps(4);
+    assert!(pending.join().expect("client").ends_with("<answer/>"));
 }
