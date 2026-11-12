@@ -278,6 +278,11 @@ codes! {
     SchematronInfo => ("schematron.info", Info, "{0}"),
     SchematronUnavailable => ("schematron.unavailable", Warning, "The Schematron rules '{0}' cannot be used: {1}."),
     SchematronProblem => ("schematron.problem", Warning, "A Schematron check could not be run: {0}"),
+    // The rules of an electronic invoice (EN 16931 and its CIUS, run by F8 on an invoice): the rule, what it says (and, not in the
+    // message, the rule set)
+    EinvoiceRuleFatal => ("einvoice.rule.fatal", Error, "{0}: {1}"),
+    EinvoiceRuleWarning => ("einvoice.rule.warning", Warning, "{0}: {1}"),
+    EinvoiceRuleInfo => ("einvoice.rule.information", Info, "{0}: {1}"),
     // BSON (shown as Extended JSON; `xmlcraft-bson`)
     BsonInvalid => ("bson.invalid-value", Error, "{0}"),
     // Limits

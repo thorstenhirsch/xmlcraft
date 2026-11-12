@@ -31,6 +31,8 @@ pub(crate) enum Group {
     WellFormedness,
     /// The document does not follow its DTD or schema.
     Validity,
+    /// An electronic invoice breaks a rule of its standard (EN 16931, the CIUS it claims).
+    InvoiceRules,
     /// A problem in another file the document depends on (an external DTD, a schema document).
     OtherFile,
 }
@@ -40,6 +42,7 @@ impl Group {
         match self {
             Self::WellFormedness => tl!("Well-formedness"),
             Self::Validity => tl!("Validity"),
+            Self::InvoiceRules => tl!("Invoice rules"),
             Self::OtherFile => tl!("In other files"),
         }
     }
@@ -74,6 +77,11 @@ fn group_of_file(file: Option<&str>) -> Group {
     if file.is_none() { Group::Validity } else { Group::OtherFile }
 }
 
+/// Whether a problem is a rule of an electronic invoice (F8 on an invoice).
+fn is_invoice_rule(p: &xmlcraft_engine::validation::ValidityProblem) -> bool {
+    p.diagnostic.code.key().starts_with("einvoice.rule.")
+}
+
 /// What a click on a problem selects: its span in the document; nothing for a problem in another file (its span is in that file).
 fn jump_for(file: Option<&str>, span: &Range<usize>) -> Option<Range<usize>> {
     file.is_none().then(|| span.clone())
@@ -102,9 +110,14 @@ pub(crate) fn collect(app: &XmlCraftApp) -> Vec<Problem> {
         .collect();
     rows.extend(app.active_validation().into_iter().flat_map(|v| v.problems.iter()).map(|p| Problem {
         severity: p.diagnostic.severity(),
-        group: group_of_file(p.file.as_deref()),
+        group: if is_invoice_rule(p) { Group::InvoiceRules } else { group_of_file(p.file.as_deref()) },
         message: p.diagnostic.message(),
         place: match &p.file {
+            // A rule of an invoice says which rule set it is from: `EN 16931 · Ln 2, Col 1`.
+            None if is_invoice_rule(p) => match p.diagnostic.args.get(2) {
+                Some(source) => format!("{source} · {}", at(p.diagnostic.span.start)),
+                None => at(p.diagnostic.span.start),
+            },
             None => at(p.diagnostic.span.start),
             Some(file) => std::path::Path::new(file).file_name().map_or_else(|| file.clone(), |n| n.to_string_lossy().into_owned()),
         },

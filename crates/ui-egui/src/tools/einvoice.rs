@@ -20,6 +20,10 @@ pub(crate) enum Tab {
 #[derive(Debug, Default)]
 pub(crate) struct EInvoiceTool {
     tab: Tab,
+    /// The validation (F8 or the button) being waited for: the document and the version of its text.
+    waiting: Option<(u64, u64)>,
+    /// The last validation report of an invoice, and the document and version it was made from.
+    report: Option<((u64, u64), Box<xmlcraft_einvoice::validate::Report>)>,
 }
 
 impl XmlCraftApp {
@@ -28,10 +32,28 @@ impl XmlCraftApp {
         self.show_tool(Panel::EInvoice);
     }
 
-    /// Validate Invoice: show the tool window on its Validate tab.
+    /// Validate Invoice: show the tool window on its Validate tab and validate (what F8 does).
     pub(crate) fn validate_invoice(&mut self) {
         if self.show_tool(Panel::EInvoice) {
             self.einvoice.tab = Tab::Validate;
+        }
+        self.validate_now();
+    }
+
+    /// F8 asked for a validation that checks an invoice with its rules: the tool waits for it.
+    pub(crate) fn invoice_validation_asked(&mut self, key: (u64, u64)) {
+        self.einvoice.waiting = Some(key);
+    }
+
+    /// A validation of document `id` at `version` arrived, with the report of its invoice rules when it is an invoice. Called for every
+    /// validation, whatever is shown.
+    pub(crate) fn invoice_validated(&mut self, id: u64, version: u64, report: Option<Box<xmlcraft_einvoice::validate::Report>>) {
+        if self.einvoice.waiting.is_some_and(|(doc, v)| doc == id && version >= v) {
+            self.einvoice.waiting = None;
+        }
+        if let Some(report) = report {
+            self.einvoice.report = Some(((id, version), report));
+            self.workbench.set_attention(Panel::EInvoice);
         }
     }
 }
@@ -60,5 +82,11 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
         }
         ui.add_space(kit::GAP);
         kit::segmented(ui, &mut app.einvoice.tab, &[(Tab::Overview, tl!("Overview")), (Tab::Validate, tl!("Validate")), (Tab::Pdf, tl!("PDF"))]);
+        if app.einvoice.tab == Tab::Validate
+            && let Some((_, report)) = app.einvoice.report.as_ref().filter(|((doc, _), _)| *doc == bound.id)
+        {
+            ui.add_space(kit::GAP);
+            kit::help(ui, &crate::i18n::fmt(tl!("{count} findings."), &[("count", &report.findings_total.to_string())]));
+        }
     });
 }

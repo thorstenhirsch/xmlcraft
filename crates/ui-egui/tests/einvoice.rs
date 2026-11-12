@@ -55,3 +55,40 @@ fn an_invoice_lights_the_rail_icon_and_offers_its_actions_and_other_xml_does_not
     assert!(h.state().panel_visible(Panel::EInvoice) && h.query_by_label("Close E-Rechnung").is_some(), "the tool window is up");
     assert!(h.query_by_label("→ rechnung.xml").is_some(), "it says which document it works on");
 }
+
+/// The fixture with the amount with VAT and the amount due one euro short: BR-CO-15 (and nothing else) is broken.
+fn broken_total() -> String {
+    UBL.replace(
+        "<cbc:TaxInclusiveAmount currencyID=\"EUR\">119.00</cbc:TaxInclusiveAmount>",
+        "<cbc:TaxInclusiveAmount currencyID=\"EUR\">118.00</cbc:TaxInclusiveAmount>",
+    )
+    .replace("<cbc:PayableAmount currencyID=\"EUR\">119.00</cbc:PayableAmount>", "<cbc:PayableAmount currencyID=\"EUR\">118.00</cbc:PayableAmount>")
+}
+
+/// Press F8 and wait until the validation of the text as it is now has arrived (the status bar says what it found).
+fn validate(h: &mut Harness<'static, XmlCraftApp>) {
+    h.key_press(egui::Key::F8);
+    h.run_steps(2);
+    assert!(h.state().status.starts_with("Validating"), "{}", h.state().status);
+    wait_for(h, 120, "the validation", |h| h.state().validity().is_some() && !h.state().status.starts_with("Validating"));
+    h.run_steps(3);
+}
+
+#[test]
+fn f8_lists_the_rule_findings_of_an_invoice_in_problems_and_fixing_the_text_clears_them() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "broken.xml", &broken_total()));
+    validate(&mut h);
+    assert!(h.query_all_by_label_contains("BR-CO-15: ").next().is_some(), "Problems lists the rule: {}", h.state().status);
+    assert!(h.query_all_by_label_contains("EN 16931 · Ln").next().is_some(), "with the rule set it comes from");
+    // Fixed, and F8 again: the finding is gone.
+    if let Some(doc) = h.state_mut().session.active_document_mut() {
+        doc.editor_mut().select_all();
+        doc.editor_mut().paste(UBL);
+    }
+    h.run_steps(2);
+    validate(&mut h);
+    assert!(h.query_all_by_label_contains("BR-CO-15").next().is_none(), "no finding after the fix");
+    assert_eq!(h.state().validity(), Some((0, 0)), "and the invoice is valid");
+}

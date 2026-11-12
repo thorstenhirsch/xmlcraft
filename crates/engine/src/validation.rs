@@ -56,6 +56,9 @@ pub struct Validation {
     pub problems: Vec<ValidityProblem>,
     /// There were more than [`MAX_PROBLEMS`].
     pub truncated: bool,
+    /// For an electronic invoice validated with its rules ([`with_invoice_rules`]: F8 on an invoice), the whole report of the e-invoice
+    /// pipeline: the stages, the findings, the checks that were not evaluated. The app hands it to the E-Rechnung tool.
+    pub invoice: Option<Box<xmlcraft_einvoice::validate::Report>>,
 }
 
 impl Validation {
@@ -77,7 +80,7 @@ impl Validation {
     }
 
     fn skipped(version: u64, why: Skipped) -> Self {
-        Self { version, verdict: Verdict::Skipped(why), problems: Vec::new(), truncated: false }
+        Self { version, verdict: Verdict::Skipped(why), problems: Vec::new(), truncated: false, invoice: None }
     }
 }
 
@@ -101,7 +104,7 @@ pub fn validate(text: &str, version: u64, location: &str, loader: &mut dyn Subse
     let found = xmlcraft_validate::check(&root, text, parsed.diagnostics(), location, loader);
     let well_formed = found.well_formedness.iter().all(|p| p.diagnostic.severity() != Severity::Error);
     if !well_formed {
-        return Validation { version, verdict: Verdict::NotWellFormed, problems: Vec::new(), truncated: false };
+        return Validation { version, verdict: Verdict::NotWellFormed, problems: Vec::new(), truncated: false, invoice: None };
     }
     let problems: Vec<ValidityProblem> = found
         .validity
@@ -126,7 +129,13 @@ pub fn check_schema(text: &str, version: u64, location: &str, schemas: &mut dyn 
         // What is wrong with the syntax is the answer: a schema that is not well-formed is not assembled, but the reasons are kept.
         let problems: Vec<ValidityProblem> = parsed.diagnostics().iter().map(|d| ValidityProblem { diagnostic: d.clone(), file: None }).collect();
         let truncated = problems.len() > MAX_PROBLEMS;
-        return Validation { version, verdict: Verdict::NotWellFormed, problems: problems.into_iter().take(MAX_PROBLEMS).collect(), truncated };
+        return Validation {
+            version,
+            verdict: Verdict::NotWellFormed,
+            problems: problems.into_iter().take(MAX_PROBLEMS).collect(),
+            truncated,
+            invoice: None,
+        };
     }
     let documents = load(text, location, schemas);
     let assembly = assemble(&documents);
@@ -174,7 +183,9 @@ fn validate_with_schema(
 ) -> Validation {
     let found = check_against_schema(root, syntax, location, explicit, schemas);
     match &found.outcome {
-        SchemaOutcome::NotWellFormed => Validation { version, verdict: Verdict::NotWellFormed, problems: Vec::new(), truncated: false },
+        SchemaOutcome::NotWellFormed => {
+            Validation { version, verdict: Verdict::NotWellFormed, problems: Vec::new(), truncated: false, invoice: None }
+        }
         SchemaOutcome::NoSchema(why) => {
             // Where the schema is named: the root element's name.
             let span = root_name_span(root);
@@ -216,7 +227,77 @@ pub(crate) fn finish(version: u64, mut problems: Vec<ValidityProblem>) -> Valida
     let truncated = problems.len() > MAX_PROBLEMS;
     problems.truncate(MAX_PROBLEMS);
     let invalid = problems.iter().any(|p| p.diagnostic.severity() == Severity::Error);
-    Validation { version, verdict: if invalid { Verdict::Invalid } else { Verdict::Valid }, problems, truncated }
+    Validation { version, verdict: if invalid { Verdict::Invalid } else { Verdict::Valid }, problems, truncated, invoice: None }
+}
+
+/// The validation of an electronic invoice with the rules of its standard, added to what the grammar found: the whole report of the
+/// e-invoice pipeline (`xmlcraft_einvoice::validate`: the XML Schema, EN 16931, the CIUS it claims) in [`Validation::invoice`], and its
+/// rule findings among the problems ([`invoice_problems`]). A text that is no invoice is left as it is. What F8 runs on an invoice (and
+/// the E-Rechnung tool, which runs F8): the rules of a long invoice take seconds, so validating while typing does not.
+pub fn with_invoice_rules(mut validation: Validation, text: &str, location: &str) -> Validation {
+    if crate::einvoice::detect_einvoice(text).is_none() {
+        return validation;
+    }
+    let report = match crate::einvoice::einvoice_validate(text, location, None, xmlcraft_einvoice::validate::MAX_FINDINGS) {
+        Ok(report) => report,
+        Err(message) => {
+            log::error!("the e-invoice rules failed: {message}");
+            return validation;
+        }
+    };
+    // (A document that is not well-formed has its syntax problems listed by the analysis; the report says why nothing else ran.)
+    if matches!(validation.verdict, Verdict::Valid | Verdict::Invalid) {
+        let truncated = validation.truncated;
+        // (The rules are the grammar an invoice has: "it names no DTD" is not a finding for one, a FatturaPA invoice say.)
+        let mut all: Vec<ValidityProblem> =
+            std::mem::take(&mut validation.problems).into_iter().filter(|p| p.diagnostic.code != Code::VcNoDtd).collect();
+        all.extend(invoice_problems(&report));
+        validation = finish(validation.version, all);
+        validation.truncated |= truncated;
+    }
+    validation.invoice = Some(Box::new(report));
+    validation
+}
+
+/// The rule findings of an e-invoice report as problems: `BR-CO-15: …` at the node the rule is about, as serious as the rule's flag
+/// says, with the rule set they come from (`EN 16931`, `XRechnung`) as the third argument. The findings of the other stages are not:
+/// the analysis lists the syntax, the grammar's validation the XML Schema. Checks that were not evaluated are no problems.
+pub fn invoice_problems(report: &xmlcraft_einvoice::validate::Report) -> Vec<ValidityProblem> {
+    use xmlcraft_einvoice::validate::{Severity as RuleSeverity, Stage};
+    let cius = match report.detection.as_ref().map(|d| d.standard) {
+        Some(xmlcraft_einvoice::Standard::XRechnung | xmlcraft_einvoice::Standard::XRechnungExtension) => "XRechnung",
+        Some(xmlcraft_einvoice::Standard::PeppolBis) => "Peppol BIS",
+        _ => "CIUS",
+    };
+    report
+        .findings
+        .iter()
+        .filter_map(|f| {
+            let source = match f.stage {
+                Stage::En16931 => "EN 16931",
+                Stage::Cius => cius,
+                _ => return None,
+            };
+            let code = match f.severity {
+                RuleSeverity::Fatal => Code::EinvoiceRuleFatal,
+                RuleSeverity::Warning => Code::EinvoiceRuleWarning,
+                RuleSeverity::Information => Code::EinvoiceRuleInfo,
+            };
+            let rule = f.rule.clone().unwrap_or_else(|| "rule".to_owned());
+            let message = plain_message(&rule, &f.message);
+            Some(ValidityProblem { diagnostic: Diagnostic::new(code, f.span.clone(), vec![rule, message, source.to_owned()]), file: None })
+        })
+        .collect()
+}
+
+/// A rule's message without the `[BR-CO-15]-` the rule sets begin it with (the problem says the rule first).
+fn plain_message(rule: &str, message: &str) -> String {
+    let trimmed = message.trim();
+    let rest = trimmed.strip_prefix('[').and_then(|r| r.strip_prefix(rule)).and_then(|r| r.strip_prefix(']'));
+    match rest {
+        Some(rest) => rest.trim_start_matches(|c: char| c == '-' || c == ':' || c.is_whitespace()).to_owned(),
+        None => trimmed.to_owned(),
+    }
 }
 
 /// [`validate`], with a panic turned into a failed result (the last-resort guard: a bug must not take the app down).
@@ -257,6 +338,8 @@ struct Request {
     language: Language,
     /// Check the text as an XML Schema document itself, rather than as an XML document against a grammar.
     self_check: bool,
+    /// An electronic invoice is checked with the rules of its standard too ([`with_invoice_rules`]).
+    invoice_rules: bool,
 }
 
 /// Runs [`validate`] on a worker thread. `submit` returns at once; `poll` collects what has finished.
@@ -290,14 +373,28 @@ impl Validator {
     /// Schema they name (see [`crate::json_validation`]).
     pub fn submit_as(&self, document: u64, version: u64, text: &Buffer, path: Option<&Path>, open: Vec<(String, Buffer)>, language: Language) {
         let location = path.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-        self.worker.submit(document, Request { version, text: text.clone(), location, open, language, self_check: false });
+        self.worker.submit(document, Request { version, text: text.clone(), location, open, language, self_check: false, invoice_rules: false });
     }
 
     /// Ask for `text`, an XML Schema document, to be checked as a schema itself: its components and the documents it includes or imports,
     /// rather than as an XML document against a grammar.
     pub fn submit_schema(&self, document: u64, version: u64, text: &Buffer, path: Option<&Path>, open: Vec<(String, Buffer)>) {
         let location = path.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-        self.worker.submit(document, Request { version, text: text.clone(), location, open, language: Language::Xml, self_check: true });
+        self.worker.submit(
+            document,
+            Request { version, text: text.clone(), location, open, language: Language::Xml, self_check: true, invoice_rules: false },
+        );
+    }
+
+    /// [`Self::submit`] for F8 and the E-Rechnung tool: an electronic invoice is checked with the rules of its standard as well
+    /// ([`with_invoice_rules`]; seconds for a long invoice, so validating while typing asks with [`Self::submit_as`]). Any other text is
+    /// validated as [`Self::submit`] does.
+    pub fn submit_with_invoice_rules(&self, document: u64, version: u64, text: &Buffer, path: Option<&Path>, open: Vec<(String, Buffer)>) {
+        let location = path.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        self.worker.submit(
+            document,
+            Request { version, text: text.clone(), location, open, language: Language::Xml, self_check: false, invoice_rules: true },
+        );
     }
 
     /// The validations that finished since the last call, oldest first.
@@ -353,6 +450,9 @@ fn run(resolvers: &ResolverFactory, request: Request) -> Validation {
             std::mem::take(&mut validation.problems).into_iter().filter(|p| p.diagnostic.code != Code::VcNoDtd).collect();
         all.extend(extra);
         validation = finish(request.version, all);
+    }
+    if request.invoice_rules {
+        validation = with_invoice_rules(validation, &text, &request.location);
     }
     validation
 }
@@ -508,6 +608,62 @@ mod tests {
   </cac:InvoiceLine>
 </Invoice>
 "#;
+
+    const XRECHNUNG_UBL: &str = include_str!("../../einvoice/tests/fixtures/xrechnung-ubl.xml");
+
+    /// The fixture with the amounts with VAT and due one euro short: BR-CO-15 is broken.
+    fn broken_total() -> String {
+        XRECHNUNG_UBL
+            .replace(
+                "<cbc:TaxInclusiveAmount currencyID=\"EUR\">119.00</cbc:TaxInclusiveAmount>",
+                "<cbc:TaxInclusiveAmount currencyID=\"EUR\">118.00</cbc:TaxInclusiveAmount>",
+            )
+            .replace(
+                "<cbc:PayableAmount currencyID=\"EUR\">119.00</cbc:PayableAmount>",
+                "<cbc:PayableAmount currencyID=\"EUR\">118.00</cbc:PayableAmount>",
+            )
+    }
+
+    #[test]
+    fn f8_on_an_invoice_lists_its_rule_findings_and_validating_while_typing_does_not() {
+        let text = broken_total();
+        // What F8 asks for (and the E-Rechnung tool, which runs F8).
+        let validator = Validator::inline(no_resolvers());
+        validator.submit_with_invoice_rules(1, 7, &Buffer::from_text(&text), None, vec![]);
+        let v = validator.poll().remove(0).1;
+        assert_eq!((v.version, v.verdict), (7, Verdict::Invalid), "{:?}", v.problems);
+        let rules: Vec<&ValidityProblem> = v.problems.iter().filter(|p| p.diagnostic.code.key().starts_with("einvoice.rule.")).collect();
+        assert_eq!(rules.len(), 1, "{:?}", v.problems);
+        let d = &rules[0].diagnostic;
+        assert_eq!(d.code, Code::EinvoiceRuleFatal);
+        assert!(d.message().starts_with("BR-CO-15: ") && !d.message().contains("[BR-CO-15]"), "{}", d.message());
+        assert_eq!(d.args.get(2).map(String::as_str), Some("EN 16931"), "the rule set it comes from");
+        assert!(text.get(d.span.clone()).is_some_and(|s| s.starts_with("<ubl:Invoice")), "at the invoice element: {:?}", d.span);
+        let report = v.invoice.as_ref().expect("the whole report goes with it");
+        assert!(!report.valid() && report.stages.len() == 5);
+        // Validating while typing asks without the rules: the grammar only, no report.
+        validator.submit_as(1, 8, &Buffer::from_text(&text), None, vec![], Language::Xml);
+        let v = validator.poll().remove(0).1;
+        assert!(v.invoice.is_none() && v.problems.iter().all(|p| !p.diagnostic.code.key().starts_with("einvoice.")), "{:?}", v.problems);
+        // The fixed invoice: no rule findings, and a report that says it is valid.
+        validator.submit_with_invoice_rules(1, 9, &Buffer::from_text(XRECHNUNG_UBL), None, vec![]);
+        let v = validator.poll().remove(0).1;
+        assert_eq!((v.verdict, codes(&v)), (Verdict::Valid, vec![]), "{:?}", v.problems);
+        assert!(v.invoice.as_ref().is_some_and(|r| r.valid()));
+        // Other XML is validated as before, with no report.
+        validator.submit_with_invoice_rules(2, 1, &Buffer::from_text("<r/>"), None, vec![]);
+        let v = validator.poll().remove(0).1;
+        assert_eq!((codes(&v), v.invoice.is_none()), (vec![Code::VcNoDtd], true));
+    }
+
+    #[test]
+    fn a_rule_message_loses_the_rule_id_it_starts_with() {
+        assert_eq!(plain_message("BR-CO-15", "[BR-CO-15]-Invoice total amount with VAT"), "Invoice total amount with VAT");
+        assert_eq!(plain_message("BR-DE-1", "[BR-DE-1] An invoice must have…"), "An invoice must have…");
+        assert_eq!(plain_message("BR-1", "Plain text"), "Plain text");
+        assert_eq!(plain_message("BR-1", "[BR-2]-other"), "[BR-2]-other", "another rule's id stays");
+        assert_eq!(plain_message("X", ""), "");
+    }
 
     fn validate_inline(text: &str) -> Validation {
         let validator = Validator::inline(no_resolvers());

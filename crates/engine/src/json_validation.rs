@@ -243,11 +243,11 @@ pub(crate) fn schema_set_for(text: &str, language: Language, location: &str, res
 /// Validate `text` (version `version` of a document of this `language` at `location`, which a relative `$schema` is taken from).
 pub fn validate_data(text: &str, language: Language, version: u64, location: &str, resolver: &Resolver) -> Validation {
     if text.len() > MAX_ANALYSED_BYTES {
-        return Validation { version, verdict: Verdict::Skipped(Skipped::TooLarge), problems: Vec::new(), truncated: false };
+        return Validation { version, verdict: Verdict::Skipped(Skipped::TooLarge), problems: Vec::new(), truncated: false, invoice: None };
     }
     let Some(instance) = read(text, language) else { return finish(version, Vec::new()) };
     if instance.broken {
-        return Validation { version, verdict: Verdict::NotWellFormed, problems: Vec::new(), truncated: false };
+        return Validation { version, verdict: Verdict::NotWellFormed, problems: Vec::new(), truncated: false, invoice: None };
     }
     let Some((span, reference)) = instance.reference else { return finish(version, Vec::new()) };
     if let Some(why) = instance.note {
