@@ -30,7 +30,6 @@ mod kit;
 mod load_schema;
 mod motion;
 mod new_from_template;
-mod openapi_dialog;
 mod outline;
 pub use outline::OutlineRowInfo;
 mod palette;
@@ -180,6 +179,8 @@ pub struct XmlCraftApp {
     compare: tools::compare::CompareTool,
     /// The Transform tool window (convert between formats): its form and the preview.
     transform: tools::transform::TransformTool,
+    /// The HTTP & OpenAPI tool window: the operation, the request and the answer.
+    http_tool: tools::http::HttpTool,
     /// The Search tool window (Find in Files): its form and its last result.
     search: tools::search::SearchTool,
     /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
@@ -397,6 +398,7 @@ impl XmlCraftApp {
             query: tools::query::QueryTool::default(),
             compare: tools::compare::CompareTool::default(),
             transform: tools::transform::TransformTool::default(),
+            http_tool: tools::http::HttpTool::default(),
             search: tools::search::SearchTool::default(),
             generate_serial: 0,
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
@@ -485,6 +487,11 @@ impl XmlCraftApp {
     /// Whether the editor had the keyboard at the last frame (tests).
     pub fn editor_focused(&self) -> bool {
         self.editor_has_focus
+    }
+
+    /// Whether the SOAP debugger's proxy is listening.
+    pub(crate) fn soap_running(&self) -> bool {
+        false
     }
 
     /// Whether a hidden tool window has news (the rail's dot): a search that finished while Search was hidden.

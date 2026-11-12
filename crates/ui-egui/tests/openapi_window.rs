@@ -1,4 +1,4 @@
-//! The OpenAPI window in the real shell: the request made for an operation (with a server chosen from the description), sent to a
+//! The HTTP & OpenAPI tool window in the real shell: the request made for an operation (with a server chosen from the description), sent to a
 //! server on this computer, and the answer shown. The server is a local socket; nothing goes to the web.
 
 use std::io::{Read, Write};
@@ -85,6 +85,8 @@ fn the_request_of_an_operation_is_sent_with_the_method_and_the_path_filled_in_an
     assert!(h.state_mut().execute("xml.openapi"));
     h.run_steps(3);
     assert!(h.state().openapi_window().is_some());
+    assert!(h.query_by_label("Close HTTP & OpenAPI").is_some(), "a tool window");
+    assert!(h.query_by_label("→ pets.json").is_some(), "it says which document it works on");
     assert_eq!(h.state().openapi_request(), Some(("GET".to_owned(), format!("{server}/pets/0"))), "the request of the first operation");
     h.get_by_label("Allow this computer and the local network").click_accesskit();
     h.run_steps(2);
@@ -118,4 +120,25 @@ fn a_yaml_description_is_read_and_a_document_that_is_not_one_says_so() {
     other.run_steps(3);
     assert!(other.state().openapi_window().is_none());
     assert!(other.state().status.contains("not an OpenAPI description"), "{}", other.state().status);
+    assert!(other.query_by_label_contains("needs an OpenAPI description").is_some(), "and the panel says what it needs");
+}
+
+#[test]
+fn the_tool_follows_the_document_in_front_and_keeps_the_request_it_made() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    assert!(h.state_mut().open_path(&file(dir.path(), "pets.json", &api("http://localhost:9"))));
+    h.run_steps(3);
+    assert!(h.state_mut().execute("xml.openapi"));
+    h.run_steps(3);
+    assert_eq!(h.state().openapi_request(), Some(("GET".to_owned(), "http://localhost:9/pets/0".to_owned())));
+    // A plain document in front: the panel says what it needs. The description is back in front: the request is as it was.
+    assert!(h.state_mut().open_path(&file(dir.path(), "plain.json", "{\"a\": 1}")));
+    h.run_steps(4);
+    assert!(h.query_by_label_contains("needs an OpenAPI description").is_some());
+    assert!(h.query_by_label("→ plain.json").is_some());
+    h.state_mut().session.set_active(Some(0));
+    h.run_steps(4);
+    assert!(h.query_by_label("→ pets.json").is_some());
+    assert_eq!(h.state().openapi_request(), Some(("GET".to_owned(), "http://localhost:9/pets/0".to_owned())));
 }
