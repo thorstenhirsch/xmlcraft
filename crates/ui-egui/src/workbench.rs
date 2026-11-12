@@ -16,6 +16,8 @@ use egui::{Align, Color32, vec2};
 use serde::{Deserialize, Serialize};
 use xmlcraft_engine::doc_kind::DocKind;
 
+use crate::bar_actions::BarKind;
+
 use crate::i18n::tl;
 use crate::theme::{self, Tokens};
 use crate::{XmlCraftApp, editor_view, icons};
@@ -47,6 +49,8 @@ pub enum Panel {
     Compare,
     /// Convert between formats.
     Transform,
+    /// HTTP requests made from an OpenAPI description.
+    Http,
 }
 
 /// Which part of the rail a tool window belongs to.
@@ -110,8 +114,17 @@ impl Place {
 
 impl Panel {
     /// Every panel, in the order the rail, the default layout and `ui.state` list them.
-    pub const ALL: [Panel; 8] =
-        [Panel::Editor, Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search, Panel::Query, Panel::Compare, Panel::Transform];
+    pub const ALL: [Panel; 9] = [
+        Panel::Editor,
+        Panel::Outline,
+        Panel::EntryHelpers,
+        Panel::Problems,
+        Panel::Search,
+        Panel::Query,
+        Panel::Compare,
+        Panel::Transform,
+        Panel::Http,
+    ];
 
     /// The panel table: the one place a panel is described.
     pub fn spec(self) -> PanelSpec {
@@ -145,6 +158,7 @@ impl Panel {
             Self::Transform => {
                 tool("transform", tl!("Transform"), "arrow-left-right", Zone::Workspace, DefaultPlace::Right, false, "view.tool.transform")
             }
+            Self::Http => tool("http", tl!("HTTP & OpenAPI"), "send", Zone::Workspace, DefaultPlace::Right, false, "view.tool.http"),
         }
     }
 
@@ -179,11 +193,19 @@ impl Panel {
     /// Whether the panel has something to say about a document of this kind (`None`: the home view). A tool that is not relevant is
     /// still shown when asked; the rail dims it.
     pub fn relevant(self, kind: Option<DocKind>) -> bool {
+        self.relevant_in(kind, None, false)
+    }
+
+    /// [`Self::relevant`] with what the command bar knows about the document ([`BarKind`]: a WSDL, an OpenAPI description), and whether
+    /// the SOAP debugger's proxy is listening (the SOAP panel has something to say then, whatever the document).
+    pub(crate) fn relevant_in(self, kind: Option<DocKind>, bar: Option<BarKind>, _proxy_running: bool) -> bool {
         match (self.spec().zone, kind) {
             (Zone::Document, None) => false,
             _ if self == Panel::EntryHelpers => matches!(kind, Some(DocKind::Xml | DocKind::Xsd | DocKind::Dtd)),
             // XPath and XSLT work on XML documents (a schema is one).
             _ if self == Panel::Query => matches!(kind, Some(DocKind::Xml | DocKind::Xsd)),
+            _ if matches!(self, Panel::Compare | Panel::Transform) => kind.is_some(),
+            _ if self == Panel::Http => bar == Some(BarKind::OpenApi),
             _ => true,
         }
     }
@@ -776,6 +798,7 @@ impl Content<'_> {
             Panel::Query => crate::tools::query::body(ui, self.app),
             Panel::Compare => crate::tools::compare::body(ui, self.app),
             Panel::Transform => crate::tools::transform::body(ui, self.app),
+            Panel::Http => crate::tools::http::body(ui, self.app),
             // The tab strip names the panel: the bodies start a little below it (they drew their own title above them before).
             // (The Outline's toolbar sits right under the tab strip.)
             Panel::Outline => crate::outline::body(ui, self.app),
@@ -1066,12 +1089,32 @@ mod tests {
                 assert!(xmlcraft_engine::commands::command(command).is_some(), "{command} is registered");
             }
         }
-        assert_eq!(
-            Panel::tools().collect::<Vec<_>>(),
-            [Panel::Outline, Panel::EntryHelpers, Panel::Problems, Panel::Search, Panel::Query, Panel::Compare, Panel::Transform]
-        );
+        // The tool windows are the table without the editor, the document's first and the workspace's after them.
+        let tools: Vec<Panel> = Panel::tools().collect();
+        assert_eq!(tools, Panel::ALL[1..], "every panel but the editor");
+        assert_eq!(&tools[..3], [Panel::Outline, Panel::EntryHelpers, Panel::Problems]);
+        assert!(tools[3..].iter().all(|p| p.spec().zone == Zone::Workspace), "{tools:?}");
         assert_eq!(Panel::Search.spec().zone, Zone::Workspace);
         assert!(Panel::from_name("Gizmo").is_none() && Panel::from_name("").is_none());
+    }
+
+    #[test]
+    fn the_list_of_panels_has_every_panel_once_in_the_order_of_the_table() {
+        // (An exhaustive match: a new variant does not compile until it is placed here, and so in `Panel::ALL`.)
+        fn place(panel: Panel) -> usize {
+            match panel {
+                Panel::Editor => 0,
+                Panel::Outline => 1,
+                Panel::EntryHelpers => 2,
+                Panel::Problems => 3,
+                Panel::Search => 4,
+                Panel::Query => 5,
+                Panel::Compare => 6,
+                Panel::Transform => 7,
+                Panel::Http => 8,
+            }
+        }
+        assert_eq!(Panel::ALL.iter().map(|p| place(*p)).collect::<Vec<_>>(), (0..Panel::ALL.len()).collect::<Vec<_>>());
     }
 
     #[test]

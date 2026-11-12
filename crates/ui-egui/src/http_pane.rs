@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use xmlcraft_engine::soap::{Summary, headers_text, parse_headers, summarize};
 use xmlcraft_platform::client::{Request, send};
 
+use crate::Panel;
 use crate::XmlCraftApp;
 use crate::dialog::Dialog;
 use crate::i18n::{fmt, tl};
@@ -231,11 +232,15 @@ impl XmlCraftApp {
         }
     }
 
-    /// The pane of the window that is open, if it is one of the HTTP windows.
-    fn open_pane(&mut self) -> Option<&mut Pane> {
+    /// The pane that waits for the answer `serial`, and the tool window it belongs to (`None`: the SOAP dialog's). Whatever else is
+    /// open, an answer finds its pane.
+    fn pane_waiting_for(&mut self, serial: u64) -> Option<(&mut Pane, Option<Panel>)> {
+        let waits = |pane: &Pane| pane.preparing == Some(serial) || pane.sending == Some(serial);
+        if waits(&self.http_tool.pane) {
+            return Some((&mut self.http_tool.pane, Some(Panel::Http)));
+        }
         match &mut self.dialog {
-            Some(Dialog::Soap(form)) => Some(&mut form.pane),
-            Some(Dialog::OpenApi(form)) => Some(&mut form.pane),
+            Some(Dialog::Soap(form)) if waits(&form.pane) => Some((&mut form.pane, None)),
             _ => None,
         }
     }
@@ -255,7 +260,9 @@ impl XmlCraftApp {
                 self.search_answered(serial, result);
                 continue;
             }
-            let Some(pane) = self.open_pane() else { continue };
+            let (Outcome::Prepared { serial, .. } | Outcome::Sent { serial, .. }) = &outcome else { continue };
+            let Some((pane, owner)) = self.pane_waiting_for(*serial) else { continue };
+            let mut news = false;
             match outcome {
                 Outcome::Prepared { serial, result } if pane.preparing == Some(serial) => {
                     pane.preparing = None;
@@ -266,12 +273,17 @@ impl XmlCraftApp {
                 }
                 Outcome::Sent { serial, result } if pane.sending == Some(serial) => {
                     pane.sending = None;
+                    news = true;
                     match result {
                         Ok(answer) => pane.answer = Some(answer),
                         Err(why) => pane.error = Some(why),
                     }
                 }
                 _ => {}
+            }
+            // An answer that comes while the panel is hidden marks its rail icon.
+            if news && let Some(panel) = owner {
+                self.workbench.set_attention(panel);
             }
         }
     }
@@ -301,27 +313,34 @@ impl XmlCraftApp {
 /// What a window holds, for tests: the request as it is, the answer (status and body) and the error shown.
 pub type PaneView = (String, Option<(u16, String)>, Option<String>);
 
-fn mono_edit(ui: &mut egui::Ui, text: &mut String, rows: usize, id: &str) {
-    egui::ScrollArea::vertical().id_salt(id).max_height(rows as f32 * 17.0).show(ui, |ui| {
-        ui.add(egui::TextEdit::multiline(text).font(crate::theme::mono(12.0)).desired_rows(rows).desired_width(f32::INFINITY));
-    });
+/// The height of a line of the request and answer fields.
+const LINE: f32 = 15.0;
+
+/// A monospace field of `rows` lines that fills the width.
+fn mono_edit(ui: &mut egui::Ui, text: &mut String, rows: usize) {
+    ui.add(egui::TextEdit::multiline(text).font(crate::theme::mono(12.0)).desired_rows(rows).desired_width(f32::INFINITY));
 }
 
 /// The fields of the request and, below them, the state of sending and the answer. `with_method`: the method is for the person to
-/// choose (SOAP always posts).
+/// choose (SOAP always posts). The text areas share the height of the view they are in (the request about a fifth of it, the answer
+/// about a third), and the panel's own scroll area takes what does not fit.
 pub(crate) fn pane_ui(ui: &mut egui::Ui, pane: &mut Pane, with_method: bool) {
+    let view = ui.clip_rect().height().clamp(120.0, 3000.0);
+    let rows = |share: f32| ((view * share / LINE) as usize).clamp(4, 80);
     kit::section(ui, tl!("Address"), |ui| {
         ui.horizontal(|ui| {
             if with_method {
-                ui.add(egui::TextEdit::singleline(&mut pane.method).desired_width(80.0).font(crate::theme::mono(12.0)));
+                let method = ui.add(egui::TextEdit::singleline(&mut pane.method).desired_width(64.0).font(crate::theme::mono(12.0)));
+                crate::widgets::name_for_assistive_technology(ui, &method, tl!("The HTTP method"));
             }
-            ui.add(egui::TextEdit::singleline(&mut pane.url).desired_width(f32::INFINITY).hint_text("https://example.com/service"));
+            let url = ui.add(egui::TextEdit::singleline(&mut pane.url).desired_width(f32::INFINITY).hint_text("https://example.com/service"));
+            crate::widgets::name_for_assistive_technology(ui, &url, tl!("The address to send to"));
         });
         ui.add(crate::widgets::checkbox(&mut pane.allow_private, tl!("Allow this computer and the local network")));
     });
-    kit::section(ui, tl!("Headers"), |ui| mono_edit(ui, &mut pane.headers, 3, "xmlcraft-http-headers"));
+    kit::section(ui, tl!("Headers"), |ui| mono_edit(ui, &mut pane.headers, 3));
     kit::section(ui, tl!("Request"), |ui| {
-        mono_edit(ui, &mut pane.body, 8, "xmlcraft-http-request");
+        mono_edit(ui, &mut pane.body, rows(0.2));
         if ui.small_button(tl!("Open the request as a document")).clicked() {
             pane.act = Some(Act::OpenRequest);
         }
@@ -358,11 +377,10 @@ pub(crate) fn pane_ui(ui: &mut egui::Ui, pane: &mut Pane, with_method: bool) {
         let mut act = None;
         kit::section(ui, tl!("Answer"), |ui| {
             let mut headers = answer.headers.as_str();
-            ui.add(egui::TextEdit::multiline(&mut headers).font(crate::theme::mono(11.5)).desired_rows(2).desired_width(f32::INFINITY));
+            ui.add(egui::TextEdit::multiline(&mut headers).font(crate::theme::mono(11.5)).desired_rows(3).desired_width(f32::INFINITY));
             let mut body = answer.body.as_str();
-            egui::ScrollArea::vertical().id_salt("xmlcraft-http-answer").max_height(180.0).show(ui, |ui| {
-                ui.add(egui::TextEdit::multiline(&mut body).font(crate::theme::mono(12.0)).desired_rows(8).desired_width(f32::INFINITY));
-            });
+            let rows = rows(0.35);
+            ui.add(egui::TextEdit::multiline(&mut body).font(crate::theme::mono(12.0)).desired_rows(rows).desired_width(f32::INFINITY));
             if ui.small_button(tl!("Open the answer as a document")).clicked() {
                 act = Some(Act::OpenResponse);
             }

@@ -495,6 +495,9 @@ pub fn activity_rail(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
     let home = app.session.active().is_none();
     let (errors, warnings) = if home { (0, 0) } else { problem_counts(app) };
     let kind = app.active_doc_kind();
+    // (What the command bar takes the document for says whether the HTTP and SOAP tools have something to say about it.)
+    let bar = app.active_bar_kind(ui.ctx());
+    let proxy_running = app.soap_running();
     let mut clicked: Option<&'static str> = None;
     egui::Panel::left("activity_rail")
         .exact_size(RAIL_WIDTH)
@@ -523,7 +526,7 @@ pub fn activity_rail(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                         let state = RailState {
                             open: enabled && app.panel_visible(panel),
                             enabled,
-                            relevant: panel.relevant(kind),
+                            relevant: panel.relevant_in(kind, bar, proxy_running),
                             errors: if panel == Panel::Problems { errors } else { 0 },
                             warnings: if panel == Panel::Problems { warnings } else { 0 },
                             attention: app.workbench.attention(panel),
