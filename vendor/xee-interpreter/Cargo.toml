@@ -171,3 +171,7 @@ version = "0.3.1"
 [dev-dependencies.xot]
 version = "0.31.2"
 features = ["proptest"]
+
+# XmlCraft: a path dependency is not capped like a registry crate, and this lint (new in later compilers) fired on upstream code.
+[lints.rust]
+mismatched_lifetime_syntaxes = "allow"

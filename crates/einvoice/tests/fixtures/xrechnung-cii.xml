@@ -49,6 +49,9 @@
       <ram:BuyerReference>04011000-12345-67</ram:BuyerReference>
       <ram:SellerTradeParty>
         <ram:Name>Beispiel Lieferant GmbH</ram:Name>
+        <ram:SpecifiedLegalOrganization>
+          <ram:ID>HRB 12345</ram:ID>
+        </ram:SpecifiedLegalOrganization>
         <ram:DefinedTradeContact>
           <ram:PersonName>Erika Muster</ram:PersonName>
           <ram:TelephoneUniversalCommunication>
