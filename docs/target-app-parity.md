@@ -13,8 +13,7 @@ The authoritative assessment of how close XmlCraft is to the leading commercial 
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **11.6%** shipped, 45.0% with partial counted half (22 shipped + 126 partial of 189 counted; 64 P0, 62 P1, 54 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-11) |
-| **Feature breadth**, unweighted | **11.6%** shipped, 44.7% with partial counted half (22 shipped + 126 partial of 190 counted; 64 P0, 62 P1, 55 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-11) |
+| **Feature breadth**, unweighted | **11.6%** shipped, 45.0% with partial counted half (22 shipped + 127 partial of 190 counted; 64 P0, 62 P1, 55 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-11) |
 | Must-have (P0) features | 21.9% shipped, 59.4% weighted (14 shipped + 48 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **100%** (1017 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): a valid document has no well-formedness or validity error, an invalid one is well-formed and has at least one validity error (which one is not compared; 73 of the 227 are documents with no DOCTYPE, invalid because there is nothing to validate against) | measured (same run) |
