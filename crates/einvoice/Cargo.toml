@@ -18,6 +18,7 @@ xmlcraft-resolve = { workspace = true }
 xmlcraft-schemas = { workspace = true }
 xmlcraft-validate = { workspace = true }
 xmlcraft-schematron = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

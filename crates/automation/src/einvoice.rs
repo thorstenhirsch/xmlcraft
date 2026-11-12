@@ -51,6 +51,26 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             destructive: false,
             handler: einvoice_validate,
         },
+        ToolDef {
+            name: "einvoice_model",
+            title: "Read an electronic invoice into a neutral model",
+            description: "Read a UBL Invoice or CreditNote or a UN/CEFACT Cross Industry Invoice into one model that does not depend on the syntax: \
+                      `number`, `type_code`, `issue_date`, `due_date`, `currency`, `buyer_reference`, `order_reference`, `notes`, `seller` and `buyer` (and \
+                      `payee`: `name`, `trading_name`, `id`, `address` with `lines`, `city`, `postcode`, `subdivision`, `country`, `vat_id`, \
+                      `tax_registration`, `legal_id`, `contact` with `name`, `phone`, `email`, `electronic_address`), `delivery` (`date`, `party_name`, \
+                      `address`), `payment` (`means_code`, `reference`, `iban`, `bic`, `account_name`, `mandate`), `payment_terms`, \
+                      `allowances_charges`, `vat_breakdown` (`category`, `rate`, `taxable`, `tax`, `exemption_reason`), `totals` (`line_total`, \
+                      `allowance_total`, `charge_total`, `tax_exclusive`, `tax_total`, `tax_inclusive`, `prepaid`, `rounding`, `payable`) and `lines` \
+                      (`id`, `name`, `description`, `note`, `quantity`, `unit`, `net_price`, `line_total`, `vat_category`, `vat_rate`, \
+                      `seller_item_id`, `period_start`, `period_end`). A value is left out when the document lacks it. Each value has the `text` the \
+                      document has, its place (`start`, `end`, `line`, `column`), and, where it applies, the exact `decimal` (as a string, never a \
+                      float), the ISO `date`, and the `unit` (currency of an amount, unit code of a quantity). At most 100,000 lines are read \
+                      (`lines_total` counts them all); `cut` says what was left out. `recognised` is false for any other document.",
+            input_schema: json!({ "type": "object", "properties": source_properties(), "additionalProperties": false }),
+            read_only: true,
+            destructive: false,
+            handler: einvoice_model,
+        },
     ]
 }
 
@@ -215,6 +235,59 @@ fn einvoice_validate(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let report = xmlcraft_engine::einvoice::einvoice_validate(&s.text, &location, stages, max_findings)
         .map_err(|why| ToolError::Failed(format!("the validation failed: {why}")))?;
     let mut value = report_json(&report, &s.text);
+    value["lossy"] = json!(s.lossy);
+    json_result(value)
+}
+
+/// A decimal as a plain string with the document's digits (`-12.50`).
+fn decimal_string(d: xmlcraft_einvoice::model::Decimal) -> String {
+    let (whole, fraction) = d.digits();
+    let sign = if d.is_negative() { "-" } else { "" };
+    if fraction.is_empty() { format!("{sign}{whole}") } else { format!("{sign}{whole}.{fraction}") }
+}
+
+fn field_json(f: &xmlcraft_einvoice::model::Field, buffer: &Buffer) -> Value {
+    let (line, column) = crate::documents::position_json(buffer, f.range.start);
+    let mut v = json!({ "text": f.text, "start": f.range.start, "end": f.range.end, "line": line, "column": column });
+    if let Some(d) = f.decimal {
+        v["decimal"] = json!(decimal_string(d));
+    }
+    if let Some(d) = f.date {
+        v["date"] = json!(d.format("%Y-%m-%d").to_string());
+    }
+    if let Some(u) = &f.unit {
+        v["unit"] = json!(u);
+    }
+    v
+}
+
+fn node_json(node: &xmlcraft_einvoice::model::Node<'_>, buffer: &Buffer) -> Value {
+    use xmlcraft_einvoice::model::Node;
+    match node {
+        Node::Field(f) => field_json(f, buffer),
+        Node::List(items) => Value::Array(items.iter().map(|n| node_json(n, buffer)).collect()),
+        Node::Group(children) => Value::Object(children.iter().map(|(name, n)| ((*name).to_owned(), node_json(n, buffer))).collect()),
+    }
+}
+
+fn einvoice_model(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
+    let s = source(a, args)?;
+    if !s.language.is_xml() {
+        return Err(ToolError::InvalidArgs("einvoice_model reads XML documents".into()));
+    }
+    let model = xmlcraft_engine::einvoice::einvoice_model(&s.text).map_err(|why| ToolError::Failed(format!("reading the invoice failed: {why}")))?;
+    let Some(invoice) = model else {
+        return json_result(
+            json!({ "recognised": false, "reason": "the document is not a UBL Invoice or CreditNote or a CII CrossIndustryInvoice" }),
+        );
+    };
+    let buffer = Buffer::from_text(&s.text);
+    let mut value = node_json(&invoice.tree(), &buffer);
+    value["recognised"] = json!(true);
+    value["syntax"] = json!(syntax_name(invoice.syntax));
+    value["document"] = json!(invoice.document);
+    value["lines_total"] = json!(invoice.lines_total);
+    value["cut"] = json!(invoice.cut);
     value["lossy"] = json!(s.lossy);
     json_result(value)
 }

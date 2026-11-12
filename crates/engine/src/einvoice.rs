@@ -33,6 +33,11 @@ pub fn einvoice_validate(text: &str, location: &str, stages: Option<Vec<Stage>>,
     })
 }
 
+/// The neutral invoice model of `text` (`xmlcraft_einvoice::model`), or none when it is no UBL or CII invoice. An escaped panic is an error.
+pub fn einvoice_model(text: &str) -> Result<Option<xmlcraft_einvoice::model::Invoice>, String> {
+    crate::guard(|| xmlcraft_einvoice::model::read(text))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

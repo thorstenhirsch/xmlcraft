@@ -11,6 +11,7 @@
 //! - [`validate::validate`] checks a recognised invoice stage by stage against the schemas and rules that ship with XmlCraft (the XML
 //!   Schema of its syntax, the EN 16931 rules, the XRechnung rules).
 
+pub mod model;
 pub mod validate;
 
 use xmlcraft_syntax::parse;

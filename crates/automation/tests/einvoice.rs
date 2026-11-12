@@ -187,3 +187,65 @@ fn einvoice_validate_reads_a_file_in_the_root_and_an_open_document_and_refuses_w
     let broken = einvoice_validate(&mut a, json!({ "text": "<a>" }));
     assert_eq!(broken["stages"][0]["status"], json!("failed"), "{broken}");
 }
+
+fn model(a: &mut Automation, args: Value) -> Value {
+    match a.call("einvoice_model", &args).expect("runs").into_iter().next() {
+        Some(Content::Json(v)) => v,
+        None => Value::Null,
+    }
+}
+
+#[test]
+fn einvoice_model_gives_the_same_model_for_ubl_and_cii_with_places() {
+    let mut a = Automation::new();
+    let ubl = model(&mut a, json!({ "text": UBL_XRECHNUNG }));
+    let cii = model(&mut a, json!({ "text": CII_INVOICE }));
+    assert_eq!((ubl["recognised"].clone(), ubl["syntax"].as_str(), cii["syntax"].as_str()), (json!(true), Some("ubl"), Some("cii")), "{ubl}");
+    assert_eq!(cii["number"]["text"], json!("RE-2026-0001"));
+    assert_eq!(cii["issue_date"]["text"], json!("20261101"), "the text as the document has it");
+    assert_eq!((ubl["issue_date"]["date"].clone(), cii["issue_date"]["date"].clone()), (json!("2026-11-01"), json!("2026-11-01")));
+    assert_eq!(cii["totals"]["payable"]["decimal"], json!("119.00"), "a string, not a float");
+    assert_eq!(cii["totals"]["payable"]["unit"], json!("EUR"));
+    assert_eq!(cii["lines"][0]["unit"]["text"], json!("C62"));
+    assert_eq!(cii["buyer"]["address"]["city"]["text"], json!("Hamburg"));
+    let start = cii["number"]["start"].as_u64().and_then(|s| usize::try_from(s).ok()).expect("start");
+    let end = cii["number"]["end"].as_u64().and_then(|s| usize::try_from(s).ok()).expect("end");
+    assert_eq!(&CII_INVOICE[start..end], "RE-2026-0001");
+    assert!(cii["number"]["line"].as_u64().is_some_and(|l| l > 1));
+    // Without places and the raw date text, the two say the same.
+    fn strip(v: &Value) -> Value {
+        match v {
+            Value::Object(m) => Value::Object(
+                m.iter()
+                    .filter(|(k, _)| !matches!(k.as_str(), "start" | "end" | "line" | "column" | "syntax"))
+                    .map(|(k, v)| (k.clone(), strip(v)))
+                    .collect(),
+            ),
+            Value::Array(items) => Value::Array(items.iter().map(strip).collect()),
+            other => other.clone(),
+        }
+    }
+    let (mut u, mut c) = (strip(&ubl), strip(&cii));
+    for v in [&mut u, &mut c] {
+        for path in [&["issue_date"][..], &["due_date"], &["delivery", "date"]] {
+            let mut at = &mut *v;
+            for p in path {
+                at = &mut at[*p];
+            }
+            at["text"] = Value::Null;
+        }
+    }
+    assert_eq!(u, c);
+}
+
+#[test]
+fn einvoice_model_answers_other_documents_and_reads_a_file() {
+    let dir = tempfile::tempdir().expect("dir");
+    std::fs::write(dir.path().join("i.xml"), CII_INVOICE).expect("writes");
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    assert_eq!(model(&mut a, json!({ "path": "i.xml" }))["number"]["text"], json!("RE-2026-0001"));
+    let other = model(&mut a, json!({ "text": "<a/>" }));
+    assert_eq!(other["recognised"], json!(false), "{other}");
+    assert!(a.call("einvoice_model", &json!({ "path": "../outside.xml" })).is_err(), "the root confines the path");
+    assert!(a.call("einvoice_model", &json!({})).is_err());
+}
