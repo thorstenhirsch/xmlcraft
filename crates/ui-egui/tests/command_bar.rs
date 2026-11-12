@@ -51,14 +51,15 @@ fn every_document_has_validate_and_format_and_the_fixed_check_and_assign_are_gon
 fn a_stylesheet_offers_run_which_transforms() {
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell();
-    // (Run transforms with the window that Transform with XSLT… opens: another open document is what it is run with.)
+    // (Run transforms with the Query tool that Transform with XSLT… shows: another open document is what it is run with.)
     open(&mut h, &file(dir.path(), "in.xml", "<a/>"));
     open(&mut h, &file(dir.path(), "s.xsl", XSLT));
     assert!(h.query_by_label("Run").is_some() && h.query_by_label("XPath").is_some());
     assert!(h.query_by_label("Schema…").is_none(), "a stylesheet is not offered the XML schema menu");
     h.get_by_label("Run").click();
     h.run_steps(4);
-    assert!(h.query_by_label("Transform with XSLT").is_some(), "Run opens the transform window");
+    assert!(h.query_by_label("Close Query").is_some(), "Run shows the Query tool on its XSLT tab");
+    assert!(h.query_by_label("This document is the stylesheet").is_some());
 }
 
 #[test]

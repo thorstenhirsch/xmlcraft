@@ -52,8 +52,6 @@ mod tools;
 mod widgets;
 mod workbench;
 pub use workbench::{Panel, Place};
-mod xpath_dialog;
-mod xslt_dialog;
 pub mod zoom;
 
 use std::collections::HashMap;
@@ -179,8 +177,8 @@ pub struct XmlCraftApp {
     xpath: xmlcraft_engine::xpath::XPathRunner,
     /// Applies the stylesheets of the Transform window.
     xslt: xmlcraft_engine::xslt::XsltRunner,
-    /// The expression last typed in the XPath window, put back when it is opened again.
-    xpath_last: String,
+    /// The Query tool window (XPath and XSLT): its forms and their last results.
+    query: tools::query::QueryTool,
     /// The Search tool window (Find in Files): its form and its last result.
     search: tools::search::SearchTool,
     /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
@@ -395,7 +393,7 @@ impl XmlCraftApp {
             comparer: xmlcraft_engine::compare::Comparer::new(),
             xpath: xmlcraft_engine::xpath::XPathRunner::new(),
             xslt: xmlcraft_engine::xslt::XsltRunner::new(),
-            xpath_last: String::new(),
+            query: tools::query::QueryTool::default(),
             search: tools::search::SearchTool::default(),
             generate_serial: 0,
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
@@ -479,6 +477,11 @@ impl XmlCraftApp {
     /// Where a panel is, `None` while it is hidden.
     pub fn panel_place(&self, panel: Panel) -> Option<Place> {
         self.workbench.place(panel)
+    }
+
+    /// Whether the editor had the keyboard at the last frame (tests).
+    pub fn editor_focused(&self) -> bool {
+        self.editor_has_focus
     }
 
     /// Whether a hidden tool window has news (the rail's dot): a search that finished while Search was hidden.
