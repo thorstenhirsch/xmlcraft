@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 xmlcraft-diff = { workspace = true }
+xmlcraft-json-syntax = { workspace = true }
 xmlcraft-text = { workspace = true }
 
 [dev-dependencies]
