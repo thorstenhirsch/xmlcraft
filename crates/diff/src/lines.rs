@@ -121,6 +121,12 @@ impl LineDiff {
         self.hunks.is_empty()
     }
 
+    /// Every place where the lines are not the same, with whether it is a difference (those the options make none are not in
+    /// [`LineDiff::hunks`]).
+    pub(crate) fn gaps(&self) -> &[(Hunk, bool)] {
+        &self.gaps
+    }
+
     /// The lines of the first text a hunk stands for, as one byte range (empty, at the start of the line they would go before, for an
     /// addition).
     pub fn old_span(&self, hunk: &Hunk) -> Range<usize> {
@@ -218,10 +224,15 @@ fn tokens(line: &str) -> Vec<Range<usize>> {
 
 /// The parts of two lines that differ: the byte ranges in `old` and in `new`, merged where they touch.
 pub fn diff_words(old: &str, new: &str) -> (Vec<Range<usize>>, Vec<Range<usize>>) {
+    diff_words_within(old, new, DEFAULT_BUDGET / 10)
+}
+
+/// [`diff_words`] with a budget of work (beyond it the rest of the lines is marked as different).
+pub(crate) fn diff_words_within(old: &str, new: &str, budget: usize) -> (Vec<Range<usize>>, Vec<Range<usize>>) {
     let (ta, tb) = (tokens(old), tokens(new));
     let text = |s: &str, r: &Range<usize>| s.get(r.clone()).unwrap_or_default().to_owned();
     let (a, b): (Vec<String>, Vec<String>) = (ta.iter().map(|r| text(old, r)).collect(), tb.iter().map(|r| text(new, r)).collect());
-    let same = matches(&a, &b, DEFAULT_BUDGET / 10);
+    let same = matches(&a, &b, budget);
     let gaps = hunks_between(&same, ta.len(), tb.len());
     let ranges = |tokens: &[Range<usize>], pick: &dyn Fn(&Hunk) -> Range<usize>| -> Vec<Range<usize>> {
         let mut out: Vec<Range<usize>> = Vec::new();
