@@ -11,6 +11,7 @@ Button "Toggle Entry Helpers" [disabled] [toggled=false]
 Button "Toggle Problems" [disabled] [toggled=false]
 Button "Toggle Search" [toggled=false]
 Button "Toggle Query" [toggled=false]
+Button "Toggle Compare" [toggled=false]
 Button "Open Preferences" [toggled=false]
 Image
 Label value="XmlCraft"

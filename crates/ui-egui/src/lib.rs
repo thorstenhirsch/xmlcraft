@@ -10,7 +10,6 @@ mod bar_actions;
 mod business_chip;
 mod chrome;
 mod commands;
-mod compare_dialog;
 mod completion;
 mod control;
 mod convert_dialog;
@@ -30,7 +29,6 @@ mod icon_data;
 mod icons;
 mod kit;
 mod load_schema;
-mod merge_dialog;
 mod motion;
 mod new_from_template;
 mod openapi_dialog;
@@ -179,6 +177,8 @@ pub struct XmlCraftApp {
     xslt: xmlcraft_engine::xslt::XsltRunner,
     /// The Query tool window (XPath and XSLT): its forms and their last results.
     query: tools::query::QueryTool,
+    /// The Compare tool window (compare and merge): its forms and the last comparison.
+    compare: tools::compare::CompareTool,
     /// The Search tool window (Find in Files): its form and its last result.
     search: tools::search::SearchTool,
     /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
@@ -394,6 +394,7 @@ impl XmlCraftApp {
             xpath: xmlcraft_engine::xpath::XPathRunner::new(),
             xslt: xmlcraft_engine::xslt::XsltRunner::new(),
             query: tools::query::QueryTool::default(),
+            compare: tools::compare::CompareTool::default(),
             search: tools::search::SearchTool::default(),
             generate_serial: 0,
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
