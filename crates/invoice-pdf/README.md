@@ -12,10 +12,10 @@ Factur-X hybrid for a UN/CEFACT CII invoice. Tool: `einvoice_render_pdf`.
   XRECHNUNG reference profile), `text/xml`, `/Params /ModDate`, `/AF` in the catalog and the `/EmbeddedFiles` name tree,
   `/AFRelationship` per the table of §6.2.2 (Data for MINIMUM and BASIC WL, Alternative otherwise), and the `fx:` XMP extension
   schema with its PDF/A description. A UBL invoice is attached as `invoice.xml` with `/AFRelationship /Source`; Factur-X is CII only.
-- **PDF/A-3:** no ICC profile ships with XmlCraft (none with a clear open licence is in the repository; PdfCraft's CC0 CMYK profile
-  is a scanner-class profile, which a PDF/A output intent may not use), so the file identifies itself as PDF/A-3b only when the
-  caller passes an output or display profile (`Options::icc_profile`). **Nothing here verifies PDF/A or Factur-X conformance**
-  (veraPDF, Mustang): check the output externally.
+- **PDF/A-3:** the file identifies itself as PDF/A-3b and carries an sRGB output intent: the built-in compact v2 sRGB profile
+  (`assets/icc/sRGB-v2-micro.icc`, CC0-1.0, saucecontrol/Compact-ICC-Profiles) unless the caller passes another output or display
+  profile (`Options::icc_profile`). **Nothing here verifies PDF/A or Factur-X conformance** (veraPDF, Mustang): check the output
+  externally.
 
 ## Templates
 

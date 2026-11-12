@@ -266,7 +266,7 @@ fn einvoice_render_pdf_writes_a_hybrid_that_carries_the_file_byte_for_byte() {
     assert_eq!(r["pages"], json!(1), "{r}");
     assert_eq!(r["facturx"]["profile"], json!("XRECHNUNG"));
     assert_eq!(r["facturx"]["file_name"], json!("xrechnung.xml"));
-    assert_eq!((r["pdfa"].clone(), r["facturx"]["hybrid"].clone(), r["verified"].clone()), (json!(false), json!(false), json!(false)));
+    assert_eq!((r["pdfa"].clone(), r["facturx"]["hybrid"].clone(), r["verified"].clone()), (json!(true), json!(true), json!(false)));
     let pdf = xmlcraft_pdf::Pdf::open(std::fs::read(dir.path().join("i.pdf")).expect("written")).expect("a PDF");
     let files = pdf.embedded_files();
     assert_eq!(files.len(), 1);

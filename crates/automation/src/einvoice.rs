@@ -80,9 +80,9 @@ pub(crate) fn tools() -> Vec<ToolDef> {
                       DIN 5008 window), `en`, or the path of a template file (the `invoice-template` format: header, body and footer of blocks, \
                       columns, fields, tables and totals with `{path|filter}` placeholders). A UN/CEFACT CII invoice with a Factur-X profile \
                       is embedded as `factur-x.xml` (`xrechnung.xml` for XRechnung) with the Factur-X XMP metadata and the `/AFRelationship` the \
-                      specification gives; a UBL invoice is attached as `invoice.xml` (Factur-X is CII only). PDF/A-3 needs an output intent with \
-                      an ICC profile, which XmlCraft does not ship: give `icc_profile` (the path of an RGB, gray or CMYK output or display profile) \
-                      for the file to say it is PDF/A-3b. Returns `pages`, `bytes`, `warnings` (placeholders that name nothing, characters the \
+                      specification gives; a UBL invoice is attached as `invoice.xml` (Factur-X is CII only). The file says it is PDF/A-3b, with the \
+                      built-in sRGB profile as its output intent unless you give `icc_profile` (the path of an RGB, gray or CMYK output or \
+                      display profile). Returns `pages`, `bytes`, `warnings` (placeholders that name nothing, characters the \
                       font lacks), `facturx` (`hybrid`, `profile`, `file_name`, `relationship`, `reason`) and `pdfa` (with `pdfa_reason`). \
                       Neither PDF/A nor Factur-X conformance is verified: check the file with a validator before relying on it.",
             input_schema: json!({ "type": "object", "properties": render_properties(), "required": ["out"], "additionalProperties": false }),

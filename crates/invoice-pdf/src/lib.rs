@@ -10,8 +10,8 @@
 //!   `factur-x.xml` (`xrechnung.xml` for XRECHNUNG) with the Factur-X XMP; a UBL invoice is attached as a plain associated file
 //!   (Factur-X is CII only).
 //! - PDF/A-3: the file is written to the parts of ISO 19005-3 XmlCraft can meet (embedded fonts, XMP, associated file, no
-//!   encryption), but a PDF/A output intent needs an ICC profile and XmlCraft ships none, so the file says it is PDF/A-3b only when
-//!   the caller gives a suitable profile. Neither PDF/A nor Factur-X conformance is verified here (no veraPDF, no Mustang).
+//!   encryption, an sRGB output intent from the built-in profile or the caller's) and says it is PDF/A-3b. Neither PDF/A nor
+//!   Factur-X conformance is verified here (no veraPDF, no Mustang): check a file with them before relying on it.
 
 pub mod font;
 pub mod format;
@@ -33,11 +33,14 @@ pub enum TemplateSource<'a> {
     Text(&'a str),
 }
 
+/// The built-in output intent profile: the compact sRGB v2 profile of saucecontrol/Compact-ICC-Profiles (CC0-1.0).
+static SRGB_PROFILE: &[u8] = include_bytes!("../../../assets/icc/sRGB-v2-micro.icc");
+
 pub struct Options<'a> {
     pub template: TemplateSource<'a>,
     /// The time the file is made, in seconds since 1970 (UTC).
     pub time: i64,
-    /// An ICC output profile for the PDF/A output intent (none ships with XmlCraft).
+    /// An ICC output or display profile for the PDF/A output intent, instead of the built-in sRGB profile.
     pub icc_profile: Option<&'a [u8]>,
 }
 
@@ -125,9 +128,10 @@ pub fn render(xml: &str, bytes: &[u8], options: &Options<'_>) -> Result<Rendered
         TemplateSource::Text(t) => t,
     })
     .map_err(RenderError::Template)?;
+    // The output intent: the caller's profile, else the built-in sRGB one (the page is drawn in DeviceGray, which any RGB intent allows).
     let icc = match options.icc_profile {
-        Some(p) => Some((p, pdf::icc_components(p).map_err(RenderError::Icc)?)),
-        None => None,
+        Some(p) => Some((p, pdf::icc_components(p).map_err(RenderError::Icc)?, "Custom", "The ICC profile given to XmlCraft")),
+        None => Some((SRGB_PROFILE, 3, "sRGB IEC61966-2.1", "sRGB IEC61966-2.1 (built-in compact v2 profile)")),
     };
     let regular = font::Font::load(font::Face::Regular).map_err(|e| RenderError::Pdf(e.0))?;
     let bold = font::Font::load(font::Face::Bold).map_err(|e| RenderError::Pdf(e.0))?;
@@ -144,15 +148,12 @@ pub fn render(xml: &str, bytes: &[u8], options: &Options<'_>) -> Result<Rendered
         // Not Factur-X: the page was made from the XML, which is its source (ISO 32000-2 §14.13, `Source`).
         None => ("invoice.xml", "Source"),
     };
-    let reason = match (level, icc.is_some()) {
-        (Some(_), true) => None,
-        (Some(_), false) => {
-            Some("Factur-X needs PDF/A-3, and a PDF/A output intent needs an ICC profile, which XmlCraft does not ship: give icc_profile".to_owned())
-        }
-        (None, _) if invoice.syntax == Syntax::Ubl => {
+    let reason = match level {
+        Some(_) => None,
+        None if invoice.syntax == Syntax::Ubl => {
             Some("Factur-X / ZUGFeRD embeds UN/CEFACT CII only; the UBL invoice is attached as a plain associated file".to_owned())
         }
-        (None, _) => Some("the CII invoice names no Factur-X profile and no XRechnung or EN 16931 specification".to_owned()),
+        None => Some("the CII invoice names no Factur-X profile and no XRechnung or EN 16931 specification".to_owned()),
     };
     let number = invoice.number.as_ref().map(|n| n.text.as_str()).unwrap_or_default();
     let title = match template.lang {
@@ -183,15 +184,13 @@ pub fn render(xml: &str, bytes: &[u8], options: &Options<'_>) -> Result<Rendered
         pages: laid.pages.len(),
         warnings: laid.warnings,
         facturx: FacturX {
-            hybrid: level.is_some() && icc.is_some(),
+            hybrid: level.is_some(),
             profile: level.map(str::to_owned),
             file_name: file_name.to_owned(),
             relationship: relationship.to_owned(),
             reason,
         },
-        pdfa: icc.is_some(),
-        pdfa_reason: icc
-            .is_none()
-            .then(|| "no ICC output profile was given (XmlCraft ships none), so the file does not say it is PDF/A-3".to_owned()),
+        pdfa: true,
+        pdfa_reason: None,
     })
 }

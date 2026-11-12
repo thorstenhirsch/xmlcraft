@@ -4,7 +4,7 @@
 
 Every asset XmlCraft includes, bundles or uses to build its published material, with its author, source and licence. The policy is in [AGENTS.md](AGENTS.md) §1. The machine-readable list, with the SHA-256 of every asset but the translation catalogs, is [ATTRIBUTION.toml](ATTRIBUTION.toml). Licence texts are kept beside the assets and summarised in [NOTICE](NOTICE).
 
-## In this repository (251)
+## In this repository (252)
 
 | Asset | Title | Author | Licence | Source | Used for |
 |---|---|---|---|---|---|
@@ -51,6 +51,7 @@ Every asset XmlCraft includes, bundles or uses to build its published material, 
 | `assets/icons/type.svg` | Lucide icon "type" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/type.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 | `assets/icons/align-left.svg` | Lucide icon "align-left" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/align-left.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 | `assets/icons/book-open.svg` | Lucide icon "book-open" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/book-open.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
+| `assets/icc/sRGB-v2-micro.icc` | sRGB v2 micro ICC profile | Clinton Ingram (saucecontrol/Compact-ICC-Profiles) | CC0-1.0 | https://github.com/saucecontrol/Compact-ICC-Profiles (profiles/sRGB-v2-micro.icc, fetched 2026-11-12, 456 bytes) | PDF/A output intent of the invoice PDFs XmlCraft writes (xmlcraft-invoice-pdf) |
 | `assets/fonts/Inter-Regular.ttf` | Inter Regular | The Inter Project Authors (Rasmus Andersson) | OFL-1.1 | https://github.com/rsms/inter | UI font (regular weight), embedded in the app; subset-embedded in the invoice PDFs XmlCraft writes (xmlcraft-invoice-pdf; the OFL allows embedding) |
 | `assets/fonts/Inter-Medium.ttf` | Inter Medium | The Inter Project Authors (Rasmus Andersson) | OFL-1.1 | https://github.com/rsms/inter | UI font (medium weight, buttons and tabs), embedded in the app |
 | `assets/fonts/Inter-SemiBold.ttf` | Inter SemiBold | The Inter Project Authors (Rasmus Andersson) | OFL-1.1 | https://github.com/rsms/inter | UI font (semibold weight, headings), embedded in the app; subset-embedded in the invoice PDFs XmlCraft writes (bold text; xmlcraft-invoice-pdf) |

@@ -50,8 +50,7 @@ fn a_cii_xrechnung_becomes_a_pdf_with_its_xml_embedded_byte_for_byte() {
     assert_eq!(out.pages, 1);
     assert_eq!(out.facturx.profile.as_deref(), Some("XRECHNUNG"));
     assert_eq!((out.facturx.file_name.as_str(), out.facturx.relationship.as_str()), ("xrechnung.xml", "Alternative"));
-    assert!(!out.pdfa && !out.facturx.hybrid, "no ICC profile ships, so no PDF/A claim");
-    assert!(out.facturx.reason.as_deref().is_some_and(|r| r.contains("ICC")), "{:?}", out.facturx.reason);
+    assert!(out.pdfa && out.facturx.hybrid && out.facturx.reason.is_none(), "the built-in sRGB profile is the output intent");
     assert!(out.warnings.is_empty(), "{:?}", out.warnings);
     let pdf = Pdf::open(out.bytes.clone()).expect("XmlCraft reads it");
     assert!(!pdf.recovered(), "the cross-reference is right");
@@ -73,7 +72,23 @@ fn a_cii_xrechnung_becomes_a_pdf_with_its_xml_embedded_byte_for_byte() {
     ] {
         assert!(meta.contains(needle), "{needle} in {meta}");
     }
-    assert!(!meta.contains("pdfaid:part"), "no PDF/A claim without an output intent");
+    assert!(
+        meta.contains("<pdfaid:part>3</pdfaid:part>") && meta.contains("<pdfaid:conformance>B</pdfaid:conformance>"),
+        "PDF/A-3b is identified: {meta}"
+    );
+    let root = pdf.resolve(pdf.trailer().get("Root").expect("a root"));
+    let intents = root.as_dict().and_then(|d| d.get("OutputIntents")).and_then(Object::as_array).expect("an output intent").to_vec();
+    let intent = pdf.resolve(&intents[0]);
+    let intent = intent.as_dict().expect("a dictionary");
+    assert_eq!(
+        intent.get("OutputConditionIdentifier").and_then(Object::as_string).map(<[u8]>::to_vec),
+        Some(b"sRGB IEC61966-2.1".to_vec()),
+        "the built-in profile"
+    );
+    match pdf.resolve(intent.get("DestOutputProfile").expect("a profile")) {
+        Object::Stream(s) => assert!(pdf.stream_data(&s).expect("decoded").starts_with(&[0, 0, 1, 200]), "the 456-byte sRGB profile"),
+        other => panic!("{other:?}"),
+    }
     assert!(draws(&pages[0], "RE-2026-0001", font::Face::Regular), "the invoice number is on the page");
     assert!(draws(&pages[0], "Beispiel Amt", font::Face::Regular), "the buyer is on the page");
     assert!(draws(&pages[0], "119,00 EUR", font::Face::Bold), "the amount due, in bold");

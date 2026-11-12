@@ -5,7 +5,7 @@
 //! in the catalog's `/AF` array and in the `/EmbeddedFiles` name tree, with the MIME type `text/xml` and `/Params` with a `/ModDate`
 //! (§6.2, §6.2.1); the `/AFRelationship` follows the table of §6.2.2; the XMP carries the Factur-X extension schema of §6.3.1 and
 //! its PDF/A description. PDF/A-3 (ISO 19005-3) further needs every font embedded (done), no encryption (none), and an output intent
-//! with an ICC profile: XmlCraft ships none, so a file is identified as PDF/A-3b (`pdfaid`) only when the caller gives a profile.
+//! with an ICC profile: the built-in sRGB profile unless the caller gives one; a file is identified as PDF/A-3b (`pdfaid`) when it has one.
 
 use pdfcraft_cos::{Dict, Document, ObjRef, Object, PdfString, SaveOptions, Stream, write_full};
 
@@ -32,8 +32,9 @@ pub struct Meta<'a> {
     /// Seconds since 1970 (UTC): the creation and modification time.
     pub time: i64,
     pub facturx: Option<FacturXMeta<'a>>,
-    /// The output intent's ICC profile and its number of components; with it the file says it is PDF/A-3b.
-    pub icc: Option<(&'a [u8], u8)>,
+    /// The output intent: the ICC profile, its number of components, the output condition identifier and its description; with it the
+    /// file says it is PDF/A-3b.
+    pub icc: Option<(&'a [u8], u8, &'a str, &'a str)>,
     /// The file identifier (16 bytes).
     pub id: [u8; 16],
 }
@@ -286,13 +287,13 @@ pub fn write(laid: &Laid, attachment: &Attachment<'_>, meta: &Meta<'_>) -> Resul
         ("ViewerPreferences", Object::Dict(dict(vec![("DisplayDocTitle", Object::Bool(true))]))),
         ("PageMode", name("UseAttachments")),
     ];
-    if let Some((profile, components)) = meta.icc {
+    if let Some((profile, components, condition, info)) = meta.icc {
         let icc = doc.add(Object::Stream(Stream::flate(dict(vec![("N", Object::Int(i64::from(components)))]), profile)));
         let intent = dict(vec![
             ("Type", name("OutputIntent")),
             ("S", name("GTS_PDFA1")),
-            ("OutputConditionIdentifier", text("Custom")),
-            ("Info", text("The ICC profile given to XmlCraft")),
+            ("OutputConditionIdentifier", text(condition)),
+            ("Info", text(info)),
             ("DestOutputProfile", Object::Ref(icc)),
         ]);
         catalog.push(("OutputIntents", Object::Array(vec![Object::Dict(intent)])));
