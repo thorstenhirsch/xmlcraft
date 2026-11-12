@@ -247,7 +247,8 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
             (tl!("Merge Documents"), bound.is_some() && others.len() >= 2, tl!("A merge needs three documents: this one, the base, and the other."))
         }
     };
-    let run = kit::tool_footer(ui, primary, Some("git-compare"), can, why_not);
+    let wide = !kit::narrow(ui);
+    let mut run = !wide && kit::tool_footer(ui, primary, Some("git-compare"), can, why_not);
     let fresh = app.compare.answer.as_ref().is_some_and(|a| {
         [a.first, a.second]
             .iter()
@@ -255,28 +256,34 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     });
     let mut go = None;
     let shown = bound.clone();
-    kit::tool_body(ui, false, |ui| {
-        kit::segmented(ui, &mut app.compare.tab, &[(Tab::Compare, tl!("Compare")), (Tab::Merge, tl!("Merge"))]);
-        ui.add_space(kit::GAP);
-        let Some(bound) = &shown else {
-            tools::needs(ui, tl!("Compare needs a document"), tl!("Open two documents to compare them, or three to merge."));
-            return;
-        };
-        tools::bound_line(ui, &bound.name);
-        ui.add_space(kit::GAP);
-        match app.compare.tab {
-            Tab::Compare => {
-                let ((), clicked) = tools::columns(
-                    ui,
-                    &mut app.compare,
-                    |ui, tool| compare_form(ui, tool, &others, second),
-                    |ui, tool| compare_results(ui, tool, bound.id, fresh),
-                );
-                go = clicked;
+    if wide {
+        let (clicked, ran) = wide_body(ui, app, &shown, &others, (second, base, theirs), (primary, can, fresh));
+        go = clicked;
+        run = ran;
+    } else {
+        kit::tool_body(ui, false, |ui| {
+            kit::segmented(ui, &mut app.compare.tab, &[(Tab::Compare, tl!("Compare")), (Tab::Merge, tl!("Merge"))]);
+            ui.add_space(kit::GAP);
+            let Some(bound) = &shown else {
+                tools::needs(ui, tl!("Compare needs a document"), tl!("Open two documents to compare them, or three to merge."));
+                return;
+            };
+            tools::bound_line(ui, &bound.name);
+            ui.add_space(kit::GAP);
+            match app.compare.tab {
+                Tab::Compare => {
+                    let ((), clicked) = tools::columns(
+                        ui,
+                        &mut app.compare,
+                        |ui, tool| compare_form(ui, tool, &others, second),
+                        |ui, tool| compare_results(ui, tool, bound.id, fresh),
+                    );
+                    go = clicked;
+                }
+                Tab::Merge => merge_form(ui, &mut app.compare.merge, &others, base, theirs),
             }
-            Tab::Merge => merge_form(ui, &mut app.compare.merge, &others, base, theirs),
-        }
-    });
+        });
+    }
     if let Some(go) = go {
         app.go(go);
     }
@@ -296,10 +303,10 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
 }
 
 /// A combo box over the other documents. `value` is the one chosen.
-fn document_combo(ui: &mut egui::Ui, salt: &str, name: &str, others: &[(u64, String)], value: Option<u64>) -> Option<u64> {
+fn document_combo(ui: &mut egui::Ui, salt: &str, name: &str, others: &[(u64, String)], value: Option<u64>, max_width: f32) -> Option<u64> {
     let mut chosen = value;
     let current = others.iter().find(|(id, _)| Some(*id) == value).map_or("", |(_, n)| n.as_str()).to_owned();
-    let width = (ui.available_width() - 8.0).max(120.0);
+    let width = (ui.available_width() - 8.0).clamp(120.0, max_width);
     let combo = egui::ComboBox::from_id_salt(salt).selected_text(current).width(width).show_ui(ui, |ui| {
         for (id, label) in others {
             if ui.selectable_label(Some(*id) == value, label).clicked() {
@@ -321,20 +328,141 @@ fn compare_form(ui: &mut egui::Ui, tool: &mut CompareTool, others: &[(u64, Strin
     if others.is_empty() {
         kit::help(ui, tl!("Open a second document to compare this one with."));
     } else {
-        tool.second = document_combo(ui, "xmlcraft-compare-second", tl!("The document to compare with"), others, second);
+        tool.second = document_combo(ui, "xmlcraft-compare-second", tl!("The document to compare with"), others, second, f32::INFINITY);
     }
     ui.add_space(4.0);
     kit::segmented(ui, &mut tool.mode, &[(Mode::Auto, tl!("Automatic")), (Mode::Tree, tl!("Elements and members")), (Mode::Lines, tl!("Lines"))]);
     ui.add_space(kit::GAP);
     caption(ui, tl!("Do not count as a difference"));
+    ignore_options(ui, tool);
+}
+
+/// The things that do not count as a difference, as check boxes (stacked, or inline in a wrapping row).
+fn ignore_options(ui: &mut egui::Ui, tool: &mut CompareTool) {
     ui.add(widgets::checkbox(&mut tool.ignore.whitespace, tl!("White space")));
     ui.add(widgets::checkbox(&mut tool.ignore.case, tl!("Upper and lower case")));
     if tool.mode != Mode::Lines {
         ui.add(widgets::checkbox(&mut tool.ignore.comments, tl!("Comments")));
-        ui.add(widgets::checkbox(&mut tool.ignore.child_order, tl!("The order of elements and list items")));
-        ui.add(widgets::checkbox(&mut tool.ignore.numbers_by_value, tl!("How a number is written (1.0 and 1)")));
+        ui.add(widgets::checkbox(&mut tool.ignore.child_order, tl!("Order of elements and items")));
+        ui.add(widgets::checkbox(&mut tool.ignore.numbers_by_value, tl!("Number format (1.0 and 1)")));
         ui.add(widgets::checkbox(&mut tool.ignore.prefixes, tl!("Namespace prefixes")));
     }
+}
+
+/// The widest a document combo box is in the wide layout's toolbar.
+const COMBO_MAX: f32 = 260.0;
+/// The toolbar width from which the ignore options are in its row.
+const INLINE_OPTIONS: f32 = 1500.0;
+
+/// The wide layout (the usual bottom dock): one toolbar, wrapping only when it does not fit, with the primary pill at its right end,
+/// and under it the whole width and the rest of the height for the differences. Returns where a click went and whether the pill was
+/// pressed.
+fn wide_body(
+    ui: &mut egui::Ui,
+    app: &mut XmlCraftApp,
+    shown: &Option<Bound>,
+    others: &[(u64, String)],
+    (second, base, theirs): (Option<u64>, Option<u64>, Option<u64>),
+    (primary, can, fresh): (&str, bool, bool),
+) -> (Option<Go>, bool) {
+    let (mut go, mut run) = (None, false);
+    kit::tool_body(ui, false, |ui| {
+        let Some(bound) = shown else {
+            kit::segmented(ui, &mut app.compare.tab, &[(Tab::Compare, tl!("Compare")), (Tab::Merge, tl!("Merge"))]);
+            tools::needs(ui, tl!("Compare needs a document"), tl!("Open two documents to compare them, or three to merge."));
+            return;
+        };
+        let t = crate::theme::Tokens::get(ui.ctx());
+        let pill_width = widgets::text_width(ui, primary, &crate::theme::medium(12.5)) + 64.0;
+        let (top, right) = (ui.cursor().min, ui.max_rect().right());
+        let pill = egui::Rect::from_min_size(egui::pos2(right - pill_width, top.y), egui::vec2(pill_width, kit::TOOL_CONTROL));
+        // (A child that takes no room: the toolbar starts at the same top.)
+        let mut pill_ui = ui.new_child(egui::UiBuilder::new().max_rect(pill));
+        run = pill_ui
+            .add_enabled_ui(can, |ui| kit::pill_sized(ui, kit::PillKind::Primary, Some("git-compare"), primary, kit::TOOL_CONTROL))
+            .inner
+            .clicked();
+        let width = (right - top.x - pill_width - kit::GAP).max(100.0);
+        // The options of a comparison are many: they share the row when it is wide enough, else they have a row of their own.
+        let inline = width >= INLINE_OPTIONS;
+        ui.allocate_ui(egui::vec2(width, kit::TOOL_CONTROL), |ui| {
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+            ui.horizontal(|ui| {
+                kit::segmented(ui, &mut app.compare.tab, &[(Tab::Compare, tl!("Compare")), (Tab::Merge, tl!("Merge"))]);
+                ui.label(egui::RichText::new(format!("→ {}", bound.name)).font(crate::theme::medium(12.0)).color(t.text_muted));
+                match app.compare.tab {
+                    Tab::Compare => {
+                        caption(ui, tl!("with"));
+                        if others.is_empty() {
+                            kit::help(ui, tl!("Open a second document to compare this one with."));
+                        } else {
+                            app.compare.second =
+                                document_combo(ui, "xmlcraft-compare-second", tl!("The document to compare with"), others, second, COMBO_MAX);
+                        }
+                        let tool = &mut app.compare;
+                        kit::segmented(
+                            ui,
+                            &mut tool.mode,
+                            &[(Mode::Auto, tl!("Automatic")), (Mode::Tree, tl!("Elements and members")), (Mode::Lines, tl!("Lines"))],
+                        );
+                        if inline {
+                            caption(ui, tl!("Ignore"));
+                            ignore_options(ui, tool);
+                        }
+                    }
+                    Tab::Merge if others.len() >= 2 => {
+                        let merge = &mut app.compare.merge;
+                        caption(ui, tl!("Base"));
+                        merge.base = document_combo(ui, "xmlcraft-merge-base", tl!("The base document"), others, base, COMBO_MAX);
+                        caption(ui, tl!("Theirs"));
+                        merge.theirs = document_combo(ui, "xmlcraft-merge-theirs", tl!("The other document"), others, theirs, COMBO_MAX);
+                    }
+                    Tab::Merge => {}
+                }
+            });
+        });
+        if app.compare.tab == Tab::Merge && others.len() >= 2 {
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+            ui.horizontal_wrapped(|ui| {
+                let merge = &mut app.compare.merge;
+                caption(ui, tl!("Where both changed the same lines"));
+                kit::segmented(
+                    ui,
+                    &mut merge.conflicts,
+                    &[
+                        (Choice::Markers, tl!("Mark")),
+                        (Choice::Ours, tl!("Ours")),
+                        (Choice::Theirs, tl!("Theirs")),
+                        (Choice::Both, tl!("Both")),
+                        (Choice::Base, tl!("Base")),
+                    ],
+                );
+                ui.add(widgets::checkbox(&mut merge.ignore_whitespace, tl!("White space does not count as a change")));
+            });
+        }
+        if !inline && app.compare.tab == Tab::Compare {
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+            ui.horizontal_wrapped(|ui| {
+                caption(ui, tl!("Do not count as a difference"));
+                ignore_options(ui, &mut app.compare);
+            });
+        }
+        ui.add_space(kit::GAP);
+        match app.compare.tab {
+            Tab::Compare => go = compare_results(ui, &mut app.compare, bound.id, fresh),
+            Tab::Merge if others.len() >= 2 => {
+                if let Some(message) = &app.compare.merge.error {
+                    kit::banner(ui, Tone::Bad, message);
+                }
+            }
+            Tab::Merge => tools::needs(
+                ui,
+                tl!("A merge needs three documents"),
+                tl!("This one, the base it and the other were made from, and the other. Open them all."),
+            ),
+        }
+    });
+    (go, run)
 }
 
 /// The differences of the last comparison, filling the rest of the panel. Returns where a click went. Shown while the document in
@@ -424,10 +552,10 @@ fn merge_form(ui: &mut egui::Ui, form: &mut MergeForm, others: &[(u64, String)],
         return;
     }
     caption(ui, tl!("Base"));
-    form.base = document_combo(ui, "xmlcraft-merge-base", tl!("The base document"), others, base);
+    form.base = document_combo(ui, "xmlcraft-merge-base", tl!("The base document"), others, base, f32::INFINITY);
     ui.add_space(4.0);
     caption(ui, tl!("Theirs"));
-    form.theirs = document_combo(ui, "xmlcraft-merge-theirs", tl!("The other document"), others, theirs);
+    form.theirs = document_combo(ui, "xmlcraft-merge-theirs", tl!("The other document"), others, theirs, f32::INFINITY);
     ui.add_space(kit::GAP);
     caption(ui, tl!("Where both changed the same lines"));
     kit::segmented(
