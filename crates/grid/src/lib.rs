@@ -8,6 +8,8 @@
 //! - **The text is the model.** Nothing here keeps a second copy of the document: a change is a list of [`Edit`]s of the text, each as
 //!   small as the cell (a value replaced, a name replaced, a member removed with its comma), made with the places the tree knows. Apply
 //!   them to the buffer and read the text again.
+//! - [`Grid::table`] shows the children of a node that repeat (XML elements of one name, the items of a JSON or YAML array) as a table
+//!   of rows and columns; its edits (cells, rows, columns, an order, pasted tab-separated text) are minimal edits of the text too.
 //! - What a cell cannot be changed to (a number that is not a number, a name that is no name, a comment with `--` in it, a block scalar
 //!   or flow collection of YAML) is an error that says why, and nothing is edited.
 
@@ -16,6 +18,12 @@ use std::ops::Range;
 
 use xmlcraft_diff::{Family, Node, NodeKind};
 use xmlcraft_text::Edit;
+
+mod table;
+mod table_edit;
+
+pub use table::{Cell, CellKind, Column, ColumnKind, Drill, Layout, MAX_COLUMNS, MAX_PASTE_CELLS, MAX_PASTE_ROWS, Table, TableRow, parse_tsv};
+pub use table_edit::Pasted;
 
 /// The most rows [`Grid::rows`] lists.
 pub const MAX_ROWS: usize = 100_000;
@@ -32,7 +40,7 @@ impl std::fmt::Display for GridError {
 
 impl std::error::Error for GridError {}
 
-fn fail<T>(message: impl Into<String>) -> Result<T, GridError> {
+pub(crate) fn fail<T>(message: impl Into<String>) -> Result<T, GridError> {
     Err(GridError(message.into()))
 }
 
@@ -73,7 +81,7 @@ impl RowKind {
     }
 }
 
-fn kind_of(kind: NodeKind) -> RowKind {
+pub(crate) fn kind_of(kind: NodeKind) -> RowKind {
     match kind {
         NodeKind::Document => RowKind::Document,
         NodeKind::Element => RowKind::Element,
@@ -110,15 +118,43 @@ pub struct Row {
     pub editable: bool,
 }
 
+/// How a text of a family is read beyond its family: JSON Lines (every line an item of one array), and the Extended JSON of a BSON file
+/// (a wrapper such as `{"$numberLong": "5"}` is one value in a table).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Flavor {
+    #[default]
+    Plain,
+    JsonLines,
+    ExtendedJson,
+}
+
 /// A document as a tree.
 #[derive(Clone, Debug)]
 pub struct Grid {
-    root: Node,
-    family: Family,
+    pub(crate) root: Node,
+    pub(crate) family: Family,
+    pub(crate) flavor: Flavor,
+}
+
+/// JSON Lines as one array: every line that is not blank is an item, read as strict JSON. A line that is not JSON is refused with
+/// its problem.
+fn read_lines(text: &str) -> Result<Node, GridError> {
+    use xmlcraft_json_syntax::{Data, Options, Severity, Value, parse_lines};
+    let mut items = Vec::new();
+    for (_, parse) in parse_lines(text, &Options::default()) {
+        if let Some(d) = parse.diagnostics.iter().find(|d| d.severity() == Severity::Error) {
+            return fail(format!("at byte {}: {}", d.span.start, d.message()));
+        }
+        match parse.root {
+            Some(root) => items.push(root),
+            None => return fail("a line has no value"),
+        }
+    }
+    Node::from_value(&Value { span: 0..text.len(), data: Data::Array(items) }).map_err(|e| GridError(e.to_string()))
 }
 
 /// An element that holds nothing but one run of text (or nothing): its value is that text, and the value is edited in place.
-fn text_only(node: &Node) -> Option<Option<&Node>> {
+pub(crate) fn text_only(node: &Node) -> Option<Option<&Node>> {
     if node.kind != NodeKind::Element {
         return None;
     }
@@ -133,8 +169,20 @@ fn text_only(node: &Node) -> Option<Option<&Node>> {
 impl Grid {
     /// Read `text`, which is written in `family`.
     pub fn read(text: &str, family: Family) -> Result<Grid, GridError> {
-        let root = family.read(text).map_err(|e| GridError(e.to_string()))?;
-        Ok(Grid { root, family })
+        Grid::read_flavored(text, family, Flavor::Plain)
+    }
+
+    /// Read `text`, which is written in `family` and read as `flavor` says (JSON Lines are one array whose items are the lines).
+    pub fn read_flavored(text: &str, family: Family, flavor: Flavor) -> Result<Grid, GridError> {
+        let root = match (family, flavor) {
+            (Family::Json, Flavor::JsonLines) => read_lines(text)?,
+            _ => family.read(text).map_err(|e| GridError(e.to_string()))?,
+        };
+        Ok(Grid { root, family, flavor })
+    }
+
+    pub fn flavor(&self) -> Flavor {
+        self.flavor
     }
 
     pub fn family(&self) -> Family {
@@ -208,7 +256,7 @@ impl Grid {
     }
 
     /// The children of `node` that have rows: all of them, except the lone text of an element that holds nothing else.
-    fn visible_children<'a>(&self, node: &'a Node) -> Vec<&'a Node> {
+    pub(crate) fn visible_children<'a>(&self, node: &'a Node) -> Vec<&'a Node> {
         if text_only(node).is_some() {
             node.children.iter().filter(|c| c.kind == NodeKind::Attribute).collect()
         } else {
@@ -217,7 +265,7 @@ impl Grid {
     }
 
     /// The node at `path` among visible rows, and its index among an array's items.
-    fn at(&self, path: &[usize]) -> Option<(&Node, Option<usize>)> {
+    pub(crate) fn at(&self, path: &[usize]) -> Option<(&Node, Option<usize>)> {
         let mut current = &self.root;
         let mut index = None;
         for step in path {
@@ -259,7 +307,7 @@ impl Grid {
 
 // --- edits -------------------------------------------------------------------------------------------------------------------
 
-fn escape_xml(text: &str, quote: Option<char>) -> String {
+pub(crate) fn escape_xml(text: &str, quote: Option<char>) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
         match c {
@@ -277,7 +325,7 @@ fn escape_xml(text: &str, quote: Option<char>) -> String {
     out
 }
 
-fn json_string(text: &str) -> String {
+pub(crate) fn json_string(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 2);
     out.push('"');
     for c in text.chars() {
@@ -296,7 +344,7 @@ fn json_string(text: &str) -> String {
 }
 
 /// Whether `text` is a number as JSON writes one.
-fn is_json_number(text: &str) -> bool {
+pub(crate) fn is_json_number(text: &str) -> bool {
     let t = text.strip_prefix('-').unwrap_or(text);
     let (int, rest) = match t.find(['.', 'e', 'E']) {
         Some(at) => t.split_at(at),
@@ -319,6 +367,33 @@ fn is_json_number(text: &str) -> bool {
         return !after.is_empty() && after.chars().all(|c| c.is_ascii_digit());
     }
     rest.is_empty()
+}
+
+/// Whether `text` is a number as YAML reads a plain scalar: a JSON number, `+1`, `.5`, hexadecimal or octal, `.inf`, `.nan`. (Not `inf`
+/// or `NaN`, which YAML reads as strings.)
+pub(crate) fn is_yaml_number(text: &str) -> bool {
+    let t = text.strip_prefix(['+', '-']).unwrap_or(text);
+    if let Some(digits) = t.strip_prefix("0x") {
+        return !digits.is_empty() && digits.chars().all(|c| c.is_ascii_hexdigit());
+    }
+    if let Some(digits) = t.strip_prefix("0o") {
+        return !digits.is_empty() && digits.chars().all(|c| matches!(c, '0'..='7'));
+    }
+    if matches!(t, ".inf" | ".Inf" | ".INF") || (t == text && matches!(t, ".nan" | ".NaN" | ".NAN")) {
+        return true;
+    }
+    // `.5`, `5.`, `05`: digits with at most one point, then an exponent.
+    let (mantissa, exponent) = match t.find(['e', 'E']) {
+        Some(at) => (t.get(..at).unwrap_or_default(), t.get(at + 1..)),
+        None => (t, None),
+    };
+    let digits = mantissa.chars().filter(char::is_ascii_digit).count();
+    let mantissa_ok = digits > 0 && mantissa.chars().all(|c| c.is_ascii_digit() || c == '.') && mantissa.matches('.').count() <= 1;
+    let exponent_ok = exponent.is_none_or(|e| {
+        let e = e.strip_prefix(['+', '-']).unwrap_or(e);
+        !e.is_empty() && e.chars().all(|c| c.is_ascii_digit())
+    });
+    mantissa_ok && exponent_ok
 }
 
 /// Whether a YAML plain scalar can be written as `text` and read back as the same string.
@@ -344,7 +419,7 @@ fn yaml_plain_ok(text: &str) -> bool {
     !text.contains(|c: char| c.is_control())
 }
 
-fn yaml_string(text: &str) -> Result<String, GridError> {
+pub(crate) fn yaml_string(text: &str) -> Result<String, GridError> {
     if yaml_plain_ok(text) {
         return Ok(text.to_owned());
     }
@@ -365,6 +440,13 @@ fn yaml_string(text: &str) -> Result<String, GridError> {
     Ok(out)
 }
 
+/// Whether the YAML scalar `node` is a block scalar (`|`, `>-`, `|2`): its span is its content, and the header is the last word before it.
+pub(crate) fn yaml_block_scalar(text: &str, node: &Node) -> bool {
+    let before = text.get(..node.span.start).unwrap_or_default().trim_end();
+    let header = before.rsplit(char::is_whitespace).next().unwrap_or_default();
+    header.starts_with(['|', '>']) && header.chars().skip(1).all(|c| matches!(c, '-' | '+') || c.is_ascii_digit())
+}
+
 /// Whether `name` is an XML name (a letter, `_` or `:` first; then also digits, `-`, `.`).
 pub fn is_xml_name(name: &str) -> bool {
     let mut chars = name.chars();
@@ -374,12 +456,12 @@ pub fn is_xml_name(name: &str) -> bool {
 }
 
 impl Grid {
-    fn node(&self, path: &[usize]) -> Result<&Node, GridError> {
+    pub(crate) fn node(&self, path: &[usize]) -> Result<&Node, GridError> {
         self.at(path).map(|(n, _)| n).ok_or_else(|| GridError("that row is not there any more".to_owned()))
     }
 
     /// The text of `range`, checked to be where the tree says (so an edit made on a text that has changed since is refused).
-    fn slice<'a>(&self, text: &'a str, range: &Range<usize>) -> Result<&'a str, GridError> {
+    pub(crate) fn slice<'a>(&self, text: &'a str, range: &Range<usize>) -> Result<&'a str, GridError> {
         text.get(range.clone()).ok_or_else(|| GridError("the document has changed since the grid was read; read it again".to_owned()))
     }
 
@@ -394,26 +476,32 @@ impl Grid {
         }
     }
 
-    fn set_xml_value(&self, text: &str, node: &Node, new_value: &str) -> Result<Vec<Edit>, GridError> {
+    /// The value of an attribute in the text, between its quotes, and the quote.
+    pub(crate) fn attribute_value(&self, text: &str, node: &Node) -> Result<(Range<usize>, char), GridError> {
+        // `name = "value"`: the value is between the quotes after the equals sign.
+        let whole = self.slice(text, &node.span)?;
+        let after_name = whole.get(node.name_span.end.saturating_sub(node.span.start)..).unwrap_or_default();
+        let eq = after_name.find('=').ok_or_else(|| GridError("the attribute has no value to change".to_owned()))?;
+        let rest = after_name.get(eq + 1..).unwrap_or_default();
+        let quote = rest
+            .trim_start()
+            .chars()
+            .next()
+            .filter(|c| matches!(c, '"' | '\''))
+            .ok_or_else(|| GridError("the attribute value is not quoted".to_owned()))?;
+        let open_at = node.name_span.end + eq + 1 + (rest.len() - rest.trim_start().len()) + 1;
+        let close_at = node.span.end.checked_sub(1).ok_or_else(|| GridError("the attribute is cut off".to_owned()))?;
+        if text.get(close_at..node.span.end) != Some(&quote.to_string()) || open_at > close_at {
+            return fail("the attribute value cannot be found in the text");
+        }
+        Ok((open_at..close_at, quote))
+    }
+
+    pub(crate) fn set_xml_value(&self, text: &str, node: &Node, new_value: &str) -> Result<Vec<Edit>, GridError> {
         match node.kind {
             NodeKind::Attribute => {
-                // `name = "value"`: the value is between the quotes after the equals sign.
-                let whole = self.slice(text, &node.span)?;
-                let after_name = whole.get(node.name_span.end.saturating_sub(node.span.start)..).unwrap_or_default();
-                let eq = after_name.find('=').ok_or_else(|| GridError("the attribute has no value to change".to_owned()))?;
-                let rest = after_name.get(eq + 1..).unwrap_or_default();
-                let quote = rest
-                    .trim_start()
-                    .chars()
-                    .next()
-                    .filter(|c| matches!(c, '"' | '\''))
-                    .ok_or_else(|| GridError("the attribute value is not quoted".to_owned()))?;
-                let open_at = node.name_span.end + eq + 1 + (rest.len() - rest.trim_start().len()) + 1;
-                let close_at = node.span.end.checked_sub(1).ok_or_else(|| GridError("the attribute is cut off".to_owned()))?;
-                if text.get(close_at..node.span.end) != Some(&quote.to_string()) || open_at > close_at {
-                    return fail("the attribute value cannot be found in the text");
-                }
-                Ok(vec![Edit::replace(open_at..close_at, escape_xml(new_value, Some(quote)))])
+                let (value, quote) = self.attribute_value(text, node)?;
+                Ok(vec![Edit::replace(value, escape_xml(new_value, Some(quote)))])
             }
             NodeKind::Text => Ok(vec![Edit::replace(node.span.clone(), escape_xml(new_value, None))]),
             NodeKind::Comment => {
@@ -446,7 +534,7 @@ impl Grid {
         }
     }
 
-    fn set_json_value(&self, node: &Node, new_value: &str, raw: bool) -> Result<Vec<Edit>, GridError> {
+    pub(crate) fn set_json_value(&self, node: &Node, new_value: &str, raw: bool) -> Result<Vec<Edit>, GridError> {
         let literal = if raw {
             let t = new_value.trim();
             if t == "true" || t == "false" || t == "null" || is_json_number(t) || (t.len() >= 2 && t.starts_with('"') && t.ends_with('"')) {
@@ -479,19 +567,16 @@ impl Grid {
         Ok(vec![Edit::replace(node.span.clone(), literal)])
     }
 
-    fn set_yaml_value(&self, text: &str, node: &Node, new_value: &str) -> Result<Vec<Edit>, GridError> {
+    pub(crate) fn set_yaml_value(&self, text: &str, node: &Node, new_value: &str) -> Result<Vec<Edit>, GridError> {
         self.slice(text, &node.span)?;
-        // A block scalar's span is its content: the header (`|`, `>-`, `|2`) is the last word before it.
-        let before = text.get(..node.span.start).unwrap_or_default().trim_end();
-        let header = before.rsplit(char::is_whitespace).next().unwrap_or_default();
-        if header.starts_with(['|', '>']) && header.chars().skip(1).all(|c| matches!(c, '-' | '+') || c.is_ascii_digit()) {
+        if yaml_block_scalar(text, node) {
             return fail("a block scalar is edited in the text");
         }
         let literal = match node.kind {
             NodeKind::String => yaml_string(new_value)?,
             NodeKind::Number => {
                 let t = new_value.trim();
-                if t.parse::<f64>().is_err() && !t.starts_with("0x") && !t.starts_with("0o") {
+                if !is_yaml_number(t) {
                     return fail("that is not a number");
                 }
                 t.to_owned()
@@ -525,6 +610,11 @@ impl Grid {
     /// The edits that rename the element, attribute or member at `path`.
     pub fn rename(&self, text: &str, path: &[usize], new_name: &str) -> Result<Vec<Edit>, GridError> {
         let node = self.node(path)?;
+        self.rename_node(text, node, new_name)
+    }
+
+    /// The edits that rename `node`: an element in its start and end tag, an attribute, or a member.
+    pub(crate) fn rename_node(&self, text: &str, node: &Node, new_name: &str) -> Result<Vec<Edit>, GridError> {
         self.slice(text, &node.span)?;
         match (self.family, node.kind) {
             (Family::Xml, NodeKind::Element) => {

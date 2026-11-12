@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 78d6a83745a5873ec7a8e29d532f8ba911960d544c5e93f6255b80ba20c930ea # shrinks to style = Xml, start = [[(0, "a")], [(0, "a")]], ops = [Delete(0)]
+cc c34d33c84e4f85622ca3a4bb7e1c8e067d3739910cc201c1cb0ac26b7df1c676 # shrinks to style = JsonCompact, start = [[(0, "a")], [(0, "a")]], ops = [Clear(2, 0), Delete(1), Set(0, 0, "a")]
