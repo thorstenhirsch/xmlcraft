@@ -2751,6 +2751,17 @@ usage = "UI icon, embedded via crates/ui-egui/src/icon_data.rs"
 sha256 = "023f88e71f9e3efad5904bf35d59657aece6b7e48bf77051e04dd8a3192b8278"
 
 [[asset]]
+path = "assets/icons/receipt-text.svg"
+title = "Lucide icon \"receipt-text\""
+author = "Lucide Contributors (portions Cole Bemis, Feather)"
+source = "https://github.com/lucide-icons/lucide (main branch, icons/receipt-text.svg)"
+licence = "ISC"
+licence_file = "assets/icons/LICENSE-lucide.txt"
+kind = "icon"
+usage = "UI icon, embedded via crates/ui-egui/src/icon_data.rs"
+sha256 = "35b44cd6ce443dc58119380750d6bc12b6dbead1cac23e7ac3dc578d52795bf4"
+
+[[asset]]
 path = "assets/icons/filter.svg"
 title = "Lucide icon \"filter\""
 author = "Lucide Contributors (portions Cole Bemis, Feather)"

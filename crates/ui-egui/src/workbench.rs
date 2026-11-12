@@ -53,6 +53,8 @@ pub enum Panel {
     Http,
     /// SOAP requests made from a WSDL, and the SOAP debugger.
     Soap,
+    /// Electronic invoices: what one says, its validation by the rules of its standard, and the hybrid PDF made from it.
+    EInvoice,
 }
 
 /// Which part of the rail a tool window belongs to.
@@ -116,7 +118,7 @@ impl Place {
 
 impl Panel {
     /// Every panel, in the order the rail, the default layout and `ui.state` list them.
-    pub const ALL: [Panel; 10] = [
+    pub const ALL: [Panel; 11] = [
         Panel::Editor,
         Panel::Outline,
         Panel::EntryHelpers,
@@ -127,6 +129,7 @@ impl Panel {
         Panel::Transform,
         Panel::Http,
         Panel::Soap,
+        Panel::EInvoice,
     ];
 
     /// The panel table: the one place a panel is described.
@@ -163,6 +166,7 @@ impl Panel {
             }
             Self::Http => tool("http", tl!("HTTP & OpenAPI"), "send", Zone::Workspace, DefaultPlace::Right, false, "view.tool.http"),
             Self::Soap => tool("soap", tl!("SOAP"), "cloud", Zone::Workspace, DefaultPlace::Right, false, "view.tool.soap"),
+            Self::EInvoice => tool("einvoice", tl!("E-Rechnung"), "receipt-text", Zone::Workspace, DefaultPlace::Right, false, "view.tool.einvoice"),
         }
     }
 
@@ -211,6 +215,8 @@ impl Panel {
             _ if matches!(self, Panel::Compare | Panel::Transform) => kind.is_some(),
             _ if self == Panel::Http => bar == Some(BarKind::OpenApi),
             _ if self == Panel::Soap => bar == Some(BarKind::Wsdl) || proxy_running,
+            // An invoice, or the XML of a PDF (a hybrid invoice).
+            _ if self == Panel::EInvoice => bar == Some(BarKind::Invoice),
             _ => true,
         }
     }
@@ -805,6 +811,7 @@ impl Content<'_> {
             Panel::Transform => crate::tools::transform::body(ui, self.app),
             Panel::Http => crate::tools::http::body(ui, self.app),
             Panel::Soap => crate::tools::soap::body(ui, self.app),
+            Panel::EInvoice => crate::tools::einvoice::body(ui, self.app),
             // The tab strip names the panel: the bodies start a little below it (they drew their own title above them before).
             // (The Outline's toolbar sits right under the tab strip.)
             Panel::Outline => crate::outline::body(ui, self.app),
@@ -1119,6 +1126,7 @@ mod tests {
                 Panel::Transform => 7,
                 Panel::Http => 8,
                 Panel::Soap => 9,
+                Panel::EInvoice => 10,
             }
         }
         assert_eq!(Panel::ALL.iter().map(|p| place(*p)).collect::<Vec<_>>(), (0..Panel::ALL.len()).collect::<Vec<_>>());
@@ -1130,6 +1138,9 @@ mod tests {
         assert!(!Panel::Outline.relevant(None), "no document, no outline");
         assert!(Panel::Outline.relevant(Some(DocKind::Yaml)) && Panel::Search.relevant(None));
         assert!(Panel::Query.relevant(Some(DocKind::Xml)) && !Panel::Query.relevant(Some(DocKind::Json)) && !Panel::Query.relevant(None));
+        assert!(!Panel::EInvoice.relevant(Some(DocKind::Xml)), "plain XML is no invoice");
+        assert!(Panel::EInvoice.relevant_in(Some(DocKind::Xml), Some(BarKind::Invoice), false));
+        assert!(!Panel::EInvoice.relevant_in(None, None, false));
     }
 
     #[test]

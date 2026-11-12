@@ -184,6 +184,8 @@ pub struct XmlCraftApp {
     soap_tool: tools::soap::SoapTool,
     /// The Search tool window (Find in Files): its form and its last result.
     search: tools::search::SearchTool,
+    /// The E-Rechnung tool window: its tab, the invoice model, the validation report and the PDF it made.
+    einvoice: tools::einvoice::EInvoiceTool,
     /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
     generate_serial: u64,
     /// Fetches the schema a document names (Load Schema, Schema Resolution), and the request being waited for.
@@ -402,6 +404,7 @@ impl XmlCraftApp {
             http_tool: tools::http::HttpTool::default(),
             soap_tool: tools::soap::SoapTool::default(),
             search: tools::search::SearchTool::default(),
+            einvoice: tools::einvoice::EInvoiceTool::default(),
             generate_serial: 0,
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
             loading_schema: None,
@@ -494,6 +497,14 @@ impl XmlCraftApp {
     /// Whether the SOAP debugger's proxy is listening.
     pub(crate) fn soap_running(&self) -> bool {
         self.soap_tool.proxy_running()
+    }
+
+    /// Whether a tool window has something to say about the document being shown: the rail draws its icon dimmed when it has not
+    /// (what the rail asks, with what the command bar takes the document for).
+    pub fn panel_relevant(&mut self, panel: Panel) -> bool {
+        let Some(ctx) = self.ctx.clone() else { return panel.relevant(self.active_doc_kind()) };
+        let bar = self.active_bar_kind(&ctx);
+        panel.relevant_in(self.active_doc_kind(), bar, self.soap_running())
     }
 
     /// Whether a hidden tool window has news (the rail's dot): a search that finished while Search was hidden.

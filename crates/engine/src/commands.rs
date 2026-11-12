@@ -243,6 +243,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("file.convert", "Convert…", DOCUMENT, None, Needs::Document, "wand-sparkles").sep(),
     c("xml.check", "Check Well-formedness", SCHEMA, Some(Shortcut::key("F7")), Needs::Document, "file-check"),
     c("xml.validate", "Validate", SCHEMA, Some(Shortcut::key("F8")), Needs::Document, "shield-check"),
+    c("xml.validate_invoice", "Validate Invoice", SCHEMA, None, Needs::Document, "receipt-text"),
     c("xml.validate_typing", "Validate While Typing", SCHEMA, None, Nothing, "shield-check").toggle(),
     c("xml.next_problem", "Next Problem", SCHEMA, Some(Shortcut::key("F4")), Needs::Document, "chevron-down").sep(),
     c("xml.previous_problem", "Previous Problem", SCHEMA, Some(Shortcut::shift_key("F4")), Needs::Document, "chevron-up"),
@@ -261,6 +262,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("xml.openapi", "Send OpenAPI Request…", TOOLS, None, Needs::Document, "cloud").sep(),
     c("xml.soap", "Send SOAP Request…", TOOLS, None, Needs::Document, "cloud"),
     c("xml.soap_debugger", "SOAP Debugger…", TOOLS, None, Needs::Nothing, "cloud"),
+    c("xml.einvoice", "E-Rechnung…", TOOLS, None, Needs::Document, "receipt-text").sep(),
     c("edit.find_in_files", "Find in Files…", TOOLS, Some(Shortcut::cmd_shift("F")), Nothing, "search").sep(),
     c("xml.work_offline", "Work Offline", TOOLS, None, Nothing, "external-link").sep().toggle(),
     c("view.palette", "Find tools and commands…", VIEW, Some(Shortcut::cmd("K")), Nothing, "search"),
@@ -284,6 +286,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("view.tool.transform", "Transform", VIEW, None, Nothing, "arrow-left-right").toggle(),
     c("view.tool.http", "HTTP & OpenAPI", VIEW, None, Nothing, "send").toggle(),
     c("view.tool.soap", "SOAP", VIEW, None, Nothing, "cloud").toggle(),
+    c("view.tool.einvoice", "E-Rechnung", VIEW, None, Nothing, "receipt-text").toggle(),
     c("app.about", "About XmlCraft", HELP, None, Nothing, "circle-help"),
 ];
 
@@ -423,6 +426,7 @@ mod tests {
             [
                 "xml.check",
                 "xml.validate",
+                "xml.validate_invoice",
                 "xml.validate_typing",
                 "xml.next_problem",
                 "xml.previous_problem",
@@ -446,6 +450,7 @@ mod tests {
                 "xml.openapi",
                 "xml.soap",
                 "xml.soap_debugger",
+                "xml.einvoice",
                 "edit.find_in_files",
                 "xml.work_offline"
             ]
@@ -454,7 +459,7 @@ mod tests {
         let separated = |menu: &str| in_menu(menu).filter(|c| c.separator_before).map(|c| c.id).collect::<Vec<_>>();
         assert_eq!(separated("Document"), ["xml.rename_element", "file.convert"]);
         assert_eq!(separated("Schema"), ["xml.next_problem", "xml.assign_schema", "xml.generate_schema"]);
-        assert_eq!(separated("Tools"), ["file.compare", "xml.openapi", "edit.find_in_files", "xml.work_offline"]);
+        assert_eq!(separated("Tools"), ["file.compare", "xml.openapi", "xml.einvoice", "edit.find_in_files", "xml.work_offline"]);
         assert_eq!(in_menu("XML").count(), 0, "there is no XML menu any more");
         assert_eq!(MENUS, ["File", "Edit", "Document", "Schema", "Tools", "View", "Help"]);
         assert_eq!(in_menu("Nope").count(), 0);

@@ -4,7 +4,7 @@
 
 Every asset XmlCraft includes, bundles or uses to build its published material, with its author, source and licence. The policy is in [AGENTS.md](AGENTS.md) §1. The machine-readable list, with the SHA-256 of every asset but the translation catalogs, is [ATTRIBUTION.toml](ATTRIBUTION.toml). Licence texts are kept beside the assets and summarised in [NOTICE](NOTICE).
 
-## In this repository (252)
+## In this repository (253)
 
 | Asset | Title | Author | Licence | Source | Used for |
 |---|---|---|---|---|---|
@@ -251,6 +251,7 @@ Every asset XmlCraft includes, bundles or uses to build its published material, 
 | `assets/icons/arrow-left-right.svg` | Lucide icon "arrow-left-right" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/arrow-left-right.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 | `assets/icons/send.svg` | Lucide icon "send" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/send.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 | `assets/icons/square-terminal.svg` | Lucide icon "square-terminal" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/square-terminal.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
+| `assets/icons/receipt-text.svg` | Lucide icon "receipt-text" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (main branch, icons/receipt-text.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 | `assets/icons/filter.svg` | Lucide icon "filter" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/filter.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 | `assets/icons/file-search.svg` | Lucide icon "file-search" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/file-search.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
 | `assets/icons/columns-2.svg` | Lucide icon "columns-2" | Lucide Contributors (portions Cole Bemis, Feather) | ISC | https://github.com/lucide-icons/lucide (npm lucide-static 1.49.0, icons/columns-2.svg) | UI icon, embedded via crates/ui-egui/src/icon_data.rs |
