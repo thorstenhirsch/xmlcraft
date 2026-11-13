@@ -291,7 +291,7 @@ pub fn invoice_problems(report: &xmlcraft_einvoice::validate::Report) -> Vec<Val
 }
 
 /// A rule's message without the `[BR-CO-15]-` the rule sets begin it with (the problem says the rule first).
-fn plain_message(rule: &str, message: &str) -> String {
+pub fn plain_message(rule: &str, message: &str) -> String {
     let trimmed = message.trim();
     let rest = trimmed.strip_prefix('[').and_then(|r| r.strip_prefix(rule)).and_then(|r| r.strip_prefix(']'));
     match rest {

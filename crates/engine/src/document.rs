@@ -132,6 +132,19 @@ struct PdfSource {
     xml: Vec<u8>,
     /// Why the file would not be written (encrypted, signed, damaged), if it would not.
     not_editable: Option<String>,
+    /// How the embedded file relates to the PDF (`/AFRelationship`: `Alternative`, `Data`, `Source`), when the PDF says.
+    relationship: Option<String>,
+}
+
+/// What a PDF document shows: the embedded file, how it relates to the PDF, and the sizes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PdfEmbedded<'a> {
+    pub name: &'a str,
+    pub relationship: Option<&'a str>,
+    /// The bytes of the embedded file as it was read (or last written).
+    pub xml_bytes: usize,
+    /// The bytes of the whole PDF.
+    pub pdf_bytes: usize,
 }
 
 /// Whether a file name says PDF.
@@ -261,7 +274,13 @@ impl Document {
         let mut editor = Editor::with_settings("", settings_for(&decoded.text));
         editor.load(&decoded.text);
         editor.set_syntax(Syntax::Xml);
-        let source = PdfSource { file: bytes.to_vec(), name: chosen.name.clone(), xml: data, not_editable: pdf.why_not_editable() };
+        let source = PdfSource {
+            file: bytes.to_vec(),
+            name: chosen.name.clone(),
+            xml: data,
+            not_editable: pdf.why_not_editable(),
+            relationship: chosen.relationship.clone(),
+        };
         Ok(Self {
             id,
             name,
@@ -281,6 +300,16 @@ impl Document {
     /// For a PDF document, the name of the embedded file it shows.
     pub fn pdf_embedded_name(&self) -> Option<&str> {
         self.pdf.as_ref().map(|p| p.name.as_str())
+    }
+
+    /// For a PDF document, the file embedded in it that it shows, how that relates to the PDF, and the sizes.
+    pub fn pdf_embedded(&self) -> Option<PdfEmbedded<'_>> {
+        self.pdf.as_ref().map(|p| PdfEmbedded {
+            name: &p.name,
+            relationship: p.relationship.as_deref(),
+            xml_bytes: p.xml.len(),
+            pdf_bytes: p.file.len(),
+        })
     }
 
     /// For a PDF document, why saving it as a PDF would be refused (it is encrypted, signed, certified or damaged), if it would.
@@ -662,7 +691,13 @@ impl Document {
             self.pdf = match (is_pdf, written) {
                 (true, Some(bytes)) => {
                     let xml = self.to_bytes_as(Language::Xml).unwrap_or_default();
-                    Some(PdfSource { file: bytes.to_vec(), name: source.name, xml, not_editable: source.not_editable })
+                    Some(PdfSource {
+                        file: bytes.to_vec(),
+                        name: source.name,
+                        xml,
+                        not_editable: source.not_editable,
+                        relationship: source.relationship,
+                    })
                 }
                 (true, None) => Some(source),
                 (false, _) => None,
@@ -1196,6 +1231,8 @@ mod tests {
         assert_eq!((d.language(), d.editor().syntax()), (Language::Xml, Syntax::Xml));
         assert_eq!(d.editor().text(), INVOICE);
         assert_eq!(d.pdf_embedded_name(), Some("factur-x.xml"), "the XML, not the image");
+        let shown = d.pdf_embedded().expect("a PDF document");
+        assert_eq!((shown.name, shown.xml_bytes, shown.pdf_bytes), ("factur-x.xml", INVOICE.len(), pdf.len()));
         assert_eq!(d.to_bytes_for(Path::new("/d/rechnung.pdf"), 0).expect("saves"), pdf, "not one byte differs");
         assert!(!d.is_dirty());
     }
