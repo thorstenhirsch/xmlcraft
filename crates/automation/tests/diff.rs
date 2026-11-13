@@ -157,3 +157,30 @@ fn side_by_side_rows_pair_the_lines_and_hunks_say_which_differences_count() {
     assert!(matches!(call(&mut a, "diff_hunks", json!({ "old": { "text": "a" } })), Err(ToolError::InvalidArgs(_))));
     assert!(call(&mut a, "diff_hunks", json!({ "old": { "text": "<a>" }, "new": { "text": "<a/>" }, "mode": "tree" })).is_err());
 }
+
+#[test]
+fn a_merge_settles_each_conflict_as_resolve_says() {
+    let mut a = Automation::new();
+    let args = json!({
+        "base": { "text": "a\nb\nc\nd\ne\n" },
+        "ours": { "text": "a\nX\nc\nY\ne\n" },
+        "theirs": { "text": "a\nP\nc\nQ\ne\n" },
+        "resolve": ["theirs"],
+    });
+    let r = call(&mut a, "diff_merge", args.clone()).expect("runs");
+    let text = r["text"].as_str().expect("text");
+    assert!(text.starts_with("a\nP\nc\n<<<<<<< ours\nY\n"), "the first is theirs, the second still marked: {r}");
+    assert_eq!((r["conflicts"].as_u64(), r["unsettled"].as_u64(), r["marked_lines"].clone()), (Some(2), Some(1), json!([4])), "{r}");
+    let mut both = args.clone();
+    both["resolve"] = json!(["base", "ours"]);
+    let r = call(&mut a, "diff_merge", both).expect("runs");
+    assert_eq!((r["text"].as_str(), r["unsettled"].as_u64()), (Some("a\nb\nc\nY\ne\n"), Some(0)), "{r}");
+    let mut rest = args.clone();
+    rest["conflicts"] = json!("ours");
+    assert_eq!(call(&mut a, "diff_merge", rest).expect("runs")["text"], "a\nP\nc\nY\ne\n", "past the list, `conflicts` decides");
+    for bad in [json!("theirs"), json!(["coin"]), json!([1])] {
+        let mut wrong = args.clone();
+        wrong["resolve"] = bad;
+        assert!(matches!(call(&mut a, "diff_merge", wrong), Err(ToolError::InvalidArgs(_))));
+    }
+}
