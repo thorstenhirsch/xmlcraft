@@ -63,7 +63,7 @@ impl Font {
             return Err(FontError("the font has no units per em".into()));
         }
         let glyph_metrics = font.glyph_metrics(Size::unscaled(), location);
-        let count = u32::from(metrics.glyph_count).min(u32::from(u16::MAX));
+        let count = metrics.glyph_count.min(u32::from(u16::MAX));
         let advances = (0..count).map(|g| f64::from(glyph_metrics.advance_width(GlyphId::new(g)).unwrap_or(0.0))).collect();
         let map = font
             .charmap()
