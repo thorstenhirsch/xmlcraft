@@ -303,7 +303,7 @@ impl XmlCraftApp {
 }
 
 /// A file read and decoded.
-fn read_decoded(path: &std::path::Path) -> Result<(String, String), String> {
+pub(crate) fn read_decoded(path: &std::path::Path) -> Result<(String, String), String> {
     let loaded = xmlcraft_platform::files::read_file(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let decoded = xmlcraft_text::encoding::decode(&loaded.bytes, &xmlcraft_text::encoding::sniff(&loaded.bytes));
     let name = path.file_name().map_or_else(|| path.to_string_lossy().into_owned(), |n| n.to_string_lossy().into_owned());

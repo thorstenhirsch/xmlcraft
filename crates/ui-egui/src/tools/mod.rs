@@ -13,6 +13,7 @@ pub(crate) mod compare;
 pub(crate) mod http;
 pub(crate) mod query;
 pub(crate) mod search;
+pub(crate) mod side_by_side;
 pub(crate) mod soap;
 pub(crate) mod transform;
 
