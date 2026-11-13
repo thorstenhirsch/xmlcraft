@@ -22,6 +22,8 @@ pub(crate) enum PickFor {
     Catalog,
     /// The other document of a transformation, for the Query tool window.
     QueryFile,
+    /// A file to compare the shown document with, for the Compare tool window.
+    CompareFile,
     /// Save the document with this id under the chosen name; afterwards do `then`.
     SaveAs {
         id: u64,
@@ -96,6 +98,12 @@ impl XmlCraftApp {
     pub(crate) fn pick_query_file(&mut self, ctx: &egui::Context) -> bool {
         let dialog = rfd::AsyncFileDialog::new().set_title(crate::i18n::tl!("Choose a file"));
         self.ask(ctx, PickFor::QueryFile, Ask::Open(dialog))
+    }
+
+    /// Show the panel that chooses a file to compare with (Compare ▸ Choose file…).
+    pub(crate) fn pick_compare_file(&mut self, ctx: &egui::Context) -> bool {
+        let dialog = rfd::AsyncFileDialog::new().set_title(crate::i18n::tl!("Choose a file to compare with"));
+        self.ask(ctx, PickFor::CompareFile, Ask::Open(dialog))
     }
 
     /// Show the panel that chooses a catalog for Preferences ▸ Schemas.
@@ -184,6 +192,11 @@ impl XmlCraftApp {
         false
     }
 
+    pub(crate) fn pick_compare_file(&mut self, _ctx: &egui::Context) -> bool {
+        self.status = crate::i18n::tl!("Opening files is not available in the browser yet").to_owned();
+        false
+    }
+
     pub(crate) fn pick_catalog(&mut self, _ctx: &egui::Context) -> bool {
         self.status = crate::i18n::tl!("Opening files is not available in the browser yet").to_owned();
         false
@@ -213,6 +226,11 @@ impl XmlCraftApp {
                         self.picked_query_file(path);
                     }
                 }
+                (PickFor::CompareFile, false) => {
+                    if let Some(path) = paths.first() {
+                        self.picked_compare_file(path);
+                    }
+                }
                 (PickFor::Catalog, false) => {
                     if let Some(path) = paths.first() {
                         match path.to_str() {
@@ -231,7 +249,7 @@ impl XmlCraftApp {
                 }
                 // Cancelled: a quit that was waiting for this answer is off.
                 (PickFor::SaveAs { .. }, true) => self.quitting = false,
-                (PickFor::Open | PickFor::SchemaFile | PickFor::QueryFile | PickFor::Catalog, true) => {}
+                (PickFor::Open | PickFor::SchemaFile | PickFor::QueryFile | PickFor::CompareFile | PickFor::Catalog, true) => {}
             }
         }
     }

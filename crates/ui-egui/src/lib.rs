@@ -108,6 +108,8 @@ struct Prefs {
     editor_zoom: f32,
     /// OASIS catalogs the person named (paths), consulted before the schemas that ship with the app.
     user_catalogs: Vec<String>,
+    /// The Compare tool shows the two documents side by side (else it lists the differences).
+    compare_side_by_side: bool,
 }
 
 impl Default for Prefs {
@@ -121,6 +123,7 @@ impl Default for Prefs {
             work_offline: false,
             editor_zoom: 1.0,
             user_catalogs: Vec::new(),
+            compare_side_by_side: true,
         }
     }
 }
@@ -396,7 +399,7 @@ impl XmlCraftApp {
             xpath: xmlcraft_engine::xpath::XPathRunner::new(),
             xslt: xmlcraft_engine::xslt::XsltRunner::new(),
             query: tools::query::QueryTool::default(),
-            compare: tools::compare::CompareTool::default(),
+            compare: tools::compare::CompareTool::new(prefs.compare_side_by_side),
             transform: tools::transform::TransformTool::default(),
             http_tool: tools::http::HttpTool::default(),
             soap_tool: tools::soap::SoapTool::default(),
@@ -461,6 +464,7 @@ impl XmlCraftApp {
             work_offline: self.work_offline,
             editor_zoom: self.editor_zoom,
             user_catalogs: self.user_catalogs.clone(),
+            compare_side_by_side: self.compare.side_by_side(),
         }
     }
 
