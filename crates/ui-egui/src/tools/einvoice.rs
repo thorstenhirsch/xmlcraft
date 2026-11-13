@@ -1263,8 +1263,8 @@ mod tests {
 
     #[test]
     fn the_pdf_goes_beside_the_document_and_a_pdf_is_not_written_over() {
-        assert_eq!(suggested_out(Some(Path::new("/w/rechnung.xml")), "rechnung.xml"), Path::new("/w/rechnung.pdf").to_string_lossy());
-        assert_eq!(suggested_out(Some(Path::new("/w/r.PDF")), "r.PDF"), Path::new("/w/r-hybrid.pdf").to_string_lossy());
+        assert_eq!(suggested_out(Some(Path::new("/w/rechnung.xml")), "rechnung.xml"), Path::new("/w").join("rechnung.pdf").to_string_lossy());
+        assert_eq!(suggested_out(Some(Path::new("/w/r.PDF")), "r.PDF"), Path::new("/w").join("r-hybrid.pdf").to_string_lossy());
         assert_eq!(suggested_out(None, "Untitled-1"), "Untitled-1.pdf");
         assert_eq!(suggested_out(None, "a.b.xml"), "a.b.pdf");
     }
