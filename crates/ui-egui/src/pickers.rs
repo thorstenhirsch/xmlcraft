@@ -321,8 +321,8 @@ impl XmlCraftApp {
                     | PickFor::Catalog
                     | PickFor::InvoiceTemplate
                     | PickFor::InvoiceOut
-                    | PickFor::InvoiceXml,
-                    PickFor::CompareFile,
+                    | PickFor::InvoiceXml
+                    | PickFor::CompareFile,
                     true,
                 ) => {}
             }
