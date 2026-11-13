@@ -725,10 +725,27 @@ fn ignore_options(ui: &mut egui::Ui, tool: &mut CompareTool) {
     }
 }
 
-/// The widest a document combo box is in the wide layout's toolbar.
+/// The widest a document combo box is in the wide layout's toolbar, and how much of the row the rest of it takes.
 const COMBO_MAX: f32 = 260.0;
-/// The toolbar width from which the ignore options are in its row.
-const INLINE_OPTIONS: f32 = 1500.0;
+const TOOLBAR_REST: f32 = 800.0;
+/// A button in the toolbar that opens a small popup with options; it says how many are on (`Options (2)`).
+fn options_button(ui: &mut egui::Ui, on: usize, add: impl FnOnce(&mut egui::Ui)) {
+    let label = if on == 0 { tl!("Options").to_owned() } else { fmt(tl!("Options ({count})"), &[("count", &on.to_string())]) };
+    let t = crate::theme::Tokens::get(ui.ctx());
+    let response = ui.add(egui::Button::new((label, icons::image("chevron-down", 12.0, t.icon))));
+    egui::Popup::from_toggle_button_response(&response).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+        ui.set_min_width(240.0);
+        add(ui);
+    });
+}
+
+/// How many of the things that do not count as a difference are on (those the mode reads).
+fn ignored(tool: &CompareTool) -> usize {
+    let i = tool.ignore;
+    let lines = [i.whitespace, i.case];
+    let trees = [i.comments, i.child_order, i.numbers_by_value, i.prefixes];
+    lines.iter().filter(|b| **b).count() + if tool.mode == Mode::Lines { 0 } else { trees.iter().filter(|b| **b).count() }
+}
 
 /// The wide layout (the usual bottom dock): one toolbar, wrapping only when it does not fit, with the primary pill at its right end,
 /// and under it the whole width and the rest of the height for the differences. Returns what a click asked for, whether the pill was
@@ -760,8 +777,9 @@ fn wide_body(
             .inner
             .clicked();
         let width = (right - top.x - pill_width - kit::GAP).max(100.0);
-        // The options of a comparison are many: they share the row when it is wide enough, else they have a row of their own.
-        let inline = width >= INLINE_OPTIONS;
+        // The combo boxes give way first when the row is short (two share it on the Merge tab).
+        let combo_max = ((width - TOOLBAR_REST) / if app.compare.tab == Tab::Merge { 2.0 } else { 1.0 }).clamp(140.0, COMBO_MAX);
+        // One row: the options are in a popup, so the differences get the height.
         ui.allocate_ui(egui::vec2(width, kit::TOOL_CONTROL), |ui| {
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
             ui.horizontal(|ui| {
@@ -773,56 +791,48 @@ fn wide_body(
                         if others.is_empty() && app.compare.file.is_none() {
                             kit::help(ui, tl!("Open a second document to compare this one with."));
                         }
-                        choose = second_combo(ui, &mut app.compare, others, second, COMBO_MAX);
+                        choose = second_combo(ui, &mut app.compare, others, second, combo_max);
                         let tool = &mut app.compare;
                         kit::segmented(
                             ui,
                             &mut tool.mode,
                             &[(Mode::Auto, tl!("Automatic")), (Mode::Tree, tl!("Elements and members")), (Mode::Lines, tl!("Lines"))],
                         );
-                        if inline {
-                            caption(ui, tl!("Ignore"));
+                        let on = ignored(tool);
+                        options_button(ui, on, |ui| {
+                            caption(ui, tl!("Do not count as a difference"));
                             ignore_options(ui, tool);
-                        }
+                        });
                     }
                     Tab::Merge if others.len() >= 2 => {
                         let merge = &mut app.compare.merge;
                         caption(ui, tl!("Base"));
-                        merge.base = document_combo(ui, "xmlcraft-merge-base", tl!("The base document"), others, base, COMBO_MAX);
+                        merge.base = document_combo(ui, "xmlcraft-merge-base", tl!("The base document"), others, base, combo_max);
                         caption(ui, tl!("Theirs"));
-                        merge.theirs = document_combo(ui, "xmlcraft-merge-theirs", tl!("The other document"), others, theirs, COMBO_MAX);
+                        merge.theirs = document_combo(ui, "xmlcraft-merge-theirs", tl!("The other document"), others, theirs, combo_max);
+                        let on = usize::from(merge.conflicts != Choice::Markers) + usize::from(merge.ignore_whitespace);
+                        options_button(ui, on, |ui| {
+                            caption(ui, tl!("Where both changed the same lines"));
+                            kit::segmented(
+                                ui,
+                                &mut merge.conflicts,
+                                &[
+                                    (Choice::Markers, tl!("Mark")),
+                                    (Choice::Ours, tl!("Ours")),
+                                    (Choice::Theirs, tl!("Theirs")),
+                                    (Choice::Both, tl!("Both")),
+                                    (Choice::Base, tl!("Base")),
+                                ],
+                            );
+                            ui.add_space(4.0);
+                            ui.add(widgets::checkbox(&mut merge.ignore_whitespace, tl!("White space does not count as a change")));
+                        });
                     }
                     Tab::Merge => {}
                 }
             });
         });
-        if app.compare.tab == Tab::Merge && others.len() >= 2 {
-            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-            ui.horizontal_wrapped(|ui| {
-                let merge = &mut app.compare.merge;
-                caption(ui, tl!("Where both changed the same lines"));
-                kit::segmented(
-                    ui,
-                    &mut merge.conflicts,
-                    &[
-                        (Choice::Markers, tl!("Mark")),
-                        (Choice::Ours, tl!("Ours")),
-                        (Choice::Theirs, tl!("Theirs")),
-                        (Choice::Both, tl!("Both")),
-                        (Choice::Base, tl!("Base")),
-                    ],
-                );
-                ui.add(widgets::checkbox(&mut merge.ignore_whitespace, tl!("White space does not count as a change")));
-            });
-        }
-        if !inline && app.compare.tab == Tab::Compare {
-            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-            ui.horizontal_wrapped(|ui| {
-                caption(ui, tl!("Do not count as a difference"));
-                ignore_options(ui, &mut app.compare);
-            });
-        }
-        ui.add_space(kit::GAP);
+        ui.add_space(4.0);
         match app.compare.tab {
             Tab::Compare => click = compare_results(ui, &mut app.compare, bound.id, fresh, true),
             Tab::Merge if others.len() >= 2 || result_name.is_some() => {
@@ -846,7 +856,9 @@ fn wide_body(
 /// The differences of the last comparison, filling the rest of the panel: side by side (`wide`, unless the list is chosen) or listed.
 /// Returns what a click asked for. Shown while the document in front is one of the two that were compared.
 fn compare_results(ui: &mut egui::Ui, tool: &mut CompareTool, shown: u64, fresh: bool, wide: bool) -> Option<Click> {
-    ui.add_space(kit::GAP);
+    if !wide {
+        ui.add_space(kit::GAP);
+    }
     if tool.waiting.is_some() {
         ui.horizontal(|ui| {
             ui.spinner();
@@ -881,7 +893,9 @@ fn compare_results(ui: &mut egui::Ui, tool: &mut CompareTool, shown: u64, fresh:
         fmt(tl!("{count} differences. A click selects one in the first document, a right click in the second."), &[("count", &count)])
     };
     let mut click = None;
-    ui.horizontal_wrapped(|ui| {
+    let against = fmt(tl!("{first} against {second}"), &[("first", &answer.names.0), ("second", &answer.names.1)]);
+    // One row in a wide panel (the summary at its right end), wrapping in a narrow one.
+    let row = |ui: &mut egui::Ui| {
         if wide {
             kit::segmented(ui, &mut tool.view, &[(View::SideBySide, tl!("Side by side")), (View::List, tl!("List"))]);
         }
@@ -906,12 +920,39 @@ fn compare_results(ui: &mut egui::Ui, tool: &mut CompareTool, shown: u64, fresh:
             };
             ui.label(egui::RichText::new(counter).font(crate::theme::medium(12.0)));
         }
-        kit::help(ui, &fmt(tl!("{first} against {second}"), &[("first", &answer.names.0), ("second", &answer.names.1)]));
-    });
+        if wide {
+            // The summary at the right end of the row (what a click does is its tooltip), so the differences start under it.
+            let (short, hint) = match summary.split_once(". ") {
+                Some((count, hint)) => (format!("{count}. {against}"), hint.to_owned()),
+                None => (format!("{summary} {against}"), String::new()),
+            };
+            let t = crate::theme::Tokens::get(ui.ctx());
+            let text = egui::RichText::new(short.as_str()).size(11.5).color(t.text_muted);
+            let width = widgets::text_width(ui, &short, &egui::FontId::proportional(11.5));
+            // At the right end when it fits (a narrow row wraps it under the rest).
+            let room = ui.available_width() - width - 2.0 * ui.spacing().item_spacing.x - 6.0;
+            if room > 0.0 {
+                ui.add_space(room);
+            }
+            let label = ui.add(egui::Label::new(text).wrap_mode(egui::TextWrapMode::Extend));
+            if !hint.is_empty() {
+                label.on_hover_text(hint);
+            }
+        } else {
+            kit::help(ui, &against);
+        }
+    };
+    if wide {
+        ui.horizontal(row);
+    } else {
+        ui.horizontal_wrapped(row);
+    }
     if let Some(note) = &done.note {
         kit::help(ui, note);
     }
-    kit::help(ui, &summary);
+    if !wide {
+        kit::help(ui, &summary);
+    }
     if done.aligned.too_large && wide && tool.view == View::SideBySide {
         let limit = xmlcraft_diff::MAX_LINES.to_string();
         kit::help(
