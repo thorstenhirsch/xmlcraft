@@ -1,33 +1,37 @@
 {
   "branch": "main",
-  "commits": 216,
+  "commits": 275,
   "contributors": [
     {
-      "binary_added": 40,
-      "binary_deleted": 40,
-      "commits": 214,
+      "binary_added": 41,
+      "binary_deleted": 41,
+      "commits": 272,
       "display_name": null,
       "first_commit": "2026-10-27T00:46:00+01:00",
       "github_name": null,
-      "last_commit": "2026-11-06T13:29:36+01:00",
-      "lines_added": 307729,
-      "lines_deleted": 8503,
+      "last_commit": "2026-11-13T13:15:37+01:00",
+      "lines_added": 375166,
+      "lines_deleted": 12972,
       "login": "thorstenhirsch",
       "people_entry": false,
       "prs": 91,
       "real_name": null
     }
   ],
-  "head": "d29aa7459bd8a246e699872579947b798949eb7b",
-  "head_date": "2026-11-06T13:29:36+01:00",
+  "head": "15463a475c70b2e231f1adbc3886e26a74a497e4",
+  "head_date": "2026-11-13T13:15:37+01:00",
   "models": [
     {
-      "commits": 194,
+      "commits": 208,
       "name": "Claude Sonnet 5.5"
     },
     {
-      "commits": 12,
+      "commits": 52,
       "name": "Claude Opus 5.5"
+    },
+    {
+      "commits": 2,
+      "name": "Claude Fable 5.2"
     }
   ],
   "repo": "thorstenhirsch/xmlcraft",

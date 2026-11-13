@@ -5,7 +5,7 @@ exclude = ["vendor"]
 default-members = ["crates/*", "apps/xmlcraft", "apps/xmlcraft-cli", "xtask"]
 
 [workspace.package]
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"
@@ -23,48 +23,48 @@ craft-settings = { git = "https://github.com/storytold/craft-libs", version = "0
 craft-window = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", rev = "787a7a0f972fd1d7a7618fdbeca3a5267a0407ff" }
 
 # internal
-xmlcraft-text = { path = "crates/text", version = "0.2.1" }
-xmlcraft-syntax = { path = "crates/syntax", version = "0.2.1" }
-xmlcraft-json-syntax = { path = "crates/json-syntax", version = "0.2.1" }
-xmlcraft-html = { path = "crates/html", version = "0.2.1" }
-xmlcraft-json = { path = "crates/json", version = "0.2.1" }
-xmlcraft-bson = { path = "crates/bson", version = "0.2.1" }
-xmlcraft-convert = { path = "crates/convert", version = "0.2.1" }
-xmlcraft-yaml-syntax = { path = "crates/yaml-syntax", version = "0.2.1" }
-xmlcraft-format = { path = "crates/format", version = "0.2.1" }
-xmlcraft-catalog = { path = "crates/catalog", version = "0.2.1" }
-xmlcraft-schemas = { path = "crates/schemas", version = "0.2.1" }
-xmlcraft-resolve = { path = "crates/resolve", version = "0.2.1" }
-xmlcraft-pattern = { path = "crates/pattern", version = "0.2.1" }
-xmlcraft-datatypes = { path = "crates/datatypes", version = "0.2.1" }
-xmlcraft-xbrl = { path = "crates/xbrl", version = "0.2.1" }
-xmlcraft-wsdl = { path = "crates/wsdl", version = "0.2.1" }
-xmlcraft-xsd = { path = "crates/xsd", version = "0.2.1" }
-xmlcraft-dtd = { path = "crates/dtd", version = "0.2.1" }
-xmlcraft-grammar = { path = "crates/grammar", version = "0.2.1" }
-xmlcraft-complete = { path = "crates/complete", version = "0.2.1" }
-xmlcraft-validate = { path = "crates/validate", version = "0.2.1" }
-xmlcraft-query = { path = "crates/query", version = "0.2.1" }
-xmlcraft-schematron = { path = "crates/schematron", version = "0.2.1" }
-xmlcraft-diff = { path = "crates/diff", version = "0.2.1" }
-xmlcraft-openapi = { path = "crates/openapi", version = "0.2.1" }
-xmlcraft-grid = { path = "crates/grid", version = "0.2.1" }
-xmlcraft-einvoice = { path = "crates/einvoice", version = "0.2.1" }
-xmlcraft-pdf = { path = "crates/pdf", version = "0.2.1" }
-xmlcraft-invoice-pdf = { path = "crates/invoice-pdf", version = "0.2.1" }
+xmlcraft-text = { path = "crates/text", version = "0.3.0" }
+xmlcraft-syntax = { path = "crates/syntax", version = "0.3.0" }
+xmlcraft-json-syntax = { path = "crates/json-syntax", version = "0.3.0" }
+xmlcraft-html = { path = "crates/html", version = "0.3.0" }
+xmlcraft-json = { path = "crates/json", version = "0.3.0" }
+xmlcraft-bson = { path = "crates/bson", version = "0.3.0" }
+xmlcraft-convert = { path = "crates/convert", version = "0.3.0" }
+xmlcraft-yaml-syntax = { path = "crates/yaml-syntax", version = "0.3.0" }
+xmlcraft-format = { path = "crates/format", version = "0.3.0" }
+xmlcraft-catalog = { path = "crates/catalog", version = "0.3.0" }
+xmlcraft-schemas = { path = "crates/schemas", version = "0.3.0" }
+xmlcraft-resolve = { path = "crates/resolve", version = "0.3.0" }
+xmlcraft-pattern = { path = "crates/pattern", version = "0.3.0" }
+xmlcraft-datatypes = { path = "crates/datatypes", version = "0.3.0" }
+xmlcraft-xbrl = { path = "crates/xbrl", version = "0.3.0" }
+xmlcraft-wsdl = { path = "crates/wsdl", version = "0.3.0" }
+xmlcraft-xsd = { path = "crates/xsd", version = "0.3.0" }
+xmlcraft-dtd = { path = "crates/dtd", version = "0.3.0" }
+xmlcraft-grammar = { path = "crates/grammar", version = "0.3.0" }
+xmlcraft-complete = { path = "crates/complete", version = "0.3.0" }
+xmlcraft-validate = { path = "crates/validate", version = "0.3.0" }
+xmlcraft-query = { path = "crates/query", version = "0.3.0" }
+xmlcraft-schematron = { path = "crates/schematron", version = "0.3.0" }
+xmlcraft-diff = { path = "crates/diff", version = "0.3.0" }
+xmlcraft-openapi = { path = "crates/openapi", version = "0.3.0" }
+xmlcraft-grid = { path = "crates/grid", version = "0.3.0" }
+xmlcraft-einvoice = { path = "crates/einvoice", version = "0.3.0" }
+xmlcraft-pdf = { path = "crates/pdf", version = "0.3.0" }
+xmlcraft-invoice-pdf = { path = "crates/invoice-pdf", version = "0.3.0" }
 # PdfCraft's PDF object layer (the sibling project, same owner; MIT OR Apache-2.0), at an immutable revision of its public repository:
 # the invoice PDF is written with it (`xmlcraft-invoice-pdf`).
 pdfcraft-cos = { git = "https://github.com/storytold/pdfcraft", version = "0.21.0", rev = "619a239cebe25054ba59486ce2b878b66613c0ce" }
 # Font tables (metrics, character map) for the embedded Inter face of the invoice PDF; already in the tree through egui.
 skrifa = "0.49"
-xmlcraft-infer = { path = "crates/infer", version = "0.2.1" }
-xmlcraft-sample = { path = "crates/sample", version = "0.2.1" }
-xmlcraft-editor = { path = "crates/editor", version = "0.2.1" }
-xmlcraft-code-editor = { path = "crates/code-editor", version = "0.2.1" }
-xmlcraft-platform = { path = "crates/platform", version = "0.2.1" }
-xmlcraft-engine = { path = "crates/engine", version = "0.2.1" }
-xmlcraft-automation = { path = "crates/automation", version = "0.2.1" }
-xmlcraft-ui-egui = { path = "crates/ui-egui", version = "0.2.1" }
+xmlcraft-infer = { path = "crates/infer", version = "0.3.0" }
+xmlcraft-sample = { path = "crates/sample", version = "0.3.0" }
+xmlcraft-editor = { path = "crates/editor", version = "0.3.0" }
+xmlcraft-code-editor = { path = "crates/code-editor", version = "0.3.0" }
+xmlcraft-platform = { path = "crates/platform", version = "0.3.0" }
+xmlcraft-engine = { path = "crates/engine", version = "0.3.0" }
+xmlcraft-automation = { path = "crates/automation", version = "0.3.0" }
+xmlcraft-ui-egui = { path = "crates/ui-egui", version = "0.3.0" }
 
 # foundation
 crop = "0.4"
