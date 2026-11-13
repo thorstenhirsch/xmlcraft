@@ -104,10 +104,15 @@ fn the_same_documents_say_so_and_an_ignore_option_makes_a_difference_go_away() {
     h.run_steps(3);
     h.get_by_label("Compare Documents").click();
     wait_for(&mut h, "1 differences");
+    // The options are in a popup of the toolbar, which says how many are on.
+    assert!(h.query_by_label("White space").is_none(), "closed until asked for");
+    h.get_by_label("Options").click();
+    h.run_steps(2);
     h.get_by_label("White space").hover();
     h.run_steps(2);
     h.get_by_label("White space").click();
     h.run_steps(2);
+    assert!(h.query_by_label("Options (1)").is_some(), "the button counts what is on");
     h.get_by_label("Compare Documents").click();
     wait_for(&mut h, "The documents are the same");
 }
