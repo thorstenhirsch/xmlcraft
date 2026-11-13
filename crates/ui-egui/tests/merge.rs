@@ -105,3 +105,61 @@ fn the_base_and_the_other_must_be_two_different_documents() {
     assert!(h.query_by_label_contains("same one").is_some());
     assert_eq!(h.state().session.documents().len(), 3, "no document was made");
 }
+
+fn press(h: &mut Harness<'static, XmlCraftApp>, label: &str, nth: usize) {
+    h.query_all_by_label(label).nth(nth).expect("there").hover();
+    h.run_steps(2);
+    h.query_all_by_label(label).nth(nth).expect("there").click();
+    h.run_steps(3);
+}
+
+const BASE: &str = "<a>\n<b/>\n<m/>\n<c/>\n</a>\n";
+const THEIRS: &str = "<a>\n<b t=\"theirs\"/>\n<m/>\n<c t=\"theirs\"/>\n</a>\n";
+const OURS: &str = "<a>\n<b o=\"ours\"/>\n<m/>\n<c o=\"ours\"/>\n</a>\n";
+
+#[test]
+fn each_conflict_is_listed_and_settled_by_its_own_button_as_one_undo_step() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    three(&mut h, dir.path(), BASE, THEIRS, OURS);
+    assert!(h.state_mut().execute("file.merge"));
+    h.run_steps(3);
+    h.get_by_label("Merge Documents").click();
+    h.run_steps(4);
+    assert!(h.query_by_label("2 conflicts left").is_some(), "the conflicts of the result are listed");
+    assert!(h.query_by_label_contains("Conflict 2 · line").is_some());
+    let marked = shown(&h).1;
+    // Theirs for the first, ours for the second (which is then the first left).
+    press(&mut h, "Take theirs", 0);
+    assert!(h.query_by_label("1 conflicts left").is_some());
+    press(&mut h, "Take ours", 0);
+    assert!(h.query_by_label("No conflicts left").is_some());
+    assert_eq!(shown(&h), ("ours-merged.xml".to_owned(), "<a>\n<b t=\"theirs\"/>\n<m/>\n<c o=\"ours\"/>\n</a>\n".to_owned()));
+    let index = h.state().active().expect("shown");
+    let doc = h.state_mut().session.document_mut(index).expect("shown");
+    assert!(doc.editor_mut().undo() && doc.editor_mut().undo());
+    assert_eq!(shown(&h).1, marked, "two undo steps bring the markers back byte for byte");
+    h.run_steps(3);
+    assert!(h.query_by_label("2 conflicts left").is_some(), "the list follows the text");
+}
+
+#[test]
+fn next_conflict_selects_the_marked_lines_and_both_and_base_take_what_they_say() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    three(&mut h, dir.path(), BASE, THEIRS, OURS);
+    assert!(h.state_mut().execute("file.merge"));
+    h.run_steps(3);
+    h.get_by_label("Merge Documents").click();
+    h.run_steps(4);
+    press(&mut h, "Next conflict", 0);
+    let d = h.state().session.active_document().expect("shown");
+    let s = d.editor().selections()[0];
+    let text = d.editor().text();
+    let selected = &text[s.start().min(s.end())..s.start().max(s.end())];
+    assert!(selected.starts_with("<<<<<<< ours\n<b o=\"ours\"/>") && selected.ends_with(">>>>>>> theirs\n"), "{selected:?}");
+    press(&mut h, "Take both", 0);
+    press(&mut h, "Take base", 0);
+    assert_eq!(shown(&h).1, "<a>\n<b o=\"ours\"/>\n<b t=\"theirs\"/>\n<m/>\n<c/>\n</a>\n");
+    assert!(h.query_by_label("Save result").is_some());
+}
