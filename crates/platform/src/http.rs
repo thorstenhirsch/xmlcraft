@@ -315,6 +315,10 @@ impl HttpFetcher {
                             return Err(FetchError::Network(format!("{error}")));
                         }
                     };
+                    // The size is checked here too, whatever the reader does at its limit (ureq 3.5.2 returns the bytes read instead of an error).
+                    if body.len() > limits.max_bytes {
+                        return Err(FetchError::TooLarge);
+                    }
                     return Ok(FetchOutcome::Fresh(Fetched {
                         body,
                         final_url: current,
