@@ -68,6 +68,10 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             "conflicts".into(),
             json!({ "type": "string", "enum": ["markers", "ours", "theirs", "both", "base"], "description": "What to write for a conflict (default markers: <<<<<<< ours, ||||||| base, =======, >>>>>>> theirs)" }),
         );
+        m.insert(
+            "resolve".into(),
+            json!({ "type": "array", "maxItems": 10000, "items": { "type": "string", "enum": ["markers", "ours", "theirs", "both", "base"] }, "description": "What to write for each conflict, in order (the first item for the first conflict); conflicts past the list are written as `conflicts` says" }),
+        );
         for key in
             ["mode", "format", "ignore_comments", "ignore_processing_instructions", "ignore_child_order", "numbers_by_value", "ignore_prefixes"]
         {
@@ -104,8 +108,9 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             name: "diff_merge",
             title: "Merge two versions of a document",
             description: "Three-way merge: `base` and the two versions made from it, `ours` and `theirs`, line by line. Changes of only one version are taken; \
-                          the same change in both is taken once; different changes to the same lines are conflicts, written as `conflicts` says. Returns the \
-                          merged `text` and the number of conflicts. Nothing is written: open the text with doc_new or save it with doc_save.",
+                          the same change in both is taken once; different changes to the same lines are conflicts, each written as `resolve` says for it (in \
+                          order), else as `conflicts` says. Returns the merged `text`, the number of conflicts, how many are still marked (`unsettled`) and \
+                          the lines they start on. Nothing is written: open the text with doc_new or save it with doc_save.",
             input_schema: json!({ "type": "object", "properties": merge, "required": ["base", "ours", "theirs"], "additionalProperties": false }),
             read_only: true,
             destructive: false,
@@ -293,16 +298,47 @@ fn diff_compare(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
 
 fn diff_merge(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let (base, ours, theirs) = (document(a, args, "base")?, document(a, args, "ours")?, document(a, args, "theirs")?);
-    let choice = match args.get("conflicts").and_then(Value::as_str) {
-        None | Some("markers") => Choice::Markers,
-        Some("ours") => Choice::Ours,
-        Some("theirs") => Choice::Theirs,
-        Some("both") => Choice::Both,
-        Some("base") => Choice::Base,
-        Some(other) => return Err(ToolError::InvalidArgs(format!("conflicts is markers, ours, theirs, both or base, not {other:?}"))),
+    let choice_of = |key: &str, value: Option<&str>| -> Result<Choice> {
+        Ok(match value {
+            None | Some("markers") => Choice::Markers,
+            Some("ours") => Choice::Ours,
+            Some("theirs") => Choice::Theirs,
+            Some("both") => Choice::Both,
+            Some("base") => Choice::Base,
+            Some(other) => return Err(ToolError::InvalidArgs(format!("{key} is markers, ours, theirs, both or base, not {other:?}"))),
+        })
+    };
+    if args.get("conflicts").is_some_and(|v| !v.is_string()) {
+        return Err(ToolError::InvalidArgs("conflicts is markers, ours, theirs, both or base".into()));
+    }
+    let choice = choice_of("conflicts", args.get("conflicts").and_then(Value::as_str))?;
+    let resolve: Vec<Choice> = match args.get("resolve") {
+        None => Vec::new(),
+        Some(Value::Array(items)) if items.len() <= xmlcraft_diff::MAX_MARKED => items
+            .iter()
+            .map(|item| match item {
+                Value::String(s) => choice_of("each item of resolve", Some(s)),
+                _ => Err(ToolError::InvalidArgs("each item of resolve is markers, ours, theirs, both or base".into())),
+            })
+            .collect::<Result<_>>()?,
+        Some(_) => return Err(ToolError::InvalidArgs(format!("resolve is a list of at most {} choices", xmlcraft_diff::MAX_MARKED))),
     };
     let merged = merge3(&base.text, &ours.text, &theirs.text, &line_options(args)?);
-    json_result(json!({ "text": merged.render(choice), "conflicts": merged.conflict_count(), "clean": merged.conflict_count() == 0 }))
+    let text = merged.render_with(&|n| resolve.get(n).copied().unwrap_or(choice));
+    // The conflicts still marked in the text, by the line (1-based) they start on.
+    let marked = xmlcraft_diff::conflicts_in(&text);
+    let mut line = 1usize;
+    let mut at = 0usize;
+    let lines: Vec<usize> = marked
+        .iter()
+        .map(|c| {
+            line += text.get(at..c.range.start).map_or(0, |t| t.matches('\n').count());
+            at = c.range.start;
+            line
+        })
+        .collect();
+    let count = merged.conflict_count();
+    json_result(json!({ "text": text, "conflicts": count, "clean": count == 0, "unsettled": marked.len(), "marked_lines": lines }))
 }
 
 /// The most rows one `diff_hunks` answer lists (the hunks are listed up to [`MAX_LISTED`]).

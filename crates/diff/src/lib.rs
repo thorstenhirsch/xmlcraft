@@ -12,6 +12,6 @@ mod seq;
 pub use aligned::{Aligned, AlignedHunk, MAX_LINES, MAX_WORD_PAIRS, Row, Side, side_by_side, take};
 pub use compare::{Change, ChangeKind, Family, compare_documents, compare_mixed, compare_trees};
 pub use lines::{Hunk, HunkKind, LineDiff, LineOptions, Whitespace, diff_lines, diff_words, split_lines};
-pub use merge::{Choice, Conflict, Merge3, Region, merge3};
+pub use merge::{Choice, Conflict, MAX_MARKED, MarkedConflict, Merge3, Region, conflicts_in, merge3};
 pub use node::{DiffError, Node, NodeKind, TreeOptions};
 pub use seq::{DEFAULT_BUDGET, matches as common_subsequence};
