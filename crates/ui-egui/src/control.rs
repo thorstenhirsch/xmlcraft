@@ -649,6 +649,8 @@ impl Host for crate::XmlCraftApp {
             // Where each shown panel is: "left", "right" or "bottom" (a side dock or below the editor), "center" for the editor.
             "layout": self.workbench.places().into_iter().map(|(p, place)| (p.key().to_owned(), json!(place.name()))).collect::<serde_json::Map<_, _>>(),
             "palette": { "open": self.palette_open, "query": self.palette_query },
+            // The E-Rechnung tool: its tab, whether it waits for a validation or a PDF, and the last report of an invoice.
+            "einvoice": self.einvoice.state(),
             "status": self.status,
         })
     }

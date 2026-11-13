@@ -51,6 +51,16 @@ pub(crate) enum Outcome {
         serial: u64,
         result: Result<crate::tools::transform::Preview, String>,
     },
+    /// What the E-Rechnung tool's overview reads from a document (its detection and its invoice model).
+    InvoiceReading {
+        serial: u64,
+        result: Result<Box<crate::tools::einvoice::Reading>, String>,
+    },
+    /// A hybrid PDF the E-Rechnung tool made.
+    InvoicePdf {
+        serial: u64,
+        result: Box<Result<crate::tools::einvoice::Made, String>>,
+    },
     /// SchemaStore's schemas for a file (the Assign Schema window).
     Catalog {
         serial: u64,
@@ -254,6 +264,14 @@ impl XmlCraftApp {
             }
             if let Outcome::Files { serial, result } = outcome {
                 self.search_answered(serial, result);
+                continue;
+            }
+            if let Outcome::InvoiceReading { serial, result } = outcome {
+                self.invoice_read(serial, result);
+                continue;
+            }
+            if let Outcome::InvoicePdf { serial, result } = outcome {
+                self.invoice_pdf_made(serial, *result);
                 continue;
             }
             let (Outcome::Prepared { serial, .. } | Outcome::Sent { serial, .. }) = &outcome else { continue };

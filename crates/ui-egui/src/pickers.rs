@@ -22,6 +22,12 @@ pub(crate) enum PickFor {
     Catalog,
     /// The other document of a transformation, for the Query tool window.
     QueryFile,
+    /// A template for the hybrid PDF of the E-Rechnung tool.
+    InvoiceTemplate,
+    /// Where the E-Rechnung tool writes the hybrid PDF.
+    InvoiceOut,
+    /// Where the E-Rechnung tool saves the XML of a PDF document.
+    InvoiceXml,
     /// Save the document with this id under the chosen name; afterwards do `then`.
     SaveAs {
         id: u64,
@@ -96,6 +102,35 @@ impl XmlCraftApp {
     pub(crate) fn pick_query_file(&mut self, ctx: &egui::Context) -> bool {
         let dialog = rfd::AsyncFileDialog::new().set_title(crate::i18n::tl!("Choose a file"));
         self.ask(ctx, PickFor::QueryFile, Ask::Open(dialog))
+    }
+
+    /// Show the panel that chooses a template for the hybrid PDF of an invoice.
+    pub(crate) fn pick_invoice_template(&mut self, ctx: &egui::Context) -> bool {
+        let dialog = rfd::AsyncFileDialog::new().set_title(crate::i18n::tl!("Choose an invoice template"));
+        self.ask(ctx, PickFor::InvoiceTemplate, Ask::Open(dialog))
+    }
+
+    /// Show the save panel for the hybrid PDF, starting at `suggested`.
+    pub(crate) fn pick_invoice_out(&mut self, ctx: &egui::Context, suggested: &std::path::Path) -> bool {
+        let mut dialog = rfd::AsyncFileDialog::new().set_title(crate::i18n::tl!("Save the PDF")).add_filter("PDF", &["pdf"]);
+        if let Some(name) = suggested.file_name() {
+            dialog = dialog.set_file_name(name.to_string_lossy());
+        }
+        if let Some(dir) = suggested.parent().filter(|d| d.is_dir()) {
+            dialog = dialog.set_directory(dir);
+        }
+        self.ask(ctx, PickFor::InvoiceOut, Ask::Save(dialog))
+    }
+
+    /// Show the save panel for the XML of the document being shown (the invoice inside a PDF).
+    pub(crate) fn pick_invoice_xml(&mut self, ctx: &egui::Context) -> bool {
+        let doc = self.session.active_document();
+        let name = doc.and_then(|d| d.pdf_embedded().map(|e| e.name.to_owned())).unwrap_or_else(|| "invoice.xml".to_owned());
+        let mut dialog = rfd::AsyncFileDialog::new().set_title(crate::i18n::tl!("Save the XML")).set_file_name(name);
+        if let Some(dir) = doc.and_then(|d| d.path()).and_then(std::path::Path::parent) {
+            dialog = dialog.set_directory(dir);
+        }
+        self.ask(ctx, PickFor::InvoiceXml, Ask::Save(dialog))
     }
 
     /// Show the panel that chooses a catalog for Preferences ▸ Schemas.
@@ -189,6 +224,21 @@ impl XmlCraftApp {
         false
     }
 
+    pub(crate) fn pick_invoice_template(&mut self, _ctx: &egui::Context) -> bool {
+        self.status = crate::i18n::tl!("Opening files is not available in the browser yet").to_owned();
+        false
+    }
+
+    pub(crate) fn pick_invoice_out(&mut self, _ctx: &egui::Context, _suggested: &std::path::Path) -> bool {
+        self.status = crate::i18n::tl!("Saving files is not available in the browser yet").to_owned();
+        false
+    }
+
+    pub(crate) fn pick_invoice_xml(&mut self, _ctx: &egui::Context) -> bool {
+        self.status = crate::i18n::tl!("Saving files is not available in the browser yet").to_owned();
+        false
+    }
+
     pub(crate) fn pick_save_as(&mut self, _ctx: &egui::Context, _id: u64, _then: Option<AfterClose>) -> bool {
         self.status = crate::i18n::tl!("Saving files is not available in the browser yet").to_owned();
         false
@@ -213,6 +263,21 @@ impl XmlCraftApp {
                         self.picked_query_file(path);
                     }
                 }
+                (PickFor::InvoiceTemplate, false) => {
+                    if let Some(path) = paths.first() {
+                        self.picked_invoice_template(path);
+                    }
+                }
+                (PickFor::InvoiceOut, false) => {
+                    if let Some(path) = paths.first() {
+                        self.picked_invoice_out(path);
+                    }
+                }
+                (PickFor::InvoiceXml, false) => {
+                    if let Some(path) = paths.first() {
+                        self.save_invoice_xml(path);
+                    }
+                }
                 (PickFor::Catalog, false) => {
                     if let Some(path) = paths.first() {
                         match path.to_str() {
@@ -231,7 +296,16 @@ impl XmlCraftApp {
                 }
                 // Cancelled: a quit that was waiting for this answer is off.
                 (PickFor::SaveAs { .. }, true) => self.quitting = false,
-                (PickFor::Open | PickFor::SchemaFile | PickFor::QueryFile | PickFor::Catalog, true) => {}
+                (
+                    PickFor::Open
+                    | PickFor::SchemaFile
+                    | PickFor::QueryFile
+                    | PickFor::Catalog
+                    | PickFor::InvoiceTemplate
+                    | PickFor::InvoiceOut
+                    | PickFor::InvoiceXml,
+                    true,
+                ) => {}
             }
         }
     }

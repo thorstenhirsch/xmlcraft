@@ -50,7 +50,7 @@ pub mod xslt_complete;
 mod yaml_analysis;
 mod yaml_assist;
 
-pub use document::{Document, FileStamp, MAX_OPEN_BYTES, OpenError, SaveAsPrep, SaveError};
+pub use document::{Document, FileStamp, MAX_OPEN_BYTES, OpenError, PdfEmbedded, SaveAsPrep, SaveError};
 pub use recent::Recent;
 
 /// The open documents, and which one is shown.
