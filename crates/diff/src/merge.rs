@@ -219,3 +219,154 @@ pub fn merge3(base: &str, ours: &str, theirs: &str, options: &LineOptions) -> Me
     }
     Merge3 { regions }
 }
+
+/// The most conflicts [`conflicts_in`] finds in one text.
+pub const MAX_MARKED: usize = 10_000;
+
+/// A conflict as it is marked in a text (by [`Choice::Markers`], or by another tool that writes the same lines): the lines from
+/// `<<<<<<<` to `>>>>>>>`, with the parts between the markers. All are byte ranges of the text; the parts are whole lines with their
+/// breaks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MarkedConflict {
+    /// From the start of the `<<<<<<<` line to the end of the `>>>>>>>` line, its line break included.
+    pub range: Range<usize>,
+    pub ours: Range<usize>,
+    /// The part after `|||||||` (absent when the markers have no base part).
+    pub base: Option<Range<usize>>,
+    pub theirs: Range<usize>,
+}
+
+impl MarkedConflict {
+    /// What the marked lines become when the conflict is settled: the text of one part, ours then theirs for [`Choice::Both`], or the
+    /// marked lines as they are for [`Choice::Markers`]. [`Choice::Base`] without a base part is the empty text.
+    pub fn settled(&self, text: &str, choice: Choice) -> String {
+        let part = |r: &Range<usize>| text.get(r.clone()).unwrap_or_default();
+        match choice {
+            Choice::Ours => part(&self.ours).to_owned(),
+            Choice::Theirs => part(&self.theirs).to_owned(),
+            Choice::Both => {
+                let mut both = part(&self.ours).to_owned();
+                push_chunk(&mut both, part(&self.theirs));
+                both
+            }
+            Choice::Base => self.base.as_ref().map_or(String::new(), |b| part(b).to_owned()),
+            Choice::Markers => part(&self.range).to_owned(),
+        }
+    }
+}
+
+/// The conflicts marked in a text, in order (at most [`MAX_MARKED`]). A `<<<<<<<` line without its `=======` and `>>>>>>>` lines is not
+/// one; a new `<<<<<<<` line inside a conflict starts over there.
+pub fn conflicts_in(text: &str) -> Vec<MarkedConflict> {
+    let lines = split_lines(text);
+    let line_text = |i: usize| lines.get(i).and_then(|l| text.get(l.clone())).unwrap_or_default();
+    // The start of line `i`, and the start of the line after it (its break included).
+    let start = |i: usize| lines.get(i).map_or(text.len(), |l| l.start);
+    let after = |i: usize| lines.get(i + 1).map_or(text.len(), |l| l.start);
+    let mut out = Vec::new();
+    let mut i = 0;
+    'outer: while i < lines.len() && out.len() < MAX_MARKED {
+        if !line_text(i).starts_with("<<<<<<<") {
+            i += 1;
+            continue;
+        }
+        let open = i;
+        let (mut bar, mut equals) = (None, None);
+        let mut j = i + 1;
+        while j < lines.len() {
+            let l = line_text(j);
+            if l.starts_with("<<<<<<<") {
+                i = j;
+                continue 'outer;
+            }
+            if equals.is_none() && bar.is_none() && l.starts_with("|||||||") {
+                bar = Some(j);
+            } else if equals.is_none() && l == "=======" {
+                equals = Some(j);
+            } else if let Some(eq) = equals
+                && l.starts_with(">>>>>>>")
+            {
+                let ours_end = bar.unwrap_or(eq);
+                out.push(MarkedConflict {
+                    range: start(open)..after(j),
+                    ours: after(open)..start(ours_end),
+                    base: bar.map(|b| after(b)..start(eq)),
+                    theirs: after(eq)..start(j),
+                });
+                i = j + 1;
+                continue 'outer;
+            }
+            j += 1;
+        }
+        break;
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Settle every marked conflict of `text` (from the last, so the places stay right) as `choice` says for its number.
+    fn settle_all(text: &str, choice: &dyn Fn(usize) -> Choice) -> String {
+        let mut out = text.to_owned();
+        for (n, c) in conflicts_in(text).iter().enumerate().rev() {
+            out.replace_range(c.range.clone(), &c.settled(text, choice(n)));
+        }
+        out
+    }
+
+    #[test]
+    fn marked_conflicts_are_found_with_their_parts() {
+        let m = merge3("a\nb\nc\nd\n", "a\nX\nc\nY\n", "a\nP\nc\nQ\n", &LineOptions::default());
+        let text = m.render(Choice::Markers);
+        let found = conflicts_in(&text);
+        assert_eq!(found.len(), 2);
+        assert_eq!(&text[found[0].ours.clone()], "X\n");
+        assert_eq!(&text[found[0].base.clone().expect("a base part")], "b\n");
+        assert_eq!(&text[found[0].theirs.clone()], "P\n");
+        assert!(text[found[1].range.clone()].starts_with("<<<<<<< ours\nY\n") && text[found[1].range.clone()].ends_with(">>>>>>> theirs\n"));
+        assert_eq!(settle_all(&text, &|n| if n == 0 { Choice::Theirs } else { Choice::Ours }), "a\nP\nc\nY\n");
+    }
+
+    #[test]
+    fn markers_without_a_base_part_or_incomplete_ones() {
+        let text = "x\n<<<<<<< HEAD\none\n=======\ntwo\n>>>>>>> branch\ny\n";
+        let found = conflicts_in(text);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].base, None);
+        assert_eq!(found[0].settled(text, Choice::Both), "one\ntwo\n");
+        assert_eq!(found[0].settled(text, Choice::Base), "");
+        assert!(conflicts_in("<<<<<<< a\nb\n").is_empty(), "never closed");
+        assert!(conflicts_in("<<<<<<< a\nb\n>>>>>>> c\n").is_empty(), "no =======");
+        let restarted = "<<<<<<< a\nstray\n<<<<<<< ours\n1\n=======\n2\n>>>>>>> theirs\n";
+        let found = conflicts_in(restarted);
+        assert_eq!((found.len(), &restarted[found[0].ours.clone()]), (1, "1\n"), "the later start wins");
+        assert!(conflicts_in("").is_empty());
+    }
+
+    #[test]
+    fn crlf_markers_are_found_too() {
+        let text = "<<<<<<< ours\r\nA\r\n=======\r\nB\r\n>>>>>>> theirs\r\nz\r\n";
+        let found = conflicts_in(text);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].settled(text, Choice::Theirs), "B\r\n");
+        assert_eq!(&text[found[0].range.end..], "z\r\n");
+    }
+
+    fn version() -> impl proptest::strategy::Strategy<Value = Vec<String>> {
+        proptest::collection::vec(proptest::string::string_regex("[abc]").expect("regex"), 0..8)
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn settling_the_markers_is_rendering_with_the_choice(base in version(), ours in version(), theirs in version(), pick in 0u8..4) {
+            let text = |v: &[String]| v.iter().map(|l| format!("{l}\n")).collect::<String>();
+            let m = merge3(&text(&base), &text(&ours), &text(&theirs), &LineOptions::default());
+            let choice = [Choice::Ours, Choice::Theirs, Choice::Both, Choice::Base][usize::from(pick)];
+            let marked = m.render(Choice::Markers);
+            proptest::prop_assert_eq!(conflicts_in(&marked).len(), m.conflict_count());
+            proptest::prop_assert_eq!(settle_all(&marked, &|_| choice), m.render(choice));
+        }
+    }
+}
