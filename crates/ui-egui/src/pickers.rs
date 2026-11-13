@@ -28,6 +28,8 @@ pub(crate) enum PickFor {
     InvoiceOut,
     /// Where the E-Rechnung tool saves the XML of a PDF document.
     InvoiceXml,
+    /// A file to compare the shown document with, for the Compare tool window.
+    CompareFile,
     /// Save the document with this id under the chosen name; afterwards do `then`.
     SaveAs {
         id: u64,
@@ -133,6 +135,12 @@ impl XmlCraftApp {
         self.ask(ctx, PickFor::InvoiceXml, Ask::Save(dialog))
     }
 
+    /// Show the panel that chooses a file to compare with (Compare ▸ Choose file…).
+    pub(crate) fn pick_compare_file(&mut self, ctx: &egui::Context) -> bool {
+        let dialog = rfd::AsyncFileDialog::new().set_title(crate::i18n::tl!("Choose a file to compare with"));
+        self.ask(ctx, PickFor::CompareFile, Ask::Open(dialog))
+    }
+
     /// Show the panel that chooses a catalog for Preferences ▸ Schemas.
     pub(crate) fn pick_catalog(&mut self, ctx: &egui::Context) -> bool {
         // No extension filter: a catalog is often called just `catalog`.
@@ -219,6 +227,11 @@ impl XmlCraftApp {
         false
     }
 
+    pub(crate) fn pick_compare_file(&mut self, _ctx: &egui::Context) -> bool {
+        self.status = crate::i18n::tl!("Opening files is not available in the browser yet").to_owned();
+        false
+    }
+
     pub(crate) fn pick_catalog(&mut self, _ctx: &egui::Context) -> bool {
         self.status = crate::i18n::tl!("Opening files is not available in the browser yet").to_owned();
         false
@@ -278,6 +291,11 @@ impl XmlCraftApp {
                         self.save_invoice_xml(path);
                     }
                 }
+                (PickFor::CompareFile, false) => {
+                    if let Some(path) = paths.first() {
+                        self.picked_compare_file(path);
+                    }
+                }
                 (PickFor::Catalog, false) => {
                     if let Some(path) = paths.first() {
                         match path.to_str() {
@@ -304,6 +322,7 @@ impl XmlCraftApp {
                     | PickFor::InvoiceTemplate
                     | PickFor::InvoiceOut
                     | PickFor::InvoiceXml,
+                    PickFor::CompareFile,
                     true,
                 ) => {}
             }
