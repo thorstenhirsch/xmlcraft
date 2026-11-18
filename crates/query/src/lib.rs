@@ -10,16 +10,21 @@
 //! - Errors carry their W3C code (`XPST0003`, `FOAR0001`), say whether they came from compiling or running, and the place in the
 //!   expression.
 
+mod probe;
+mod profile;
 mod source_map;
 mod trace;
 mod xslt;
 
 use std::ops::Range;
 
+use xee_interpreter::interpreter::Program;
+use xee_interpreter::interpreter::hook::Hook;
 use xee_xpath::context::{DynamicContext, StaticContext, StaticContextBuilder};
-use xee_xpath::{Documents, Item, Queries, Query};
+use xee_xpath::{Documents, Item, Itemable, Queries, Query};
 use xot::{Value as XotValue, Xot};
 
+pub use profile::{Limits, Profile, ProfileNode, profile};
 pub use source_map::SourceMap;
 pub use trace::{Step, Trace, trace};
 pub use xslt::{MAX_OUTPUT_BYTES, TransformError, Transformed, transform};
@@ -137,41 +142,72 @@ impl Prepared {
 
     /// Evaluate `expression` with the document as the context item.
     pub fn evaluate(&mut self, expression: &str, options: &Options) -> Result<Evaluated, QueryError> {
-        let mut builder = StaticContextBuilder::default();
-        for (prefix, uri) in &options.namespaces {
-            builder.add_namespace(prefix, uri);
-        }
-        let queries = Queries::new(builder);
+        let queries = Queries::new(static_context(options));
         let query = queries.sequence(expression).map_err(|e| error_of(Phase::Compile, &e))?;
         let sequence = query.execute(&mut self.documents, self.document).map_err(|e| error_of(Phase::Run, &e))?;
-        let xot = self.documents.xot();
-        // (A context to write maps, arrays and functions with: the engine's writer wants one.)
-        let program = xee_xpath_compiler::parse(StaticContext::default(), "()").ok();
-        let builder = program.as_ref().map(|p| p.dynamic_context_builder());
-        let display = builder.as_ref().map(|b| b.build());
-        let mut items = Vec::new();
-        let mut count = 0;
-        let mut total = 0usize;
-        for item in sequence.iter() {
-            count += 1;
-            if items.len() < options.max_items && total < options.max_total_text {
-                let described = describe(&item, xot, &self.map, options, &self.source, display.as_ref());
-                total = total.saturating_add(described.text.chars().count());
-                items.push(described);
-            }
-        }
-        Ok(Evaluated { items, count })
+        Ok(collect(&sequence, self.documents.xot(), &self.map, options, &self.source))
     }
+
+    /// Compile `expression`, then run it with the document as the context item and the hook `make` builds from the compiled program
+    /// (it may read the map of the document and its text while the run goes on). The outer error is a compile error; the result of
+    /// the run comes back with the hook.
+    pub(crate) fn run_hooked<'p, H: Hook>(
+        &'p mut self,
+        expression: &str,
+        options: &Options,
+        make: impl FnOnce(&Program, &'p SourceMap, &'p str) -> H,
+    ) -> Result<(Result<Evaluated, QueryError>, H), QueryError> {
+        let Prepared { documents, document, map, source } = self;
+        let queries = Queries::new(static_context(options));
+        let query = queries.sequence(expression).map_err(|e| error_of(Phase::Compile, &e))?;
+        let program = query.program();
+        let mut hook = make(program, map, source);
+        let item = document.to_item(documents).map_err(|e| error_of(Phase::Run, &e))?;
+        let mut builder = query.dynamic_context_builder(documents);
+        builder.context_item(item);
+        let context = builder.build();
+        let runnable = program.runnable(&context);
+        let outcome = runnable.many_with_hook(documents.xot_mut(), &mut hook);
+        let result = match outcome {
+            Ok(sequence) => Ok(collect(&sequence, documents.xot(), map, options, source)),
+            Err(e) => Err(error_of(Phase::Run, &e)),
+        };
+        Ok((result, hook))
+    }
+}
+
+fn static_context(options: &Options) -> StaticContextBuilder<'_> {
+    let mut builder = StaticContextBuilder::default();
+    for (prefix, uri) in &options.namespaces {
+        builder.add_namespace(prefix, uri);
+    }
+    builder
+}
+
+/// The items of a result, described and cut as `options` says.
+fn collect(sequence: &xee_xpath::Sequence, xot: &Xot, map: &SourceMap, options: &Options, source: &str) -> Evaluated {
+    // (A context to write maps, arrays and functions with: the engine's writer wants one.)
+    let program = xee_xpath_compiler::parse(StaticContext::default(), "()").ok();
+    let builder = program.as_ref().map(|p| p.dynamic_context_builder());
+    let display = builder.as_ref().map(|b| b.build());
+    let mut items = Vec::new();
+    let mut count = 0;
+    let mut total = 0usize;
+    for item in sequence.iter() {
+        count += 1;
+        if items.len() < options.max_items && total < options.max_total_text {
+            let described = describe(&item, xot, map, options, source, display.as_ref());
+            total = total.saturating_add(described.text.chars().count());
+            items.push(described);
+        }
+    }
+    Evaluated { items, count }
 }
 
 /// Compile `expression` without running it: whether the engine reads it (its syntax, its functions and their arities, the prefixes it
 /// uses, the variables it names).
 pub fn compile(expression: &str, options: &Options) -> Result<(), QueryError> {
-    let mut builder = StaticContextBuilder::default();
-    for (prefix, uri) in &options.namespaces {
-        builder.add_namespace(prefix, uri);
-    }
-    let queries = Queries::new(builder);
+    let queries = Queries::new(static_context(options));
     queries.sequence(expression).map(|_| ()).map_err(|e| error_of(Phase::Compile, &e))
 }
 

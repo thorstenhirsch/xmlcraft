@@ -109,3 +109,41 @@ fn a_trace_says_how_many_items_each_step_of_a_path_leaves() {
         Err(xmlcraft_automation::ToolError::InvalidArgs(_))
     ));
 }
+
+fn profile(a: &mut Automation, args: Value) -> Result<Value, ToolError> {
+    a.call("xpath_profile", &args).map(|content| match content.into_iter().next() {
+        Some(Content::Json(v)) => v,
+        None => Value::Null,
+    })
+}
+
+#[test]
+fn a_profile_lists_the_hot_spots_and_the_tree_with_hit_counts() {
+    let mut a = Automation::new();
+    let items: String = (1..=40).map(|i| format!("<item><price>{i}</price><name>n{i}</name></item>")).collect();
+    let doc = format!("<shop>{items}</shop>");
+    let r = profile(&mut a, json!({ "text": doc, "expression": "//item[price > 30]/name", "top": 3, "max_items": 2 })).expect("runs");
+    assert_eq!((r["count"].as_u64(), r["truncated"].as_bool(), r["stopped"].as_bool()), (Some(10), Some(true), Some(false)), "{r}");
+    assert_eq!(r["hot"].as_array().map(Vec::len), Some(3), "at most `top` hot spots");
+    let tree = r["tree"].as_array().expect("a tree");
+    let find = |text: &str| tree.iter().find(|n| n["text"] == text).unwrap_or_else(|| panic!("no {text} in {tree:?}"));
+    let predicate = find("price > 30");
+    assert_eq!((predicate["hits"].as_u64(), predicate["items"].as_u64(), predicate["loops"].as_bool()), (Some(40), Some(10), Some(true)));
+    assert_eq!(predicate["span"], json!([7, 17]));
+    assert_eq!(find("name")["hits"].as_u64(), Some(10));
+    assert!(predicate["self_ms"].is_number() && r["ms"].is_number(), "natively there is a clock");
+    let root = &tree[0];
+    assert!(root["parent"].is_null() && root["total_instructions"].as_u64() <= r["instructions"].as_u64());
+}
+
+#[test]
+fn a_profile_is_bounded_and_its_errors_are_said() {
+    let mut a = Automation::new();
+    let r = profile(&mut a, json!({ "text": "<r/>", "expression": "count((1 to 1000000) ! .)", "max_instructions": 5000 })).expect("answers");
+    assert_eq!(r["stopped"].as_bool(), Some(true));
+    assert!(r["error"].as_str().is_some_and(|e| e.contains("stopped")), "{r}");
+    let e = profile(&mut a, json!({ "text": "<r/>", "expression": "/r[" })).expect_err("syntax");
+    assert!(e.to_string().contains("compile error") && e.to_string().contains("XPST0003"), "{e}");
+    assert!(matches!(profile(&mut a, json!({ "text": "<r/>", "expression": "1", "top": 0 })), Err(ToolError::InvalidArgs(_))));
+    assert!(matches!(profile(&mut a, json!({ "text": "<r/>", "expression": "1", "max_instructions": 0 })), Err(ToolError::InvalidArgs(_))));
+}
