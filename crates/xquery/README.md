@@ -16,4 +16,4 @@ expression. The decision and the vendored patches it needs are in `docs/architec
 - `prelude.rs` holds helper functions in XQuery (keys, sort passes, grouping, windows, constructor checks) compiled with every
   query in an internal namespace.
 
-Tests: `tests/slice.rs` (XPath through XQuery, a FLWOR, a direct constructor, error codes and places).
+Tests: `tests/parse.rs` (every construct of the grammar, written from the specification's prose; static errors with their codes; places and expected tokens of syntax errors; spans nested in their parents and parsing again; the limits; properties: no input and no mutation of a valid query panics), `tests/slice.rs` (XPath through XQuery, a FLWOR, a direct constructor, error codes and places).
