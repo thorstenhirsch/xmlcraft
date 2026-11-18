@@ -48,3 +48,24 @@ proptest::proptest! {
         let _ = transform(DOC, &xslt);
     }
 }
+
+const SHEET: &str = r#"<xsl:stylesheet version="3.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"><xsl:param name="who" select="'world'"/><xsl:param name="n" select="2"/><xsl:template match="/"><out><xsl:value-of select="concat($who, ':', $n * 2)"/></out></xsl:template></xsl:stylesheet>"#;
+
+#[test]
+fn global_parameters_are_passed_as_typed_values_and_a_literal_default_is_kept() {
+    use xmlcraft_query::{Param, ParamValue, declared_params, literal_default, transform_with};
+    let params = declared_params(SHEET);
+    assert_eq!(params.iter().map(|p| (p.name.as_str(), p.select.as_deref())).collect::<Vec<_>>(), [("who", Some("'world'")), ("n", Some("2"))]);
+    assert_eq!(literal_default("'a b'"), Some(ParamValue::String("a b".into())));
+    assert_eq!(literal_default("2.5"), Some(ParamValue::Number("2.5".into())));
+    assert_eq!((literal_default("true()"), literal_default(" false() ")), (Some(ParamValue::Boolean(true)), Some(ParamValue::Boolean(false))));
+    assert_eq!(literal_default("count(//a)"), None);
+    assert_eq!(literal_default("'it''s'"), None, "an escaped quote is an expression here");
+    assert_eq!(transform_with("<a/>", SHEET, &[]).expect("runs").text, "<out>world:4</out>");
+    let given =
+        [Param { name: "who".into(), value: ParamValue::String("Rex".into()) }, Param { name: "n".into(), value: ParamValue::Number("20".into()) }];
+    assert_eq!(transform_with("<a/>", SHEET, &given).expect("runs").text, "<out>Rex:40</out>");
+    let unknown = [Param { name: "zzz".into(), value: ParamValue::Boolean(true) }];
+    assert!(transform_with("<a/>", SHEET, &unknown).expect_err("unknown").message.contains("zzz"));
+    assert!(declared_params("<not a stylesheet").is_empty());
+}

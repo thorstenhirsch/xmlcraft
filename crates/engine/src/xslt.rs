@@ -1,7 +1,7 @@
 //! The XSLT stylesheet a document names: `<?xml-stylesheet type="text/xsl" href="style.xsl"?>` before its root element (what F10 uses when
 //! no stylesheet is chosen).
 
-use xmlcraft_query::{TransformError, Transformed, transform};
+use xmlcraft_query::{TransformError, Transformed};
 use xmlcraft_syntax::{SyntaxKind, SyntaxNode, parse};
 
 use crate::worker::Worker;
@@ -68,6 +68,8 @@ pub struct XsltJob {
     pub serial: u64,
     pub xml: String,
     pub xslt: String,
+    /// Values for the global parameters of the stylesheet.
+    pub params: Vec<xmlcraft_query::Param>,
 }
 
 /// What came of a request.
@@ -84,7 +86,7 @@ pub struct XsltRunner {
 
 fn run(job: XsltJob) -> XsltOutcome {
     let serial = job.serial;
-    let result = match crate::guard(|| transform(&job.xml, &job.xslt)) {
+    let result = match crate::guard(|| xmlcraft_query::transform_with(&job.xml, &job.xslt, &job.params)) {
         Ok(done) => done,
         Err(panic) => {
             log::error!("a transformation failed: {panic}");
@@ -131,8 +133,8 @@ mod tests {
     fn a_stylesheet_is_applied_on_a_worker_and_the_outcome_says_which_request_it_is_for() {
         let runner = XsltRunner::inline();
         let xsl = "<xsl:stylesheet version=\"3.0\" xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\"><xsl:template match=\"/\"><n><xsl:value-of select=\"count(//i)\"/></n></xsl:template></xsl:stylesheet>";
-        runner.submit(XsltJob { serial: 4, xml: "<r><i/><i/></r>".to_owned(), xslt: xsl.to_owned() });
-        runner.submit(XsltJob { serial: 5, xml: "<r>".to_owned(), xslt: xsl.to_owned() });
+        runner.submit(XsltJob { serial: 4, xml: "<r><i/><i/></r>".to_owned(), xslt: xsl.to_owned(), params: Vec::new() });
+        runner.submit(XsltJob { serial: 5, xml: "<r>".to_owned(), xslt: xsl.to_owned(), params: Vec::new() });
         let outcomes = runner.poll();
         assert_eq!(outcomes.iter().map(|o| o.serial).collect::<Vec<_>>(), [4, 5]);
         assert_eq!(outcomes[0].result.as_ref().expect("transforms").text, "<n>2</n>");

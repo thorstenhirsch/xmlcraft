@@ -30,7 +30,10 @@ use xot::{Value as XotValue, Xot};
 pub use profile::{Limits, Profile, ProfileNode, profile};
 pub use source_map::SourceMap;
 pub use trace::{Step, Trace, trace};
-pub use xslt::{MAX_OUTPUT_BYTES, TransformError, Transformed, transform};
+pub use xslt::{
+    DeclaredParam, MAX_OUTPUT_BYTES, MAX_PARAMS, Param, ParamValue, TransformError, Transformed, declared_params, literal_default, transform,
+    transform_with,
+};
 
 /// What to evaluate with.
 #[derive(Clone, Debug)]
