@@ -2,7 +2,8 @@
 //! measured with their own advance widths and embedded as a subset.
 //!
 //! - Characters map to glyphs through the font's `cmap` (no shaping: Latin text, no ligatures or kerning). A character the face has
-//!   no glyph for is drawn as the missing-glyph box (glyph 0) and reported, never replaced silently.
+//!   no glyph for takes the room of the missing-glyph box and is reported, never replaced silently; the page draws an outlined box
+//!   there instead of the `.notdef` glyph itself, which PDF/A forbids (ISO 19005-3 §6.2.11.8; see [`Piece`]).
 //! - The PDF font is a Type 0 font with an Identity-H encoding over a `CIDFontType2` whose CIDs are the glyph ids
 //!   (`/CIDToGIDMap /Identity`), with `/W` widths for the glyphs used and a `/ToUnicode` map, so text can be extracted and searched
 //!   (ISO 32000-1 §9.7, §9.10.3).
@@ -22,6 +23,15 @@ static INTER_SEMIBOLD: &[u8] = include_bytes!("../../../assets/fonts/Inter-SemiB
 pub enum Face {
     Regular,
     Bold,
+}
+
+/// A part of a run of text as the page draws it ([`Font::pieces`]).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Piece {
+    /// Glyph ids the face has, two bytes each.
+    Glyphs(Vec<u8>),
+    /// A character the face has no glyph for: the room it takes, in thousandths of an em.
+    Missing(f64),
 }
 
 /// A face's metrics and the glyphs used so far.
@@ -113,17 +123,29 @@ impl Font {
         out
     }
 
-    /// The glyph ids that draw `text`, two bytes each (Identity-H), remembering them for the subset.
-    pub fn encode(&mut self, text: &str) -> Vec<u8> {
-        let mut out = Vec::with_capacity(text.len().saturating_mul(2));
+    /// How `text` is drawn, remembering the glyphs for the subset: runs of glyph ids (two bytes each, Identity-H) and, for each
+    /// character the face has no glyph for, the room it takes (the missing-glyph box's advance, in thousandths of an em). The page
+    /// never shows glyph 0 (`.notdef`): ISO 19005-3 §6.2.11.8 forbids it in every text-showing operator.
+    pub fn pieces(&mut self, text: &str) -> Vec<Piece> {
+        let mut out: Vec<Piece> = Vec::new();
         for c in text.chars().filter(|c| !c.is_control()) {
-            let g = self.glyph(c).unwrap_or(0);
-            if g != 0 {
-                self.used.entry(g).or_insert(if c == '\u{a0}' || c == '\u{202f}' { ' ' } else { c });
+            match self.glyph(c) {
+                Some(g) => {
+                    self.used.entry(g).or_insert(if c == '\u{a0}' || c == '\u{202f}' { ' ' } else { c });
+                    match out.last_mut() {
+                        Some(Piece::Glyphs(bytes)) => bytes.extend_from_slice(&g.to_be_bytes()),
+                        _ => out.push(Piece::Glyphs(g.to_be_bytes().to_vec())),
+                    }
+                }
+                None => out.push(Piece::Missing(self.advance(0))),
             }
-            out.extend_from_slice(&g.to_be_bytes());
         }
         out
+    }
+
+    /// The advance of `glyph` in thousandths of an em (for the room of a run of glyph ids).
+    pub fn advance_of(&self, glyph: u16) -> f64 {
+        self.advance(glyph)
     }
 
     /// The glyph ids that draw `text`, without remembering them (for tests that look for a run in a content stream).
@@ -371,17 +393,32 @@ mod tests {
         assert_eq!(regular.width("", 10.0), 0.0);
         assert!(regular.missing("Grüße, Œuvre, Ελλάδα, Москва €").is_empty());
         assert_eq!(regular.missing("漢字"), vec!['漢', '字']);
-        let bytes = regular.encode("Ab");
-        assert_eq!(bytes.len(), 4);
+        assert!(matches!(regular.pieces("Ab").as_slice(), [Piece::Glyphs(b)] if b.len() == 4));
         assert_eq!(regular.widths().iter().map(|(_, w)| w.len()).sum::<usize>(), 3, "A, b and the missing glyph");
         let cmap = String::from_utf8(regular.to_unicode()).expect("ascii");
         assert!(cmap.contains("<0041>") && cmap.contains("<0062>"), "{cmap}");
     }
 
     #[test]
+    fn a_character_the_face_lacks_takes_room_and_never_becomes_glyph_zero() {
+        // veraPDF 1.30.4, PDF/A-3b rule 6.2.11.8: no text-showing operator may show .notdef (glyph 0).
+        let mut f = Font::load(Face::Regular).expect("Inter");
+        let pieces = f.pieces("A漢字B");
+        let box_width = f.advance(0);
+        assert!(box_width > 0.0);
+        assert_eq!(pieces.len(), 4, "{pieces:?}");
+        assert!(matches!(&pieces[0], Piece::Glyphs(b) if b.len() == 2 && b.as_slice() != [0, 0]));
+        assert_eq!(pieces[1], Piece::Missing(box_width));
+        assert_eq!(pieces[2], Piece::Missing(box_width));
+        assert!(matches!(&pieces[3], Piece::Glyphs(b) if b.len() == 2 && b.as_slice() != [0, 0]));
+        assert!(!f.used.contains_key(&0), "the missing glyph is not a glyph used");
+        assert!(f.pieces("").is_empty());
+    }
+
+    #[test]
     fn a_subset_keeps_the_glyphs_used_and_is_a_font_again() {
         let mut f = Font::load(Face::Regular).expect("Inter");
-        f.encode("Rechnung 123,45 € Ä");
+        f.pieces("Rechnung 123,45 € Ä");
         let subset = f.subset().expect("subset");
         assert!(subset.len() < INTER_REGULAR.len() / 4, "{} of {}", subset.len(), INTER_REGULAR.len());
         let read = FontRef::new(&subset).expect("the subset is read again");

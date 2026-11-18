@@ -14,8 +14,20 @@ Factur-X hybrid for a UN/CEFACT CII invoice. Tool: `einvoice_render_pdf`.
   schema with its PDF/A description. A UBL invoice is attached as `invoice.xml` with `/AFRelationship /Source`; Factur-X is CII only.
 - **PDF/A-3:** the file identifies itself as PDF/A-3b and carries an sRGB output intent: the built-in compact v2 sRGB profile
   (`assets/icc/sRGB-v2-micro.icc`, CC0-1.0, saucecontrol/Compact-ICC-Profiles) unless the caller passes another output or display
-  profile (`Options::icc_profile`). **Nothing here verifies PDF/A or Factur-X conformance** (veraPDF, Mustang): check the output
-  externally.
+  profile (`Options::icc_profile`). A character Inter lacks is never drawn as `.notdef` (PDF/A forbids it): its room is left, an
+  outlined box marks it, and `/ActualText` keeps the text whole.
+- **Verified with external validators (2026-11-18), not at run time.** `cargo xtask pdf-oracle` renders the fixture set (the Factur-X
+  profiles MINIMUM, BASIC WL, BASIC, EN 16931, EXTENDED and XRECHNUNG in CII, a smaller XRechnung CII invoice, XRechnung and
+  EN 16931 in UBL, a 300-line invoice over several pages, and an invoice with characters the font lacks; templates `de` and `en`:
+  22 files) and checks each with **veraPDF 1.30.4** (PDF/A-3b and auto-detected flavour: all 22 compliant) and **Mustang 2.26.0**
+  (`--action validate`: the 18 CII hybrids valid; the 4 UBL files are no Factur-X hybrid by design, and Mustang says so). Before the
+  run one rule failed, 6.2.11.8 (`.notdef` shown for characters the font lacks), fixed with a regression test. Also checked once by
+  hand: an output intent from the macOS Generic CMYK, Generic Gray and sRGB profiles (`icc_profile`) passes veraPDF too. Not
+  verified: files a user makes from other invoices or templates (the tool does not run a validator: its `verified` stays false),
+  PDF/A-3u or 3a (the files say 3b; veraPDF finds nothing else against 3u than the `pdfaid:conformance` value), signed PDFs.
+  Run it yourself: install the veraPDF greenfield CLI (headless: `java -jar verapdf-izpack-installer-<v>.jar auto-install.xml`)
+  and download `Mustang-CLI-<v>.jar` (GitHub releases of ZUGFeRD/mustangproject), then
+  `VERAPDF=<install>/bin/cli-<v>.jar MUSTANG_JAR=<path> cargo xtask pdf-oracle [--out DIR]`; without them it says it is skipped.
 
 ## Templates
 

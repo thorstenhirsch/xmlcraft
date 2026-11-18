@@ -9,7 +9,7 @@
 
 use pdfcraft_cos::{Dict, Document, ObjRef, Object, PdfString, SaveOptions, Stream, write_full};
 
-use crate::font::{Face, Font};
+use crate::font::{Face, Font, Piece};
 use crate::layout::{Item, Laid};
 
 /// The associated file and how the PDF describes it.
@@ -130,6 +130,10 @@ pub fn xmp(meta: &Meta<'_>) -> String {
     s
 }
 
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02X}")).collect()
+}
+
 /// The content stream of a page, encoding its text with the faces (which remember the glyphs used).
 fn content(items: &[Item], height: f64, regular: &mut Font, bold: &mut Font) -> Vec<u8> {
     let mut out = Vec::new();
@@ -146,13 +150,47 @@ fn content(items: &[Item], height: f64, regular: &mut Font, bold: &mut Font) -> 
                     Face::Regular => (&mut *regular, "F1"),
                     Face::Bold => (&mut *bold, "F2"),
                 };
-                let glyphs = font.encode(text);
-                if glyphs.is_empty() {
+                let pieces = font.pieces(text);
+                if pieces.is_empty() {
                     continue;
                 }
-                let hex: String = glyphs.iter().map(|b| format!("{b:02X}")).collect();
+                let start = format!("BT {} g /{resource} {} Tf 1 0 0 1 {} {} Tm", num(*gray), num(*size), num(*x), num(height - y));
+                if let [Piece::Glyphs(glyphs)] = pieces.as_slice() {
+                    out.extend_from_slice(format!("{start} <{}> Tj ET\n", hex(glyphs)).as_bytes());
+                    continue;
+                }
+                // A character the face lacks: no glyph is shown for it (never .notdef, ISO 19005-3 §6.2.11.8). A `TJ` adjustment leaves
+                // its room, an outlined box marks the place, and `/ActualText` keeps the text whole for extraction (ISO 32000-1 §14.9.4).
+                let mut array = String::new();
+                let mut boxes = String::new();
+                let mut at = 0.0f64;
+                for piece in &pieces {
+                    match piece {
+                        Piece::Glyphs(glyphs) => {
+                            array.push_str(&format!("<{}>", hex(glyphs)));
+                            at += glyphs
+                                .chunks(2)
+                                .map(|g| font.advance_of(u16::from_be_bytes([g.first().copied().unwrap_or(0), g.get(1).copied().unwrap_or(0)])))
+                                .sum::<f64>();
+                        }
+                        Piece::Missing(room) => {
+                            array.push_str(&format!(" {} ", num(-room)));
+                            let left = x + (at + room * 0.1) * size / 1000.0;
+                            boxes.push_str(&format!(
+                                "{} {} {} {} re ",
+                                num(left),
+                                num(height - y),
+                                num(room * 0.8 * size / 1000.0),
+                                num(font.cap_height * size / 1000.0)
+                            ));
+                            at += room;
+                        }
+                    }
+                }
+                let actual: String =
+                    text.chars().filter(|c| !c.is_control()).collect::<String>().encode_utf16().map(|u| format!("{u:04X}")).collect();
                 out.extend_from_slice(
-                    format!("BT {} g /{resource} {} Tf 1 0 0 1 {} {} Tm <{hex}> Tj ET\n", num(*gray), num(*size), num(*x), num(height - y))
+                    format!("/Span <</ActualText <FEFF{actual}>>> BDC\n{start} [{}] TJ ET\nq {} G 0.5 w {boxes}S Q\nEMC\n", array.trim(), num(*gray))
                         .as_bytes(),
                 );
             }

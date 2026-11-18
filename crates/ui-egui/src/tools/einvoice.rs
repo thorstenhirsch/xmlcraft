@@ -1252,7 +1252,12 @@ fn pdf_result(ui: &mut egui::Ui, tool: &EInvoiceTool, key: Key) {
                 kit::help(ui, &fmt(tl!("Warning: {what}"), &[("what", w)]));
             }
             ui.add_space(kit::GAP);
-            kit::help(ui, tl!("Not verified with veraPDF / Mustang: check the file with a validator before relying on it."));
+            kit::help(
+                ui,
+                tl!(
+                    "Not verified for this file. XmlCraft's PDFs of its test invoices pass veraPDF 1.30.4 (PDF/A-3b) and, as CII hybrids, Mustang 2.26.0: check a file that matters with a validator."
+                ),
+            );
         }
     }
 }
