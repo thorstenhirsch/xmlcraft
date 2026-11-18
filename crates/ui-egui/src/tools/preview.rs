@@ -2,11 +2,11 @@
 //! stylesheet it names (when that writes HTML), an SVG image, or any other XML as a readable tree (`xmlcraft_engine::preview`). The page
 //! is worked out on a thread a moment after the last change to the text, so typing never waits for it.
 //!
-//! Where the build has a browser view (`crate::preview_host`; the native one waits for the owner's licence decision), the page is
-//! shown in the panel: from memory, JavaScript off, nothing fetched, only the document navigable. A person may allow, for one
-//! document, images from the web and the page's inline scripts; neither is on by default. Without a view (now everywhere) "Open in
-//! Browser" writes the page to a temporary file, with the same policy as a `<meta>`, and opens it in the system browser; the file
-//! follows the page and is removed when the app closes. "Open as Document" opens the page's HTML in a new tab. The document itself is never changed.
+//! On macOS and Windows the page is shown in the panel by a locked-down browser view (`crate::preview_host`): from memory, JavaScript
+//! off, nothing fetched, only the document navigable. A person may allow, for one document, images from the web and the page's inline
+//! scripts; neither is on by default. Elsewhere (Linux, the web) and when the view cannot be made, "Open in Browser" writes the page to
+//! a temporary file, with the same policy as a `<meta>`, and opens it in the system browser; the file follows the page and is removed
+//! when the app closes. "Open as Document" opens the page's HTML in a new tab. The document itself is never changed.
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
