@@ -1,6 +1,6 @@
 # cargo-deny policy. Run with `cargo xtask deny`; part of `cargo xtask ci`.
 # Code dependencies follow the same rule as assets (AGENTS.md): permissive licences only.
-# Copyleft (GPL, AGPL, LGPL) is never linked; such tools run only as external oracle processes.
+# Strong copyleft (GPL, AGPL, LGPL) is never linked; such tools run only as external oracle processes. MPL-2.0 only through the listed exceptions.
 
 [graph]
 all-features = true
@@ -62,6 +62,30 @@ ignore = [
     { id = "RUSTSEC-2022-0081", reason = "json unmaintained; xee's fn:parse-json" },
     { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained; build-time, via genawaiter in xot" },
 ]
+
+# MPL-2.0 (file-level copyleft) is allowed only for these crates, linked unmodified as libraries (owner decision 2026-11-18: widening
+# the allowlist is fine where the licence permits it). They come with `wry` (the native browser view): `option-ext` through `dirs`
+# on macOS; the others are Android-only parts of its dependency tree and are never built here. The source of each stays available
+# from crates.io, and no file of ours is covered by the MPL.
+[[licenses.exceptions]]
+crate = "option-ext"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "cssparser"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "cssparser-macros"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "dtoa-short"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "selectors"
+allow = ["MPL-2.0"]
 
 # egui's default UI fonts (Ubuntu-Light, Hack, emoji-icon-font): font licences on the AGENTS.md
 # §1.2 allowlist, attributed in ATTRIBUTION.toml as dependency-bundled assets.
