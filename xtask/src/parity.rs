@@ -120,6 +120,7 @@ const TOOL_FILES: &[&str] = &[
     "crates/automation/src/wsdl.rs",
     "crates/automation/src/grid.rs",
     "crates/automation/src/xslt.rs",
+    "crates/automation/src/preview.rs",
     "crates/automation/src/schematron.rs",
     "crates/automation/src/einvoice.rs",
     "crates/automation/src/sample.rs",

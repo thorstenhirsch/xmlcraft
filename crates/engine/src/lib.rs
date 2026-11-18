@@ -25,6 +25,7 @@ pub mod json_sample;
 pub mod json_schemas;
 pub mod json_validation;
 pub mod language;
+pub mod preview;
 pub mod quickfix;
 pub mod recent;
 pub mod rest;
