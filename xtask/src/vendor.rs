@@ -91,6 +91,7 @@ mod tests {
         let stanza = lock_stanza(&lock, "xee-interpreter").expect("xee-interpreter is in Cargo.lock");
         assert!(!stanza.contains("source ="), "xee-interpreter resolves from a registry, not vendor/:\n{stanza}");
         assert!(read("vendor/xee-interpreter/src/atomic/op_gt.rs").contains("XmlCraft patch"), "the vendored op_gt carries the patch");
+        assert!(read("vendor/xee-interpreter/src/interpreter/hook.rs").contains("XmlCraft patch"), "the vendored interpreter has the hook");
     }
 
     #[test]

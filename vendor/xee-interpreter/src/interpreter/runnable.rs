@@ -14,6 +14,7 @@ use crate::sequence;
 use crate::stack;
 use crate::{error, string};
 
+use super::hook::Hook;
 use super::program::FunctionInfo;
 use super::Interpreter;
 use super::Program;
@@ -37,8 +38,20 @@ impl<'a> Runnable<'a> {
     }
 
     fn run_value(&self, xot: &'a mut Xot) -> error::SpannedResult<stack::Value> {
+        self.run_value_with(xot, None)
+    }
+
+    // XmlCraft patch: a run with a hook told about each instruction (see `hook`).
+    fn run_value_with(
+        &self,
+        xot: &'a mut Xot,
+        hook: Option<&mut dyn Hook>,
+    ) -> error::SpannedResult<stack::Value> {
         let arguments = self.dynamic_context.arguments().unwrap();
         let mut interpreter = Interpreter::new(self, xot);
+        if let Some(hook) = hook {
+            interpreter.hook = Some(hook);
+        }
 
         let context_info = if let Some(context_item) = self.dynamic_context.context_item() {
             ContextInfo {
@@ -81,6 +94,16 @@ impl<'a> Runnable<'a> {
     /// Run the program against a sequence item.
     pub fn many(&self, xot: &'a mut Xot) -> error::SpannedResult<sequence::Sequence> {
         Ok(self.run_value(xot)?.try_into()?)
+    }
+
+    /// XmlCraft patch: run the program against a sequence item, telling `hook` about each instruction before it runs. An error from
+    /// the hook stops the run with that error.
+    pub fn many_with_hook(
+        &self,
+        xot: &'a mut Xot,
+        hook: &mut dyn Hook,
+    ) -> error::SpannedResult<sequence::Sequence> {
+        Ok(self.run_value_with(xot, Some(hook))?.try_into()?)
     }
 
     /// Run the program, expect a single item as the result.

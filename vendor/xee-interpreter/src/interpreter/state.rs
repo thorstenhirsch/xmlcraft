@@ -188,6 +188,18 @@ impl<'a> State<'a> {
         Ok(())
     }
 
+    // XmlCraft patch: the frames and the sequences being built, for the hook (`hook::At`).
+    pub(crate) fn frames(&self) -> &[Frame] {
+        &self.frames
+    }
+
+    pub(crate) fn builds(&self) -> Vec<&[sequence::Item]> {
+        self.build_stack
+            .iter()
+            .map(|b| b.item.build_stack.as_slice())
+            .collect()
+    }
+
     pub(crate) fn frame(&self) -> &Frame {
         self.frames.last().unwrap()
     }

@@ -22,6 +22,7 @@ use crate::stack;
 use crate::xml;
 use crate::{error, pattern};
 
+use super::hook::{At, Hook};
 use super::instruction::{read_i16, read_instruction, read_u16, read_u8, EncodedInstruction};
 use super::runnable::Runnable;
 use super::state::State;
@@ -29,6 +30,8 @@ use super::state::State;
 pub struct Interpreter<'a> {
     runnable: &'a Runnable<'a>,
     pub(crate) state: State<'a>,
+    // XmlCraft patch: what is told about each instruction before it runs (the profiler and the debugger); none in a normal run.
+    pub(crate) hook: Option<&'a mut dyn Hook>,
 }
 
 pub struct ContextInfo {
@@ -52,7 +55,20 @@ impl<'a> Interpreter<'a> {
         Interpreter {
             runnable,
             state: State::new(xot),
+            hook: None,
         }
+    }
+
+    // XmlCraft patch: tell the hook about the instruction about to run. It is taken out for the call, so that it can look at the
+    // interpreter, and put back.
+    #[inline(never)]
+    fn call_hook(&mut self) -> error::Result<()> {
+        let Some(hook) = self.hook.take() else {
+            return Ok(());
+        };
+        let result = hook.before(&At { interpreter: self });
+        self.hook = Some(hook);
+        result
     }
 
     pub fn state(self) -> State<'a> {
@@ -97,6 +113,10 @@ impl<'a> Interpreter<'a> {
         // we can make this an infinite loop as all functions end
         // with the return instruction
         loop {
+            // XmlCraft patch: one check of an `Option` when there is no hook.
+            if self.hook.is_some() {
+                self.call_hook()?;
+            }
             let instruction = self.read_instruction();
             match instruction {
                 EncodedInstruction::Add => {
@@ -1256,7 +1276,14 @@ impl<'a> Interpreter<'a> {
         let function = self.runnable.program().inline_function(frame.function());
         // we substract 1 to end up in the current instruction - this
         // because the ip is already on the next instruction
-        function.spans[frame.ip - 1]
+        // XmlCraft patch: a hook can stop the run before the first instruction of a function (ip 0), so the place is looked up
+        // without indexing.
+        frame
+            .ip
+            .checked_sub(1)
+            .and_then(|ip| function.spans.get(ip))
+            .copied()
+            .unwrap_or_else(SourceSpan::empty)
     }
 
     fn read_instruction(&mut self) -> EncodedInstruction {
