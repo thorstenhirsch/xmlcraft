@@ -246,6 +246,36 @@ fn xslt_functions_of_the_schema_are_called_from_tests_and_from_each_other_and_cu
     assert_eq!(r.findings.iter().map(|f| f.id.as_deref()).collect::<Vec<_>>(), [Some("F")]);
 }
 
+/// Saxon-HE 12.9 running the compiled XRechnung rules passes PEPPOL-EN16931-R040 (`not(ram:CalculationPercent and ram:BasisAmount) or
+/// u:slack(…, (xs:decimal(ram:BasisAmount) * xs:decimal(ram:CalculationPercent)) div 100, …)`) on an allowance without a percentage:
+/// the left operand decides it. XmlCraft evaluated both operands, and passing the empty product to an `xs:decimal` parameter is a type
+/// error, so the check was not evaluated. `or` and `and` now short-circuit from left to right.
+#[test]
+fn logical_operators_short_circuit_as_the_rule_sets_expect() {
+    let s = Schema::parse(
+        &format!(
+            r#"<schema xmlns="{NS}" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:u="utils" queryBinding="xslt2">
+                 <ns prefix="u" uri="utils"/>
+                 <xsl:function name="u:near" as="xs:boolean"><xsl:param name="a" as="xs:decimal"/><xsl:param name="b" as="xs:decimal"/><xsl:sequence select="abs($a - $b) le 0.02"/></xsl:function>
+                 <pattern><rule context="item">
+                   <assert test="not(@qty and @price) or u:near(@total, xs:decimal(@qty) * xs:decimal(@price))" id="R040">amount</assert>
+                   <assert test="(@qty and @price and u:near(@total, xs:decimal(@qty) * xs:decimal(@price))) or true()" id="AND">and</assert>
+                   <report test="@n = 2 and @qty = 0" id="ZERO">zero</report>
+                 </rule></pattern></schema>"#
+        ),
+        &|_| None,
+    )
+    .expect("reads");
+    let xml = r#"<order><item n="1" qty="2" price="5" total="10"/><item n="2" qty="0"/><item n="3" qty="2" price="5" total="11"/></order>"#;
+    let r = s.validate(xml, None).expect("validates");
+    let outcome = |id: &str| r.outcomes.iter().find(|o| o.id.as_deref() == Some(id)).map(|o| o.state.clone()).expect("an outcome");
+    // Items 1 and 2 pass R040 (2 because it has no price: the left operand is true); item 3's total is off.
+    assert_eq!(outcome("R040"), CheckState::Failed(1), "{:?}", r.problems);
+    assert_eq!(outcome("AND"), CheckState::Passed, "{:?}", r.problems);
+    assert_eq!(outcome("ZERO"), CheckState::Failed(1), "{:?}", r.problems);
+    assert_eq!(r.findings.iter().map(|f| f.path.as_deref()).collect::<Vec<_>>(), [Some("/order[1]/item[3]"), Some("/order[1]/item[2]")]);
+}
+
 #[test]
 fn a_validation_stops_when_the_caller_says_and_the_rest_is_not_evaluated() {
     let s = schema(
