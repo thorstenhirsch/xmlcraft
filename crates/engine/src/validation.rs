@@ -793,6 +793,51 @@ mod tests {
     }
 
     #[test]
+    fn the_dimensions_of_the_taxonomy_judge_the_facts_and_the_report_says_what_was_read() {
+        let schema = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" targetNamespace="urn:g"><xs:annotation><xs:appinfo><link:linkbaseRef xlink:type="simple" xlink:href="def.xml" xlink:role="http://www.xbrl.org/2003/role/definitionLinkbaseRef"/></xs:appinfo></xs:annotation>
+<xs:element id="g_Amount" name="Amount" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant"/>
+<xs:element id="g_Cube" name="Cube" type="xbrli:stringItemType" substitutionGroup="xbrldt:hypercubeItem" abstract="true" xbrli:periodType="instant"/>
+<xs:element id="g_Region" name="Region" type="xbrli:stringItemType" substitutionGroup="xbrldt:dimensionItem" abstract="true" xbrli:periodType="instant"/>
+<xs:element id="g_North" name="North" type="xbrli:stringItemType" substitutionGroup="xbrli:item" abstract="true" xbrli:periodType="instant"/>
+<xs:element id="g_South" name="South" type="xbrli:stringItemType" substitutionGroup="xbrli:item" abstract="true" xbrli:periodType="instant"/></xs:schema>"#;
+        let arc = |role: &str, from: &str, to: &str, extra: &str| {
+            format!(
+                r#"<link:definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/{role}" xlink:from="{from}" xlink:to="{to}" {extra}/>"#
+            )
+        };
+        let locs: String = ["Amount", "Cube", "Region", "North", "South"]
+            .iter()
+            .map(|c| format!(r#"<link:loc xlink:type="locator" xlink:href="g.xsd#g_{c}" xlink:label="{c}"/>"#))
+            .collect();
+        let def = format!(
+            r#"<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xbrldt="http://xbrl.org/2005/xbrldt"><link:definitionLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">{locs}{}{}{}</link:definitionLink></link:linkbase>"#,
+            arc("all", "Amount", "Cube", r#"xbrldt:contextElement="segment" xbrldt:closed="true""#),
+            arc("hypercube-dimension", "Cube", "Region", ""),
+            arc("dimension-domain", "Region", "North", ""),
+        );
+        let text = |member: &str| {
+            format!(
+                r#"<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:iso4217="http://www.xbrl.org/2003/iso4217" xmlns:g="urn:g"><link:schemaRef xlink:type="simple" xlink:href="g.xsd"/><xbrli:context id="c"><xbrli:entity><xbrli:identifier scheme="s">A</xbrli:identifier><xbrli:segment><xbrldi:explicitMember dimension="g:Region">g:{member}</xbrldi:explicitMember></xbrli:segment></xbrli:entity><xbrli:period><xbrli:instant>2025-12-31</xbrli:instant></xbrli:period></xbrli:context><xbrli:unit id="u"><xbrli:measure>iso4217:EUR</xbrli:measure></xbrli:unit><g:Amount contextRef="c" unitRef="u" decimals="0">1</g:Amount></xbrli:xbrl>"#
+            )
+        };
+        let open = vec![("/w/g.xsd".to_owned(), Buffer::from_text(schema)), ("/w/def.xml".to_owned(), Buffer::from_text(&def))];
+        let resolver = no_resolvers()(Arc::new(OpenDocuments::new(open.clone())));
+        let good = crate::xbrl::report(&text("North"), "/w/i.xml", &resolver).expect("reads");
+        assert!(good.findings.is_empty(), "{:?}", good.findings);
+        let summary = good.taxonomy.expect("a taxonomy was read");
+        assert_eq!((summary.documents, summary.not_loaded, summary.hypercubes, summary.dimensions, summary.members), (2, 0, 1, 1, 1));
+        assert_eq!(summary.primary_items, 1);
+        let bad = crate::xbrl::report(&text("South"), "/w/i.xml", &resolver).expect("reads");
+        assert_eq!(bad.findings.iter().map(|f| f.code).collect::<Vec<_>>(), ["xbrl.dimension-invalid"]);
+        // F8 says the same.
+        let validator = Validator::inline(no_resolvers());
+        validator.submit(1, 1, &Buffer::from_text(&text("South")), Some(Path::new("/w/i.xml")), open);
+        let v = validator.poll().remove(0).1;
+        assert!(v.problems.iter().any(|p| p.diagnostic.message().contains("not dimensionally valid")), "{:?}", v.problems);
+        assert!(crate::xbrl::report("<a/>", "", &resolver).is_err(), "not XBRL");
+    }
+
+    #[test]
     fn a_schema_is_found_among_the_open_documents_however_the_path_is_spelled() {
         // How a path comes back from the system on Windows, and how it is spelled once a reference has been joined to it.
         let validator = Validator::inline(no_resolvers());

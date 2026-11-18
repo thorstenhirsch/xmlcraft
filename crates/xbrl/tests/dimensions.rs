@@ -1,4 +1,5 @@
-//! XBRL Dimensions 1.0 with a small synthetic taxonomy: the dimensional model read from its definition linkbase.
+//! XBRL Dimensions 1.0 with a small synthetic taxonomy: the dimensional model read from its definition linkbase, and the dimensional
+//! validation of facts and contexts. Each rule has an instance that keeps it and one that breaks it with exactly one finding.
 //!
 //! The taxonomy (namespace `urn:eg`):
 //!
@@ -12,7 +13,8 @@
 use std::collections::HashMap;
 
 use xmlcraft_xbrl::dims::ContextElement;
-use xmlcraft_xbrl::taxonomy::{Loader, Taxonomy, load};
+use xmlcraft_xbrl::taxonomy::{Loader, Taxonomy, check_taxonomy, load};
+use xmlcraft_xbrl::{Finding, Level, read};
 
 struct Files(HashMap<&'static str, String>);
 
@@ -119,6 +121,59 @@ fn taxonomy() -> Taxonomy {
     load(&["eg.xsd".to_owned()], "", &mut files_with("", &good_links()))
 }
 
+const PERIOD: &str = r#"<xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>"#;
+
+/// A context `c` with `segment` (the content of the segment) and `scenario`.
+fn context(segment: &str, scenario: &str) -> String {
+    let segment = if segment.is_empty() { String::new() } else { format!("<xbrli:segment>{segment}</xbrli:segment>") };
+    let scenario = if scenario.is_empty() { String::new() } else { format!("<xbrli:scenario>{scenario}</xbrli:scenario>") };
+    format!(
+        r#"<xbrli:context id="c"><xbrli:entity><xbrli:identifier scheme="s">x</xbrli:identifier>{segment}</xbrli:entity>{PERIOD}{scenario}</xbrli:context>"#
+    )
+}
+
+fn instance(context: &str, concept: &str) -> String {
+    format!(
+        r#"<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:iso4217="http://www.xbrl.org/2003/iso4217" xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:eg="urn:eg"><link:schemaRef xlink:type="simple" xlink:href="eg.xsd"/>
+{context}
+<xbrli:unit id="u"><xbrli:measure>iso4217:EUR</xbrli:measure></xbrli:unit>
+<eg:{concept} contextRef="c" unitRef="u" decimals="0">1</eg:{concept}></xbrli:xbrl>"#
+    )
+}
+
+fn region(member: &str) -> String {
+    format!(r#"<xbrldi:explicitMember dimension="eg:RegionDim">eg:{member}</xbrldi:explicitMember>"#)
+}
+
+fn customer(id: &str) -> String {
+    format!(r#"<xbrldi:typedMember dimension="eg:CustomerDim"><eg:CustomerId>{id}</eg:CustomerId></xbrldi:typedMember>"#)
+}
+
+fn findings_with(t: &Taxonomy, text: &str) -> Vec<Finding> {
+    let inst = read(text).expect("reads");
+    check_taxonomy(&inst, t)
+}
+
+fn findings(segment: &str, scenario: &str, concept: &str) -> (String, Vec<Finding>) {
+    let text = instance(&context(segment, scenario), concept);
+    let found = findings_with(&taxonomy(), &text);
+    (text, found)
+}
+
+fn codes(segment: &str, scenario: &str, concept: &str) -> Vec<&'static str> {
+    findings(segment, scenario, concept).1.into_iter().map(|f| f.code).collect()
+}
+
+/// Exactly one finding with `code`, at the element that starts with `at` (the fact or the context).
+fn one(segment: &str, scenario: &str, concept: &str, code: &str, at: &str) -> String {
+    let (text, found) = findings(segment, scenario, concept);
+    let [f] = found.as_slice() else { panic!("one finding, not {found:#?}") };
+    assert_eq!(f.code, code, "{}", f.message);
+    assert_eq!(f.level, Level::Error);
+    assert!(text.get(f.span.clone()).unwrap_or_default().starts_with(at), "{:?} is not at {at}", text.get(f.span.clone()));
+    f.message.clone()
+}
+
 #[test]
 fn the_model_has_the_hypercubes_dimensions_domains_defaults_and_the_primary_items_with_what_they_inherit() {
     let t = taxonomy();
@@ -163,6 +218,101 @@ fn the_model_has_the_hypercubes_dimensions_domains_defaults_and_the_primary_item
 }
 
 #[test]
+fn an_explicit_member_is_in_the_domain_and_a_prohibited_one_is_not() {
+    assert_eq!(codes(&format!("{}{}", region("North"), customer("42")), "", "Sales"), Vec::<&str>::new());
+    let message = one(&format!("{}{}", region("East"), customer("42")), "", "Sales", "xbrl.dimension-invalid", "<eg:Sales");
+    assert!(message.contains("East is not a usable member of the dimension RegionDim"), "{message}");
+}
+
+#[test]
+fn an_absent_explicit_dimension_takes_its_default_and_a_typed_one_must_be_there() {
+    assert_eq!(codes(&customer("42"), "", "Sales"), Vec::<&str>::new(), "RegionDim takes its default");
+    let message = one(&region("North"), "", "Sales", "xbrl.dimension-invalid", "<eg:Sales");
+    assert!(message.contains("typed dimension CustomerDim"), "{message}");
+}
+
+#[test]
+fn a_closed_hypercube_forbids_another_dimension_and_an_open_one_does_not() {
+    let other = r#"<xbrldi:explicitMember dimension="eg:OtherDim">eg:OtherDomain</xbrldi:explicitMember>"#;
+    let message = one(&format!("{}{}{other}", region("North"), customer("1")), "", "Sales", "xbrl.dimension-invalid", "<eg:Sales");
+    assert!(message.contains("is closed") && message.contains("OtherDim"), "{message}");
+    assert_eq!(codes("", &format!("{}{other}", region("North")), "Cost"), Vec::<&str>::new(), "open: another dimension is allowed");
+}
+
+#[test]
+fn dimensions_count_only_in_the_container_the_relationship_names() {
+    // The typed dimension in the scenario does not count for a segment hypercube.
+    let message = one(&region("North"), &customer("42"), "Sales", "xbrl.dimension-invalid", "<eg:Sales");
+    assert!(message.contains("in the segment"), "{message}");
+    // Cost's hypercube is in the scenario: East there is wrong; in the segment it is not looked at (the default applies).
+    one("", &region("East"), "Cost", "xbrl.dimension-invalid", "<eg:Cost");
+    assert_eq!(codes(&region("East"), "", "Cost"), Vec::<&str>::new());
+}
+
+#[test]
+fn a_child_in_the_primary_item_tree_inherits_its_parents_hypercube() {
+    assert_eq!(codes(&format!("{}{}", region("South"), customer("7")), "", "Revenue"), Vec::<&str>::new());
+    one(&format!("{}{}", region("East"), customer("7")), "", "Revenue", "xbrl.dimension-invalid", "<eg:Revenue");
+    one(&region("North"), "", "Revenue", "xbrl.dimension-invalid", "<eg:Revenue");
+    // A concept with no hypercube takes any dimensions.
+    assert_eq!(codes(&region("East"), "", "Plain"), Vec::<&str>::new());
+}
+
+#[test]
+fn a_not_all_hypercube_makes_the_context_that_matches_it_invalid() {
+    assert_eq!(codes("", &region("North"), "Units"), Vec::<&str>::new());
+    let message = one("", &region("South"), "Units", "xbrl.dimension-invalid", "<eg:Units");
+    assert!(message.contains("ExclCube") && message.contains("notAll"), "{message}");
+}
+
+#[test]
+fn the_dimension_values_of_a_context_are_checked_each_once_and_its_facts_are_not_judged_again() {
+    let ok = format!("{}{}", region("North"), customer("1"));
+    assert_eq!(codes(&ok, "", "Sales"), Vec::<&str>::new());
+    one(&format!("{ok}{}", region("South")), "", "Sales", "xbrl.dimension-repeated", "<xbrli:context");
+    one(
+        &format!(r#"{}<xbrldi:explicitMember dimension="eg:CustomerDim">eg:North</xbrldi:explicitMember>"#, region("North")),
+        "",
+        "Sales",
+        "xbrl.dimension-not-explicit",
+        "<xbrli:context",
+    );
+    one(
+        &format!(r#"{}<xbrldi:typedMember dimension="eg:RegionDim"><eg:CustomerId>1</eg:CustomerId></xbrldi:typedMember>"#, customer("1")),
+        "",
+        "Sales",
+        "xbrl.dimension-not-typed",
+        "<xbrli:context",
+    );
+    let message = one(
+        &format!(r#"{}<xbrldi:explicitMember dimension="eg:Revenue">eg:North</xbrldi:explicitMember>"#, ok),
+        "",
+        "Sales",
+        "xbrl.dimension-not-explicit",
+        "<xbrli:context",
+    );
+    assert!(message.contains("not a dimension the taxonomy declares"), "{message}");
+    let message = one(&format!("{}{}", region("Nowhere"), customer("1")), "", "Sales", "xbrl.dimension-member-undefined", "<xbrli:context");
+    assert!(message.contains("Nowhere"), "{message}");
+    one(&format!("{}{}", region("RegionDomain"), customer("1")), "", "Sales", "xbrl.dimension-default-used", "<xbrli:context");
+    one(
+        &format!(
+            r#"{}<xbrldi:typedMember dimension="eg:CustomerDim"><eg:CustomerId>1</eg:CustomerId><eg:CustomerId>2</eg:CustomerId></xbrldi:typedMember>"#,
+            region("North")
+        ),
+        "",
+        "Sales",
+        "xbrl.dimension-typed-content",
+        "<xbrli:context",
+    );
+    // A dimension in a namespace no schema declares is not judged.
+    assert_eq!(
+        codes(&format!(r#"{ok}<xbrldi:explicitMember xmlns:o="urn:other" dimension="o:Dim">o:M</xbrldi:explicitMember>"#), "", "Cost"),
+        Vec::<&str>::new()
+    );
+}
+
+#[test]
 fn what_breaks_the_taxonomy_rules_is_said_once_and_left_out_of_the_model() {
     let mut links = good_links();
     links.push(link(MAIN, &[("all", "Plain", "OpenCube", "")]));
@@ -184,6 +334,9 @@ fn what_breaks_the_taxonomy_rules_is_said_once_and_left_out_of_the_model() {
         ]
     );
     assert!(!t.dimensions.primary_items.contains_key("{urn:eg}Plain"), "the arc with no contextElement is left out");
+    let found = findings_with(&t, &instance(&context("", &region("North")), "Cost"));
+    assert_eq!(found.iter().filter(|f| f.code == "xbrl.dimension-taxonomy").count(), 4);
+    assert!(found.iter().all(|f| f.code == "xbrl.dimension-taxonomy" && f.span.is_empty()), "{found:#?}");
 }
 
 #[test]
@@ -203,4 +356,6 @@ fn cycles_in_the_relationships_end() {
     let t = load(&["eg.xsd".to_owned()], "", &mut files_with("", &links));
     assert_eq!(t.dimensions.cubes[0].dimensions[0].members.len(), 2);
     assert_eq!(t.dimensions.primary_items.len(), 2, "Sales and Revenue, once each");
+    let found = findings_with(&t, &instance(&context(&region("East"), ""), "Revenue"));
+    assert_eq!(found.iter().map(|f| f.code).collect::<Vec<_>>(), ["xbrl.dimension-invalid"]);
 }

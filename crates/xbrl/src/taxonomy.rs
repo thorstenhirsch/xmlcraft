@@ -1,7 +1,7 @@
 //! The taxonomy an instance names: the concepts its schema documents declare (name, type, substitution group, period type, abstract),
 //! read from the `schemaRef`s and the schema documents they import and include, the calculation and definition linkbases they refer to
 //! (the definition arcs of XBRL Dimensions 1.0 become [`crate::dims::Dimensions`]), and the checks of an instance that need them: does a
-//! fact's concept exist, is it a number, does its period type fit its context, does it add up.
+//! fact's concept exist, is it a number, does its period type fit its context, does it add up, is it dimensionally valid.
 //!
 //! Reading is bounded (documents, bytes, type chains) and never panics; what cannot be loaded is a warning, and what the instance uses
 //! from a namespace that was not loaded is not judged.
@@ -609,5 +609,6 @@ pub fn check_taxonomy(instance: &Instance, taxonomy: &Taxonomy) -> Vec<Finding> 
         }
     }
     found.extend(crate::calc::check_calculations(instance, taxonomy));
+    found.extend(crate::dims::check_dimensions(instance, taxonomy));
     found
 }

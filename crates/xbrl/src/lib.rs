@@ -85,6 +85,8 @@ pub struct Dimension {
     pub typed: bool,
     /// In the `segment` or the `scenario`.
     pub in_scenario: bool,
+    /// How many elements a `typedMember` has in it (the specification wants one); 0 for an explicit member.
+    pub children: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -184,6 +186,19 @@ fn expand(tree: &Dom, at: usize, value: &str) -> String {
     }
 }
 
+/// A QName in content or an attribute value (a dimension and its explicit member) as `{namespace}local`: an unprefixed name is in the
+/// default namespace, as XML Schema resolves a QName. A prefix that is not bound leaves the name as written (it then names nothing).
+fn expand_qname(tree: &Dom, at: usize, value: &str) -> String {
+    let value = value.trim();
+    if value.contains(':') {
+        return expand(tree, at, value);
+    }
+    match tree.lookup(at, None) {
+        Some(ns) => format!("{{{ns}}}{value}"),
+        None => format!("{{}}{value}"),
+    }
+}
+
 fn index_of(tree: &Dom, el: &El) -> usize {
     tree.elements.iter().position(|e| std::ptr::eq(e, el)).unwrap_or(0)
 }
@@ -234,12 +249,22 @@ fn read_context(tree: &Dom, el: &El) -> Option<Context> {
                 continue;
             }
             let at = index_of(tree, member);
-            let dimension = attr(member, "dimension").map(|d| expand(tree, at, d)).unwrap_or_default();
+            let dimension = attr(member, "dimension").map(|d| expand_qname(tree, at, d)).unwrap_or_default();
             match member.local.as_str() {
-                "explicitMember" => {
-                    dimensions.push(Dimension { dimension, member: expand(tree, at, &text(tree, member)), typed: false, in_scenario })
-                }
-                "typedMember" => dimensions.push(Dimension { dimension, member: text(tree, member), typed: true, in_scenario }),
+                "explicitMember" => dimensions.push(Dimension {
+                    dimension,
+                    member: expand_qname(tree, at, &text(tree, member)),
+                    typed: false,
+                    in_scenario,
+                    children: 0,
+                }),
+                "typedMember" => dimensions.push(Dimension {
+                    dimension,
+                    member: text(tree, member),
+                    typed: true,
+                    in_scenario,
+                    children: children(tree, member).count(),
+                }),
                 _ => {}
             }
         }
