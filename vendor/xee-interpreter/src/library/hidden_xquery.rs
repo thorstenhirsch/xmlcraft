@@ -31,6 +31,12 @@ fn xmlcraft_try(
         Ok(value) => Ok(value),
         Err(e) => {
             let qname = e.code_qname();
+            // (The W3C codes get the `err` prefix, so that `$err:code` reads as the specifications write it.)
+            let qname = if qname.namespace() == "http://www.w3.org/2005/xqt-errors" && qname.prefix().is_empty() {
+                xot::xmlname::OwnedName::new(qname.local_name().to_string(), qname.namespace().to_string(), "err".to_string())
+            } else {
+                qname
+            };
             if qname.namespace() == LIMIT_NAMESPACE || matches!(e, error::Error::StackOverflow) {
                 return Err(e);
             }

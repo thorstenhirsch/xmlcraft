@@ -106,7 +106,7 @@ declare function xqi:qname($v as item()*, $ns as map(*), $default as xs:string, 
         else xqi:raise('XQDY0074', concat('''', $s, ''' is not a name'))
     else xqi:raise('XPTY0004', 'a computed name must be a QName or a string')
   return
-    if (not($element) and local-name-from-QName($q) eq 'xmlns' and namespace-uri-from-QName($q) eq '')
+    if (not($element) and string(local-name-from-QName($q)) eq 'xmlns' and string(namespace-uri-from-QName($q)) eq '')
     then xqi:raise('XQDY0044', 'an attribute cannot be named xmlns')
     else $q
 };

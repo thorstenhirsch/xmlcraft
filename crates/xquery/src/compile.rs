@@ -1181,29 +1181,62 @@ impl<'a> Compiler<'a> {
     // ---- FLWOR ----
 
     fn flwor(&mut self, clauses: &[Spanned<Clause>], ret: &ExprS) -> C<Bindings> {
-        let k = clauses.iter().position(|c| matches!(c.value, Clause::OrderBy { .. } | Clause::GroupBy(_) | Clause::Count(_)));
-        let Some(k) = k else {
+        let Some(k) = clauses.iter().position(is_materializing) else {
             return self.clauses(clauses, &mut |s| s.expr(ret));
         };
         let (prefix, rest) = clauses.split_at(k);
         let Some((clause, after)) = rest.split_first() else { return self.clauses(clauses, &mut |s| s.expr(ret)) };
-        let span = self.sp(&clause.span);
         let vars = bound_vars(prefix);
-        let n = vars.len();
+        let keys = self.keys_of(clause, &vars)?;
+        let key_refs: Vec<&ExprS> = keys.iter().collect();
+        let span = self.sp(&clause.span);
+        let tuples = self.clauses(prefix, &mut |s| s.tuple(&vars, &key_refs, span))?;
+        self.materialized(tuples, vars, clause, after, ret)
+    }
+
+    /// The keys a materializing clause needs in each tuple (the order specs, the grouping keys; none for `count`).
+    fn keys_of(&self, clause: &Spanned<Clause>, vars: &[Name]) -> C<Vec<ExprS>> {
         match &clause.value {
-            Clause::Count(var) => {
-                let tuples = self.clauses(prefix, &mut |s| s.tuple(&vars, &[], span))?;
-                self.for_tuples(tuples, &vars, &[], Some(var), span, &mut |s| s.flwor(after, ret))
+            Clause::OrderBy { specs, .. } => Ok(specs.iter().map(|s| s.expr.clone()).collect()),
+            Clause::GroupBy(specs) => {
+                let mut keys = Vec::new();
+                for spec in specs {
+                    match &spec.expr {
+                        Some(e) => keys.push(e.clone()),
+                        None => {
+                            if !vars.contains(&spec.var.name) && !self.locals.contains(&spec.var.name) {
+                                return Err(cerr(
+                                    "XQST0094",
+                                    format!("${} is not bound by the FLWOR expression", spec.var.name.local_name()),
+                                    &spec.var.span,
+                                ));
+                            }
+                            keys.push(Spanned::new(Expr::VarRef(spec.var.name.clone()), spec.var.span.clone()));
+                        }
+                    }
+                }
+                Ok(keys)
             }
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    /// Apply a materializing clause to the tuple stream (arrays `[vars…, keys…]`), then run the clauses after it over the
+    /// result: up to the next materializing clause they make the next stream, and the last ones end in `return`.
+    fn materialized(&mut self, tuples: Bindings, vars: Vec<Name>, clause: &Spanned<Clause>, after: &[Spanned<Clause>], ret: &ExprS) -> C<Bindings> {
+        let span = self.sp(&clause.span);
+        let n = vars.len();
+        let mut tuples = tuples;
+        let mut group_vars: Vec<Name> = Vec::new();
+        let mut typed: Vec<VarBinding> = Vec::new();
+        let mut count: Option<&VarBinding> = None;
+        match &clause.value {
             Clause::OrderBy { specs, .. } => {
-                let keys: Vec<&ExprS> = specs.iter().map(|s| &s.expr).collect();
-                let mut tuples = self.clauses(prefix, &mut |s| s.tuple(&vars, &keys, span))?;
                 for (j, spec) in specs.iter().enumerate().rev() {
                     let ta = tuples.atom();
                     let index = self.int(n.saturating_add(j).saturating_add(1), span);
-                    let desc = self.boolean(spec.descending, span)?;
-                    let eg = self.boolean(spec.empty_greatest.unwrap_or(self.empty_greatest), span)?;
-                    let (mut db, mut gb) = (desc, eg);
+                    let mut db = self.boolean(spec.descending, span)?;
+                    let mut gb = self.boolean(spec.empty_greatest.unwrap_or(self.empty_greatest), span)?;
                     let da = db.atom();
                     let ga = gb.atom();
                     let coll = match &spec.collation {
@@ -1213,27 +1246,8 @@ impl<'a> Compiler<'a> {
                     let call = self.prelude_call("sort-pass", vec![ta, index, da, ga, coll], span)?;
                     tuples = self.seal(tuples.concat(db).concat(gb).concat(call));
                 }
-                self.for_tuples(tuples, &vars, &[], None, span, &mut |s| s.flwor(after, ret))
             }
             Clause::GroupBy(specs) => {
-                let mut key_exprs: Vec<ExprS> = Vec::new();
-                for spec in specs {
-                    match &spec.expr {
-                        Some(e) => key_exprs.push(e.clone()),
-                        None => {
-                            if !vars.contains(&spec.var.name) && !self.locals.contains(&spec.var.name) {
-                                return Err(cerr(
-                                    "XQST0094",
-                                    format!("${} is not bound by the FLWOR expression", spec.var.name.local_name()),
-                                    &spec.var.span,
-                                ));
-                            }
-                            key_exprs.push(Spanned::new(Expr::VarRef(spec.var.name.clone()), spec.var.span.clone()));
-                        }
-                    }
-                }
-                let keys: Vec<&ExprS> = key_exprs.iter().collect();
-                let mut tuples = self.clauses(prefix, &mut |s| s.tuple(&vars, &keys, span))?;
                 let ta = tuples.atom();
                 let colls: Vec<ir::AtomS> = specs.iter().map(|s| self.string(s.collation.as_deref().unwrap_or(""), span)).collect();
                 let mut cb = self.sequence_of(colls, span);
@@ -1241,12 +1255,34 @@ impl<'a> Compiler<'a> {
                 let nn = self.int(n, span);
                 let m = self.int(specs.len(), span);
                 let call = self.prelude_call("group", vec![ta, nn, m, ca], span)?;
-                let grouped = self.seal(tuples.concat(cb).concat(call));
-                let group_vars: Vec<Name> = specs.iter().map(|s| s.var.name.clone()).collect();
-                let typed: Vec<&VarBinding> = specs.iter().map(|s| &s.var).collect();
-                self.for_tuples_typed(grouped, &vars, &group_vars, &typed, span, &mut |s| s.flwor(after, ret))
+                tuples = self.seal(tuples.concat(cb).concat(call));
+                group_vars = specs.iter().map(|s| s.var.name.clone()).collect();
+                typed = specs.iter().map(|s| s.var.clone()).collect();
             }
-            _ => self.clauses(clauses, &mut |s| s.expr(ret)),
+            Clause::Count(var) => count = Some(var),
+            _ => return Err(cerr("XPST0003", "a clause is out of place", &clause.span)),
+        }
+        match after.iter().position(is_materializing) {
+            None => self
+                .for_tuples(tuples, &vars, &group_vars, count, span, &mut |s| s.checks(&typed, &mut |s2| s2.clauses(after, &mut |s3| s3.expr(ret)))),
+            Some(m) => {
+                let (segment, rest) = after.split_at(m);
+                let Some((next, after_next)) = rest.split_first() else { return Err(cerr("XPST0003", "a clause is out of place", &clause.span)) };
+                let mut all: Vec<Name> = Vec::new();
+                for v in vars.iter().chain(group_vars.iter()).chain(count.map(|c| &c.name)).chain(bound_vars(segment).iter()) {
+                    if !all.contains(v) {
+                        all.push(v.clone());
+                    }
+                }
+                let keys = self.keys_of(next, &all)?;
+                let key_refs: Vec<&ExprS> = keys.iter().collect();
+                let next_span = self.sp(&next.span);
+                let stream = self.for_tuples(tuples, &vars, &group_vars, count, span, &mut |s| {
+                    s.checks(&typed, &mut |s2| s2.clauses(segment, &mut |s3| s3.tuple(&all, &key_refs, next_span)))
+                })?;
+                let stream = self.seal(stream);
+                self.materialized(stream, all, next, after_next, ret)
+            }
         }
     }
 
@@ -1293,6 +1329,8 @@ impl<'a> Compiler<'a> {
         };
         let names = ir::ContextNames { item: t.clone(), position, last: self.v.new_name() };
         let all: Vec<&Name> = vars.iter().chain(group_vars.iter()).collect();
+        // (The names are made before the body is compiled, which refers to them.)
+        let ir_names: Vec<ir::Name> = all.iter().map(|v| self.v.new_var_name(v)).collect();
         let pushed = all.len() + usize::from(count.is_some());
         self.locals.extend(all.iter().map(|n| (*n).clone()));
         if let Some(c) = count {
@@ -1303,8 +1341,7 @@ impl<'a> Compiler<'a> {
             self.locals.pop();
         }
         let mut body = body?.expr();
-        for (i, v) in all.iter().enumerate().rev() {
-            let name = self.v.new_var_name(v);
+        for (i, name) in ir_names.into_iter().enumerate().rev() {
             let ti = self.var_atom(&t, span);
             let index = self.int(i.saturating_add(1), span);
             let get = XSpanned::new(ir::Expr::FunctionCall(ir::FunctionCall { atom: ti, args: vec![index] }), span);
@@ -1313,21 +1350,6 @@ impl<'a> Compiler<'a> {
         }
         let m = self.v.new_binding(ir::Expr::Map(ir::Map { context_names: names, var_atom: ta, return_expr: Box::new(body) }), span);
         Ok(tuples.bind(m))
-    }
-
-    /// After `group by`: the non-grouping variables are bound to their values joined over the group, the grouping variables to
-    /// the keys (checked against their declared types).
-    fn for_tuples_typed(
-        &mut self,
-        tuples: Bindings,
-        vars: &[Name],
-        group_vars: &[Name],
-        typed: &[&VarBinding],
-        span: XSpan,
-        rest: &mut dyn FnMut(&mut Self) -> C<Bindings>,
-    ) -> C<Bindings> {
-        let typed: Vec<VarBinding> = typed.iter().map(|v| (*v).clone()).collect();
-        self.for_tuples(tuples, vars, group_vars, None, span, &mut |s| s.checks(&typed, rest))
     }
 
     fn checks(&mut self, vars: &[VarBinding], rest: &mut dyn FnMut(&mut Self) -> C<Bindings>) -> C<Bindings> {
@@ -1699,7 +1721,10 @@ impl<'a> Compiler<'a> {
                 let qa = q.atom();
                 let mut local = self.call_fn("local-name-from-QName", FN_NS, vec![qa.clone()], span)?;
                 let la = local.atom();
-                let mut ns = self.call_fn("namespace-uri-from-QName", FN_NS, vec![qa], span)?;
+                let mut uri = self.call_fn("namespace-uri-from-QName", FN_NS, vec![qa], span)?;
+                let ua = uri.atom();
+                // (`XmlName` wants an `xs:string`, not an `xs:anyURI`.)
+                let mut ns = uri.concat(self.call_fn("string", FN_NS, vec![ua], span)?);
                 let nsa = ns.atom();
                 let x = self.v.new_binding(ir::Expr::XmlName(ir::XmlName { local_name: la, namespace: nsa }), span);
                 Ok(eb.concat(map_b).concat(kind).concat(q).concat(local).concat(ns).bind(x))
@@ -1826,4 +1851,9 @@ fn bound_vars(clauses: &[Spanned<Clause>]) -> Vec<Name> {
         }
     }
     out
+}
+
+/// Whether a clause needs the whole tuple stream (`order by`, `group by`, `count`).
+fn is_materializing(c: &Spanned<Clause>) -> bool {
+    matches!(c.value, Clause::OrderBy { .. } | Clause::GroupBy(_) | Clause::Count(_))
 }

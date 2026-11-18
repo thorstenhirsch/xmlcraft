@@ -214,7 +214,9 @@ fn compile_query(query: &str, has_context: bool, options: &Options) -> Result<Co
     }
     builder.variable_names(names.clone());
     let sc = builder.build();
-    let setup = compile::Setup { supplied: &names, has_context, namespaces: &namespaces };
+    // The engine passes the variables in the order of its set of names: the compiler takes them in that order too.
+    let ordered: Vec<ast::Name> = sc.variable_names().iter().cloned().collect();
+    let setup = compile::Setup { supplied: &ordered, has_context, namespaces: &namespaces };
     let ir = compile::Compiler::new(&sc).module(&module, prelude, &setup).map_err(from_compile)?;
     let program = xee_ir::compile_xpath(ir, sc).map_err(|e| {
         let mut q = run_error(&e);
@@ -354,6 +356,8 @@ fn fix_prefixes(xot: &mut xot::Xot, node: xot::Node) {
     if let Some(e) = element {
         // (Fails only for a node that is not an element, which `element` is not.)
         let _ = xot.create_missing_prefixes(e);
+        // A namespace declared again below where it is already in scope (each constructor declares the prefix of its name).
+        xot.deduplicate_namespaces(e);
     }
 }
 
@@ -376,11 +380,10 @@ fn serialize(
         Serialization::Text => {
             let mut parts = Vec::new();
             for item in sequence.iter() {
-                match item {
-                    xee_interpreter::sequence::Item::Node(n) => parts.push(xot.string_value(n)),
-                    xee_interpreter::sequence::Item::Atomic(a) => parts.push(a.to_string()?),
-                    xee_interpreter::sequence::Item::Function(_) => return Err(xee_interpreter::error::Error::SENR0001),
+                if let xee_interpreter::sequence::Item::Function(_) = item {
+                    return Err(xee_interpreter::error::Error::SENR0001);
                 }
+                parts.push(item.string_value(xot)?);
             }
             parts.join(" ")
         }
