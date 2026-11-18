@@ -2,6 +2,7 @@
 
 > **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** M9.16, M9.17: the invoice PDFs and the e-invoice rule outcomes checked with external validators run locally (veraPDF 1.30.4 and Mustang 2.26.0: all 22 PDFs of the fixture set pass after one fix, `.notdef` for characters the font lacks; Saxon-HE 12.9 over the publishers' compiled XSLT: 114 of 114 rule-set runs on 61 invoices agree after one fix, short-circuiting `or`/`and`), with `cargo xtask pdf-oracle` and `cargo xtask einvoice-oracle` to repeat them; no status changed; `cargo xtask parity`: 22 shipped and 128 partial of 191 counted features, 45.0% weighted. What moved before it is in the revision history.
 > **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** the XPath profiler and debugger (M7.12–M7.15; the profiler and debugger entries stay partial with new evidence) and the profiler's overhead measured; 22 shipped and 128 partial of 191 counted features, 45.0% weighted (unchanged) · **Target:** the leading commercial XML editors (public documentation)
+> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** M8.11–M8.13, the Preview tool window: `view.browser-preview` planned → partial (the page through the system browser under the browser view's policy, `html_preview`; the native webview waits for a licence decision), `html.editing` and `view.docking` notes updated; `cargo xtask parity` reports 22 shipped and 129 partial of 191 counted features, 45.3% weighted; the earlier changes are in the revision history
 
 The authoritative assessment of how close XmlCraft is to the leading commercial XML editors. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -11,7 +12,7 @@ The authoritative assessment of how close XmlCraft is to the leading commercial 
 
 | | Value | Kind |
 |---|---|---|
-| **Feature breadth**, unweighted | **11.5%** shipped, 45.0% with partial counted half (22 shipped + 128 partial of 191 counted; 64 P0, 62 P1, 56 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-11) |
+| **Feature breadth**, unweighted | **11.5%** shipped, 45.3% with partial counted half (22 shipped + 129 partial of 191 counted; 64 P0, 62 P1, 56 P2, 9 P3) | measured (`cargo xtask parity` arithmetic, 2026-11-18) |
 | Must-have (P0) features | 21.9% shipped, 59.4% weighted (14 shipped + 48 partial of 64) | measured |
 | W3C xmlconf, not-well-formed | **100%** (1017 of 1017 applicable tests) | measured (`cargo xtask conformance xmlconf`, 2026-10-28) |
 | W3C xmlconf, valid and invalid | **100%** (721 of 721 valid, 227 of 227 invalid): a valid document has no well-formedness or validity error, an invalid one is well-formed and has at least one validity error (which one is not compared; 73 of the 227 are documents with no DOCTYPE, invalid because there is nothing to validate against) | measured (same run) |
@@ -182,3 +183,4 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 - 2026-11-13: M13: `einvoice.window` added as partial (the E-Rechnung tool window); F8 runs the e-invoice rules into Problems; the e-invoice, `pdf.generate-invoice` and `view.docking` notes and evidence updated; 22 shipped and 128 partial of 191 counted features, 45.0% weighted.
 - 2026-11-18: M9.16, M9.17: the e-invoice PDFs checked with veraPDF 1.30.4 and Mustang 2.26.0 (new section; one PDF/A rule fixed) and the rule outcomes with Saxon-HE 12.9 (114 of 114 rule-set runs on 61 invoices agree after one engine fix); `pdf.generate-invoice`, `einvoice.zugferd-facturx`, `einvoice.en16931`, `einvoice.xrechnung-ubl` and `einvoice.xrechnung-cii` notes and evidence updated, no status changed; the eight stacked status lines folded into one; 22 shipped and 128 partial of 191 counted features, 45.0% weighted.
 - 2026-11-18: M7.12–M7.15: the XPath profiler and debugger (`query.xpath-xquery-profiler` and `query.xpath-xquery-debugger` stay partial with new evidence and notes); the overhead of the profiler measured (2.4 times a normal run).
+- 2026-11-18: M8.11–M8.13: `view.browser-preview` planned → partial (the Preview tool window, `html_preview`); `html.editing` and `view.docking` notes updated; 22 shipped and 129 partial of 191 counted features, 45.3% weighted.
