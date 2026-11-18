@@ -12,9 +12,11 @@
 //! and bounds its work: nesting and the number of problems are cut off, with a problem that says so.
 
 mod highlight;
+mod layout;
 mod parser;
 
 pub use highlight::{Mode, Span, highlight_line};
+pub use layout::{Layout, LayoutError, layout};
 pub use parser::{Options, Parse, parse, plain as plain_data};
 pub use xmlcraft_json_syntax::{Data, JsonClass, Member, Segment, Value};
 pub use xmlcraft_syntax::{Code, Diagnostic, Severity};

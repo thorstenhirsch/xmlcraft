@@ -39,8 +39,8 @@ fn yaml_is_checked_as_yaml_outlined_and_offered_the_data_tools() {
     assert!(h.query_by_label("alpha").is_some() && h.query_by_label("beta 1").is_some(), "the outline names the keys");
     assert!(h.query_by_label("XPath").is_none() && h.query_by_label("Sample XML").is_none(), "no XML tools");
     assert!(h.query_by_label("Schema…").is_some() && h.query_by_label("Convert").is_some(), "the data tools");
-    // YAML is not reformatted, and the bar says so.
-    assert!(h.get_by_label("Format").accesskit_node().is_disabled());
+    // YAML is re-indented: Format is there.
+    assert!(!h.get_by_label("Format").accesskit_node().is_disabled());
     open(&mut h, &file(dir.path(), "bad.yml", "a: [1, 2\nb: 3\n"));
     assert!(h.state().problems().is_some_and(|(errors, _)| errors > 0));
     // The same text as a file the XML way is not YAML.
@@ -75,4 +75,31 @@ fn f8_on_yaml_checks_the_syntax_and_says_so() {
         std::thread::sleep(Duration::from_millis(5));
     }
     assert!(h.state().status.starts_with("g.yaml: "), "{}", h.state().status);
+}
+
+#[test]
+fn format_re_indents_yaml_as_one_undoable_step_and_keeps_the_comments() {
+    let dir = tempfile::tempdir().expect("dir");
+    let mut h = shell();
+    let before = "# top\nservice:\n        name: web   \n        ports:\n                - 80  # http\n                - 443\n";
+    open(&mut h, &file(dir.path(), "svc.yaml", before));
+    // (The indent unit is the document's setting: it was read from the text, whose steps are 8; the person has chosen 2.)
+    if let Some(doc) = h.state_mut().session.active_document_mut() {
+        let mut settings = doc.editor().settings().clone();
+        settings.indent_size = 2;
+        doc.editor_mut().set_settings(settings);
+    }
+    assert!(h.state_mut().execute("xml.pretty_print"));
+    h.run_steps(2);
+    let text = |h: &Harness<'static, XmlCraftApp>| h.state().session.active_document().map(|d| d.editor().text()).unwrap_or_default();
+    assert_eq!(text(&h), "# top\nservice:\n  name: web\n  ports:\n    - 80  # http\n    - 443\n");
+    assert!(h.state().status.starts_with("Pretty-printed"), "{}", h.state().status);
+    // One undo brings the text back.
+    assert!(h.state_mut().execute("edit.undo"));
+    h.run_steps(2);
+    assert_eq!(text(&h), before);
+    // Strip White Space is not for YAML: it says why (in a message) and changes nothing.
+    assert!(h.state_mut().execute("xml.minify"));
+    h.run_steps(2);
+    assert_eq!(text(&h), before);
 }

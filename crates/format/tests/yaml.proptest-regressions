@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc bd5f9b98171600a618f0db0a761ff0380e2d97729a0d85e1e4d18b32c2db87fe # shrinks to tree = Map([("a", Map([("a", Block(false, "a"))]))]), step = 1, flush = false, unit = 5, style = 0, noise = [0]

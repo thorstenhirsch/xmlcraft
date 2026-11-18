@@ -6,7 +6,7 @@ use xmlcraft_format::{BlankLines, Eol, FormatError, FormatOptions, Indent, apply
 use xmlcraft_json_syntax::Dialect;
 
 fn options(indent: Indent) -> FormatOptions {
-    FormatOptions { indent, eol: Eol::Lf, blank_lines: BlankLines::Keep }
+    FormatOptions { indent, eol: Eol::Lf, blank_lines: BlankLines::Keep, ..FormatOptions::default() }
 }
 
 fn pretty(text: &str, dialect: Dialect) -> String {
