@@ -161,7 +161,7 @@ fn tree_options(args: &Value) -> Result<TreeOptions> {
 
 fn family_of(language: Language) -> Family {
     match language {
-        Language::Xml | Language::Html => Family::Xml,
+        Language::Xml | Language::Html | Language::XQuery => Family::Xml,
         Language::Json(_) | Language::Bson => Family::Json,
         Language::Yaml => Family::Yaml,
     }

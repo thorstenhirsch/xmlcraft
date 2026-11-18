@@ -27,7 +27,7 @@ fn read_roots(text: &str, language: Language) -> Vec<Value> {
             xmlcraft_bson::Layout::Single => read_roots(text, Language::Json(JsonFlavor::Json)),
         },
         Language::Yaml => xmlcraft_yaml_syntax::parse(text, &xmlcraft_yaml_syntax::Options::default()).documents,
-        Language::Xml | Language::Html => Vec::new(),
+        Language::Xml | Language::Html | Language::XQuery => Vec::new(),
     }
 }
 

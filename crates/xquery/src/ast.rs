@@ -601,3 +601,9 @@ impl Expr {
         out
     }
 }
+
+/// A name as a query writes it: `prefix:local`, or `local` (an unprefixed name in a namespace is written `local` too).
+pub fn written(name: &Name) -> String {
+    use xot::xmlname::NameStrInfo;
+    if name.prefix().is_empty() { name.local_name().to_owned() } else { format!("{}:{}", name.prefix(), name.local_name()) }
+}

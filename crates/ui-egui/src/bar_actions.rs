@@ -24,6 +24,8 @@ pub(crate) enum BarKind {
     /// An OpenAPI description, in JSON or YAML.
     OpenApi,
     Html,
+    /// An XQuery (`.xq`, `.xquery`, …).
+    XQuery,
     /// An electronic invoice (UBL, CII, FatturaPA: XRechnung, Factur-X, Peppol BIS…), or the XML of a PDF document (a hybrid invoice).
     Invoice,
 }
@@ -56,6 +58,7 @@ pub(crate) fn kind_actions(kind: BarKind) -> &'static [KindAction] {
         BarKind::Data => &[DATA_SCHEMA_MENU, CONVERT],
         BarKind::OpenApi => &[KindAction::Command { id: "xml.openapi", label: "Try Operation" }, DATA_SCHEMA_MENU, CONVERT],
         BarKind::Html => &[PREVIEW],
+        BarKind::XQuery => &[KindAction::Command { id: "xml.xquery", label: "Run" }],
         BarKind::Invoice => &[
             KindAction::Command { id: "xml.einvoice", label: "Invoice" },
             KindAction::Command { id: "xml.validate_invoice", label: "Validate invoice" },
@@ -91,6 +94,7 @@ pub(crate) fn bar_kind(kind: DocKind, traits: Traits) -> BarKind {
         DocKind::Json | DocKind::Yaml if traits.openapi => BarKind::OpenApi,
         DocKind::Json | DocKind::Yaml => BarKind::Data,
         DocKind::Html => BarKind::Html,
+        DocKind::XQuery => BarKind::XQuery,
     }
 }
 

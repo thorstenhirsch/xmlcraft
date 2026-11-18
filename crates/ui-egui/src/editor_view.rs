@@ -182,6 +182,9 @@ pub struct XmlStyler {
     /// The same for YAML.
     yaml: bool,
     yaml_modes: Vec<YamlMode>,
+    /// The same for XQuery.
+    xquery: bool,
+    xquery_modes: Vec<xmlcraft_xquery::highlight::LineMode>,
 }
 
 /// Whose rules colour a text.
@@ -190,6 +193,7 @@ pub enum Colouring {
     Xml,
     Json,
     Yaml,
+    XQuery,
 }
 
 /// A line this many lines past the lines whose mode is known is coloured as if no comment were open, instead of reading all that is
@@ -211,6 +215,8 @@ impl XmlStyler {
             json_modes: Vec::new(),
             yaml: false,
             yaml_modes: Vec::new(),
+            xquery: false,
+            xquery_modes: Vec::new(),
         }
     }
 
@@ -221,13 +227,14 @@ impl XmlStyler {
 
     /// Colour the text by the rules of one language. Returns whether that changed.
     pub fn set_syntax(&mut self, colouring: Colouring) -> bool {
-        let (json, yaml) = (colouring == Colouring::Json, colouring == Colouring::Yaml);
-        if self.json == json && self.yaml == yaml {
+        let (json, yaml, xquery) = (colouring == Colouring::Json, colouring == Colouring::Yaml, colouring == Colouring::XQuery);
+        if self.json == json && self.yaml == yaml && self.xquery == xquery {
             return false;
         }
-        (self.json, self.yaml) = (json, yaml);
+        (self.json, self.yaml, self.xquery) = (json, yaml, xquery);
         self.json_modes.clear();
         self.yaml_modes.clear();
+        self.xquery_modes.clear();
         self.highlighter.reset();
         true
     }
@@ -242,6 +249,7 @@ impl XmlStyler {
         self.highlighter.reset();
         self.json_modes.clear();
         self.yaml_modes.clear();
+        self.xquery_modes.clear();
         self.problems.clear();
         self.reach.clear();
         self.folds.clear();
@@ -343,6 +351,34 @@ impl XmlStyler {
         spans.into_iter().map(|(range, class)| StyleSpan { range, color: self.tokens.json_color(class) }).collect()
     }
 
+    /// The mode line `line` starts in, for XQuery.
+    fn xquery_mode_at(&mut self, buffer: &Buffer, line: usize) -> xmlcraft_xquery::highlight::LineMode {
+        use xmlcraft_xquery::highlight::{LineMode, highlight_line};
+        if self.xquery_modes.is_empty() {
+            self.xquery_modes.push(LineMode::Normal);
+        }
+        if line.saturating_sub(self.xquery_modes.len()) > MAX_JSON_MODE_WALK {
+            return LineMode::Normal;
+        }
+        while self.xquery_modes.len() <= line {
+            let at = self.xquery_modes.len() - 1;
+            let mode = self.xquery_modes.get(at).copied().unwrap_or_default();
+            let next = match buffer.line_range(at).and_then(|r| buffer.slice(r).ok()) {
+                Some(text) => highlight_line(&text, mode).1,
+                None => LineMode::Normal,
+            };
+            self.xquery_modes.push(next);
+        }
+        self.xquery_modes.get(line).copied().unwrap_or_default()
+    }
+
+    fn style_xquery_line(&mut self, buffer: &Buffer, line: usize) -> Vec<StyleSpan> {
+        let mode = self.xquery_mode_at(buffer, line);
+        let Some(text) = buffer.line_range(line).and_then(|r| buffer.slice(r).ok()) else { return Vec::new() };
+        let (spans, _) = xmlcraft_xquery::highlight::highlight_line(&text, mode);
+        spans.into_iter().filter_map(|(range, class)| self.tokens.color(class).map(|color| StyleSpan { range, color })).collect()
+    }
+
     fn style_json_line(&mut self, buffer: &Buffer, line: usize) -> Vec<StyleSpan> {
         let mode = self.json_mode_at(buffer, line);
         // The spans are of the line without its break (the break is read for the modes only).
@@ -357,6 +393,7 @@ impl LineStyler for XmlStyler {
         self.highlighter.invalidate_from(first_line);
         self.json_modes.truncate(first_line.saturating_add(1));
         self.yaml_modes.truncate(first_line.saturating_add(1));
+        self.xquery_modes.truncate(first_line.saturating_add(1));
     }
 
     fn style_line(&mut self, buffer: &Buffer, line: usize, _text: &str) -> Vec<StyleSpan> {
@@ -365,6 +402,9 @@ impl LineStyler for XmlStyler {
         }
         if self.yaml {
             return self.style_yaml_line(buffer, line);
+        }
+        if self.xquery {
+            return self.style_xquery_line(buffer, line);
         }
         // A very large text is coloured at a place far from what has been looked at from an estimate, not by reading all that is before.
         self.highlighter.set_far_jump(FarJump::for_len(buffer.len()));

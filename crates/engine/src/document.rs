@@ -32,6 +32,8 @@ fn syntax_of(language: Language) -> Syntax {
     match language {
         Language::Xml => Syntax::Xml,
         Language::Html => Syntax::Html,
+        // (Typed with brackets and both quotes paired, as JSON5 is.)
+        Language::XQuery => Syntax::Json5,
         Language::Json(crate::language::JsonFlavor::Json5) => Syntax::Json5,
         Language::Json(_) | Language::Bson => Syntax::Json,
         Language::Yaml => Syntax::Yaml,

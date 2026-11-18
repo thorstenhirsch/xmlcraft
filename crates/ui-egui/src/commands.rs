@@ -215,6 +215,7 @@ impl XmlCraftApp {
             "file.merge" => self.open_merge(),
             "xml.xpath" => self.open_xpath(),
             "xml.transform" => self.open_transform(),
+            "xml.xquery" => self.open_xquery(),
             "xml.soap" => self.open_soap(),
             "xml.openapi" => self.open_openapi(),
             "xml.soap_debugger" => self.open_proxy(),

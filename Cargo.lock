@@ -7313,6 +7313,7 @@ dependencies = [
  "xmlcraft-validate",
  "xmlcraft-wsdl",
  "xmlcraft-xbrl",
+ "xmlcraft-xquery",
  "xmlcraft-xsd",
 ]
 
@@ -7483,6 +7484,7 @@ dependencies = [
  "xmlcraft-validate",
  "xmlcraft-wsdl",
  "xmlcraft-xbrl",
+ "xmlcraft-xquery",
  "xmlcraft-xsd",
  "xmlcraft-yaml-syntax",
 ]
@@ -7734,6 +7736,7 @@ dependencies = [
  "xmlcraft-sample",
  "xmlcraft-syntax",
  "xmlcraft-text",
+ "xmlcraft-xquery",
  "xmlcraft-xsd",
  "xmlcraft-yaml-syntax",
 ]
@@ -7789,6 +7792,7 @@ dependencies = [
  "xee-xpath",
  "xee-xpath-ast",
  "xmlcraft-query",
+ "xmlcraft-syntax",
  "xot",
 ]
 

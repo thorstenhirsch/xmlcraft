@@ -849,6 +849,7 @@ impl XmlCraftApp {
         if view.styler.set_syntax(match doc.language() {
             l if l.is_json_like() => crate::editor_view::Colouring::Json,
             l if l.is_yaml() => crate::editor_view::Colouring::Yaml,
+            l if l.is_xquery() => crate::editor_view::Colouring::XQuery,
             _ => crate::editor_view::Colouring::Xml,
         }) {
             view.view.highlight_version += 1;

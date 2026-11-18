@@ -79,7 +79,7 @@ impl Default for TransformTool {
 fn format_of(language: Language) -> (Format, bool) {
     match language {
         // (HTML is converted as the markup it is; text that is not well-formed XML is said so.)
-        Language::Xml | Language::Html => (Format::Xml, false),
+        Language::Xml | Language::Html | Language::XQuery => (Format::Xml, false),
         Language::Json(flavor) => (Format::Json, flavor == JsonFlavor::Lines),
         Language::Yaml => (Format::Yaml, false),
         Language::Bson => (Format::Bson, false),

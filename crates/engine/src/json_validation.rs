@@ -72,7 +72,7 @@ fn read(text: &str, language: Language) -> Option<Instance> {
             };
             (roots.iter().map(xmlcraft_bson::bson_to_plain_json).collect(), broken)
         }
-        Language::Xml | Language::Html => return None,
+        Language::Xml | Language::Html | Language::XQuery => return None,
     };
     let first = roots.first();
     let named = first.and_then(member_reference).or_else(|| if language == Language::Yaml { modeline(text) } else { None });

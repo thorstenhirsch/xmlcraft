@@ -38,6 +38,9 @@ pub enum Language {
     Yaml,
     /// HTML5 (`.html`, `.htm`): read with the rules of HTML (void elements, end tags that may be left out), not those of XML.
     Html,
+    /// XQuery (`.xq`, `.xquery`, `.xqy`, `.xqm`, `.xql`): a query, read by the XQuery parser for its problems and outline, and run in
+    /// the Query tool.
+    XQuery,
 }
 
 /// File names (lower case) that are JSON with comments although they end in `.json`: the configuration files editors read that way.
@@ -74,6 +77,7 @@ impl Language {
             Some("bson") => Language::Bson,
             Some("yaml" | "yml") => Language::Yaml,
             Some("html" | "htm") => Language::Html,
+            Some("xq" | "xquery" | "xqy" | "xqm" | "xql") => Language::XQuery,
             _ => Language::Xml,
         }
     }
@@ -95,7 +99,9 @@ impl Language {
             },
             Language::Yaml if minify => Err(FormatError::Refused { message: YAML_MINIFY.to_owned() }),
             Language::Yaml => xmlcraft_format::yaml::pretty_print(text, options),
-            Language::Html => Err(FormatError::Refused { message: self.not_formatted().unwrap_or("this language is not reformatted").to_owned() }),
+            Language::Html | Language::XQuery => {
+                Err(FormatError::Refused { message: self.not_formatted().unwrap_or("this language is not reformatted").to_owned() })
+            }
         }
     }
 
@@ -104,6 +110,7 @@ impl Language {
     pub fn not_formatted(self) -> Option<&'static str> {
         match self {
             Language::Html => Some("HTML is not reformatted yet"),
+            Language::XQuery => Some("XQuery is not reformatted yet"),
             Language::Json(JsonFlavor::Lines) => Some(PRETTY_PRINT_LINES),
             Language::Xml | Language::Json(_) | Language::Bson | Language::Yaml => None,
         }
@@ -134,6 +141,10 @@ impl Language {
         self == Language::Html
     }
 
+    pub fn is_xquery(self) -> bool {
+        self == Language::XQuery
+    }
+
     /// A data language (JSON, YAML or BSON): read into a value tree, with no markup, tags or schema hints.
     pub fn is_data(self) -> bool {
         matches!(self, Language::Json(_) | Language::Bson | Language::Yaml)
@@ -150,6 +161,7 @@ impl Language {
             Language::Bson => "bson",
             Language::Yaml => "yaml",
             Language::Html => "html",
+            Language::XQuery => "xquery",
         }
     }
 }

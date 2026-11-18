@@ -19,6 +19,7 @@ pub(crate) mod side_by_side;
 pub(crate) mod soap;
 pub(crate) mod transform;
 pub(crate) mod xpath_lab;
+pub(crate) mod xquery_tab;
 
 /// The document a tool follows: the one being shown.
 #[derive(Clone, Debug, PartialEq, Eq)]
