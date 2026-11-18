@@ -90,3 +90,71 @@ fn a_calculation_linkbase_beside_the_schema_is_used_to_check_the_sums() {
     assert!(!codes(&mut a, "100").contains(&"xbrl.calculation-inconsistent".to_owned()), "70 + 30 is 100");
     assert!(codes(&mut a, "101").contains(&"xbrl.calculation-inconsistent".to_owned()), "70 + 30 is not 101");
 }
+
+#[test]
+fn a_definition_linkbase_beside_the_schema_judges_the_dimensions_and_the_taxonomy_is_summed_up() {
+    let dir = tempfile::tempdir().expect("dir");
+    let schema = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" targetNamespace="urn:g">
+<xs:annotation><xs:appinfo><link:linkbaseRef xlink:type="simple" xlink:href="g-def.xml" xlink:role="http://www.xbrl.org/2003/role/definitionLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/></xs:appinfo></xs:annotation>
+<xs:element id="g_Sales" name="Sales" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant"/>
+<xs:element id="g_Cube" name="Cube" type="xbrli:stringItemType" substitutionGroup="xbrldt:hypercubeItem" abstract="true" xbrli:periodType="instant"/>
+<xs:element id="g_Region" name="Region" type="xbrli:stringItemType" substitutionGroup="xbrldt:dimensionItem" abstract="true" xbrli:periodType="instant"/>
+<xs:element id="g_All" name="All" type="xbrli:stringItemType" substitutionGroup="xbrli:item" abstract="true" xbrli:periodType="instant"/>
+<xs:element id="g_North" name="North" type="xbrli:stringItemType" substitutionGroup="xbrli:item" abstract="true" xbrli:periodType="instant"/></xs:schema>"#;
+    let arc = |role: &str, from: &str, to: &str, extra: &str| {
+        format!(
+            r#"<link:definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/{role}" xlink:from="{from}" xlink:to="{to}" {extra}/>"#
+        )
+    };
+    let locs: String = ["Sales", "Cube", "Region", "All", "North"]
+        .iter()
+        .map(|c| format!(r#"<link:loc xlink:type="locator" xlink:href="g.xsd#g_{c}" xlink:label="{c}"/>"#))
+        .collect();
+    let def = format!(
+        r#"<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xbrldt="http://xbrl.org/2005/xbrldt"><link:definitionLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">{locs}{}{}{}{}{}</link:definitionLink></link:linkbase>"#,
+        arc("all", "Sales", "Cube", r#"xbrldt:contextElement="segment" xbrldt:closed="true""#),
+        arc("hypercube-dimension", "Cube", "Region", ""),
+        arc("dimension-domain", "Region", "All", ""),
+        arc("domain-member", "All", "North", ""),
+        arc("dimension-default", "Region", "All", ""),
+    );
+    std::fs::write(dir.path().join("g.xsd"), schema).expect("writes");
+    std::fs::write(dir.path().join("g-def.xml"), def).expect("writes");
+    let instance = |segment: &str| {
+        format!(
+            r#"<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:iso4217="http://www.xbrl.org/2003/iso4217" xmlns:g="urn:g"><link:schemaRef xlink:type="simple" xlink:href="g.xsd"/>
+<xbrli:context id="c"><xbrli:entity><xbrli:identifier scheme="s">x</xbrli:identifier><xbrli:segment>{segment}</xbrli:segment></xbrli:entity><xbrli:period><xbrli:instant>2025-12-31</xbrli:instant></xbrli:period></xbrli:context>
+<xbrli:unit id="u"><xbrli:measure>iso4217:EUR</xbrli:measure></xbrli:unit>
+<g:Sales contextRef="c" unitRef="u" decimals="0">5</g:Sales></xbrli:xbrl>"#
+        )
+    };
+    let mut a = Automation::with_root(dir.path()).expect("root");
+    let mut run = |segment: &str| -> Value {
+        let path = dir.path().join("i.xml");
+        std::fs::write(&path, instance(segment)).expect("writes");
+        call(&mut a, json!({ "path": path.to_str().expect("utf-8") })).expect("runs")
+    };
+    let member = |m: &str| format!(r#"<xbrldi:explicitMember dimension="g:Region">g:{m}</xbrldi:explicitMember>"#);
+    let r = run(&member("North"));
+    assert_eq!(r["findings"].as_array().map(Vec::len), Some(0), "{r}");
+    let t = &r["taxonomy"];
+    assert_eq!(
+        (t["hypercubes"].as_u64(), t["dimensions"].as_u64(), t["members"].as_u64(), t["primary_items"].as_u64()),
+        (Some(1), Some(1), Some(2), Some(1)),
+        "{r}"
+    );
+    assert_eq!(r["contexts"][0]["dimensions"][0]["member"].as_str(), Some("{urn:g}North"));
+    let r = run(&member("All"));
+    assert_eq!(r["findings_by_code"], json!({ "xbrl.dimension-default-used": 1 }), "{r}");
+    let r = run(&member("Sales"));
+    assert_eq!(r["findings_by_code"], json!({ "xbrl.dimension-invalid": 1 }), "{r}");
+    let finding = &r["findings"][0];
+    assert_eq!((finding["level"].as_str(), finding["line"].as_u64()), (Some("error"), Some(4)), "at the fact: {r}");
+    assert!(run_without_schema_ref()["taxonomy"].is_null());
+}
+
+fn run_without_schema_ref() -> Value {
+    let mut a = Automation::new();
+    let text = DOC.replace("<link:schemaRef xlink:type=\"simple\" xlink:href=\"g.xsd\"/>", "");
+    call(&mut a, json!({ "text": text })).expect("runs")
+}

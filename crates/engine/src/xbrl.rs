@@ -34,15 +34,70 @@ impl Loader for TaxonomyDocuments<'_> {
     }
 }
 
+/// What was read of the taxonomy an instance names, in numbers.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TaxonomySummary {
+    /// The schema documents and linkbases read.
+    pub documents: usize,
+    /// Those that could not be read.
+    pub not_loaded: usize,
+    pub concepts: usize,
+    /// The summation-item relationships (by parent and role).
+    pub calculations: usize,
+    pub hypercubes: usize,
+    pub dimensions: usize,
+    pub typed_dimensions: usize,
+    /// The distinct members of the dimension domains.
+    pub members: usize,
+    /// The concepts that have hypercubes (their own or inherited).
+    pub primary_items: usize,
+}
+
+/// What the XBRL tool window and `xbrl_facts` show of a document: the instance read, every finding (of the instance on its own, of the
+/// taxonomy, of the calculations and of the dimensions), and what was read of the taxonomy (none when the instance names none).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Report {
+    pub instance: xmlcraft_xbrl::Instance,
+    pub findings: Vec<xmlcraft_xbrl::Finding>,
+    pub taxonomy: Option<TaxonomySummary>,
+}
+
 /// What `instance` (at `location`) says wrong of itself and, from the taxonomy its `schemaRef`s name (read through `resolver`), what the
 /// concepts say of its facts.
 pub fn findings(instance: &xmlcraft_xbrl::Instance, location: &str, resolver: &Resolver) -> Vec<xmlcraft_xbrl::Finding> {
+    checked(instance, location, resolver).0
+}
+
+/// [`findings`], and what was read of the taxonomy.
+fn checked(instance: &xmlcraft_xbrl::Instance, location: &str, resolver: &Resolver) -> (Vec<xmlcraft_xbrl::Finding>, Option<TaxonomySummary>) {
     let mut found = check(instance);
-    if !instance.schema_refs.is_empty() {
-        let taxonomy = load(&instance.schema_refs, location, &mut TaxonomyDocuments { resolver, budget: Budget::default() });
-        found.extend(check_taxonomy(instance, &taxonomy));
+    if instance.schema_refs.is_empty() {
+        return (found, None);
     }
-    found
+    let taxonomy = load(&instance.schema_refs, location, &mut TaxonomyDocuments { resolver, budget: Budget::default() });
+    found.extend(check_taxonomy(instance, &taxonomy));
+    let d = &taxonomy.dimensions;
+    let summary = TaxonomySummary {
+        documents: taxonomy.documents.len(),
+        not_loaded: taxonomy.not_loaded.len(),
+        concepts: taxonomy.concepts.len(),
+        calculations: taxonomy.calculations.len(),
+        hypercubes: d.hypercubes.len(),
+        dimensions: d.dimensions.len(),
+        typed_dimensions: d.dimensions.values().filter(|t| t.is_some()).count(),
+        members: d.member_count(),
+        primary_items: d.primary_items.len(),
+    };
+    (found, Some(summary))
+}
+
+/// Read `text` (an XBRL instance or an Inline XBRL document at `location`) and check it as F8 does, with the taxonomy its `schemaRef`s
+/// name read through `resolver`. The findings are in the order of the text (those about the whole document first).
+pub fn report(text: &str, location: &str, resolver: &Resolver) -> Result<Report, String> {
+    let instance = read(text).map_err(|e| e.to_string())?;
+    let (mut findings, taxonomy) = checked(&instance, location, resolver);
+    findings.sort_by_key(|f| (f.span.start, f.span.end));
+    Ok(Report { instance, findings, taxonomy })
 }
 
 /// What the XBRL checks find in `text` (an instance at `location`): what it says of itself, and, from the taxonomy its `schemaRef`s name
