@@ -737,6 +737,37 @@ fn quick_fixes_are_listed_and_one_is_applied_as_a_single_undoable_edit() {
 }
 
 #[test]
+fn quick_fixes_are_offered_for_the_problems_of_json_too() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = file(dir.path(), "q.json", b"{\n  \"a\": 1,\n  'b': [1 2],\n  c: 3,\n}\n");
+    let mut a = Automation::new();
+    let id = ok(&mut a, "doc_open", json!({ "path": path }))["id"].as_u64().expect("an id");
+    let text = |a: &mut Automation| ok(a, "doc_text", json!({ "id": id }))["text"].as_str().expect("text").to_owned();
+    let all = ok(&mut a, "doc_quick_fix", json!({ "id": id }));
+    let titles: Vec<&str> = all["fixes"].as_array().expect("fixes").iter().filter_map(|f| f["title"].as_str()).collect();
+    assert_eq!(
+        titles,
+        ["Write the string in double quotes", "Insert the missing comma", "Put the name in double quotes", "Remove the trailing comma"],
+        "{all}"
+    );
+    // Each applies as one undoable edit that changes only what it says.
+    let before = text(&mut a);
+    ok(&mut a, "doc_quick_fix", json!({ "id": id, "apply": 0 }));
+    assert_eq!(text(&mut a), before.replace("'b'", "\"b\""));
+    ok(&mut a, "doc_undo", json!({ "id": id }));
+    assert_eq!(text(&mut a), before, "one step");
+    // A fix at a place.
+    let at = ok(&mut a, "doc_quick_fix", json!({ "id": id, "line": 4, "column": 3 }));
+    assert_eq!(at["count"], 1, "{at}");
+    ok(&mut a, "doc_quick_fix", json!({ "id": id, "line": 4, "column": 3, "apply": 0 }));
+    assert!(text(&mut a).contains("\"c\": 3"), "{}", text(&mut a));
+    // YAML has no fixes.
+    let yaml = file(dir.path(), "q.yaml", b"a: [1\n");
+    let y = ok(&mut a, "doc_open", json!({ "path": yaml }))["id"].as_u64().expect("an id");
+    assert_eq!(ok(&mut a, "doc_quick_fix", json!({ "id": y }))["count"], 0);
+}
+
+#[test]
 fn json_is_read_by_the_same_tools_as_xml_by_name_or_by_the_language_given() {
     let dir = tempfile::tempdir().expect("dir");
     let text = "{\n  \"a\": {\n    \"b\": [1, 2]\n  } // c\n}";

@@ -7,6 +7,8 @@ use std::ops::Range;
 use xmlcraft_syntax::{Code, Diagnostic};
 use xmlcraft_text::Edit;
 
+use crate::language::Language;
+
 /// One way to put a problem right.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QuickFix {
@@ -21,6 +23,19 @@ pub struct QuickFix {
 /// The fixes for `diagnostic`, which is one of `all` (the problems of the same text: closing an element also closes the unclosed ones
 /// inside it). In the order they are offered; the first is the likely one.
 pub fn quick_fixes(text: &str, diagnostic: &Diagnostic, all: &[Diagnostic]) -> Vec<QuickFix> {
+    quick_fixes_for(Language::Xml, text, diagnostic, all)
+}
+
+/// [`quick_fixes`] for a document of `language`: the problems of JSON, JSONC, JSON5, JSON Lines and BSON (Extended JSON) text have
+/// fixes of their own (a trailing comma, a missing comma, single quotes, an unquoted name, comments in strict JSON, brackets left open,
+/// a control character in a string); a problem of YAML has none.
+pub fn quick_fixes_for(language: Language, text: &str, diagnostic: &Diagnostic, all: &[Diagnostic]) -> Vec<QuickFix> {
+    if language.is_json_like() {
+        return crate::json_quickfix::fixes(language, text, diagnostic, all);
+    }
+    if language == Language::Yaml {
+        return Vec::new();
+    }
     let span = &diagnostic.span;
     let arg = |i: usize| diagnostic.args.get(i).map(String::as_str);
     let mut fixes = Vec::new();
