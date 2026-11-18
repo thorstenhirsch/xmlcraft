@@ -594,6 +594,7 @@ impl eframe::App for XmlCraftApp {
         self.pump_generate();
         self.pump_compare();
         self.pump_xpath();
+        self.pump_xpath_debug(ctx);
         self.pump_transform();
         self.pump_http();
         self.tick_proxy();

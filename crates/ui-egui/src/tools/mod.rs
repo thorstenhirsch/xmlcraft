@@ -17,6 +17,7 @@ pub(crate) mod search;
 pub(crate) mod side_by_side;
 pub(crate) mod soap;
 pub(crate) mod transform;
+pub(crate) mod xpath_lab;
 
 /// The document a tool follows: the one being shown.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -85,6 +86,12 @@ pub(crate) fn columns<S, A, B>(
 pub(crate) fn escape_pending(ui: &egui::Ui, panel: Panel) -> bool {
     let had = ui.ctx().data(|d| d.get_temp::<bool>(focus_key(panel))).unwrap_or(false);
     had && ui.input(|i| i.key_pressed(egui::Key::Escape))
+}
+
+/// Whether the keyboard was in one of the fields of `panel` at the end of the last frame (for keys that belong to a tool while it has
+/// the keyboard).
+pub(crate) fn had_keyboard(ui: &egui::Ui, panel: Panel) -> bool {
+    ui.ctx().data(|d| d.get_temp::<bool>(focus_key(panel))).unwrap_or(false)
 }
 
 /// Call after drawing the body of `panel`: whether the keyboard is in one of its fields, for [`escape_pending`] at the next frame.

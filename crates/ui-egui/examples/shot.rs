@@ -7,7 +7,8 @@
 //!     [--activate problems] [--also FILE]... [--type LABEL=TEXT]... [--click LABEL]... [--wait TEXT [--wait-secs N]]
 //! ```
 //! `--activate PANEL` makes that panel the shown tab of its group; `--click LABEL` (repeatable) clicks the widget with that accessible
-//! name once everything else is done (`--click "Collapse book b1"` collapses a row of the Outline).
+//! name once everything else is done (`--click "Collapse book b1"` collapses a row of the Outline). `--until LABEL::TEXT` (repeatable, after
+//! the waits) clicks the first widget whose name contains LABEL until a label contains TEXT (stepping a debugger to a place).
 //! `--also FILE` (repeatable) opens another file before `--open` (which stays in front). `--type LABEL=TEXT` types TEXT into the field with
 //! that accessible name, `--wait TEXT` waits (ten seconds at most, `--wait-secs N` for longer work such as the rules of an invoice) until a label contains TEXT; both run around the clicks.
 //! `--panes` shows exactly the panels named (the others are hidden), `--right` moves the panels named to a dock on the right edge.
@@ -65,6 +66,7 @@ fn main() -> Result<(), String> {
     let mut types: Vec<(String, String)> = Vec::new();
     let mut waits: Vec<String> = Vec::new();
     let mut wait_secs: u64 = 10;
+    let mut untils: Vec<(String, String)> = Vec::new();
     while let Some(a) = args.next() {
         match a.strip_prefix("--") {
             Some("size") => {
@@ -87,6 +89,11 @@ fn main() -> Result<(), String> {
             }
             Some("wait") => waits.push(args.next().ok_or("--wait needs the text of a label")?),
             Some("wait-secs") => wait_secs = args.next().and_then(|v| v.parse().ok()).ok_or("bad --wait-secs")?,
+            Some("until") => {
+                let v = args.next().ok_or("--until needs LABEL::TEXT")?;
+                let (label, text) = v.split_once("::").ok_or("--until LABEL::TEXT")?;
+                untils.push((label.to_owned(), text.to_owned()));
+            }
             Some("click") => clicks.push(args.next().ok_or("--click needs an accessible name")?),
             Some("search-in") => search_in = Some(args.next().ok_or("--search-in needs a folder")?),
             Some("goto") => {
@@ -265,7 +272,25 @@ fn main() -> Result<(), String> {
         }
         harness.run_steps(3);
     }
-    if !clicks.is_empty() || !types.is_empty() || !waits.is_empty() {
+    // `--until`: click the first widget whose name contains LABEL until a label contains TEXT (each click waits for the app to answer).
+    for (label, text) in &untils {
+        use egui_kittest::kittest::Queryable;
+        let deadline = std::time::Instant::now() + Duration::from_secs(wait_secs);
+        while harness.query_all_by_label_contains(text).next().is_none() {
+            if std::time::Instant::now() > deadline {
+                return Err(format!("nothing labelled {text:?} appeared in {wait_secs} seconds of clicking {label:?}"));
+            }
+            if let Some(node) = harness.query_all_by_label_contains(label).next() {
+                node.click();
+            }
+            for _ in 0..10 {
+                std::thread::sleep(Duration::from_millis(15));
+                harness.run_steps(1);
+            }
+        }
+        harness.run_steps(3);
+    }
+    if !clicks.is_empty() || !types.is_empty() || !waits.is_empty() || !untils.is_empty() {
         harness.hover_at(egui::pos2(1.0, 1.0));
     }
     std::thread::sleep(Duration::from_millis(250));
