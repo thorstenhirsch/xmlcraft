@@ -169,3 +169,30 @@ proptest! {
         let _ = profile(&shop(3), &expression, &Options::default(), &Limits { max_instructions: 100_000 });
     }
 }
+
+/// The overhead, measured (`cargo test --release -p xmlcraft-query --test profile -- --ignored --nocapture`): the fastest of seven
+/// normal evaluations and of seven profiled runs of a predicate over 20,000 items. The numbers are in docs/target-app-parity.md.
+#[test]
+#[ignore = "a measurement, run by hand in release"]
+fn overhead() {
+    let mut prepared = xmlcraft_query::Prepared::new(&shop(20_000)).expect("reads");
+    let e = "count(//item[price mod 3 = 0][name])";
+    let fastest = |run: &mut dyn FnMut()| {
+        (0..7)
+            .map(|_| {
+                let started = std::time::Instant::now();
+                run();
+                started.elapsed()
+            })
+            .min()
+            .unwrap_or_default()
+    };
+    let normal = fastest(&mut || {
+        prepared.evaluate(e, &Options::default()).expect("runs");
+    });
+    let mut instructions = 0;
+    let profiled = fastest(&mut || {
+        instructions = prepared.profile(e, &Options::default(), &Limits::default()).instructions;
+    });
+    println!("overhead: normal {normal:?}, profiled {profiled:?}, {instructions} instructions");
+}

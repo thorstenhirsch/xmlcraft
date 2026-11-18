@@ -1,6 +1,7 @@
 # XmlCraft parity with the leading commercial XML editors
 
 > **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** M9.16, M9.17: the invoice PDFs and the e-invoice rule outcomes checked with external validators run locally (veraPDF 1.30.4 and Mustang 2.26.0: all 22 PDFs of the fixture set pass after one fix, `.notdef` for characters the font lacks; Saxon-HE 12.9 over the publishers' compiled XSLT: 114 of 114 rule-set runs on 61 invoices agree after one fix, short-circuiting `or`/`and`), with `cargo xtask pdf-oracle` and `cargo xtask einvoice-oracle` to repeat them; no status changed; `cargo xtask parity`: 22 shipped and 128 partial of 191 counted features, 45.0% weighted. What moved before it is in the revision history.
+> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** the XPath profiler and debugger (M7.12–M7.15; the profiler and debugger entries stay partial with new evidence) and the profiler's overhead measured; 22 shipped and 128 partial of 191 counted features, 45.0% weighted (unchanged) · **Target:** the leading commercial XML editors (public documentation)
 
 The authoritative assessment of how close XmlCraft is to the leading commercial XML editors. [ROADMAP.md](../ROADMAP.md) summarizes it and [gaps.md](gaps.md) lists every shortfall.
 
@@ -77,6 +78,17 @@ Broken variants of the fixtures are reported with exactly the rules they break, 
 | UBL XRechnung, UBL EN 16931 | pass (4) | pass | n/a: Factur-X is CII only, so Mustang reports no hybrid, by design |
 
 Once by hand: output intents from the macOS Generic CMYK, Generic Gray and sRGB profiles (`icc_profile`) pass veraPDF too; against PDF/A-3u the files fail only `pdfaid:conformance` (they say B). Not verified: files made from other invoices or user templates, PDF/A-3u and 3a (not claimed), a received hybrid (XmlCraft does not check one). One defect of the engine is known and affects rule outcomes: it refuses `normalize-space()` and `string-length()` without an argument on a node, which `xmlcraft-schematron` works around by writing them out as `f(string(.))`, their definition. (A second one is fixed: the published `xee` answered `NaN gt x` and `NaN ge x` with true, so a rule comparing `number()` of a missing value could pass; the vendored `xee-interpreter` compares NaN as XPath says, M9.12.) A check the engine cannot compile or evaluate is reported as not evaluated with its reason and is never counted as passed or failed. Not bundled, so not measured: the Peppol BIS Billing 3 rules and the FatturaPA schema (their publishers' terms reserve redistribution, AGENTS.md §1.6).
+
+## XPath profiler and debugger overhead
+
+Measured 2026-11-18 with `cargo test --release -p xmlcraft-query --test profile -- --ignored --nocapture` (the test `overhead`): the fastest of seven runs of `count(//item[price mod 3 = 0][name])` over a generated shop of 20,000 items, on the development machine.
+
+| Run | Time | Engine instructions |
+|---|---|---|
+| Normal evaluation (`Prepared::evaluate`, no hook) | 84.6 ms | 4,680,121 |
+| Profiled (`Prepared::profile`, the hook before every instruction, a clock read each time) | 200.2 ms | 4,680,121 |
+
+A profiled run takes about 2.4 times as long (about 18 ns an instruction normally, 43 ns profiled). A normal evaluation pays one check of an `Option` per instruction for the hook; it was not measured against an engine without the patch (an A/B build), and the test `a_normal_evaluation_is_not_slowed_by_the_hook` only bounds it generously (a normal run is faster than a profiled one). A debugged run has the same cost as a profiled one between its stops.
 
 ## W3C XML conformance (xmlconf, 23 September 2013)
 
@@ -169,3 +181,4 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 - 2026-11-12: M6.10–M6.12: the Grid view's tables of repeated items for XML, JSON, JSON Lines, YAML and BSON (model, `grid_table`, `grid_table_edit`, the table display); gap 7 narrowed to the graphical schema editor and what the Grid still lacks; `view.grid` stays partial; 22 shipped and 126 partial of 189 counted features, 45.0% weighted.
 - 2026-11-13: M13: `einvoice.window` added as partial (the E-Rechnung tool window); F8 runs the e-invoice rules into Problems; the e-invoice, `pdf.generate-invoice` and `view.docking` notes and evidence updated; 22 shipped and 128 partial of 191 counted features, 45.0% weighted.
 - 2026-11-18: M9.16, M9.17: the e-invoice PDFs checked with veraPDF 1.30.4 and Mustang 2.26.0 (new section; one PDF/A rule fixed) and the rule outcomes with Saxon-HE 12.9 (114 of 114 rule-set runs on 61 invoices agree after one engine fix); `pdf.generate-invoice`, `einvoice.zugferd-facturx`, `einvoice.en16931`, `einvoice.xrechnung-ubl` and `einvoice.xrechnung-cii` notes and evidence updated, no status changed; the eight stacked status lines folded into one; 22 shipped and 128 partial of 191 counted features, 45.0% weighted.
+- 2026-11-18: M7.12–M7.15: the XPath profiler and debugger (`query.xpath-xquery-profiler` and `query.xpath-xquery-debugger` stay partial with new evidence and notes); the overhead of the profiler measured (2.4 times a normal run).
