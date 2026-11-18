@@ -98,7 +98,8 @@ fn save_as_under_another_extension_reads_the_text_again_in_the_new_language_and_
     open(&mut h, &file(dir.path(), "a.xml", "<!DOCTYPE r [<!ELEMENT r EMPTY>]><r>x</r>"));
     h.state_mut().execute("xml.validate");
     until(&mut h, "the validation", &|app| app.validity().is_some());
-    assert!(h.state().has_grammar());
+    // (The grammar is read by its own worker: wait for it instead of asking right after the verdict.)
+    until(&mut h, "the grammar", &|app| app.has_grammar());
     let as_xml = h.state().problems();
     // Saved as JSON, the text is read as JSON (not well-formed there: no value), the file is written, and nothing of the DTD is left.
     let path = save_as(&mut h, dir.path(), "a.json");
