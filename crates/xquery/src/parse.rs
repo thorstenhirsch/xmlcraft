@@ -108,6 +108,7 @@ pub fn parse(src: &str, namespaces: &[(String, String)]) -> Result<Module, Parse
         furthest: 0,
         expected: Vec::new(),
         declared_prefixes: Vec::new(),
+        trail: (0, 0),
     };
     let module = parser.module()?;
     if let Some(body) = &module.body {
@@ -224,6 +225,8 @@ struct Parser<'a> {
     furthest: usize,
     expected: Vec<String>,
     declared_prefixes: Vec<String>,
+    /// The whitespace last skipped: from, to.
+    trail: (usize, usize),
 }
 
 impl<'a> Parser<'a> {
@@ -285,13 +288,27 @@ impl<'a> Parser<'a> {
             self.furthest = self.pos;
             self.expected.clear();
         }
-        if self.pos == self.furthest && self.expected.len() < 24 && !self.expected.iter().any(|e| e == token) {
+        if self.pos == self.furthest && self.expected.len() < 64 && !self.expected.iter().any(|e| e == token) {
             self.expected.push(token.to_owned());
         }
     }
 
-    /// Skip whitespace and (nested) comments.
+    /// Skip whitespace and (nested) comments, remembering where they began (so that spans end at the last token).
     fn ws(&mut self) -> R<()> {
+        let before = self.pos;
+        let r = self.ws_inner();
+        if self.pos > before {
+            self.trail = (before, self.pos);
+        }
+        r
+    }
+
+    /// Where the last token read ends (before any whitespace skipped after it).
+    fn end(&self) -> usize {
+        if self.trail.1 == self.pos { self.trail.0 } else { self.pos }
+    }
+
+    fn ws_inner(&mut self) -> R<()> {
         loop {
             match self.peek() {
                 Some(c) if c.is_whitespace() => {
@@ -1112,7 +1129,7 @@ impl<'a> Parser<'a> {
     // ---- expressions ----
 
     fn spanned(&self, value: Expr, start: usize) -> ExprS {
-        Spanned::new(value, start..self.pos)
+        Spanned::new(value, start..self.end())
     }
 
     pub(crate) fn expr(&mut self) -> R<ExprS> {
@@ -1191,10 +1208,11 @@ impl<'a> Parser<'a> {
             if self.at_kw_kw("for", "tumbling")? || self.at_kw_kw("for", "sliding")? {
                 self.expect_kw("for")?;
                 let w = self.window()?;
-                clauses.push(Spanned::new(Clause::Window(Box::new(w)), cstart..self.pos));
+                clauses.push(Spanned::new(Clause::Window(Box::new(w)), cstart..self.end()));
             } else if self.at_kw_then("for", "$")? {
                 self.expect_kw("for")?;
                 loop {
+                    self.ws()?;
                     let bstart = self.pos;
                     let mut var = self.var_name()?;
                     if self.eat_kw("as")? {
@@ -1208,11 +1226,11 @@ impl<'a> Parser<'a> {
                     };
                     let position = if self.eat_kw("at")? { Some(self.var_name()?) } else { None };
                     if position.as_ref().is_some_and(|p| p.name == var.name) {
-                        return Err(self.err("XQST0089", "the positional variable has the name of the variable it counts", bstart..self.pos));
+                        return Err(self.err("XQST0089", "the positional variable has the name of the variable it counts", bstart..self.end()));
                     }
                     self.expect_kw("in")?;
                     let expr = self.expr_single()?;
-                    clauses.push(Spanned::new(Clause::For { var, allowing_empty, position, expr }, bstart..self.pos));
+                    clauses.push(Spanned::new(Clause::For { var, allowing_empty, position, expr }, bstart..self.end()));
                     if !self.eat(",")? {
                         break;
                     }
@@ -1220,6 +1238,7 @@ impl<'a> Parser<'a> {
             } else if self.at_kw_then("let", "$")? {
                 self.expect_kw("let")?;
                 loop {
+                    self.ws()?;
                     let bstart = self.pos;
                     let mut var = self.var_name()?;
                     if self.eat_kw("as")? {
@@ -1227,7 +1246,7 @@ impl<'a> Parser<'a> {
                     }
                     self.expect(":=")?;
                     let expr = self.expr_single()?;
-                    clauses.push(Spanned::new(Clause::Let { var, expr }, bstart..self.pos));
+                    clauses.push(Spanned::new(Clause::Let { var, expr }, bstart..self.end()));
                     if !self.eat(",")? {
                         break;
                     }
@@ -1236,7 +1255,7 @@ impl<'a> Parser<'a> {
                 return Err(self.syntax("expected 'for' or 'let'"));
             } else if self.eat_kw("where")? {
                 let e = self.expr_single()?;
-                clauses.push(Spanned::new(Clause::Where(e), cstart..self.pos));
+                clauses.push(Spanned::new(Clause::Where(e), cstart..self.end()));
             } else if self.at_kw_kw("group", "by")? {
                 self.expect_kw("group")?;
                 self.expect_kw("by")?;
@@ -1257,7 +1276,7 @@ impl<'a> Parser<'a> {
                         break;
                     }
                 }
-                clauses.push(Spanned::new(Clause::GroupBy(specs), cstart..self.pos));
+                clauses.push(Spanned::new(Clause::GroupBy(specs), cstart..self.end()));
             } else if self.at_kw_kw("order", "by")? || self.at_kw_kw("stable", "order")? {
                 let stable = self.eat_kw("stable")?;
                 self.expect_kw("order")?;
@@ -1287,11 +1306,11 @@ impl<'a> Parser<'a> {
                         break;
                     }
                 }
-                clauses.push(Spanned::new(Clause::OrderBy { stable, specs }, cstart..self.pos));
+                clauses.push(Spanned::new(Clause::OrderBy { stable, specs }, cstart..self.end()));
             } else if self.at_kw_then("count", "$")? {
                 self.expect_kw("count")?;
                 let var = self.var_name()?;
-                clauses.push(Spanned::new(Clause::Count(var), cstart..self.pos));
+                clauses.push(Spanned::new(Clause::Count(var), cstart..self.end()));
             } else if self.eat_kw("return")? {
                 let ret = self.expr_single()?;
                 return Ok(self.spanned(Expr::Flwor { clauses, ret: Box::new(ret) }, start));
@@ -1667,7 +1686,7 @@ impl<'a> Parser<'a> {
         }
         let mut e = self.value_expr()?;
         for (minus, at) in signs.into_iter().rev() {
-            e = Spanned::new(Expr::Unary { minus, expr: Box::new(e) }, at..self.pos);
+            e = Spanned::new(Expr::Unary { minus, expr: Box::new(e) }, at..self.end());
         }
         Ok(e)
     }
@@ -1983,7 +2002,7 @@ impl<'a> Parser<'a> {
         let e = self.expr()?;
         self.expect(")")?;
         // (Keep the parentheses in the span: `(1, 2)[1]` reads better marked whole.)
-        Ok(Spanned::new(e.value, start..self.pos))
+        Ok(Spanned::new(e.value, start..self.end()))
     }
 
     /// A primary expression, or `None` (nothing read) when there is none here.
@@ -2080,7 +2099,7 @@ impl<'a> Parser<'a> {
                 self.expect_kw("unordered")?;
             }
             let e = self.enclosed_or_empty()?;
-            return Ok(Some(Spanned::new(e.value, start..self.pos)));
+            return Ok(Some(Spanned::new(e.value, start..self.end())));
         }
         if let Some(e) = self.computed_constructor(start)? {
             return Ok(Some(e));
