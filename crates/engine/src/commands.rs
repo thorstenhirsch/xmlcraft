@@ -257,6 +257,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("file.generate_sample", "Generate Sample JSON…", SCHEMA, None, Needs::Document, "sparkles"),
     c("xml.xpath", "Evaluate XPath…", TOOLS, Some(Shortcut::cmd_alt("X")), Needs::Document, "search"),
     c("xml.transform", "Transform with XSLT…", TOOLS, Some(Shortcut::key("F10")), Needs::Document, "wand-sparkles"),
+    c("xml.xquery", "Run XQuery…", TOOLS, None, Needs::Document, "chevron-right"),
     c("xml.preview", "Preview in Browser View", TOOLS, None, Needs::Document, "globe"),
     c("file.compare", "Compare Documents…", TOOLS, None, Needs::Document, "files").sep(),
     c("file.merge", "Merge Documents…", TOOLS, None, Needs::Document, "files"),
@@ -447,6 +448,7 @@ mod tests {
             [
                 "xml.xpath",
                 "xml.transform",
+                "xml.xquery",
                 "xml.preview",
                 "file.compare",
                 "file.merge",

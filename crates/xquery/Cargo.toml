@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 xmlcraft-query = { workspace = true }
+xmlcraft-syntax = { workspace = true }
 xee-xpath = "0.1.5"
 xee-interpreter = "0.2.0"
 xee-ir = "0.1.5"

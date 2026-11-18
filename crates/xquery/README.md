@@ -13,6 +13,8 @@ expression. The decision and the vendored patches it needs are in `docs/architec
   method. External variables come from `Options::variables`, documents `fn:doc` may open from `Options::documents` (nothing is
   read from files or the network). A run is stopped after `Options::max_steps` interpreter steps (`XMLC0001`).
 - `check(query, &Options)` compiles without running.
+- `highlight::highlight_line(line, mode)` colours a line of a query (keywords, strings, comments, variables, numbers, the tags of
+  direct constructors), carrying comments, strings and tags over to the next line: what the editor colours `.xq` documents with.
 - `prelude.rs` holds helper functions in XQuery (keys, sort passes, grouping, windows, constructor checks) compiled with every
   query in an internal namespace.
 

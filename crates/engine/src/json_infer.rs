@@ -318,7 +318,7 @@ fn read(text: &str, language: Language) -> Result<Vec<Value>, String> {
             }
             Ok(parsed.documents)
         }
-        Language::Xml | Language::Html => Err("a JSON Schema is learned from JSON, YAML or BSON, not XML or HTML".into()),
+        Language::Xml | Language::Html | Language::XQuery => Err("a JSON Schema is learned from JSON, YAML or BSON, not XML, HTML or XQuery".into()),
     }
 }
 

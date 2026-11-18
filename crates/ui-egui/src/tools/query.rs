@@ -39,6 +39,7 @@ pub(crate) enum Tab {
     #[default]
     XPath,
     Xslt,
+    XQuery,
 }
 
 /// What an evaluation came to.
@@ -127,7 +128,7 @@ struct Xslt {
 /// The form of the Query tool window and what it found last.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct QueryTool {
-    tab: Tab,
+    pub(crate) tab: Tab,
     expression: String,
     /// The request being waited for, and the document and version it was asked on.
     waiting: Option<(u64, u64, u64)>,
@@ -150,6 +151,8 @@ pub(crate) struct QueryTool {
     caret: Option<usize>,
     /// The expression of the request being waited for.
     asked: String,
+    /// The XQuery tab.
+    pub(crate) xquery: crate::tools::xquery_tab::XQueryTab,
 }
 
 /// The one line that says what an error is.
@@ -533,6 +536,12 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
         }
         (Tab::XPath, Mode::Debug) if debugging => (tl!("Stop debugging"), "square", true, ""),
         (Tab::XPath, Mode::Debug) => (tl!("Start debugging"), "chevron-right", usable && typed, tl!("Type an expression first.")),
+        (Tab::XQuery, _) => (
+            tl!("Run"),
+            "chevron-right",
+            app.query.xquery.can_run(app.session.active_document().is_some_and(|d| d.language().is_xquery())),
+            tl!("Type a query first."),
+        ),
         (Tab::Xslt, _) => (
             tl!("Transform"),
             "wand-sparkles",
@@ -548,9 +557,14 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     {
         app.refresh_params(sheet_shown, b.id, version);
     }
+    let mut xquery_asked: Option<crate::tools::xquery_tab::Asked> = None;
     kit::tool_body(ui, false, |ui| {
-        kit::segmented(ui, &mut app.query.tab, &[(Tab::XPath, tl!("XPath")), (Tab::Xslt, tl!("XSLT"))]);
+        kit::segmented(ui, &mut app.query.tab, &[(Tab::XPath, tl!("XPath")), (Tab::Xslt, tl!("XSLT")), (Tab::XQuery, tl!("XQuery"))]);
         ui.add_space(kit::GAP);
+        if app.query.tab == Tab::XQuery {
+            xquery_asked = Some(crate::tools::xquery_tab::show(ui, app));
+            return;
+        }
         let Some(bound) = &bound else {
             tools::needs(ui, tl!("Query needs an XML document"), tl!("Open one to evaluate XPath or to transform it with XSLT."));
             return;
@@ -590,6 +604,8 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
                 let pick = xslt_form(ui, &mut app.query.xslt, &choices, sheet_shown);
                 asked.pick_file = pick;
             }
+            // (Drawn before the document checks: a query needs no XML document.)
+            Tab::XQuery => {}
         }
     });
     if asked.run && can {
@@ -602,6 +618,18 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
             (Tab::XPath, Mode::Debug) => app.start_xpath_debug(),
             (Tab::XPath, _) => app.run_xpath(),
             (Tab::Xslt, _) => app.run_transform(sheet_shown),
+            (Tab::XQuery, _) => app.run_xquery(),
+        }
+    }
+    if let Some(x) = xquery_asked {
+        if x.run && app.query.xquery.can_run(app.session.active_document().is_some_and(|d| d.language().is_xquery())) {
+            app.run_xquery();
+        }
+        if let Some(range) = x.jump {
+            app.jump_to(range);
+        }
+        if x.open_result {
+            app.open_xquery_result();
         }
     }
     app.debug_act(std::mem::take(&mut asked.debug));

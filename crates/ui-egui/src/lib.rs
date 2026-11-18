@@ -176,6 +176,8 @@ pub struct XmlCraftApp {
     xpath: xmlcraft_engine::xpath::XPathRunner,
     /// Applies the stylesheets of the Transform window.
     xslt: xmlcraft_engine::xslt::XsltRunner,
+    /// Runs the queries of the Query tool's XQuery tab.
+    xquery: xmlcraft_engine::xquery::XQueryRunner,
     /// The Query tool window (XPath and XSLT): its forms and their last results.
     query: tools::query::QueryTool,
     /// The Compare tool window (compare and merge): its forms and the last comparison.
@@ -347,6 +349,10 @@ impl XmlCraftApp {
             let repaint = repaint.clone();
             move || repaint.request_repaint()
         });
+        app.xquery.on_done({
+            let repaint = repaint.clone();
+            move || repaint.request_repaint()
+        });
         app.schema_fetcher.on_done({
             let repaint = repaint.clone();
             move || repaint.request_repaint()
@@ -404,6 +410,7 @@ impl XmlCraftApp {
             comparer: xmlcraft_engine::compare::Comparer::new(),
             xpath: xmlcraft_engine::xpath::XPathRunner::new(),
             xslt: xmlcraft_engine::xslt::XsltRunner::new(),
+            xquery: xmlcraft_engine::xquery::XQueryRunner::new(),
             query: tools::query::QueryTool::default(),
             compare: tools::compare::CompareTool::new(prefs.compare_side_by_side),
             transform: tools::transform::TransformTool::default(),
@@ -600,6 +607,7 @@ impl eframe::App for XmlCraftApp {
         self.pump_xpath();
         self.pump_xpath_debug(ctx);
         self.pump_transform();
+        self.pump_xquery();
         self.pump_http();
         self.tick_proxy();
         self.recovery_tick(ctx);

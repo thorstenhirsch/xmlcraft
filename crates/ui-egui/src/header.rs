@@ -197,6 +197,8 @@ pub(crate) fn standing(analysis: Option<&Analysis>, validation: Option<(usize, b
         Some(a) if a.error_count() > 0 => {
             Standing { tone: Tone::Bad, icon: "circle-x", text: fmt(tl!("{count} errors"), &[("count", &a.error_count().to_string())]) }
         }
+        // (A query is read, not checked for well-formedness.)
+        Some(a) if a.language == xmlcraft_engine::language::Language::XQuery => plain(Tone::Good, "check", tl!("No problems")),
         Some(_) => match validation {
             Some((errors, _)) if errors > 0 => {
                 Standing { tone: Tone::Bad, icon: "circle-x", text: fmt(tl!("{count} validity errors"), &[("count", &errors.to_string())]) }

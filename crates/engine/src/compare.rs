@@ -35,7 +35,8 @@ pub struct Ignore {
 /// What a text is written in, for comparing.
 pub fn family_of(language: Language) -> Family {
     match language {
-        Language::Xml | Language::Html => Family::Xml,
+        // (An XQuery has no tree of its own to compare: it is compared as markup, which its constructors are.)
+        Language::Xml | Language::Html | Language::XQuery => Family::Xml,
         Language::Json(_) | Language::Bson => Family::Json,
         Language::Yaml => Family::Yaml,
     }

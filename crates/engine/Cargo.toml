@@ -41,6 +41,7 @@ xmlcraft-diff = { workspace = true }
 xmlcraft-grid = { workspace = true }
 xmlcraft-pdf = { workspace = true }
 xmlcraft-query = { workspace = true }
+xmlcraft-xquery = { workspace = true }
 rowan = { workspace = true }
 log = { workspace = true }
 

@@ -19,6 +19,7 @@
 
 pub mod ast;
 mod compile;
+pub mod highlight;
 pub mod parse;
 mod prelude;
 

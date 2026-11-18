@@ -46,6 +46,7 @@ mod wsdl;
 mod xbrl;
 mod xpath;
 mod xpath_debug;
+mod xquery;
 mod xslt;
 mod xslt_complete;
 

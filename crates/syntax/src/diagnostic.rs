@@ -285,6 +285,8 @@ codes! {
     EinvoiceRuleInfo => ("einvoice.rule.information", Info, "{0}: {1}"),
     // BSON (shown as Extended JSON; `xmlcraft-bson`)
     BsonInvalid => ("bson.invalid-value", Error, "{0}"),
+    // XQuery
+    XQueryStatic => ("xquery.static-error", Error, "{0}: {1}"),
     // Limits
     NestingTooDeep => ("limit.nesting-too-deep", Warning, "Elements nested deeper than {0} levels are not shown as a tree."),
     TooManyDiagnostics => ("limit.too-many-diagnostics", Info, "Further problems are not shown."),

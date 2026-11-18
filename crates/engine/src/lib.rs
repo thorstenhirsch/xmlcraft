@@ -47,6 +47,8 @@ pub mod xbrl;
 pub mod xinclude;
 pub mod xml_complete;
 pub mod xpath;
+pub mod xquery;
+mod xquery_analysis;
 pub mod xsd_definition;
 pub mod xsd_schemas;
 pub mod xslt;
