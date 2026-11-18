@@ -1,12 +1,11 @@
 //! The browser view of the Preview tool window, and the system-browser copy used where there is none.
 //!
-//! **The view** is to be a locked-down native webview (`wry`: WKWebView on macOS, WebView2 on Windows), a child view of the window
-//! laid over the panel, showing the page from memory under the custom scheme and policy of `xmlcraft_engine::preview` (the
-//! Content-Security-Policy and `nosniff` on every answer, JavaScript off, only the document and its anchors navigable, no new
-//! windows, downloads, permissions, devtools or link previews, a private data store). It works (made, shown, moved and hidden on
-//! macOS), but `wry` brings crates under MPL-2.0, outside the licence allowlist, so it waits for the owner's decision and this build
-//! has no view ([`Host::EMBEDDED`] is false): every platform uses the system browser. Linux would have none anyway (WebKitGTK cannot
-//! be a child of a Wayland window, and the build would need GTK), nor would the web build.
+//! **The view** is a locked-down native webview (`wry`: WKWebView on macOS, WebView2 on Windows), a child view of the window laid
+//! over the panel. It shows the page from memory, served under the custom scheme of `xmlcraft_engine::preview` with that module's
+//! policy: the Content-Security-Policy and `nosniff` on every answer, JavaScript off (the webview's own switch, and the policy's
+//! sandbox), only the document and its anchors navigable, no new windows, no downloads, no permissions, no devtools, no link
+//! previews, a private (non-persistent) data store. Linux has no view (WebKitGTK cannot be a child of a Wayland window, and the
+//! build would need GTK), and neither has the web build; there, and when the view cannot be made, the tool offers the system browser.
 //!
 //! The view is above everything egui draws, so it is shown only where the panel is and while nothing of egui's is above that place.
 //! [`Lifecycle`] decides each frame what to do with it, from where the panel wants it: made when the panel first shows a page, moved
@@ -198,13 +197,13 @@ pub(crate) struct Host {
     lifecycle: Lifecycle,
     /// Whether the view now live was made with scripts on.
     made_with_scripts: bool,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    view: Option<native::View>,
 }
 
 impl Host {
-    /// Whether this build has a browser view at all. Not yet: the native view (`wry`) waits for the owner's decision on its licences
-    /// (it brings MPL-2.0 crates); until then every platform uses the system browser, and the decisions below are made and tested
-    /// without a view to carry them out.
-    pub const EMBEDDED: bool = false;
+    /// Whether this build has a browser view at all.
+    pub const EMBEDDED: bool = cfg!(any(target_os = "macos", target_os = "windows"));
 
     /// Show `page` with what its document allows, from the next frame.
     pub fn set_page(&mut self, page: Option<Arc<Prepared>>, allow: Allow) {
@@ -247,14 +246,135 @@ impl Host {
         self.lifecycle.is_shown()
     }
 
-    fn drop_view(&mut self) {}
-
-    /// Carry out one operation on the view: there is none in this build.
-    fn run(&mut self, _frame: &eframe::Frame, op: Op) -> Result<(), String> {
-        if let Op::Create(_) = op {
-            self.made_with_scripts = read(&self.shared).1.scripts;
+    fn drop_view(&mut self) {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            // (Dropping removes the native view from the window.)
+            let _ = xmlcraft_engine::guard(|| drop(self.view.take()));
         }
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn run(&mut self, frame: &eframe::Frame, op: Op) -> Result<(), String> {
+        if let Op::Create(bounds) = op {
+            let scripts = read(&self.shared).1.scripts;
+            let shared = self.shared.clone();
+            let view = xmlcraft_engine::guard(|| native::create(frame, shared, bounds, scripts)).map_err(|p| format!("it stopped: {p}"))??;
+            self.view = Some(view);
+            self.made_with_scripts = scripts;
+            return Ok(());
+        }
+        if op == Op::Destroy {
+            self.drop_view();
+            return Ok(());
+        }
+        let Some(view) = &self.view else { return Ok(()) };
+        xmlcraft_engine::guard(|| native::apply(view, op)).map_err(|p| format!("it stopped: {p}"))?
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    fn run(&mut self, _frame: &eframe::Frame, _op: Op) -> Result<(), String> {
         Ok(())
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod native {
+    use std::borrow::Cow;
+
+    use wry::dpi::{PhysicalPosition, PhysicalSize};
+    use wry::http::{Request, Response};
+    use wry::{NewWindowResponse, PermissionResponse, WebViewBuilder};
+    use xmlcraft_engine::preview::{DOCUMENT_URL, SCHEME, allows_navigation, serve};
+
+    use super::{Bounds, Op, Shared, read};
+
+    pub(super) struct View {
+        webview: wry::WebView,
+        /// WebView2 keeps its profile here (a folder the app can write; the default is beside the program).
+        #[cfg(target_os = "windows")]
+        _context: wry::WebContext,
+    }
+
+    fn rect(b: Bounds) -> wry::Rect {
+        wry::Rect { position: PhysicalPosition::new(b.x, b.y).into(), size: PhysicalSize::new(b.width, b.height).into() }
+    }
+
+    /// The protocol's answer: the page at the document's path, else 404, always with the policy.
+    fn respond(shared: &Shared, request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
+        let (page, allow) = read(shared);
+        let path = if request.method() == wry::http::Method::GET { request.uri().path() } else { "" };
+        let served = serve(path, page.as_deref(), allow);
+        let mut response = Response::builder().status(served.status);
+        for (name, value) in &served.headers {
+            response = response.header(*name, value.as_str());
+        }
+        response.body(Cow::Owned(served.body)).unwrap_or_else(|_| {
+            let mut refused = Response::new(Cow::Borrowed(&[][..]));
+            *refused.status_mut() = wry::http::StatusCode::INTERNAL_SERVER_ERROR;
+            refused
+        })
+    }
+
+    pub(super) fn create(frame: &eframe::Frame, shared: Shared, bounds: Bounds, scripts: bool) -> Result<View, String> {
+        #[cfg(target_os = "windows")]
+        let mut context = {
+            let base = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+            wry::WebContext::new(Some(base.join("XmlCraft").join("WebView2")))
+        };
+        #[cfg(target_os = "windows")]
+        let builder = WebViewBuilder::new_with_web_context(&mut context);
+        #[cfg(not(target_os = "windows"))]
+        let builder = WebViewBuilder::new();
+        let mut builder = builder
+            .with_bounds(rect(bounds))
+            .with_visible(true)
+            .with_focused(false)
+            .with_devtools(false)
+            .with_incognito(true)
+            .with_clipboard(false)
+            .with_autoplay(false)
+            .with_hotkeys_zoom(false)
+            .with_back_forward_navigation_gestures(false)
+            .with_custom_protocol(SCHEME.to_owned(), move |_, request| respond(&shared, &request))
+            .with_navigation_handler(|url| allows_navigation(&url))
+            .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
+            .with_download_started_handler(|_, _| false)
+            .with_permission_handler(|_| PermissionResponse::Deny)
+            .with_url(DOCUMENT_URL);
+        if !scripts {
+            builder = builder.with_javascript_disabled();
+        }
+        #[cfg(target_os = "macos")]
+        {
+            use wry::WebViewBuilderExtDarwin;
+            builder = builder.with_allow_link_preview(false);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use wry::WebViewBuilderExtWindows;
+            builder = builder.with_https_scheme(true).with_browser_accelerator_keys(false).with_default_context_menus(false);
+        }
+        let webview = builder.build_as_child(frame).map_err(|e| e.to_string())?;
+        Ok(View {
+            webview,
+            #[cfg(target_os = "windows")]
+            _context: context,
+        })
+    }
+
+    pub(super) fn apply(view: &View, op: Op) -> Result<(), String> {
+        let webview = &view.webview;
+        let done = match op {
+            Op::Move(bounds) => webview.set_bounds(rect(bounds)),
+            Op::Show => webview.set_visible(true),
+            Op::Hide => webview.set_visible(false),
+            Op::Reload => webview.reload(),
+            Op::ReturnFocus => webview.focus_parent(),
+            // (Made and destroyed by the host.)
+            Op::Create(_) | Op::Destroy => Ok(()),
+        };
+        done.map_err(|e| e.to_string())
     }
 }
 

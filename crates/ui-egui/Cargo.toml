@@ -15,6 +15,11 @@ workspace = true
 rfd = { workspace = true }
 pollster = { workspace = true }
 
+# The browser view of the Preview tool window: a native child webview (WKWebView, WebView2). Linux and the web have none (WebKitGTK
+# cannot be a child of a Wayland window, and would need GTK at build time); the tool opens the system browser there.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+wry = { version = "0.57.1", default-features = false }
+
 [dependencies]
 xmlcraft-convert = { workspace = true }
 xmlcraft-engine = { workspace = true }
