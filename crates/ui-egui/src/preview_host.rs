@@ -171,6 +171,7 @@ pub(crate) struct Current {
 type Shared = Arc<Mutex<Current>>;
 
 /// The page and the permissions, whatever a panicking holder left (a poisoned lock still holds the last values set).
+#[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))] // read by the native view's protocol handler only
 fn read(shared: &Shared) -> (Option<Arc<Prepared>>, Allow) {
     match shared.lock() {
         Ok(current) => (current.page.clone(), current.allow),
