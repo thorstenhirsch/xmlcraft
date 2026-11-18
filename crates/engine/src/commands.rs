@@ -257,6 +257,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("file.generate_sample", "Generate Sample JSON…", SCHEMA, None, Needs::Document, "sparkles"),
     c("xml.xpath", "Evaluate XPath…", TOOLS, Some(Shortcut::cmd_alt("X")), Needs::Document, "search"),
     c("xml.transform", "Transform with XSLT…", TOOLS, Some(Shortcut::key("F10")), Needs::Document, "wand-sparkles"),
+    c("xml.preview", "Preview in Browser View", TOOLS, None, Needs::Document, "globe"),
     c("file.compare", "Compare Documents…", TOOLS, None, Needs::Document, "files").sep(),
     c("file.merge", "Merge Documents…", TOOLS, None, Needs::Document, "files"),
     c("xml.openapi", "Send OpenAPI Request…", TOOLS, None, Needs::Document, "cloud").sep(),
@@ -287,6 +288,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("view.tool.http", "HTTP & OpenAPI", VIEW, None, Nothing, "send").toggle(),
     c("view.tool.soap", "SOAP", VIEW, None, Nothing, "cloud").toggle(),
     c("view.tool.einvoice", "E-Rechnung", VIEW, None, Nothing, "receipt-text").toggle(),
+    c("view.tool.preview", "Preview", VIEW, None, Nothing, "globe").toggle(),
     c("app.about", "About XmlCraft", HELP, None, Nothing, "circle-help"),
 ];
 
@@ -445,6 +447,7 @@ mod tests {
             [
                 "xml.xpath",
                 "xml.transform",
+                "xml.preview",
                 "file.compare",
                 "file.merge",
                 "xml.openapi",

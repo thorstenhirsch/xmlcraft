@@ -651,6 +651,8 @@ impl Host for crate::XmlCraftApp {
             "palette": { "open": self.palette_open, "query": self.palette_query },
             // The E-Rechnung tool: its tab, whether it waits for a validation or a PDF, and the last report of an invoice.
             "einvoice": self.einvoice.state(),
+            // The Preview tool: how the page is shown, whether the browser view is up.
+            "preview": self.preview.state(),
             "status": self.status,
         })
     }
