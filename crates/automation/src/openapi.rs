@@ -5,6 +5,8 @@
 //! language or the `language` argument). Nothing is sent by the first two tools.
 
 use serde_json::{Map, Value, json};
+use xmlcraft_engine::http_auth::{Auth, KeyPlace, Secret};
+use xmlcraft_engine::rest::SchemeKind;
 use xmlcraft_openapi::{Api, BuiltRequest, Operation, RequestInput, parse};
 use xmlcraft_platform::client::{Request, send};
 
@@ -26,6 +28,25 @@ fn request_properties() -> Value {
             map.insert(name.into(), json!({ "type": "object", "additionalProperties": { "type": "string" }, "description": what }));
         }
         map.insert("body".into(), json!({ "type": "string", "description": "The request body (default: an example made from the schema)" }));
+        map.insert(
+            "auth".into(),
+            json!({
+                "type": "object",
+                "description": "How the request is authorized: `type` is `none`, `basic` (`user`, `password`), `bearer` (`token`) or `api_key` (`name`, `value`, `in`: `header` or `query`). \
+                                The secrets are used for the request that is sent and are never returned: not in the request, an error or the response.",
+                "properties": {
+                    "type": { "type": "string", "enum": ["none", "basic", "bearer", "api_key"] },
+                    "user": { "type": "string" },
+                    "password": { "type": "string" },
+                    "token": { "type": "string" },
+                    "name": { "type": "string", "description": "The header or query parameter of an API key" },
+                    "value": { "type": "string", "description": "The API key" },
+                    "in": { "type": "string", "enum": ["header", "query"] },
+                },
+                "required": ["type"],
+                "additionalProperties": false,
+            }),
+        );
         map.insert(
             "content_type".into(),
             json!({ "type": "string", "description": "The media type of the body (default: the first the operation takes)" }),
@@ -57,7 +78,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             title: "Build the HTTP request of an operation",
             description: "Build the request of an operation: `method`, `url` (the server, the path with its parameters filled in and percent-encoded, the query), `headers` and `body`. \
                           Values not given are examples made from the schemas (a path parameter, a required query or header parameter, a body from the request schema). A required value \
-                          that is missing is an error. Nothing is sent.",
+                          that is missing is an error. `auth` (Basic, Bearer or an API key) is checked and the headers or query parameter it would add are named in `auth`, never its secrets. Nothing is sent.",
             input_schema: json!({ "type": "object", "properties": request_properties(), "required": ["operation"], "additionalProperties": false }),
             read_only: true,
             destructive: false,
@@ -68,7 +89,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             title: "Send the request of an operation",
             description: "Build the request of an operation as openapi_request does and send it; returns the request that was sent and the HTTP `response` (`status`, `headers`, `body`, \
                           `elapsed_ms`, and `json` when the body is JSON). This sends a request over the network, which a person must have allowed for the session; a host on this \
-                          computer or the local network is refused unless `allow_private_hosts` is true. Redirects are not followed.",
+                          computer or the local network is refused unless `allow_private_hosts` is true. Redirects are not followed (so an Authorization header never goes to another host). `auth` authorizes the request; its secrets are used for it and never returned (the request shown is the one without them, and an error or a response that echoes them has them replaced by ***).",
             input_schema: json!({ "type": "object", "properties": call_properties, "required": ["operation"], "additionalProperties": false }),
             read_only: false,
             destructive: false,
@@ -99,7 +120,24 @@ fn operation_json(o: &Operation) -> Value {
 
 fn openapi_describe(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let api = read(a, args)?;
+    let source = source(a, args)?;
+    let yaml = source.language.is_yaml() || (source.language.is_xml() && !source.text.trim_start().starts_with(['{', '[']));
+    let security = xmlcraft_engine::rest::security(&source.text, yaml);
+    let schemes: Vec<Value> = security
+        .schemes
+        .iter()
+        .map(|s| match &s.kind {
+            SchemeKind::Basic => json!({ "name": s.name, "supported": true, "type": "basic" }),
+            SchemeKind::Bearer => json!({ "name": s.name, "supported": true, "type": "bearer" }),
+            SchemeKind::ApiKey { place, name } => {
+                json!({ "name": s.name, "supported": true, "type": "api_key", "in": place.name(), "key_name": name })
+            }
+            SchemeKind::Unsupported(why) => json!({ "name": s.name, "supported": false, "reason": why }),
+        })
+        .collect();
     json_result(json!({
+        "security_schemes": schemes,
+        "default_security_scheme": security.default,
         "version": api.version.name(),
         "title": api.title,
         "servers": api.servers.iter().map(|s| json!({ "url": s.url, "resolved": s.resolved(), "description": s.description })).collect::<Vec<_>>(),
@@ -147,6 +185,45 @@ fn build(a: &Automation, args: &Value) -> Result<(Api, Operation, BuiltRequest)>
     Ok((api, operation, built))
 }
 
+/// The `auth` argument.
+fn auth_arg(args: &Value) -> Result<Auth> {
+    let Some(auth) = args.get("auth") else { return Ok(Auth::None) };
+    let Some(map) = auth.as_object() else { return Err(ToolError::InvalidArgs("auth is an object with a `type`".into())) };
+    let field = |name: &str| -> Result<String> {
+        match map.get(name) {
+            None => Ok(String::new()),
+            Some(Value::String(s)) => Ok(s.clone()),
+            Some(_) => Err(ToolError::InvalidArgs(format!("auth.{name} is a string"))),
+        }
+    };
+    for key in map.keys() {
+        if !["type", "user", "password", "token", "name", "value", "in"].contains(&key.as_str()) {
+            return Err(ToolError::InvalidArgs(format!("auth has no field {key}")));
+        }
+    }
+    match map.get("type").and_then(Value::as_str) {
+        Some("none") => Ok(Auth::None),
+        Some("basic") => Ok(Auth::Basic { user: field("user")?, password: Secret::new(field("password")?) }),
+        Some("bearer") => Ok(Auth::Bearer { token: Secret::new(field("token")?) }),
+        Some("api_key") => {
+            let place = match field("in")?.as_str() {
+                "" | "header" => KeyPlace::Header,
+                "query" => KeyPlace::Query,
+                other => return Err(ToolError::InvalidArgs(format!("auth.in is header or query, not {other:?}"))),
+            };
+            Ok(Auth::ApiKey { place, name: field("name")?, value: Secret::new(field("value")?) })
+        }
+        other => Err(ToolError::InvalidArgs(format!("auth.type is none, basic, bearer or api_key, not {other:?}"))),
+    }
+}
+
+/// What the authorization adds to a request, without the secrets: for the answer of a tool.
+fn auth_json(auth: &Auth, headers: &[(String, String)], url: &str, before: &BuiltRequest) -> Value {
+    let added_headers: Vec<&str> =
+        headers.iter().filter(|(n, v)| !before.headers.iter().any(|(bn, bv)| bn == n && bv == v)).map(|(n, _)| n.as_str()).collect();
+    json!({ "type": auth.kind(), "summary": auth.summary(), "adds_headers": added_headers, "adds_query": url != before.url })
+}
+
 fn built_json(b: &BuiltRequest) -> Value {
     json!({
         "method": b.method,
@@ -158,7 +235,11 @@ fn built_json(b: &BuiltRequest) -> Value {
 
 fn openapi_request(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let (_, operation, built) = build(a, args)?;
-    json_result(json!({ "operation": operation_json(&operation), "request": built_json(&built) }))
+    let auth = auth_arg(args)?;
+    // (Applied to see what it adds; the request returned is the one without the secrets.)
+    let (mut headers, mut url) = (built.headers.clone(), built.url.clone());
+    auth.apply(&mut headers, &mut url).map_err(|why| ToolError::InvalidArgs(auth.redact(&why)))?;
+    json_result(json!({ "operation": operation_json(&operation), "request": built_json(&built), "auth": auth_json(&auth, &headers, &url, &built) }))
 }
 
 fn openapi_call(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
@@ -180,24 +261,31 @@ fn openapi_call(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         );
     }
     let (_, operation, built) = build(a, args)?;
-    let mut request = Request::new(&built.method, &built.url);
-    request.headers = built.headers.clone();
+    let auth = auth_arg(args)?;
+    let (mut headers, mut url) = (built.headers.clone(), built.url.clone());
+    auth.apply(&mut headers, &mut url).map_err(|why| ToolError::InvalidArgs(auth.redact(&why)))?;
+    let applied = auth_json(&auth, &headers, &url, &built);
+    let mut request = Request::new(&built.method, &url);
+    request.headers = headers;
     request.body = built.body.clone();
     request.allow_private_hosts = allow_private;
     request.timeout = std::time::Duration::from_secs(timeout);
-    let response = send("XmlCraft", &request).map_err(ToolError::Failed)?;
+    let response = send("XmlCraft", &request).map_err(|why| ToolError::Failed(auth.redact(&why)))?;
     let decoded = xmlcraft_text::encoding::decode(&response.body, &xmlcraft_text::encoding::sniff(&response.body));
-    let json_body: Option<Value> = serde_json::from_str(&decoded.text).ok();
+    // (A server may echo what it was sent: the secrets are taken out of what is returned.)
+    let body = auth.redact(&decoded.text);
+    let json_body: Option<Value> = serde_json::from_str(&body).ok();
     let mut out = Map::new();
     out.insert("operation".into(), operation_json(&operation));
     out.insert("request".into(), built_json(&built));
+    out.insert("auth".into(), applied);
     out.insert(
         "response".into(),
         json!({
             "status": response.status,
             "reason": response.reason,
-            "headers": response.headers.iter().map(|(n, v)| json!({ "name": n, "value": v })).collect::<Vec<_>>(),
-            "body": decoded.text,
+            "headers": response.headers.iter().map(|(n, v)| json!({ "name": n, "value": auth.redact(v) })).collect::<Vec<_>>(),
+            "body": body,
             "json": json_body,
             "elapsed_ms": u64::try_from(response.elapsed.as_millis()).unwrap_or(u64::MAX),
         }),

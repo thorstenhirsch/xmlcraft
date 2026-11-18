@@ -3,7 +3,8 @@
 //! body, all of it editable), Send, and the answer (see [`crate::http_pane`]). The description follows the document in front; nothing
 //! is changed in it. Sending is a person's act (the Send button) and goes through the network the person allowed.
 
-use xmlcraft_engine::rest::{Described, RestOperation, describe, prepare};
+use xmlcraft_engine::http_auth::{Auth, KeyPlace, Secret};
+use xmlcraft_engine::rest::{Described, RestOperation, SchemeKind, Security, describe, prepare};
 
 use crate::bar_actions::BarKind;
 use crate::http_pane::{Pane, PaneView, Prepared};
@@ -27,6 +28,95 @@ struct Operations {
     ops: Vec<RestOperation>,
     servers: Vec<String>,
     warnings: Vec<String>,
+    security: Security,
+}
+
+/// The kind of authorization the form is set to.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum AuthKind {
+    #[default]
+    None,
+    Basic,
+    Bearer,
+    ApiKey,
+}
+
+impl AuthKind {
+    fn label(self) -> &'static str {
+        match self {
+            AuthKind::None => tl!("None"),
+            AuthKind::Basic => tl!("Basic"),
+            AuthKind::Bearer => tl!("Bearer token"),
+            AuthKind::ApiKey => tl!("API key"),
+        }
+    }
+}
+
+/// The Authorization section: what the person typed. The secrets are in memory only (they are not saved with the window, the settings,
+/// the history or the document) and are cleared when another description is shown.
+#[derive(Clone, Default, PartialEq, Eq)]
+struct AuthForm {
+    kind: AuthKind,
+    user: String,
+    password: String,
+    token: String,
+    key_name: String,
+    key_value: String,
+    key_in_query: bool,
+    /// Whether the secrets are shown in clear.
+    reveal: bool,
+    /// The document the form was set for, and what the description said about it that cannot be filled in.
+    doc: Option<u64>,
+    unsupported: Option<String>,
+}
+
+impl std::fmt::Debug for AuthForm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "AuthForm({:?}, secrets hidden)", self.kind)
+    }
+}
+
+impl AuthForm {
+    /// A form for the description of document `doc`: empty, set to the scheme the description asks for.
+    fn for_description(doc: u64, security: &Security) -> Self {
+        let mut form = Self { doc: Some(doc), ..Self::default() };
+        if let Some(scheme) = security.preferred() {
+            form.choose(&scheme.kind);
+        }
+        form
+    }
+
+    /// Set the kind (and the name of an API key) from a scheme of the description.
+    fn choose(&mut self, kind: &SchemeKind) {
+        self.unsupported = None;
+        match kind {
+            SchemeKind::Basic => self.kind = AuthKind::Basic,
+            SchemeKind::Bearer => self.kind = AuthKind::Bearer,
+            SchemeKind::ApiKey { place, name } => {
+                self.kind = AuthKind::ApiKey;
+                self.key_in_query = *place == KeyPlace::Query;
+                self.key_name = name.clone();
+            }
+            SchemeKind::Unsupported(why) => {
+                self.kind = AuthKind::None;
+                self.unsupported = Some(why.clone());
+            }
+        }
+    }
+
+    /// The authorization to send with.
+    fn to_auth(&self) -> Auth {
+        match self.kind {
+            AuthKind::None => Auth::None,
+            AuthKind::Basic => Auth::Basic { user: self.user.clone(), password: Secret::new(self.password.clone()) },
+            AuthKind::Bearer => Auth::Bearer { token: Secret::new(self.token.clone()) },
+            AuthKind::ApiKey => Auth::ApiKey {
+                place: if self.key_in_query { KeyPlace::Query } else { KeyPlace::Header },
+                name: self.key_name.clone(),
+                value: Secret::new(self.key_value.clone()),
+            },
+        }
+    }
 }
 
 /// The form of the HTTP & OpenAPI tool window and the request in it.
@@ -38,12 +128,20 @@ pub(crate) struct HttpTool {
     server: usize,
     /// The document, operation and server the fields were made for (a new choice makes them again).
     prepared_for: Option<(u64, String, usize)>,
+    auth: AuthForm,
     pub(crate) pane: Pane,
 }
 
 impl Default for HttpTool {
     fn default() -> Self {
-        Self { read: None, chosen: None, server: 0, prepared_for: None, pane: Pane { method: "GET".to_owned(), ..Pane::default() } }
+        Self {
+            read: None,
+            chosen: None,
+            server: 0,
+            prepared_for: None,
+            auth: AuthForm::default(),
+            pane: Pane { method: "GET".to_owned(), ..Pane::default() },
+        }
     }
 }
 
@@ -90,6 +188,27 @@ impl XmlCraftApp {
         ready.then(|| (self.http_tool.pane.method.clone(), self.http_tool.pane.url.clone()))
     }
 
+    /// The kind of authorization the HTTP & OpenAPI form is set to and whether its secrets are shown, for tests.
+    pub fn http_authorization(&self) -> (String, bool) {
+        (self.http_tool.auth.kind.label().to_owned(), self.http_tool.auth.reveal)
+    }
+
+    /// Fill the Authorization section as a person would (`kind`: `basic`, `bearer`, `api_key` or `none`), for tests.
+    pub fn fill_http_authorization(&mut self, kind: &str, user: &str, secret: &str) {
+        let form = &mut self.http_tool.auth;
+        match kind {
+            "basic" => (form.kind, form.user, form.password) = (AuthKind::Basic, user.to_owned(), secret.to_owned()),
+            "bearer" => (form.kind, form.token) = (AuthKind::Bearer, secret.to_owned()),
+            "api_key" => (form.kind, form.key_name, form.key_value) = (AuthKind::ApiKey, user.to_owned(), secret.to_owned()),
+            _ => form.kind = AuthKind::None,
+        }
+    }
+
+    /// The history of the HTTP & OpenAPI window as it lists it, for tests.
+    pub fn http_history(&self) -> Vec<String> {
+        self.http_tool.pane.history.iter().map(crate::http_pane::HistoryEntry::label).collect()
+    }
+
     /// Send OpenAPI Request…: show the HTTP & OpenAPI panel on the description being shown, and say in the status bar when the
     /// document is not one.
     pub(crate) fn open_openapi(&mut self) {
@@ -120,10 +239,17 @@ fn ensure_read(app: &mut XmlCraftApp) {
     }
     let (text, yaml) = (doc.editor().text(), doc.language().is_yaml());
     let result = match describe(&text, yaml) {
-        Ok(Described { operations, servers, warnings }) if !operations.is_empty() => Ok(Operations { ops: operations, servers, warnings }),
+        Ok(Described { operations, servers, warnings, security }) if !operations.is_empty() => {
+            Ok(Operations { ops: operations, servers, warnings, security })
+        }
         Ok(_) => Err(tl!("The description has no operation.").to_owned()),
         Err(why) => Err(fmt(tl!("This is not an OpenAPI description: {why}"), &[("why", &why)])),
     };
+    // Another description is another API: what was typed for the last one (the secrets) is not sent to it.
+    if app.http_tool.auth.doc != Some(id) {
+        let security = result.as_ref().map(|o| o.security.clone()).unwrap_or_default();
+        app.http_tool.auth = AuthForm::for_description(id, &security);
+    }
     app.http_tool.read = Some(Read { doc: id, version, text, yaml, result });
 }
 
@@ -159,6 +285,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
             Some(Ok(operations)) => {
                 let operations = operations.clone();
                 act = form(ui, tool, &operations);
+                authorization(ui, &mut tool.auth, &operations.security);
             }
             Some(Err(message)) => {
                 kit::banner(ui, kit::Tone::Bad, message);
@@ -174,7 +301,9 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     let mut pane = std::mem::take(&mut app.http_tool.pane);
     app.do_pane_act(&mut pane, &name);
     if send {
+        pane.auth = app.http_tool.auth.to_auth();
         app.send_pane(&mut pane);
+        pane.auth = Auth::None;
     }
     app.http_tool.pane = pane;
 }
@@ -212,4 +341,72 @@ fn form(ui: &mut egui::Ui, tool: &mut HttpTool, operations: &Operations) -> bool
     }
     ui.add_space(4.0);
     ui.small_button(tl!("Make the request again")).on_hover_text(tl!("Replaces the request below with the example of the operation.")).clicked()
+}
+
+/// The Authorization section: the scheme of the description to start from, the kind, and the fields of the kind with the secrets
+/// masked (a toggle shows them).
+fn authorization(ui: &mut egui::Ui, form: &mut AuthForm, security: &Security) {
+    kit::section(ui, tl!("Authorization"), |ui| {
+        if !security.schemes.is_empty() {
+            let current = security.preferred().map_or_else(|| tl!("Choose a scheme of the description").to_owned(), |s| s.name.clone());
+            egui::ComboBox::from_id_salt("xmlcraft-http-auth-scheme").selected_text(current).width((ui.available_width() - 8.0).max(120.0)).show_ui(
+                ui,
+                |ui| {
+                    for scheme in &security.schemes {
+                        let label = match &scheme.kind {
+                            SchemeKind::Unsupported(why) => fmt(tl!("{name} — not supported yet ({why})"), &[("name", &scheme.name), ("why", why)]),
+                            _ => scheme.name.clone(),
+                        };
+                        if ui.selectable_label(false, label).clicked() {
+                            form.choose(&scheme.kind);
+                        }
+                    }
+                },
+            );
+        }
+        if let Some(why) = &form.unsupported {
+            kit::help(
+                ui,
+                &fmt(
+                    tl!("The description asks for {why}, which is not supported yet: put the header or query parameter in by hand."),
+                    &[("why", why)],
+                ),
+            );
+        }
+        let kind = egui::ComboBox::from_id_salt("xmlcraft-http-auth-kind")
+            .selected_text(form.kind.label())
+            .width((ui.available_width() - 8.0).max(120.0))
+            .show_ui(ui, |ui| {
+                for k in [AuthKind::None, AuthKind::Basic, AuthKind::Bearer, AuthKind::ApiKey] {
+                    ui.selectable_value(&mut form.kind, k, k.label());
+                }
+            });
+        widgets::name_for_assistive_technology(ui, &kind.response, tl!("The kind of authorization"));
+        let reveal = form.reveal;
+        let field = |ui: &mut egui::Ui, text: &mut String, name: &str, secret: bool| {
+            let edit = egui::TextEdit::singleline(text).desired_width(f32::INFINITY).hint_text(name).password(secret && !reveal);
+            let response = ui.add(edit);
+            widgets::name_for_assistive_technology(ui, &response, name);
+        };
+        match form.kind {
+            AuthKind::None => {}
+            AuthKind::Basic => {
+                field(ui, &mut form.user, tl!("User name"), false);
+                field(ui, &mut form.password, tl!("Password"), true);
+            }
+            AuthKind::Bearer => field(ui, &mut form.token, tl!("Token"), true),
+            AuthKind::ApiKey => {
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut form.key_in_query, false, tl!("In a header"));
+                    ui.selectable_value(&mut form.key_in_query, true, tl!("In the query"));
+                });
+                field(ui, &mut form.key_name, tl!("Name of the header or parameter"), false);
+                field(ui, &mut form.key_value, tl!("Key"), true);
+            }
+        }
+        if form.kind != AuthKind::None {
+            ui.add(widgets::checkbox(&mut form.reveal, tl!("Show the secret")));
+            kit::help(ui, tl!("The secret stays in memory: it is not saved, not kept in the history, and gone when XmlCraft closes."));
+        }
+    });
 }

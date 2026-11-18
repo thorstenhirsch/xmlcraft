@@ -142,3 +142,51 @@ fn the_tool_follows_the_document_in_front_and_keeps_the_request_it_made() {
     assert!(h.query_by_label("→ pets.json").is_some());
     assert_eq!(h.state().openapi_request(), Some(("GET".to_owned(), "http://localhost:9/pets/0".to_owned())));
 }
+
+fn secured_api(server: &str) -> String {
+    format!(
+        r#"{{"openapi": "3.0.3", "info": {{"title": "Pets", "version": "1"}}, "servers": [{{"url": "{server}"}}],
+          "security": [{{"bearer": []}}],
+          "components": {{"securitySchemes": {{"bearer": {{"type": "http", "scheme": "bearer"}}, "oauth": {{"type": "oauth2", "flows": {{}}}}}}}},
+          "paths": {{"/pets/{{id}}": {{"get": {{"operationId": "getPet",
+            "parameters": [{{"name": "id", "in": "path", "required": true, "schema": {{"type": "integer"}}}}]}}}}}}}}"#
+    )
+}
+
+#[test]
+fn the_authorization_section_starts_from_the_scheme_of_the_description_masks_the_secret_and_keeps_it_out_of_the_history() {
+    let dir = tempfile::tempdir().expect("dir");
+    let (server, received) = serve();
+    let mut h = shell();
+    assert!(h.state_mut().open_path(&file(dir.path(), "secured.json", &secured_api(&server))));
+    h.run_steps(3);
+    assert!(h.state_mut().execute("xml.openapi"));
+    h.run_steps(3);
+    assert_eq!(h.state().http_authorization(), ("Bearer token".to_owned(), false), "the scheme the description asks for; the secret is hidden");
+    h.state_mut().fill_http_authorization("bearer", "", "tok-ui-123");
+    h.run_steps(2);
+    // The toggle shows and hides the secret.
+    h.get_by_label("Show the secret").click_accesskit();
+    h.run_steps(2);
+    assert!(h.state().http_authorization().1);
+    h.get_by_label("Show the secret").click_accesskit();
+    h.run_steps(2);
+    assert!(!h.state().http_authorization().1);
+    h.get_by_label("Allow this computer and the local network").click_accesskit();
+    h.run_steps(2);
+    h.get_by_label("Send").click_accesskit();
+    wait(&mut h, "the answer", |app| app.openapi_window().is_some_and(|(_, a, e)| a.is_some() || e.is_some()));
+    let sent = received.recv_timeout(Duration::from_secs(5)).expect("the server got the request");
+    assert!(sent.to_ascii_lowercase().contains("authorization: bearer tok-ui-123"), "{sent}");
+    // The history has the request, not the secret; clicking it puts the request back.
+    let history = h.state().http_history();
+    assert_eq!(history.len(), 1, "{history:?}");
+    assert!(history[0].starts_with(&format!("GET {server}/pets/0 — 200")), "{history:?}");
+    assert!(!history.join("\n").contains("tok-ui-123"));
+    h.get_by_label_contains("GET http").click_accesskit();
+    h.run_steps(2);
+    assert_eq!(h.state().openapi_request().map(|(m, _)| m), Some("GET".to_owned()));
+    h.get_by_label("Clear history").click_accesskit();
+    h.run_steps(2);
+    assert!(h.state().http_history().is_empty());
+}

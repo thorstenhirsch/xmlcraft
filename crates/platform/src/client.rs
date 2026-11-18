@@ -249,6 +249,27 @@ mod tests {
     }
 
     #[test]
+    fn a_redirect_is_not_followed_so_the_authorization_header_never_reaches_the_host_it_points_to() {
+        // A second server on another port stands for "another host": it must never be connected to.
+        let elsewhere = TcpListener::bind("127.0.0.1:0").expect("binds");
+        elsewhere.set_nonblocking(true).expect("non-blocking");
+        let target = format!("http://{}/stolen", elsewhere.local_addr().expect("address"));
+        let answer: &'static str = Box::leak(
+            format!("HTTP/1.1 307 Temporary Redirect\r\nLocation: {target}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").into_boxed_str(),
+        );
+        let (url, server) = serve(answer);
+        let mut request = Request::new("GET", &url);
+        request.allow_private_hosts = true;
+        request.headers = vec![("Authorization".into(), "Bearer s3cret".into())];
+        let response = send("t", &request).expect("answered");
+        assert_eq!(response.status, 307);
+        let sent = String::from_utf8(server.join().expect("server")).expect("utf-8");
+        assert!(sent.contains("Authorization: Bearer s3cret") || sent.contains("authorization: Bearer s3cret"), "the first host got it: {sent}");
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(matches!(elsewhere.accept(), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock), "nobody connected to the other host");
+    }
+
+    #[test]
     fn this_computer_is_refused_unless_the_request_allows_it_and_so_are_odd_methods_and_addresses() {
         for url in ["http://127.0.0.1:9/x", "http://localhost:9/x", "http://[::1]:9/x", "http://10.0.0.1/x", "http://169.254.169.254/latest"] {
             let e = send("t", &Request::new("POST", url)).expect_err(url);
