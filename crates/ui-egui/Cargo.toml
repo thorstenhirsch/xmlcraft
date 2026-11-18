@@ -25,6 +25,7 @@ xmlcraft-convert = { workspace = true }
 xmlcraft-engine = { workspace = true }
 xmlcraft-xquery = { workspace = true }
 xmlcraft-einvoice = { workspace = true }
+xmlcraft-xbrl = { workspace = true }
 xmlcraft-invoice-pdf = { workspace = true }
 xmlcraft-diff = { workspace = true }
 xmlcraft-grid = { workspace = true }
