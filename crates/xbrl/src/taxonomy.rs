@@ -1,6 +1,7 @@
 //! The taxonomy an instance names: the concepts its schema documents declare (name, type, substitution group, period type, abstract),
-//! read from the `schemaRef`s and the schema documents they import and include, and the checks of an instance that need them: does a
-//! fact's concept exist, is it a number, does its period type fit its context.
+//! read from the `schemaRef`s and the schema documents they import and include, the calculation and definition linkbases they refer to
+//! (the definition arcs of XBRL Dimensions 1.0 become [`crate::dims::Dimensions`]), and the checks of an instance that need them: does a
+//! fact's concept exist, is it a number, does its period type fit its context, does it add up.
 //!
 //! Reading is bounded (documents, bytes, type chains) and never panics; what cannot be loaded is a warning, and what the instance uses
 //! from a namespace that was not loaded is not judged.
@@ -11,12 +12,13 @@ use std::ops::Range;
 use xmlcraft_syntax::{Severity, parse};
 use xmlcraft_xsd::dom::{self, Dom, El};
 
+use crate::dims::{self, DefArc, Dimensions};
 use crate::{Finding, Instance, Kind, Level, Period, XBRLI};
 
 const XS: &str = "http://www.w3.org/2001/XMLSchema";
 const LINK: &str = "http://www.xbrl.org/2003/linkbase";
 const XLINK: &str = "http://www.w3.org/1999/xlink";
-/// The most arcs of calculation linkbases kept.
+/// The most arcs of calculation and definition linkbases kept.
 const MAX_ARCS: usize = 500_000;
 /// The most schema documents read for one instance.
 pub const MAX_DOCUMENTS: usize = 500;
@@ -43,6 +45,8 @@ pub struct Concept {
     pub substitution_group: Option<String>,
     pub period_type: Option<PeriodType>,
     pub abstract_concept: bool,
+    /// `xbrldt:typedDomainRef` as written (`file.xsd#id`): the domain of a typed dimension.
+    pub typed_domain_ref: Option<String>,
 }
 
 /// One contributing concept of a calculation and the weight of its arc (a decimal as written).
@@ -61,10 +65,11 @@ pub struct Calculation {
     pub items: Vec<Contribution>,
 }
 
-/// A calculation link as read: locators by label, and arcs, before the locators are resolved to concepts.
+/// A calculation or definition link as read: locators by label, and arcs, before the locators are resolved to concepts.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct RawLink {
-    document: String,
+    /// A `definitionLink` (else a `calculationLink`).
+    definition: bool,
     role: String,
     /// label, href
     locators: Vec<(String, String)>,
@@ -87,6 +92,12 @@ struct RawArc {
     order: String,
     priority: i64,
     prohibited: bool,
+    /// For a definition arc: its arcrole and the XBRL Dimensions attributes, as written.
+    arcrole: String,
+    context_element: Option<String>,
+    closed: Option<String>,
+    target_role: Option<String>,
+    usable: Option<String>,
 }
 
 /// Finds a schema document: its resolved location and its text, or why not.
@@ -109,6 +120,8 @@ pub struct Taxonomy {
     pub not_loaded: Vec<(String, String)>,
     /// The summation-item relationships of the calculation linkbases (and those in schema documents) that were read.
     pub calculations: Vec<Calculation>,
+    /// The dimensional relationships of the definition linkbases (XBRL Dimensions 1.0).
+    pub dimensions: Dimensions,
     /// The `id` of each element declaration, with the document and the concept it is in.
     ids: HashMap<String, Vec<(String, String)>>,
     links: Vec<RawLink>,
@@ -191,7 +204,8 @@ impl Taxonomy {
                         type_name: attr(el, "type").and_then(|t| expand(&tree, i, t)),
                         substitution_group: attr(el, "substitutionGroup").and_then(|t| expand(&tree, i, t)),
                         period_type,
-                        abstract_concept: attr(el, "abstract") == Some("true"),
+                        abstract_concept: matches!(attr(el, "abstract").map(str::trim), Some("true" | "1")),
+                        typed_domain_ref: attr_ns(el, dims::XBRLDT, "typedDomainRef").map(|r| r.trim().to_owned()),
                     };
                     if let Some(id) = attr(el, "id") {
                         self.ids.entry(id.to_owned()).or_default().push((location.to_owned(), format!("{{{target}}}{name}")));
@@ -216,8 +230,8 @@ impl Taxonomy {
         }
     }
 
-    /// The calculation linkbases a schema document refers to are queued, and the calculation links in the document (a linkbase, or one
-    /// in the `appinfo` of a schema) are kept to be resolved once every schema has been read.
+    /// The calculation and definition linkbases a schema document refers to are queued, and the calculation and definition links in the
+    /// document (a linkbase, or one in the `appinfo` of a schema) are kept to be resolved once every schema has been read.
     fn read_links(&mut self, tree: &Dom, location: &str, queue: &mut VecDeque<(String, String)>) {
         for el in &tree.elements {
             if el.namespace.as_deref() != Some(LINK) {
@@ -227,14 +241,16 @@ impl Taxonomy {
                 "linkbaseRef" => {
                     let role = attr_ns(el, XLINK, "role");
                     if let Some(href) = attr_ns(el, XLINK, "href").filter(|h| !h.trim().is_empty())
-                        && role.is_none_or(|r| r.ends_with("calculationLinkbaseRef"))
+                        && role.is_none_or(|r| r.ends_with("calculationLinkbaseRef") || r.ends_with("definitionLinkbaseRef"))
                     {
                         queue.push_back((href.trim().to_owned(), location.to_owned()));
                     }
                 }
-                "calculationLink" => {
+                "calculationLink" | "definitionLink" => {
+                    let definition = el.local == "definitionLink";
+                    let arc_name = if definition { "definitionArc" } else { "calculationArc" };
                     let mut link = RawLink {
-                        document: location.to_owned(),
+                        definition,
                         role: attr_ns(el, XLINK, "role").unwrap_or("http://www.xbrl.org/2003/role/link").to_owned(),
                         locators: Vec::new(),
                         arcs: Vec::new(),
@@ -249,15 +265,21 @@ impl Taxonomy {
                                     link.locators.push((label.to_owned(), href.to_owned()));
                                 }
                             }
-                            "calculationArc" => {
+                            local if local == arc_name => {
                                 if let (Some(from), Some(to)) = (attr_ns(c, XLINK, "from"), attr_ns(c, XLINK, "to")) {
+                                    let dim = |name: &str| attr_ns(c, dims::XBRLDT, name).map(|v| v.trim().to_owned());
                                     link.arcs.push(RawArc {
                                         from: from.to_owned(),
                                         to: to.to_owned(),
                                         weight: attr(c, "weight").unwrap_or("1").to_owned(),
                                         order: attr(c, "order").unwrap_or("1").to_owned(),
                                         priority: attr(c, "priority").and_then(|p| p.trim().parse().ok()).unwrap_or(0),
-                                        prohibited: attr(c, "use") == Some("prohibited"),
+                                        prohibited: attr(c, "use").map(str::trim) == Some("prohibited"),
+                                        arcrole: attr_ns(c, XLINK, "arcrole").unwrap_or_default().trim().to_owned(),
+                                        context_element: dim("contextElement"),
+                                        closed: dim("closed"),
+                                        target_role: dim("targetRole"),
+                                        usable: dim("usable"),
                                     });
                                 }
                             }
@@ -292,7 +314,7 @@ impl Taxonomy {
     fn resolve_calculations(&mut self) {
         // (role, from, to) -> the arc that wins (the highest priority; prohibiting wins a tie), with its weight and order.
         let mut best: HashMap<(String, String, String), Winner> = HashMap::new();
-        for link in &self.links {
+        for link in self.links.iter().filter(|l| !l.definition) {
             let at = |label: &str| -> Vec<&str> {
                 link.locators.iter().filter(|(l, _)| l == label).filter_map(|(_, href)| self.concept_at(href)).collect()
             };
@@ -327,7 +349,65 @@ impl Taxonomy {
             .collect();
         calculations.sort_by(|a, b| (&a.role, &a.parent).cmp(&(&b.role, &b.parent)));
         self.calculations = calculations;
-        self.links.clear();
+    }
+
+    /// Resolve the definition links read to the dimensional relationships between concepts (an arc that a later one with the same ends,
+    /// role and arcrole and a priority at least as high prohibits is dropped, as for calculation arcs), and build the dimensional model.
+    fn resolve_definitions(&mut self) {
+        // (role, arcrole, from, to) -> the arc that wins: its priority, whether it prohibits, and the relationship.
+        type Key = (String, String, String, String);
+        let mut best: HashMap<Key, (i64, bool, DefArc)> = HashMap::new();
+        let mut first_seen: HashMap<Key, usize> = HashMap::new();
+        for link in self.links.iter().filter(|l| l.definition) {
+            let at = |label: &str| -> Vec<&str> {
+                link.locators.iter().filter(|(l, _)| l == label).filter_map(|(_, href)| self.concept_at(href)).collect()
+            };
+            for arc in &link.arcs {
+                let Some(arcrole) = dims::Arcrole::from_uri(&arc.arcrole) else { continue };
+                for from in at(&arc.from) {
+                    for to in at(&arc.to) {
+                        let key = (link.role.clone(), arc.arcrole.clone(), from.to_owned(), to.to_owned());
+                        let wins = best.get(&key).is_none_or(|w| arc.priority > w.0 || (arc.priority == w.0 && arc.prohibited && !w.1));
+                        if wins {
+                            let def = DefArc {
+                                role: link.role.clone(),
+                                arcrole,
+                                from: from.to_owned(),
+                                to: to.to_owned(),
+                                context_element: arc.context_element.clone(),
+                                closed: arc.closed.clone(),
+                                target_role: arc.target_role.clone().filter(|r| !r.is_empty()),
+                                usable: arc.usable.clone(),
+                            };
+                            let n = first_seen.len();
+                            first_seen.entry(key.clone()).or_insert(n);
+                            best.insert(key, (arc.priority, arc.prohibited, def));
+                        }
+                    }
+                }
+            }
+        }
+        // (In the order the relationships were first read, so that what the model says comes out the same each time.)
+        let mut arcs: Vec<(usize, DefArc)> = best
+            .into_iter()
+            .filter(|(_, (_, prohibited, _))| !prohibited)
+            .map(|(key, (_, _, arc))| (first_seen.get(&key).copied().unwrap_or(usize::MAX), arc))
+            .collect();
+        arcs.sort_by_key(|(n, _)| *n);
+        self.dimensions = dims::build(self, arcs.into_iter().map(|(_, a)| a).collect());
+    }
+
+    /// Whether the substitution group chain of `concept` reaches `group` (`{namespace}local`), followed at most [`MAX_CHAIN`] steps.
+    pub fn in_substitution_group(&self, concept: &Concept, group: &str) -> bool {
+        let mut current = concept.substitution_group.as_deref();
+        for _ in 0..MAX_CHAIN {
+            let Some(g) = current else { return false };
+            if g == group {
+                return true;
+            }
+            current = self.concepts.get(g).and_then(|c| c.substitution_group.as_deref());
+        }
+        false
     }
 
     /// Whether the type `{namespace}local` is a number: `Some(true)` for the numeric types of XBRL and XML Schema (and what is derived
@@ -433,6 +513,8 @@ pub fn load(schema_refs: &[String], base: &str, loader: &mut dyn Loader) -> Taxo
         }
     }
     taxonomy.resolve_calculations();
+    taxonomy.resolve_definitions();
+    taxonomy.links.clear();
     taxonomy
 }
 
