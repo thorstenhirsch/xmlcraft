@@ -1085,7 +1085,8 @@ fn doc_quick_fix(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let index = index_of(a, id_arg(args)?)?;
     let Some(doc) = a.session.document_mut(index) else { return fail("the document disappeared") };
     let text = doc.editor().text();
-    let analysis = analyze(&text, 0);
+    let language = doc.language();
+    let analysis = xmlcraft_engine::analysis::analyze_as(language, &text, 0);
     if analysis.skipped.is_some() {
         return fail("the text is too large to analyse, or the analysis failed: nothing was changed");
     }
@@ -1104,7 +1105,7 @@ fn doc_quick_fix(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         if at.is_some_and(|offset| !(d.span.start <= offset && offset < d.span.end.max(d.span.start.saturating_add(1)))) {
             continue;
         }
-        for fix in xmlcraft_engine::quickfix::quick_fixes(&text, d, &analysis.diagnostics) {
+        for fix in xmlcraft_engine::quickfix::quick_fixes_for(language, &text, d, &analysis.diagnostics) {
             found.push((d, fix));
         }
     }

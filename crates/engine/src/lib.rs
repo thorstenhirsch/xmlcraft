@@ -21,6 +21,7 @@ pub mod html_complete;
 mod json_analysis;
 pub mod json_assist;
 pub mod json_infer;
+mod json_quickfix;
 pub mod json_sample;
 pub mod json_schemas;
 pub mod json_validation;
