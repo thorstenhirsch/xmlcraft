@@ -1,5 +1,5 @@
 //! XBRL Dimensions 1.0: the dimensional relationships of a taxonomy's definition linkbases ([`Dimensions`], built by
-//! [`crate::taxonomy::load`]).
+//! [`crate::taxonomy::load`]) and the dimensional validation of an instance's facts ([`check_dimensions`]).
 //!
 //! **The model** (sections 2.1–2.7 of the specification). The definition arcs with the six dimensional arcroles, after prohibition and
 //! priority, make *has-hypercube* relationships (`all`, `notAll`: a primary item to a hypercube, with `xbrldt:contextElement` and
@@ -10,6 +10,15 @@
 //! item has the hypercubes of its own has-hypercube relationships and inherits those of its ancestors along domain-member relationships
 //! in the same base set (2.6). Every walk is bounded (seen sets, a depth cap, caps on members and relationships).
 //!
+//! **The validation** (3.1). A fact whose concept has hypercubes is dimensionally valid when, in at least one base set (extended link
+//! role) of its has-hypercube relationships, its context is valid for every `all` hypercube and for no `notAll` one. A context is valid
+//! for a hypercube when, in the container the relationship names (the segment or the scenario), each dimension of the hypercube has a
+//! value that is a usable member of its domain (an explicit dimension without a value takes its default, when it has one; a typed
+//! dimension needs a value), and, when the hypercube is closed, the container has no value of another dimension. The checks of the
+//! dimension values themselves (3.1.4: an explicit member of a dimension that is not explicit, a typed member of one that is not typed,
+//! a member that names no element, the same dimension twice, a default written out, a typed member that is not one element) come
+//! first; a context they find wrong is not judged again for each of its facts.
+//!
 //! Not done: the content of a typed member is not validated against its `xbrldt:typedDomainRef` declaration (only that it is one
 //! element); roles are not checked to be declared (`xbrldte:TargetRoleNotResolvedError`), nor cycles reported (they are cut);
 //! tuples are not primary items here.
@@ -17,6 +26,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::taxonomy::Taxonomy;
+use crate::{Context, Finding, Instance, Level};
 
 /// The XBRL Dimensions taxonomy namespace (`xbrldt`).
 pub const XBRLDT: &str = "http://xbrl.org/2005/xbrldt";
@@ -29,6 +39,8 @@ const MAX_DEPTH: usize = 256;
 const MAX_ENTRIES: usize = 1_000_000;
 /// The most problems of the taxonomy listed.
 const MAX_PROBLEMS: usize = 200;
+/// The most findings about facts and contexts.
+const MAX_FINDINGS: usize = 10_000;
 
 /// The arcrole of a dimensional relationship.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -86,6 +98,15 @@ pub(crate) struct DefArc {
 pub enum ContextElement {
     Segment,
     Scenario,
+}
+
+impl ContextElement {
+    fn word(self) -> &'static str {
+        match self {
+            ContextElement::Segment => "segment",
+            ContextElement::Scenario => "scenario",
+        }
+    }
 }
 
 /// A dimension of a hypercube as a base set has it: its members (the usable ones) when it is explicit.
@@ -179,6 +200,10 @@ fn problem(model: &mut Dimensions, code: &'static str, message: String) {
 /// The local part of `{namespace}local`, for messages.
 fn local(key: &str) -> &str {
     key.rsplit_once('}').map_or(key, |(_, l)| l)
+}
+
+fn namespace_of(key: &str) -> Option<&str> {
+    key.strip_prefix('{').and_then(|r| r.split_once('}')).map(|(ns, _)| ns)
 }
 
 type Index<'a> = HashMap<(Arcrole, &'a str, &'a str), Vec<&'a DefArc>>;
@@ -423,6 +448,227 @@ fn descendants(index: &Index<'_>, item: &str, role: &str) -> (Vec<String>, bool)
         }
     }
     (out, cut)
+}
+
+/// Why a context is not valid for a hypercube; none when it is.
+fn cube_fault(model: &Dimensions, context: &Context, entry: &HasHypercube) -> Option<String> {
+    let cube = model.cubes.get(entry.cube)?;
+    let in_scenario = entry.context_element == ContextElement::Scenario;
+    let place = entry.context_element.word();
+    let values: Vec<&crate::Dimension> = context.dimensions.iter().filter(|d| d.in_scenario == in_scenario).collect();
+    let name = local(&cube.hypercube);
+    for d in &cube.dimensions {
+        match values.iter().find(|v| v.dimension == d.dimension) {
+            Some(v) if d.typed => {
+                if !v.typed {
+                    return Some(format!(
+                        "the dimension {} of the hypercube {name} is typed, and the {place} gives it an explicit member",
+                        local(&d.dimension)
+                    ));
+                }
+            }
+            Some(v) => {
+                if v.typed || !d.members.contains(&v.member) {
+                    return Some(format!(
+                        "{} is not a usable member of the dimension {} in the hypercube {name}",
+                        local(&v.member),
+                        local(&d.dimension)
+                    ));
+                }
+            }
+            None if d.typed => {
+                return Some(format!("the hypercube {name} needs a value of the typed dimension {} in the {place}", local(&d.dimension)));
+            }
+            None if !model.defaults.contains_key(&d.dimension) => {
+                return Some(format!(
+                    "the hypercube {name} needs a member of the dimension {} in the {place}, and the dimension has no default",
+                    local(&d.dimension)
+                ));
+            }
+            None => {}
+        }
+    }
+    if entry.closed
+        && let Some(extra) = values.iter().find(|v| !cube.dimensions.iter().any(|d| d.dimension == v.dimension))
+    {
+        return Some(format!(
+            "the hypercube {name} is closed, and the {place} has the dimension {}, which it does not have",
+            local(&extra.dimension)
+        ));
+    }
+    None
+}
+
+/// Why a fact of a primary item with these has-hypercube relationships is not valid in `context`; none when it is valid in a base set.
+fn fact_fault(model: &Dimensions, context: &Context, entries: &[HasHypercube]) -> Option<String> {
+    let mut by_role: BTreeMap<&str, Vec<&HasHypercube>> = BTreeMap::new();
+    for e in entries {
+        by_role.entry(e.role.as_str()).or_default().push(e);
+    }
+    let mut first: Option<String> = None;
+    for (role, list) in by_role {
+        let mut fault = None;
+        for e in &list {
+            let invalid = cube_fault(model, context, e);
+            match (e.all, invalid) {
+                (true, Some(why)) => fault = Some(why),
+                (false, None) => {
+                    let name = model.cubes.get(e.cube).map_or("", |c| local(&c.hypercube));
+                    fault = Some(format!("the context matches the hypercube {name}, which the primary item excludes (notAll)"));
+                }
+                _ => {}
+            }
+            if fault.is_some() {
+                break;
+            }
+        }
+        // (Valid in this base set: the fact is valid. Else the first base set's reason is the one given.)
+        let why = fault?;
+        if first.is_none() {
+            first = Some(format!("{why} (base set {role})"));
+        }
+    }
+    first
+}
+
+/// What is wrong with the dimension values of `context` (3.1.4), with the taxonomy's model.
+fn context_faults(context: &Context, taxonomy: &Taxonomy) -> Vec<(&'static str, String)> {
+    let model = &taxonomy.dimensions;
+    let mut out = Vec::new();
+    let mut seen: HashSet<&str> = HashSet::new();
+    let id = &context.id;
+    let loaded = |key: &str| namespace_of(key).is_some_and(|ns| taxonomy.namespaces.contains(ns));
+    for v in &context.dimensions {
+        let dim = local(&v.dimension);
+        if !seen.insert(v.dimension.as_str()) {
+            out.push((
+                "xbrl.dimension-repeated",
+                format!("The context {id} gives the dimension {dim} more than once (xbrldie:RepeatedDimensionInInstanceError)."),
+            ));
+            continue;
+        }
+        // A dimension in a namespace no schema document that was read declares is not judged (that is said once elsewhere).
+        if namespace_of(&v.dimension).is_some() && !loaded(&v.dimension) {
+            continue;
+        }
+        match (v.typed, model.kind(&v.dimension)) {
+            (false, Some(false)) | (true, Some(true)) => {}
+            (false, Some(true)) => out.push((
+                "xbrl.dimension-not-explicit",
+                format!(
+                    "The context {id} has an explicitMember of {dim}, which is a typed dimension: use typedMember (xbrldie:ExplicitMemberNotExplicitDimensionError)."
+                ),
+            )),
+            (true, Some(false)) => out.push((
+                "xbrl.dimension-not-typed",
+                format!(
+                    "The context {id} has a typedMember of {dim}, which is an explicit dimension: use explicitMember (xbrldie:TypedMemberNotTypedDimensionError)."
+                ),
+            )),
+            (false, None) => out.push((
+                "xbrl.dimension-not-explicit",
+                format!(
+                    "The context {id} has an explicitMember of {}, which is not a dimension the taxonomy declares (xbrldie:ExplicitMemberNotExplicitDimensionError).",
+                    if dim.is_empty() { "no dimension" } else { dim }
+                ),
+            )),
+            (true, None) => out.push((
+                "xbrl.dimension-not-typed",
+                format!(
+                    "The context {id} has a typedMember of {}, which is not a dimension the taxonomy declares (xbrldie:TypedMemberNotTypedDimensionError).",
+                    if dim.is_empty() { "no dimension" } else { dim }
+                ),
+            )),
+        }
+        if v.typed {
+            if v.children != 1 {
+                out.push((
+                    "xbrl.dimension-typed-content",
+                    format!(
+                        "The typedMember of {dim} in the context {id} has {} elements in it; it has one (xbrldie:IllegalTypedDimensionContentError).",
+                        v.children
+                    ),
+                ));
+            }
+            continue;
+        }
+        let member_known = namespace_of(&v.member).is_some_and(|ns| !taxonomy.namespaces.contains(ns)) || taxonomy.concepts.contains_key(&v.member);
+        if !member_known {
+            out.push((
+                "xbrl.dimension-member-undefined",
+                format!(
+                    "The member {} of the dimension {dim} in the context {id} is not an element the taxonomy declares (xbrldie:ExplicitMemberUndefinedQNameError).",
+                    local(&v.member)
+                ),
+            ));
+        } else if model.defaults.get(&v.dimension) == Some(&v.member) {
+            out.push((
+                "xbrl.dimension-default-used",
+                format!(
+                    "The context {id} gives the dimension {dim} its default member {}: a default is never written in an instance (xbrldie:DefaultValueUsedInInstanceError).",
+                    local(&v.member)
+                ),
+            ));
+        }
+    }
+    out
+}
+
+/// What XBRL Dimensions 1.0 says of the facts and contexts of `instance` with `taxonomy`: the problems of the taxonomy's dimensional
+/// relationships (once each, at the start of the document), the dimension values of the contexts, and each fact that is not
+/// dimensionally valid.
+pub fn check_dimensions(instance: &Instance, taxonomy: &Taxonomy) -> Vec<Finding> {
+    let model = &taxonomy.dimensions;
+    let mut found: Vec<Finding> = Vec::new();
+    for p in &model.problems {
+        found.push(Finding {
+            code: "xbrl.dimension-taxonomy",
+            level: Level::Error,
+            message: format!("{} (xbrldte:{})", p.message, p.code),
+            span: 0..0,
+        });
+    }
+    if model.truncated {
+        found.push(Finding {
+            code: "xbrl.dimension-unsupported",
+            level: Level::Warning,
+            message: "The dimensional relationships of the taxonomy are too many or too deep to follow in full: some are not used.".to_owned(),
+            span: 0..0,
+        });
+    }
+    let any_dimensions = instance.contexts.iter().any(|c| !c.dimensions.is_empty());
+    if model.is_empty() && !any_dimensions {
+        return found;
+    }
+    let mut bad: HashSet<&str> = HashSet::new();
+    for context in &instance.contexts {
+        for (code, message) in context_faults(context, taxonomy) {
+            bad.insert(context.id.as_str());
+            if found.len() < MAX_FINDINGS {
+                found.push(Finding { code, level: Level::Error, message, span: context.span.clone() });
+            }
+        }
+    }
+    let contexts: HashMap<&str, &Context> = instance.contexts.iter().map(|c| (c.id.as_str(), c)).collect();
+    for fact in &instance.facts {
+        if found.len() >= MAX_FINDINGS {
+            break;
+        }
+        let Some(entries) = model.primary_items.get(&fact.concept) else { continue };
+        let Some(context) = fact.context_ref.as_deref().filter(|c| !bad.contains(c)).and_then(|c| contexts.get(c)) else { continue };
+        if let Some(why) = fact_fault(model, context, entries) {
+            found.push(Finding {
+                code: "xbrl.dimension-invalid",
+                level: Level::Error,
+                message: format!(
+                    "The fact {} is not dimensionally valid in the context {}: {why} (xbrldie:PrimaryItemDimensionallyInvalidError).",
+                    fact.name, context.id
+                ),
+                span: fact.span.clone(),
+            });
+        }
+    }
+    found
 }
 
 #[cfg(test)]
