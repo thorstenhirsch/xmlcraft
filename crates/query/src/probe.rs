@@ -70,10 +70,8 @@ pub(crate) struct Nodes {
     /// For each function, by instruction offset.
     pub code: Vec<Vec<Code>>,
     /// The names of the variables the expression reads (`$x`).
-    #[allow(dead_code)] // (the debugger reads it)
     pub names: Vec<String>,
     /// For each function, the span of its definition (the span of its last instruction), when it has one.
-    #[allow(dead_code)] // (the debugger reads it)
     pub definitions: Vec<Option<Range<usize>>>,
 }
 
@@ -182,7 +180,6 @@ impl Nodes {
     }
 
     /// The innermost node at a place in the expression: the smallest one that covers `offset`, else the first that starts there.
-    #[allow(dead_code)] // (the debugger uses it)
     pub(crate) fn at_offset(&self, offset: usize) -> Option<usize> {
         let covering = self
             .nodes
@@ -274,7 +271,6 @@ impl Tracker {
     }
 
     /// The frames, the expression's own first: the innermost node of each.
-    #[allow(dead_code)] // (the debugger uses it)
     pub(crate) fn frames(&self) -> &[Option<usize>] {
         &self.frames
     }

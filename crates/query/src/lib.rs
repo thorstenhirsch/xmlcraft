@@ -5,11 +5,14 @@
 //! - **Layer:** L4, no UI and no I/O, so it compiles for the web.
 //! - [`evaluate`] runs an expression with the document as the context and returns the items of the result: for a node its kind, name,
 //!   path (as `fn:path` writes it) and its place in the text; for a value its type and its XPath representation.
+//! - [`profile`] runs an expression with the engine's hook and says, for each part of the expression, how often it was evaluated, what
+//!   it produced and what it cost; [`debug`] runs one on a worker thread that stops at steps and breakpoints and shows its state.
 //! - The engine is XPath 3.1's. XPath 1.0, 2.0 and 3.0 are subsets of it; an expression of an older version runs under 3.1's rules
 //!   (1.0's compatibility mode, where the results differ, is not implemented).
 //! - Errors carry their W3C code (`XPST0003`, `FOAR0001`), say whether they came from compiling or running, and the place in the
 //!   expression.
 
+pub mod debug;
 mod probe;
 mod profile;
 mod source_map;
