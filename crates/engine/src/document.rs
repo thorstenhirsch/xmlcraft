@@ -496,7 +496,7 @@ impl Document {
         let indent = if settings.use_tabs { Indent::Tab } else { Indent::Spaces(settings.indent_size) };
         let endings = self.line_endings();
         let eol = if endings.total() == 0 { settings.eol } else { endings.dominant() };
-        FormatOptions { indent, eol, blank_lines: BlankLines::Keep }
+        FormatOptions { indent, eol, blank_lines: BlankLines::Keep, ..FormatOptions::default() }
     }
 
     /// Pretty-print the text in the way of its language: only the white space between nodes (XML) or tokens (JSON) changes (see
@@ -1422,6 +1422,10 @@ mod tests {
         assert_eq!(d.editor().text(), "a: \"日\"\n", "no declaration is written into YAML");
         assert!(matches!(d.apply_character_references(), Err(SaveError::Unmappable(_))), "a reference is XML's; the encoding is the answer");
         assert_eq!(d.editor().text(), "a: \"日\"\n");
-        assert_eq!(d.pretty_print().map_err(|e| e.to_string()).expect_err("refused"), "YAML is not reformatted: its white space is its structure");
+        assert_eq!(d.pretty_print().map_err(|e| e.to_string()), Ok(false), "YAML is re-indented: nothing to do here");
+        assert_eq!(
+            d.minify().map_err(|e| e.to_string()).expect_err("refused"),
+            "YAML cannot be minified: its white space is its structure (Format re-indents it)"
+        );
     }
 }

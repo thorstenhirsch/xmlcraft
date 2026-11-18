@@ -840,8 +840,14 @@ fn yaml_is_read_by_the_same_tools_as_xml_and_json() {
     let dir = tempfile::tempdir().expect("dir");
     let path = file(dir.path(), "x.yml", text.as_bytes());
     assert_eq!(ok(&mut a, "xml_outline", json!({ "path": path }))["count"].as_u64(), Some(6), "read by its name");
-    let e = err(&mut a, "xml_format", json!({ "text": text, "language": "yaml" }));
-    assert!(e.contains("YAML is not reformatted"), "{e}");
+    let done = ok(&mut a, "xml_format", json!({ "text": text, "language": "yaml", "indent": 4 }));
+    assert_eq!(done["text"].as_str(), Some("name: x\nitems:\n    - id: 1\n    - id: 2\n"), "{done}");
+    let flush = ok(&mut a, "xml_format", json!({ "text": text, "language": "yaml", "indent_sequences": "flush" }));
+    assert_eq!(flush["text"].as_str(), Some("name: x\nitems:\n- id: 1\n- id: 2\n"), "{flush}");
+    let e = err(&mut a, "xml_format", json!({ "text": text, "language": "yaml", "minify": true }));
+    assert!(e.contains("cannot be minified"), "{e}");
+    let broken = err(&mut a, "xml_format", json!({ "text": "a: [1\nb: 2\n", "language": "yaml" }));
+    assert!(broken.contains("not well-formed"), "{broken}");
 }
 
 #[test]

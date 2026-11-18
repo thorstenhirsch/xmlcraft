@@ -35,6 +35,11 @@ pub struct Parse {
 /// Read `text` as a YAML stream. A text that cannot be read to the end still gives the documents and the part of the one that was
 /// being read, and a problem where it stopped.
 pub fn parse(text: &str, options: &Options) -> Parse {
+    if let Some(at) = too_deep(text) {
+        // (The reader below recurses with the nesting of the text: a text nested this deeply is not given to it.)
+        let diagnostic = Diagnostic::new(Code::YamlTooDeep, at..at, vec![options.max_depth.to_string()]);
+        return Parse { documents: Vec::new(), diagnostics: vec![diagnostic] };
+    }
     let offsets = Offsets::new(text);
     let mut builder = Builder::new(text, &offsets, *options);
     let mut parser = Parser::new_from_str(text);
@@ -47,9 +52,62 @@ pub fn parse(text: &str, options: &Options) -> Parse {
     builder.finish()
 }
 
+/// Texts nested deeper than this (by a count that never undercounts) are not given to the YAML reader, which uses the stack in
+/// proportion to the nesting of the text.
+pub(crate) const PARSER_DEPTH_LIMIT: usize = 512;
+
+/// The byte offset of the first line at which the text may be nested deeper than [`PARSER_DEPTH_LIMIT`]: the distinct indentations of
+/// the lines above it, the entries chained on its own line (`- - - a`) and the flow brackets open (counted whatever quotes they are
+/// in, and forgotten at a line that starts in the first column). Linear in the text.
+pub(crate) fn too_deep(text: &str) -> Option<usize> {
+    let mut indents: Vec<usize> = Vec::new();
+    let mut flow = 0usize;
+    let mut start = 0usize;
+    for line in text.split_inclusive('\n') {
+        let body = line.trim_end_matches(['\n', '\r']);
+        let indent = body.bytes().take_while(|b| *b == b' ').count();
+        let rest = body.get(indent..).unwrap_or_default();
+        if indent == 0 && !rest.starts_with([']', '}', ',']) {
+            flow = 0;
+        }
+        if !rest.is_empty() && !rest.starts_with('#') {
+            while indents.last().is_some_and(|top| *top >= indent) {
+                indents.pop();
+            }
+            indents.push(indent);
+        }
+        let bytes = rest.as_bytes();
+        let mut chained = 0usize;
+        let mut at = 0usize;
+        while matches!(bytes.get(at), Some(b'-' | b'?' | b':')) && matches!(bytes.get(at + 1), None | Some(b' ' | b'\t')) {
+            chained += 1;
+            at += 1;
+            while matches!(bytes.get(at), Some(b' ' | b'\t')) {
+                at += 1;
+            }
+        }
+        let mut deepest = flow;
+        for b in bytes {
+            match b {
+                b'[' | b'{' => {
+                    flow += 1;
+                    deepest = deepest.max(flow);
+                }
+                b']' | b'}' => flow = flow.saturating_sub(1),
+                _ => {}
+            }
+        }
+        if indents.len().saturating_add(chained).saturating_add(deepest) > PARSER_DEPTH_LIMIT {
+            return Some(start);
+        }
+        start += line.len();
+    }
+    None
+}
+
 /// Turns the character index of a marker into a byte offset of the text (the parser counts characters). A checkpoint every
 /// [`CHECKPOINT`] characters keeps a conversion short whatever the line breaks are.
-struct Offsets<'a> {
+pub(crate) struct Offsets<'a> {
     text: &'a str,
     /// The byte offset of character 0, `CHECKPOINT`, `2 * CHECKPOINT` …
     checkpoints: Vec<usize>,
@@ -58,20 +116,20 @@ struct Offsets<'a> {
 const CHECKPOINT: usize = 1024;
 
 impl<'a> Offsets<'a> {
-    fn new(text: &'a str) -> Self {
+    pub(crate) fn new(text: &'a str) -> Self {
         let checkpoints = text.char_indices().step_by(CHECKPOINT).map(|(at, _)| at).collect();
         Self { text, checkpoints }
     }
 
     /// The offset a marker is at, kept inside the text.
-    fn byte(&self, marker: Marker) -> usize {
+    pub(crate) fn byte(&self, marker: Marker) -> usize {
         let index = marker.index();
         let Some(&start) = self.checkpoints.get(index / CHECKPOINT) else { return self.text.len() };
         let rest = self.text.get(start..).unwrap_or_default();
         rest.char_indices().nth(index % CHECKPOINT).map_or(self.text.len(), |(at, _)| start + at)
     }
 
-    fn span(&self, span: YamlSpan) -> Range<usize> {
+    pub(crate) fn span(&self, span: YamlSpan) -> Range<usize> {
         let (start, end) = (self.byte(span.start), self.byte(span.end));
         start..end.max(start)
     }
