@@ -52,6 +52,10 @@ ignore = [
     { id = "RUSTSEC-2026-0370", reason = "zvariant unmaintained; Linux a11y stack via accesskit_unix" },
     { id = "RUSTSEC-2026-0371", reason = "zbus_names unmaintained; Linux a11y stack via accesskit_unix" },
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive unmaintained; Linux a11y stack via accesskit_unix" },
+    # chrono is declared unmaintained (all versions; no vulnerability, no fixed release). The project's rule is that all time goes through
+    # chrono (CLAUDE.md), and `pdfcraft-cos` (PdfCraft's PDF object layer) depends on it too. Revisit when the owner decides on a
+    # successor (jiff or time): a migration touches every crate that formats or computes dates.
+    { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained; the project's date rule and pdfcraft-cos use it; migration is an owner decision" },
     # The XPath engine (`xee`, through `xmlcraft-query`) uses `json` for fn:parse-json and `proc-macro-error` (a build-time macro helper)
     # through `genawaiter` in `xot`: unmaintained, no vulnerability. Revisit when `xee` is vendored (M7): fn:parse-json can then read
     # with `xmlcraft-json-syntax`, and `xot` can move on.
