@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use xmlcraft_engine::quickfix::{QuickFix, quick_fixes};
+use xmlcraft_engine::quickfix::{QuickFix, quick_fixes_for};
 
 use crate::XmlCraftApp;
 use crate::i18n::{fmt, tl};
@@ -32,11 +32,12 @@ impl XmlCraftApp {
             return;
         }
         let text = doc.editor().text();
+        let language = doc.language();
         let mut by_problem: BTreeMap<(usize, &'static str), Vec<QuickFix>> = BTreeMap::new();
         let own = analysis.diagnostics.iter().take(MAX_PROBLEMS).map(|d| (d, analysis.diagnostics.as_slice()));
         let validity = validation.into_iter().flat_map(|v| v.problems.iter()).filter(|p| p.file.is_none()).map(|p| (&p.diagnostic, &[][..]));
         for (diagnostic, all) in own.chain(validity.take(MAX_PROBLEMS)) {
-            let fixes = quick_fixes(&text, diagnostic, all);
+            let fixes = quick_fixes_for(language, &text, diagnostic, all);
             if !fixes.is_empty() {
                 by_problem.entry((diagnostic.span.start, diagnostic.code.key())).or_default().extend(fixes);
             }
