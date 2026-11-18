@@ -70,6 +70,13 @@ pub(crate) enum Outcome {
         serial: u64,
         result: Result<Prepared, String>,
     },
+    /// The page of the Preview tool window, for a document (its id and name).
+    Rendered {
+        serial: u64,
+        doc: u64,
+        name: String,
+        result: Result<Box<xmlcraft_engine::preview::Prepared>, String>,
+    },
     Sent {
         serial: u64,
         result: Result<Answer, String>,
@@ -272,6 +279,10 @@ impl XmlCraftApp {
             }
             if let Outcome::InvoicePdf { serial, result } = outcome {
                 self.invoice_pdf_made(serial, *result);
+                continue;
+            }
+            if let Outcome::Rendered { serial, doc, name, result } = outcome {
+                self.page_rendered(serial, doc, name, result);
                 continue;
             }
             let (Outcome::Prepared { serial, .. } | Outcome::Sent { serial, .. }) = &outcome else { continue };

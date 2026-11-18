@@ -55,6 +55,9 @@ pub enum Panel {
     Soap,
     /// Electronic invoices: what one says, its validation by the rules of its standard, and the hybrid PDF made from it.
     EInvoice,
+    /// The document as a browser shows it: an HTML page, the HTML an XSLT stylesheet makes of an XML document, an SVG image, or the
+    /// tree of other XML (`tools/preview.rs`).
+    Preview,
 }
 
 /// Which part of the rail a tool window belongs to.
@@ -118,7 +121,7 @@ impl Place {
 
 impl Panel {
     /// Every panel, in the order the rail, the default layout and `ui.state` list them.
-    pub const ALL: [Panel; 11] = [
+    pub const ALL: [Panel; 12] = [
         Panel::Editor,
         Panel::Outline,
         Panel::EntryHelpers,
@@ -130,6 +133,7 @@ impl Panel {
         Panel::Http,
         Panel::Soap,
         Panel::EInvoice,
+        Panel::Preview,
     ];
 
     /// The panel table: the one place a panel is described.
@@ -167,6 +171,7 @@ impl Panel {
             Self::Http => tool("http", tl!("HTTP & OpenAPI"), "send", Zone::Workspace, DefaultPlace::Right, false, "view.tool.http"),
             Self::Soap => tool("soap", tl!("SOAP"), "cloud", Zone::Workspace, DefaultPlace::Right, false, "view.tool.soap"),
             Self::EInvoice => tool("einvoice", tl!("E-Rechnung"), "receipt-text", Zone::Workspace, DefaultPlace::Right, false, "view.tool.einvoice"),
+            Self::Preview => tool("preview", tl!("Preview"), "globe", Zone::Workspace, DefaultPlace::Right, false, "view.tool.preview"),
         }
     }
 
@@ -217,6 +222,8 @@ impl Panel {
             _ if self == Panel::Soap => bar == Some(BarKind::Wsdl) || proxy_running,
             // An invoice, or the XML of a PDF (a hybrid invoice).
             _ if self == Panel::EInvoice => bar == Some(BarKind::Invoice),
+            // A page, an XML document that names a stylesheet, an SVG image (plain XML can be shown too, as a tree).
+            _ if self == Panel::Preview => matches!(bar, Some(BarKind::Html | BarKind::Rendered)),
             _ => true,
         }
     }
@@ -812,6 +819,7 @@ impl Content<'_> {
             Panel::Http => crate::tools::http::body(ui, self.app),
             Panel::Soap => crate::tools::soap::body(ui, self.app),
             Panel::EInvoice => crate::tools::einvoice::body(ui, self.app),
+            Panel::Preview => crate::tools::preview::body(ui, self.app),
             // The tab strip names the panel: the bodies start a little below it (they drew their own title above them before).
             // (The Outline's toolbar sits right under the tab strip.)
             Panel::Outline => crate::outline::body(ui, self.app),
@@ -1127,6 +1135,7 @@ mod tests {
                 Panel::Http => 8,
                 Panel::Soap => 9,
                 Panel::EInvoice => 10,
+                Panel::Preview => 11,
             }
         }
         assert_eq!(Panel::ALL.iter().map(|p| place(*p)).collect::<Vec<_>>(), (0..Panel::ALL.len()).collect::<Vec<_>>());
@@ -1141,6 +1150,10 @@ mod tests {
         assert!(!Panel::EInvoice.relevant(Some(DocKind::Xml)), "plain XML is no invoice");
         assert!(Panel::EInvoice.relevant_in(Some(DocKind::Xml), Some(BarKind::Invoice), false));
         assert!(!Panel::EInvoice.relevant_in(None, None, false));
+        assert!(Panel::Preview.relevant_in(Some(DocKind::Html), Some(BarKind::Html), false), "a page");
+        assert!(Panel::Preview.relevant_in(Some(DocKind::Xml), Some(BarKind::Rendered), false), "XML with a stylesheet, or SVG");
+        assert!(!Panel::Preview.relevant_in(Some(DocKind::Xml), Some(BarKind::Xml), false), "plain XML: dimmed (it is shown as a tree)");
+        assert!(!Panel::Preview.relevant_in(None, None, false));
     }
 
     #[test]
