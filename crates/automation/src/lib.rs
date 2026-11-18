@@ -44,6 +44,7 @@ mod validate;
 mod wsdl;
 mod xbrl;
 mod xpath;
+mod xpath_debug;
 mod xslt;
 mod xslt_complete;
 
@@ -104,6 +105,8 @@ pub struct Automation {
     network: Network,
     /// The debugging proxy, while one is started (`soap_proxy_start`); it stops with `soap_proxy_stop` or when the session ends.
     proxy: Option<xmlcraft_platform::proxy::Debugger>,
+    /// The XPath debugging sessions (`xpath_debug_start`), at most four; they end with `xpath_debug_stop` or with the session.
+    debug: xpath_debug::Sessions,
 }
 
 impl Default for Automation {
@@ -115,12 +118,24 @@ impl Default for Automation {
 impl Automation {
     /// A session with no root: paths are not confined (a person at their own terminal).
     pub fn new() -> Self {
-        Self { session: Session::new(), confinement: Confinement::none(), network: Network::offline(), proxy: None }
+        Self {
+            session: Session::new(),
+            confinement: Confinement::none(),
+            network: Network::offline(),
+            proxy: None,
+            debug: xpath_debug::Sessions::default(),
+        }
     }
 
     /// A session whose tools may only touch files under `root`.
     pub fn with_root(root: &Path) -> Result<Self> {
-        Ok(Self { session: Session::new(), confinement: Confinement::new(root)?, network: Network::offline(), proxy: None })
+        Ok(Self {
+            session: Session::new(),
+            confinement: Confinement::new(root)?,
+            network: Network::offline(),
+            proxy: None,
+            debug: xpath_debug::Sessions::default(),
+        })
     }
 
     /// The same session, with the schemas and DTDs that documents name downloaded (and kept) with `network`.
