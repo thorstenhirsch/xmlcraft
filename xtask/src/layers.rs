@@ -52,6 +52,7 @@ pub const TABLE: &[(&str, Class)] = &[
     // L4 features
     ("validate", Class::Layer(4)),
     ("query", Class::Layer(4)),
+    ("xquery", Class::Layer(4)),
     ("schematron", Class::Layer(4)),
     ("diff", Class::Layer(4)),
     ("xbrl", Class::Layer(4)),
@@ -117,6 +118,8 @@ pub const SIDEWAYS: &[(&str, &str)] = &[
     ("openapi", "convert"),
     // Schematron evaluates its rules with the XPath engine.
     ("schematron", "query"),
+    // XQuery compiles to the XPath engine and describes its results as the XPath tool does.
+    ("xquery", "query"),
     // An e-invoice is checked against the XML Schema of its syntax and the Schematron rules of its standard.
     ("einvoice", "validate"),
     ("einvoice", "schematron"),

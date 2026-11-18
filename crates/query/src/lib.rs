@@ -192,6 +192,35 @@ fn static_context(options: &Options) -> StaticContextBuilder<'_> {
 
 /// The items of a result, described and cut as `options` says.
 fn collect(sequence: &xee_xpath::Sequence, xot: &Xot, map: &SourceMap, options: &Options, source: &str) -> Evaluated {
+    collect_in(sequence, xot, map, options, source, Owner::All)
+}
+
+/// Describe the items of a result for XmlCraft's other query languages (XQuery). Nodes of the tree under `document` get their path and
+/// their place in `source` (through `map`); other nodes (built by the query) have neither and are shown serialized.
+pub fn describe_items(sequence: &xee_xpath::Sequence, xot: &Xot, document: Option<(&SourceMap, &str, xot::Node)>, options: &Options) -> Evaluated {
+    match document {
+        Some((map, source, root)) => collect_in(sequence, xot, map, options, source, Owner::Tree(root)),
+        None => collect_in(sequence, xot, &SourceMap::of(""), options, "", Owner::None),
+    }
+}
+
+/// Which nodes of a result are from the document (have a path and a place in its text).
+#[derive(Clone, Copy)]
+enum Owner {
+    /// All of them (an XPath result).
+    All,
+    /// Those of the tree with this root.
+    Tree(xot::Node),
+    /// None (there is no document).
+    None,
+}
+
+/// `xml` as the engine reads it: its DOCTYPE declaration blanked (see [`Prepared::new`]).
+pub fn readable_document(xml: &str) -> String {
+    without_doctype(xml)
+}
+
+fn collect_in(sequence: &xee_xpath::Sequence, xot: &Xot, map: &SourceMap, options: &Options, source: &str, root: Owner) -> Evaluated {
     // (A context to write maps, arrays and functions with: the engine's writer wants one.)
     let program = xee_xpath_compiler::parse(StaticContext::default(), "()").ok();
     let builder = program.as_ref().map(|p| p.dynamic_context_builder());
@@ -202,7 +231,7 @@ fn collect(sequence: &xee_xpath::Sequence, xot: &Xot, map: &SourceMap, options: 
     for item in sequence.iter() {
         count += 1;
         if items.len() < options.max_items && total < options.max_total_text {
-            let described = describe(&item, xot, map, options, source, display.as_ref());
+            let described = describe(&item, xot, map, options, source, display.as_ref(), root);
             total = total.saturating_add(described.text.chars().count());
             items.push(described);
         }
@@ -222,8 +251,32 @@ pub fn evaluate(xml: &str, expression: &str, options: &Options) -> Result<Evalua
     Prepared::new(xml)?.evaluate(expression, options)
 }
 
-fn describe(item: &Item, xot: &Xot, map: &SourceMap, options: &Options, source: &str, display: Option<&DynamicContext>) -> ResultItem {
+fn describe(item: &Item, xot: &Xot, map: &SourceMap, options: &Options, source: &str, display: Option<&DynamicContext>, root: Owner) -> ResultItem {
     let (kind, name, path, span, text) = match item {
+        Item::Node(node) if !belongs(xot, *node, root) => {
+            // A node the query built: no path, no place; shown serialized.
+            let kind = match xot.value(*node) {
+                XotValue::Document => "document",
+                XotValue::Element(_) => "element",
+                XotValue::Attribute(_) => "attribute",
+                XotValue::Text(_) => "text",
+                XotValue::Comment(_) => "comment",
+                XotValue::ProcessingInstruction(_) => "processing-instruction",
+                XotValue::Namespace(_) => "namespace",
+            };
+            let name = match xot.value(*node) {
+                XotValue::Element(e) => qualified(xot, e.name()),
+                XotValue::Attribute(a) => qualified(xot, a.name()),
+                XotValue::ProcessingInstruction(p) => xot.local_name_str(p.target()).to_owned(),
+                _ => String::new(),
+            };
+            let text = match xot.value(*node) {
+                XotValue::Attribute(a) => format!("{}=\"{}\"", qualified(xot, a.name()), a.value()),
+                XotValue::Text(_) | XotValue::Namespace(_) => xot.string_value(*node),
+                _ => xot.to_string(*node).unwrap_or_else(|_| xot.string_value(*node)),
+            };
+            (kind.to_owned(), name, None, None, text)
+        }
         Item::Node(node) => {
             let (kind, name) = match xot.value(*node) {
                 XotValue::Document => ("document", String::new()),
@@ -378,5 +431,13 @@ fn atomic_type(a: &xee_xpath::Atomic) -> &'static str {
         A::Boolean(_) => "xs:boolean",
         A::Binary(..) => "xs:base64Binary",
         A::QName(_) => "xs:QName",
+    }
+}
+
+fn belongs(xot: &Xot, node: xot::Node, owner: Owner) -> bool {
+    match owner {
+        Owner::All => true,
+        Owner::Tree(root) => xot.root(node) == root,
+        Owner::None => false,
     }
 }

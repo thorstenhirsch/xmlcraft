@@ -179,6 +179,19 @@ pub enum Error {
     ///
     /// No two keys in a map may have the same key value.
     XQDY0137,
+    // XmlCraft patch: the codes of XQuery 3.1's constructors, raised by the content rules of `xml_append`.
+    /// Attribute after content.
+    ///
+    /// The content sequence of an element constructor has an attribute or namespace node after a node of another kind.
+    XQTY0024,
+    /// Duplicate attribute.
+    ///
+    /// An element constructor makes an element with two attributes of the same name.
+    XQDY0025,
+    /// Function item in content.
+    ///
+    /// The content of a node constructor contains a function item (other than an array, which is flattened).
+    XQTY0105,
     // XPath errors and functions: https://www.w3.org/TR/xpath-functions-31/#error-summary
     /// Wrong number of arguments.
     ///

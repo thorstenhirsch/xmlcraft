@@ -8,6 +8,7 @@ mod datetime;
 mod duration;
 mod external;
 mod fn_;
+mod hidden_xquery;
 mod hidden_xslt;
 mod hof;
 mod id;
@@ -44,6 +45,7 @@ pub(crate) fn static_function_descriptions() -> Vec<StaticFunctionDescription> {
     descriptions.extend(array::static_function_descriptions());
     descriptions.extend(map::static_function_descriptions());
     descriptions.extend(hidden_xslt::static_function_descriptions());
+    descriptions.extend(hidden_xquery::static_function_descriptions());
     descriptions.extend(uri::static_function_descriptions());
     descriptions.extend(external::static_function_descriptions());
     descriptions.extend(parse::static_function_descriptions());
