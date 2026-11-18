@@ -1,7 +1,7 @@
 //! Evaluating an XPath expression on a worker thread: what the XPath window waits for, so that an expression that takes long (or a large
 //! document) never stops the window. The evaluation itself is [`xmlcraft_query::evaluate`].
 
-use xmlcraft_query::{Evaluated, Options, Prepared, QueryError, Trace, trace};
+use xmlcraft_query::{Evaluated, Limits, Options, Prepared, Profile, QueryError, Trace, trace};
 use xmlcraft_syntax::parse;
 use xmlcraft_xsd::dom;
 
@@ -27,6 +27,8 @@ pub struct XPathJob {
     pub options: Options,
     /// Also trace the steps of a path: how many items each leaves and how long it took.
     pub trace: bool,
+    /// Profile the run (`xmlcraft_query::profile`): what each part of the expression was evaluated for and what it cost.
+    pub profile: bool,
 }
 
 /// What came of a request.
@@ -36,6 +38,8 @@ pub struct XPathOutcome {
     pub result: Result<Evaluated, QueryError>,
     /// The trace, when it was asked for and the document could be read.
     pub trace: Option<Trace>,
+    /// The profile, when it was asked for and the document could be read.
+    pub profile: Option<Profile>,
 }
 
 /// Evaluates expressions on a worker thread.
@@ -48,13 +52,18 @@ fn run(job: XPathJob) -> XPathOutcome {
     // (The engine returns errors; the guard is for the case that it does not.)
     let done = crate::guard(|| {
         let mut prepared = Prepared::new(&job.text)?;
-        let result = prepared.evaluate(&job.expression, &job.options);
+        // A profiled run is the evaluation: its result is the one listed.
+        let profiled = job.profile.then(|| prepared.profile(&job.expression, &job.options, &Limits::default()));
+        let result = match &profiled {
+            Some(p) => p.result.clone(),
+            None => prepared.evaluate(&job.expression, &job.options),
+        };
         let traced = (job.trace && result.is_ok()).then(|| trace(&mut prepared, &job.expression, &job.options));
-        Ok::<_, QueryError>((result, traced))
+        Ok::<_, QueryError>((result, traced, profiled))
     });
-    let (result, traced) = match done {
-        Ok(Ok(both)) => both,
-        Ok(Err(e)) => (Err(e), None),
+    let (result, traced, profiled) = match done {
+        Ok(Ok(all)) => all,
+        Ok(Err(e)) => (Err(e), None, None),
         Err(panic) => {
             log::error!("evaluating an XPath expression failed: {panic}");
             (
@@ -65,10 +74,11 @@ fn run(job: XPathJob) -> XPathOutcome {
                     span: None,
                 }),
                 None,
+                None,
             )
         }
     };
-    XPathOutcome { serial, result, trace: traced }
+    XPathOutcome { serial, result, trace: traced, profile: profiled }
 }
 
 impl XPathRunner {
@@ -111,6 +121,7 @@ mod tests {
             expression: expression.to_owned(),
             options: Options::default(),
             trace: false,
+            profile: false,
         }
     }
 
@@ -169,6 +180,20 @@ mod tests {
         assert_eq!(steps, [("/r".to_owned(), 1), ("/i".to_owned(), 2)]);
         assert!(outcomes[1].trace.is_none() && outcomes[1].result.is_err(), "no trace for an expression that does not compile");
         assert!(outcomes[2].trace.is_none(), "none unless asked for");
+    }
+
+    #[test]
+    fn a_profile_is_made_when_asked_for_and_its_result_is_the_one_listed() {
+        let runner = XPathRunner::inline();
+        let mut j = job(1, "//i[@n > 1]");
+        j.profile = true;
+        runner.submit(j);
+        runner.submit(job(2, "//i[@n > 1]"));
+        let outcomes = runner.poll();
+        let profile = outcomes[0].profile.as_ref().expect("a profile");
+        assert_eq!(outcomes[0].result.as_ref().expect("runs").count, 1);
+        assert_eq!(profile.nodes.iter().find(|n| n.text == "@n > 1").map(|n| n.hits), Some(2), "the predicate tested both items");
+        assert!(outcomes[1].profile.is_none(), "none unless asked for");
     }
 
     #[test]

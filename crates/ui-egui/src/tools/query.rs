@@ -18,6 +18,7 @@ use xmlcraft_query::{Evaluated, Options, Phase, QueryError, ResultItem};
 use crate::bar_actions::BarKind;
 use crate::i18n::{fmt, tl};
 use crate::kit::{self, Tone};
+use crate::tools::xpath_lab::{self, DebugTool, Marks, Mode, ProfileAnswer, ProfileView, Running};
 use crate::tools::{self, Bound};
 use crate::{Panel, XmlCraftApp, widgets};
 
@@ -98,6 +99,19 @@ pub(crate) struct QueryTool {
     /// Give the keyboard to the expression field at the next frame.
     focus: bool,
     xslt: Xslt,
+    /// Evaluate, Profile or Debug.
+    mode: Mode,
+    /// The last profile, and how it is listed.
+    profile: Option<ProfileAnswer>,
+    profile_view: ProfileView,
+    /// The part of the expression chosen in the profile (marked in the expression field).
+    selected: Option<Range<usize>>,
+    /// The Debug mode.
+    debug: DebugTool,
+    /// Where the caret was in the expression field (a byte offset), for a breakpoint.
+    caret: Option<usize>,
+    /// The expression of the request being waited for.
+    asked: String,
 }
 
 /// The one line that says what an error is.
@@ -115,7 +129,7 @@ fn describe(e: &QueryError) -> String {
 }
 
 /// One line for an item: what it is and where, then its value.
-fn line(item: &ResultItem) -> String {
+pub(crate) fn line(item: &ResultItem) -> String {
     let head = match (item.name.is_empty(), &item.path) {
         (false, Some(path)) => format!("{} {}  {path}", item.kind, item.name),
         (false, None) => format!("{} {}", item.kind, item.name),
@@ -156,6 +170,8 @@ struct Asked {
     run: bool,
     jump: Option<Range<usize>>,
     pick_file: bool,
+    /// What the Debug mode asked for (its buttons and keys).
+    debug: xpath_lab::DebugAsk,
 }
 
 impl XmlCraftApp {
@@ -202,8 +218,100 @@ impl XmlCraftApp {
         self.generate_serial += 1;
         let serial = self.generate_serial;
         let options = Options { namespaces: root_namespaces(&text), ..Options::default() };
-        self.xpath.submit(XPathJob { serial, text, expression: self.query.expression.clone(), options, trace: self.query.trace_steps });
+        let profile = self.query.mode == Mode::Profile;
+        self.query.asked = self.query.expression.clone();
+        self.xpath.submit(XPathJob { serial, text, expression: self.query.expression.clone(), options, trace: self.query.trace_steps, profile });
         self.query.waiting = Some((serial, id, version));
+        if profile {
+            self.query.selected = None;
+        }
+    }
+
+    /// Start debugging the expression on the document being shown (a session already going is ended first).
+    fn start_xpath_debug(&mut self) {
+        let Some(doc) = self.session.active_document() else { return };
+        let (id, version, text) = (doc.id(), doc.editor().version(), doc.editor().text());
+        let debug = &mut self.query.debug;
+        debug.run = None;
+        debug.state = None;
+        debug.error = None;
+        if !doc.language().is_xml() || text.len() > MAX_BYTES {
+            debug.error = Some(tl!("The debugger works on XML documents of up to 16 MB.").to_owned());
+            return;
+        }
+        let expression = self.query.expression.clone();
+        debug.breakpoints.retain(|&b| b < expression.len());
+        let options = Options { namespaces: root_namespaces(&text), ..Options::default() };
+        let settings = xmlcraft_query::debug::Settings {
+            breakpoints: debug.breakpoints.clone(),
+            stop_at_start: debug.breakpoints.is_empty(),
+            ..xmlcraft_query::debug::Settings::default()
+        };
+        match xmlcraft_query::debug::Debugger::start(&text, &expression, &options, settings) {
+            Ok(session) => {
+                debug.run = Some(Running(std::sync::Arc::new(session)));
+                (debug.doc, debug.version, debug.expression) = (id, version, expression);
+            }
+            Err(e) => debug.error = Some(describe(&e)),
+        }
+    }
+
+    /// Follow the debugging session, whatever else is open: its state, and its end when the panel, the tab or the mode is left.
+    /// Called every frame.
+    pub(crate) fn pump_xpath_debug(&mut self, ctx: &egui::Context) {
+        let Some(run) = self.query.debug.run.clone() else { return };
+        let shown = self.workbench.is_visible(Panel::Query) && self.query.tab == Tab::XPath && self.query.mode == Mode::Debug;
+        if !shown {
+            run.0.stop();
+            self.query.debug.run = None;
+            if let Some(state) = self.query.debug.state.as_mut() {
+                state.status = xmlcraft_query::debug::Status::Stopped;
+            }
+            return;
+        }
+        let state = run.0.state();
+        let status = state.status.clone();
+        if self.query.debug.state.as_ref() != Some(&state) {
+            self.query.debug.state = Some(state);
+        }
+        match status {
+            xmlcraft_query::debug::Status::Running => ctx.request_repaint_after(std::time::Duration::from_millis(30)),
+            xmlcraft_query::debug::Status::Paused => {}
+            xmlcraft_query::debug::Status::Finished | xmlcraft_query::debug::Status::Stopped => {
+                if run.0.is_done() {
+                    self.query.debug.run = None;
+                } else {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(30));
+                }
+            }
+        }
+    }
+
+    /// Do what the Debug mode asked for.
+    fn debug_act(&mut self, ask: xpath_lab::DebugAsk) {
+        let debug = &mut self.query.debug;
+        if ask.toggle
+            && let Some(at) = self.query.caret
+        {
+            debug.toggle(at);
+        }
+        if let Some(run) = debug.run.clone() {
+            if let Some(action) = ask.action {
+                run.0.step(action);
+                if let Some(state) = debug.state.as_mut() {
+                    state.status = xmlcraft_query::debug::Status::Running;
+                }
+            }
+            if ask.pause {
+                run.0.pause();
+            }
+            if ask.stop {
+                run.0.stop();
+            }
+        }
+        if let Some(range) = ask.jump {
+            self.jump_to(range);
+        }
     }
 
     /// Collect what the XPath worker finished, whatever else is open. Called every frame.
@@ -218,6 +326,10 @@ impl XmlCraftApp {
                 Ok(evaluated) => Outcome::Items(evaluated),
                 Err(e) => Outcome::Failed(describe(&e)),
             };
+            if let Some(profile) = done.profile {
+                let expression = std::mem::take(&mut self.query.asked);
+                self.query.profile = Some(ProfileAnswer { doc, version, expression, profile });
+            }
             self.query.answer = Some(Answer { doc, version, outcome, trace: done.trace });
             self.workbench.set_attention(Panel::Query);
         }
@@ -348,14 +460,16 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     if app.query.tab == Tab::Xslt && !choices.iter().any(|(_, o)| Some(o) == app.query.xslt.other.as_ref()) {
         app.query.xslt.other = choices.first().map(|(_, o)| o.clone());
     }
-    let (primary, icon, can, why_not) = match app.query.tab {
-        Tab::XPath => (
-            tl!("Evaluate"),
-            "search",
-            usable && app.query.waiting.is_none() && !app.query.expression.trim().is_empty(),
-            tl!("Type an expression first."),
-        ),
-        Tab::Xslt => (
+    let typed = !app.query.expression.trim().is_empty();
+    let debugging = app.query.debug.running();
+    let (primary, icon, can, why_not) = match (app.query.tab, app.query.mode) {
+        (Tab::XPath, Mode::Evaluate) => (tl!("Evaluate"), "search", usable && app.query.waiting.is_none() && typed, tl!("Type an expression first.")),
+        (Tab::XPath, Mode::Profile) => {
+            (tl!("Profile the expression"), "clock", usable && app.query.waiting.is_none() && typed, tl!("Type an expression first."))
+        }
+        (Tab::XPath, Mode::Debug) if debugging => (tl!("Stop debugging"), "square", true, ""),
+        (Tab::XPath, Mode::Debug) => (tl!("Start debugging"), "chevron-right", usable && typed, tl!("Type an expression first.")),
+        (Tab::Xslt, _) => (
             tl!("Transform"),
             "wand-sparkles",
             usable && app.query.xslt.waiting.is_none() && app.query.xslt.other.is_some(),
@@ -379,9 +493,28 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
         ui.add_space(kit::GAP);
         match app.query.tab {
             Tab::XPath => {
-                let (submit, jump) = tools::columns(ui, &mut app.query, xpath_form, |ui, tool| xpath_results(ui, tool, bound.id, version));
+                // The keys of the Debug mode, while the keyboard is in this panel (F10 is Transform, so it is not one of them).
+                if app.query.mode == Mode::Debug && tools::had_keyboard(ui, Panel::Query) {
+                    let (key, shift) = ui.input(|i| {
+                        let key = [egui::Key::F5, egui::Key::F6, egui::Key::F9, egui::Key::F11].into_iter().find(|k| i.key_pressed(*k));
+                        (key, i.modifiers.shift)
+                    });
+                    match key {
+                        Some(egui::Key::F5) => asked.debug.action = Some(xmlcraft_query::debug::Action::Continue),
+                        Some(egui::Key::F6) => asked.debug.action = Some(xmlcraft_query::debug::Action::Over),
+                        Some(egui::Key::F9) => asked.debug.toggle = true,
+                        Some(egui::Key::F11) if shift => asked.debug.action = Some(xmlcraft_query::debug::Action::Out),
+                        Some(egui::Key::F11) => asked.debug.action = Some(xmlcraft_query::debug::Action::Into),
+                        _ => {}
+                    }
+                }
+                let (submit, (jump, debug)) = tools::columns(ui, &mut app.query, xpath_form, |ui, tool| xpath_results(ui, tool, bound.id, version));
                 asked.run |= submit && can;
                 asked.jump = jump;
+                if let Some(debug) = debug {
+                    let keys = std::mem::take(&mut asked.debug);
+                    asked.debug = xpath_lab::DebugAsk { action: debug.action.or(keys.action), toggle: debug.toggle || keys.toggle, ..debug };
+                }
             }
             Tab::Xslt => {
                 let pick = xslt_form(ui, &mut app.query.xslt, &choices, sheet_shown);
@@ -390,11 +523,18 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
         }
     });
     if asked.run && can {
-        match app.query.tab {
-            Tab::XPath => app.run_xpath(),
-            Tab::Xslt => app.run_transform(sheet_shown),
+        match (app.query.tab, app.query.mode) {
+            (Tab::XPath, Mode::Debug) if debugging => {
+                if let Some(run) = &app.query.debug.run {
+                    run.0.stop();
+                }
+            }
+            (Tab::XPath, Mode::Debug) => app.start_xpath_debug(),
+            (Tab::XPath, _) => app.run_xpath(),
+            (Tab::Xslt, _) => app.run_transform(sheet_shown),
         }
     }
+    app.debug_act(std::mem::take(&mut asked.debug));
     if let Some(range) = asked.jump {
         app.jump_to(range);
     }
@@ -406,27 +546,155 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
 /// The expression and its options. True when Cmd/Ctrl+Enter was pressed in the expression.
 fn xpath_form(ui: &mut egui::Ui, tool: &mut QueryTool) -> bool {
     let mut submit = false;
-    let response = ui.add(
-        egui::TextEdit::multiline(&mut tool.expression)
-            .desired_rows(3)
-            .desired_width(f32::INFINITY)
-            .code_editor()
-            .hint_text(tl!("//item[@id = '7']/name")),
-    );
+    kit::segmented(ui, &mut tool.mode, &[(Mode::Evaluate, tl!("Result")), (Mode::Profile, tl!("Profile")), (Mode::Debug, tl!("Debug"))]);
+    ui.add_space(kit::GAP);
+    let marks = marks(tool);
+    let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap: f32| {
+        let job = xpath_lab::marked(ui, text.as_str(), &marks, wrap);
+        ui.fonts_mut(|f| f.layout_job(job))
+    };
+    let output = egui::TextEdit::multiline(&mut tool.expression)
+        .desired_rows(3)
+        .desired_width(f32::INFINITY)
+        .code_editor()
+        .hint_text(tl!("//item[@id = '7']/name"))
+        .layouter(&mut layouter)
+        .show(ui);
+    let response = output.response.clone();
     widgets::name_for_assistive_technology(ui, &response, tl!("The XPath expression"));
+    if let Some(range) = output.cursor_range {
+        let index = range.primary.index.0;
+        tool.caret = Some(tool.expression.char_indices().nth(index).map_or(tool.expression.len(), |(b, _)| b));
+    }
     if std::mem::take(&mut tool.focus) {
         response.request_focus();
     }
     if response.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.command) {
         submit = true;
     }
-    kit::help(ui, tl!("Ctrl/⌘+Enter evaluates. Prefixes declared on the root element can be used; elements in a default namespace are *:name."));
-    ui.add(widgets::checkbox(&mut tool.trace_steps, tl!("Show the steps: the items each step of a path leaves, and its time")));
+    // Ctrl/⌘+B in the expression: a breakpoint at the caret.
+    if response.has_focus()
+        && ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::B))
+        && let Some(at) = tool.caret
+    {
+        tool.debug.toggle(at);
+    }
+    // A breakpoint past the end of an expression made shorter is gone.
+    let length = tool.expression.len();
+    if tool.debug.breakpoints.iter().any(|&b| b >= length) {
+        tool.debug.breakpoints.retain(|&b| b < length);
+    }
+    match tool.mode {
+        Mode::Evaluate => {
+            kit::help(
+                ui,
+                tl!("Ctrl/⌘+Enter evaluates. Prefixes declared on the root element can be used; elements in a default namespace are *:name."),
+            );
+            ui.add(widgets::checkbox(&mut tool.trace_steps, tl!("Show the steps: the items each step of a path leaves, and its time")));
+        }
+        Mode::Profile => kit::help(
+            ui,
+            tl!(
+                "Ctrl/⌘+Enter profiles: the expression runs once and each part of it is listed with how often it was evaluated and what it cost. A click on a row marks its part here."
+            ),
+        ),
+        Mode::Debug => {}
+    }
+    if tool.mode == Mode::Profile
+        && let Some(text) = tool.selected.as_ref().and_then(|s| tool.expression.get(s.clone()))
+    {
+        kit::help(ui, &fmt(tl!("Marked: {text}"), &[("text", text)]));
+    }
+    match tool.mode {
+        Mode::Evaluate | Mode::Profile => {}
+        Mode::Debug => {
+            kit::help(ui, tl!("Ctrl/⌘+B (or F9) sets a breakpoint at the caret; breakpoints are underlined. Ctrl/⌘+Enter starts debugging."));
+            let mut remove = None;
+            ui.horizontal_wrapped(|ui| {
+                for &b in &tool.debug.breakpoints {
+                    let around: String = tool.expression.get(b..).unwrap_or_default().chars().take(12).collect();
+                    let label = fmt(tl!("Remove the breakpoint at {at}"), &[("at", &around)]);
+                    let r = ui.button(format!("● {around} ×"));
+                    widgets::name_for_assistive_technology(ui, &r, &label);
+                    if r.clicked() {
+                        remove = Some(b);
+                    }
+                }
+            });
+            if let Some(b) = remove {
+                tool.debug.toggle(b);
+            }
+        }
+    }
     submit
 }
 
+/// What to mark in the expression field: the debugger's place and its breakpoints, or the profile's heat and the row chosen.
+fn marks(tool: &QueryTool) -> Marks {
+    let same = |e: &str| e == tool.expression;
+    match tool.mode {
+        Mode::Evaluate => Marks::default(),
+        Mode::Profile => match tool.profile.as_ref().filter(|p| same(&p.expression)) {
+            Some(p) => Marks { selected: tool.selected.clone(), heat: xpath_lab::heat(&p.profile), ..Marks::default() },
+            None => Marks::default(),
+        },
+        Mode::Debug => Marks {
+            current: tool
+                .debug
+                .state
+                .as_ref()
+                .filter(|s| s.status == xmlcraft_query::debug::Status::Paused && same(&tool.debug.expression))
+                .and_then(|s| s.at.as_ref())
+                .map(|a| a.span.clone()),
+            breakpoints: tool.debug.breakpoints.clone(),
+            ..Marks::default()
+        },
+    }
+}
+
+/// The results of the mode: the items, the profile or the debugger. Returns the span of a node clicked, and what the debugger asked.
+fn xpath_results(ui: &mut egui::Ui, tool: &mut QueryTool, doc: u64, version: u64) -> (Option<Range<usize>>, Option<xpath_lab::DebugAsk>) {
+    match tool.mode {
+        Mode::Evaluate => (evaluated(ui, tool, doc, version), None),
+        Mode::Profile => {
+            ui.add_space(kit::GAP);
+            if tool.waiting.is_some() {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(tl!("Profiling…"));
+                });
+            }
+            match tool.profile.as_ref().filter(|p| p.doc == doc) {
+                Some(answer) => {
+                    if let Some(span) = xpath_lab::profile_view(ui, answer, &mut tool.profile_view, tool.selected.as_ref()) {
+                        tool.selected = Some(span);
+                    }
+                    if answer.version != version {
+                        kit::help(ui, tl!("The document changed since: profile again."));
+                    }
+                }
+                None => {
+                    if tool.waiting.is_none() {
+                        kit::help(ui, tl!("Press Profile (or Ctrl/⌘+Enter). Each part of the expression is listed with its hits and its time."));
+                    }
+                }
+            }
+            (None, None)
+        }
+        Mode::Debug => {
+            ui.add_space(kit::GAP);
+            let current = tool.debug.doc == doc && tool.debug.version == version;
+            if tool.debug.doc != doc && tool.debug.state.is_some() {
+                kit::help(ui, tl!("The session runs on another document."));
+            }
+            let ask = xpath_lab::debug_view(ui, &tool.debug, current);
+            (None, Some(ask))
+        }
+    }
+}
+
 /// What the last evaluation found, filling the rest of the panel. Returns the span of the node clicked.
-fn xpath_results(ui: &mut egui::Ui, tool: &mut QueryTool, doc: u64, version: u64) -> Option<Range<usize>> {
+fn evaluated(ui: &mut egui::Ui, tool: &mut QueryTool, doc: u64, version: u64) -> Option<Range<usize>> {
     ui.add_space(kit::GAP);
     if tool.waiting.is_some() {
         ui.horizontal(|ui| {
