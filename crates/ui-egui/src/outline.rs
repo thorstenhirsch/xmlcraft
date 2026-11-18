@@ -620,6 +620,8 @@ fn menu(ui: &mut egui::Ui, item: &OutlineItem, language: Language) -> Option<Men
     entry(ui, tl!("Select Element"), MenuAction::Command("xml.select_element"));
     if matches!(language, Language::Xml | Language::Html) {
         entry(ui, tl!("Copy XPath"), MenuAction::Command("xml.copy_xpath"));
+    } else if language.is_data() {
+        entry(ui, tl!("Copy JSON Pointer"), MenuAction::Command("xml.copy_xpath"));
     }
     if language == Language::Xml {
         ui.separator();

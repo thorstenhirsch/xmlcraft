@@ -13,6 +13,7 @@ use xmlcraft_xsd::model::{
 };
 use xmlcraft_xsd::{LoadedDocument, ResolvingLoader, load};
 
+use crate::language::Language;
 use crate::validation::{OpenDocuments, ResolverFactory};
 use crate::worker::Worker;
 
@@ -24,6 +25,8 @@ pub enum DefinitionKind {
     Attribute,
     Group,
     AttributeGroup,
+    /// What a `$ref` of a JSON or YAML document points to (see `json_definition`).
+    Reference,
 }
 
 impl DefinitionKind {
@@ -34,6 +37,7 @@ impl DefinitionKind {
             Self::Attribute => "attribute",
             Self::Group => "group",
             Self::AttributeGroup => "attribute_group",
+            Self::Reference => "reference",
         }
     }
 }
@@ -44,6 +48,8 @@ pub struct Definition {
     pub kind: DefinitionKind,
     /// The expanded name (`{namespace}local`).
     pub name: String,
+    /// The text the byte range holds (what a window checks the place for before it selects it: a document may have changed).
+    pub selected: String,
     /// The document it is written in (empty for a text with no location).
     pub location: String,
     /// The byte range of its name.
@@ -113,6 +119,7 @@ pub fn definition(text: &str, location: &str, offset: usize, resolver: &Resolver
     Ok(Some(Definition {
         kind: reference.kind.definition_kind(),
         name: reference.name.name.to_string(),
+        selected: defined_in.get(span.clone()).unwrap_or_default().to_owned(),
         location: found_in.to_owned(),
         start: span.start,
         end: span.end,
@@ -345,6 +352,7 @@ fn references_in_attribute(attribute: &AttributeDecl, out: &mut Vec<Reference>) 
 struct Request {
     version: u64,
     offset: usize,
+    language: Language,
     text: Buffer,
     location: String,
     open: Vec<(String, Buffer)>,
@@ -357,6 +365,14 @@ pub struct Answer {
     pub offset: usize,
     pub definition: Option<Definition>,
     pub error: Option<String>,
+}
+
+/// What a definition is looked for in: the text of a document, its language and where it is (a relative reference is taken from there).
+#[derive(Clone, Copy)]
+pub struct Subject<'a> {
+    pub text: &'a Buffer,
+    pub language: Language,
+    pub path: Option<&'a Path>,
 }
 
 /// Finds definitions on a worker thread, so that a schema document with a slow include or import never makes the window wait.
@@ -378,11 +394,11 @@ impl DefinitionFinder {
         self.worker.on_done(notify);
     }
 
-    /// Find the definition of the name at `offset` in `text` (version `version` of the document at `path`). `open` are the open documents,
-    /// by their paths, so that an included document being edited is read as it is.
-    pub fn find(&self, document: u64, version: u64, text: &Buffer, path: Option<&Path>, offset: usize, open: Vec<(String, Buffer)>) {
-        let location = path.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-        self.worker.submit(document, Request { version, offset, text: text.clone(), location, open });
+    /// Find the definition of the name (or `$ref`) at `offset` in `subject` (version `version` of the document `document`). `open` are the
+    /// open documents, by their paths, so that an included document being edited is read as it is.
+    pub fn find(&self, document: u64, version: u64, subject: Subject<'_>, offset: usize, open: Vec<(String, Buffer)>) {
+        let location = subject.path.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        self.worker.submit(document, Request { version, offset, language: subject.language, text: subject.text.clone(), location, open });
     }
 
     pub fn poll(&self) -> Vec<(u64, Answer)> {
@@ -393,7 +409,11 @@ impl DefinitionFinder {
 fn run(resolvers: &ResolverFactory, request: Request) -> Answer {
     let resolver = resolvers(Arc::new(OpenDocuments::new(request.open)));
     let text = request.text.text();
-    let outcome = crate::guard(|| definition(&text, &request.location, request.offset, &resolver)).unwrap_or_else(|message| {
+    let outcome = crate::guard(|| match request.language {
+        language if language.is_data() => crate::json_definition::definition(language, &text, &request.location, request.offset, &resolver),
+        _ => definition(&text, &request.location, request.offset, &resolver),
+    })
+    .unwrap_or_else(|message| {
         log::error!("finding a definition failed: {message}");
         Err("finding the definition failed (a bug)".to_owned())
     });

@@ -126,3 +126,51 @@ fn f12_does_not_select_a_range_in_an_open_document_that_changed_after_it_was_ask
     wait(&mut h, "the answer", |app| app.status.contains("changed meanwhile"));
     assert_eq!(h.state().session.active_document().map(|d| d.name().to_owned()), Some("root.xsd".to_owned()), "nothing else is shown");
 }
+
+#[test]
+fn f12_on_a_ref_in_json_and_yaml_selects_the_key_it_points_to_and_in_another_file_opens_it() {
+    let dir = tempfile::tempdir().expect("dir");
+    let text = "{\n  \"definitions\": {\"pet\": {\"type\": \"object\"}},\n  \"p\": {\"$ref\": \"#/definitions/pet\"}\n}\n";
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "schema.json", text));
+    place(&mut h, text.find("#/definitions").expect("the ref") + 3);
+    assert!(h.state_mut().execute("xml.go_to_definition"));
+    let start = text.find("pet").expect("the key");
+    wait(&mut h, "the definition", |app| {
+        app.session.active_document().is_some_and(|doc| {
+            let selection = doc.editor().primary();
+            (selection.start(), selection.end()) == (start, start + 3)
+        })
+    });
+    assert!(h.state().status.contains("Went to the definition"), "{}", h.state().status);
+    // A reference to another file opens it with the key selected.
+    let other = file(dir.path(), "types.yaml", "Name:\n  type: string\nAge:\n  type: integer\n");
+    let api = "components:\n  schemas:\n    P:\n      $ref: 'types.yaml#/Age'\n";
+    open(&mut h, &file(dir.path(), "api.yaml", api));
+    place(&mut h, api.find("types.yaml").expect("the ref") + 2);
+    assert!(h.state_mut().execute("xml.go_to_definition"));
+    let other_text = std::fs::read_to_string(&other).expect("reads");
+    let start = other_text.find("Age").expect("the key");
+    wait(&mut h, "the other file", |app| {
+        app.session.active_document().is_some_and(|doc| {
+            let selection = doc.editor().primary();
+            doc.name() == "types.yaml" && (selection.start(), selection.end()) == (start, start + 3)
+        })
+    });
+}
+
+#[test]
+fn f12_on_a_ref_that_points_nowhere_says_so_and_copy_json_pointer_copies_the_pointer() {
+    let dir = tempfile::tempdir().expect("dir");
+    let text = "{\"a\": [{\"b\": 1}], \"r\": {\"$ref\": \"#/missing\"}}";
+    let mut h = shell();
+    open(&mut h, &file(dir.path(), "x.json", text));
+    place(&mut h, text.find("#/missing").expect("the ref") + 2);
+    assert!(h.state_mut().execute("xml.go_to_definition"));
+    wait(&mut h, "the answer", |app| app.status.contains("does not exist"));
+    // Copy JSON Pointer is the Outline's Copy XPath for a data document.
+    place(&mut h, text.find('1').expect("the number"));
+    assert!(h.state_mut().execute("xml.copy_xpath"));
+    h.run_steps(2);
+    assert_eq!(h.state().status, "Copied /a/0/b");
+}

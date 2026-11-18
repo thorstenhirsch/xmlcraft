@@ -199,6 +199,23 @@ impl XmlCraftApp {
 
     /// Copy the path of the element the caret is in.
     pub(crate) fn copy_xpath(&mut self) {
+        // A data document has JSON Pointers where XML has XPaths.
+        if let Some(doc) = self.session.active_document().filter(|d| d.language().is_data()) {
+            let pointer = xmlcraft_engine::json_definition::json_pointer_at(&doc.editor().text(), doc.language(), doc.editor().primary().start());
+            let Some(pointer) = pointer else {
+                self.status = tl!("The caret is not in a value.").to_owned();
+                return;
+            };
+            if let Some(ctx) = self.ctx.clone() {
+                ctx.copy_text(pointer.clone());
+            }
+            self.status = if pointer.is_empty() {
+                tl!("Copied the JSON Pointer of the whole document (empty)").to_owned()
+            } else {
+                fmt(tl!("Copied {path}"), &[("path", &pointer)])
+            };
+            return;
+        }
         let Some((index, _)) = self.element_at_caret() else { return };
         let path = self.active_analysis().and_then(|a| elements::xpath(&a.outline, index));
         let (Some(path), Some(ctx)) = (path, self.ctx.clone()) else { return };

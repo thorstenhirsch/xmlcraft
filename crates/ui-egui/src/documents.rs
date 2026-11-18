@@ -9,7 +9,7 @@ use xmlcraft_code_editor::{CodeEditor, ViewState};
 use xmlcraft_engine::analysis::{Analysis, Skipped};
 use xmlcraft_engine::doc_kind::{DocKind, doc_kind};
 use xmlcraft_engine::validation::{Validation, Verdict};
-use xmlcraft_engine::xsd_definition::{Answer, Definition};
+use xmlcraft_engine::xsd_definition::{Answer, Definition, Subject};
 use xmlcraft_engine::{Document, SaveError};
 use xmlcraft_platform::files::{self, DiskChange};
 use xmlcraft_text::encoding::Encoding;
@@ -721,8 +721,9 @@ impl XmlCraftApp {
     /// worker thread (the resolver may read files or download).
     pub(crate) fn go_to_definition(&mut self) {
         let Some(doc) = self.session.active_document() else { return };
-        if doc.language() != xmlcraft_engine::language::Language::Xml {
-            self.status = tl!("Go to Definition is for names in an XML Schema").to_owned();
+        let language = doc.language();
+        if language != xmlcraft_engine::language::Language::Xml && !language.is_data() {
+            self.status = tl!("Go to Definition is for names in an XML Schema and for $ref in JSON and YAML").to_owned();
             return;
         }
         let (id, version, offset) = (doc.id(), doc.editor().version(), doc.editor().primary().head());
@@ -730,7 +731,7 @@ impl XmlCraftApp {
         // The versions of the open documents the answer will be about: a definition in one that changes meanwhile is not shown.
         self.definition_versions =
             self.session.documents().iter().filter_map(|d| d.path().map(|p| (p.to_string_lossy().into_owned(), d.editor().version()))).collect();
-        self.definition.find(id, version, doc.editor().buffer(), doc.path(), offset, open);
+        self.definition.find(id, version, Subject { text: doc.editor().buffer(), language, path: doc.path() }, offset, open);
         self.status = tl!("Finding the definition…").to_owned();
     }
 
@@ -779,8 +780,7 @@ impl XmlCraftApp {
         let Some(index) = self.session.position_of(target) else { return };
         let Some(doc) = self.session.document_mut(index) else { return };
         // The range must still hold the name (a file opened from disk may differ from the text that was read).
-        let local = definition.name.rsplit('}').next().unwrap_or(&definition.name);
-        let holds_name = doc.editor().buffer().slice(definition.start..definition.end).is_ok_and(|t| t == local);
+        let holds_name = doc.editor().buffer().slice(definition.start..definition.end).is_ok_and(|t| t == definition.selected);
         if !holds_name {
             self.status = tl!("The definition is no longer where it was found: press F12 again").to_owned();
             return;
