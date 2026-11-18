@@ -136,3 +136,26 @@ fn yaml_is_refused_with_a_reason_until_it_is_read() {
     let why = err(&mut a, json!({ "text": "a: 1\n", "language": "yaml", "schema_text": "{}" }));
     assert!(why.contains("YAML") && why.contains("not checked"), "{why}");
 }
+
+#[test]
+fn a_bson_document_is_checked_as_the_values_its_extended_json_stands_for() {
+    let mut a = Automation::new();
+    let schema = r#"{"type":"object","properties":{"_id":{"type":"string","pattern":"^[0-9a-f]{24}$"},"age":{"type":"integer","minimum":0},"score":{"type":"number"},"created":{"type":"string"}},"required":["_id"]}"#;
+    let text = "{\n  \"_id\": {\"$oid\": \"507f1f77bcf86cd799439011\"},\n  \"age\": {\"$numberInt\": \"-4\"},\n  \"score\": {\"$numberDouble\": \"2.5\"},\n  \"created\": {\"$date\": \"2024-03-01T10:00:00Z\"}\n}";
+    let r = ok(&mut a, json!({ "text": text, "language": "bson", "schema_text": schema }));
+    assert_eq!((r["valid"].as_bool(), r["violation_count"].as_u64()), (Some(false), Some(1)), "{r}");
+    assert_eq!(
+        (r["violations"][0]["keyword"].as_str(), r["violations"][0]["instance_pointer"].as_str(), r["violations"][0]["line"].as_u64()),
+        (Some("minimum"), Some("/age"), Some(3))
+    );
+    let valid = ok(&mut a, json!({ "text": text.replace("-4", "4"), "language": "bson", "schema_text": schema }));
+    assert_eq!(valid["valid"].as_bool(), Some(true), "{valid}");
+    // A .bson file is read as the Extended JSON of its documents (one to a line is a list of documents).
+    let dir = tempfile::tempdir().expect("dir");
+    let documents = xmlcraft_bson::from_text(&text.replace("-4", "4")).expect("documents");
+    let bytes = xmlcraft_bson::write_all(&documents).expect("writes");
+    let path = dir.path().join("d.bson");
+    std::fs::write(&path, bytes).expect("writes");
+    let from_file = ok(&mut a, json!({ "path": path.to_str().expect("utf-8"), "schema_text": schema }));
+    assert_eq!((from_file["valid"].as_bool(), from_file["violation_count"].as_u64()), (Some(true), Some(0)), "{from_file}");
+}

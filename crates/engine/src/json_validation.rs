@@ -52,8 +52,27 @@ fn read(text: &str, language: Language) -> Option<Instance> {
             let read = xmlcraft_yaml_syntax::parse(text, &xmlcraft_yaml_syntax::Options::default());
             (read.documents, read.diagnostics.iter().any(|d| d.severity() == Severity::Error))
         }
-        // A BSON file is shown as Extended JSON, whose types a schema does not know.
-        Language::Xml | Language::Bson | Language::Html => return None,
+        // A BSON file is shown as Extended JSON, whose type wrappers a schema does not know: it is checked as the value they stand for
+        // (`{"$numberInt": "5"}` is 5), with the places of the wrappers.
+        Language::Bson => {
+            let (roots, broken) = match xmlcraft_bson::layout_of_text(text) {
+                xmlcraft_bson::Layout::Lines => {
+                    let mut broken = false;
+                    let mut roots = Vec::new();
+                    for (_, read) in parse_lines(text, &Options::default()) {
+                        broken |= read.diagnostics.iter().any(|d| d.severity() == Severity::Error);
+                        roots.extend(read.root);
+                    }
+                    (roots, broken)
+                }
+                xmlcraft_bson::Layout::Single => {
+                    let read = parse(text, &Options::default());
+                    (read.root.into_iter().collect::<Vec<_>>(), read.diagnostics.iter().any(|d| d.severity() == Severity::Error))
+                }
+            };
+            (roots.iter().map(xmlcraft_bson::bson_to_plain_json).collect(), broken)
+        }
+        Language::Xml | Language::Html => return None,
     };
     let first = roots.first();
     let named = first.and_then(member_reference).or_else(|| if language == Language::Yaml { modeline(text) } else { None });
@@ -200,14 +219,6 @@ fn load_schema(documents: &Documents<'_>, reference: &str, location: &str) -> Re
 pub fn schema_reference(text: &str, language: Language) -> Option<String> {
     if text.len() > MAX_ANALYSED_BYTES || !(text.contains("$schema") || text.contains("openapi") || text.contains("swagger")) {
         return None;
-    }
-    if language == Language::Bson {
-        // A BSON file's text is Extended JSON, read here only for the schema it names (its values are not validated).
-        let first = match xmlcraft_bson::layout_of_text(text) {
-            xmlcraft_bson::Layout::Lines => parse_lines(text, &Options::default()).into_iter().find_map(|(_, read)| read.root),
-            xmlcraft_bson::Layout::Single => parse(text, &Options::default()).root,
-        }?;
-        return member_reference(&first).map(|(_, reference)| reference).filter(|r| !r.is_empty());
     }
     read(text, language)?.reference.map(|(_, reference)| reference).filter(|r| !r.is_empty())
 }
@@ -394,10 +405,11 @@ mod tests {
     }
 
     #[test]
-    fn a_text_with_a_syntax_error_is_not_checked_and_bson_and_xml_are_left_alone() {
+    fn a_text_with_a_syntax_error_is_not_checked_and_xml_is_left_alone() {
         let v = check(r#"{"$schema": "s.json", "name": "#, Language::Json(JsonFlavor::Json));
         assert_eq!(v.verdict, Verdict::NotWellFormed);
         assert_eq!(check("{}", Language::Bson).verdict, Verdict::Valid);
+        assert_eq!(check(r#"{"$schema": "s.json", "name": "#, Language::Bson).verdict, Verdict::NotWellFormed);
         assert_eq!(check("<a/>", Language::Xml).verdict, Verdict::Valid);
         assert_eq!(schema_reference(r#"{"$schema": "s.json"}"#, Language::Bson).as_deref(), Some("s.json"));
         assert_eq!(
@@ -405,6 +417,47 @@ mod tests {
             None,
             "the first document names it, as in JSON Lines"
         );
+    }
+
+    #[test]
+    fn a_bson_document_is_checked_as_the_values_its_extended_json_stands_for_and_problems_are_at_the_text() {
+        let schema = r#"{"type":"object","properties":{"name":{"type":"string"},"n":{"type":"integer","minimum":1},"_id":{"type":"string","pattern":"^[0-9a-f]{24}$"},"d":{"type":"number"},"when":{"type":"string"},"o":{"type":"object","properties":{"k":{"type":"integer"}}}},"required":["name"]}"#;
+        let check = |text: &str, language: Language| validate_data(text, language, 1, "/d/doc.bson", &resolver(&[("/d/s.json", schema)]));
+        let ok = r#"{"$schema": "s.json", "name": "x", "n": {"$numberInt": "2"}, "_id": {"$oid": "507f1f77bcf86cd799439011"}, "d": {"$numberDouble": "NaN"}, "when": {"$date": "2024-03-01T10:00:00Z"}, "o": {"k": {"$numberLong": "7"}}}"#;
+        let v = check(ok, Language::Bson);
+        assert_eq!((v.verdict, v.problems.len()), (Verdict::Valid, 0), "{:?}", v.problems);
+        // A number below its minimum is a problem at the member's name, not inside the wrapper.
+        let bad = r#"{"$schema": "s.json", "name": "x", "n": {"$numberInt": "0"}, "o": {"k": {"$numberDouble": "1.5"}}}"#;
+        let v = check(bad, Language::Bson);
+        assert_eq!(v.verdict, Verdict::Invalid, "{:?}", v.problems);
+        let places: Vec<&str> = (0..v.problems.len()).map(|i| at(bad, &v, i)).collect();
+        assert!(places.contains(&"\"n\""), "the minimum, at the name: {places:?}");
+        assert!(places.contains(&"\"k\""), "1.5 is not an integer, at the name: {places:?}");
+        // A wrapper of the wrong type for the schema is the value it is: a number where the schema wants a string, an object id (a string) fine.
+        let wrong = r#"{"$schema": "s.json", "name": {"$numberInt": "5"}}"#;
+        let v = check(wrong, Language::Bson);
+        assert_eq!(v.verdict, Verdict::Invalid, "{:?}", v.problems);
+        assert_eq!(at(wrong, &v, 0), "\"name\"", "a member is shown at its name, as in JSON");
+        let item = r#"{"$schema": "s.json", "name": "x", "o": {"k": [{"$numberInt": "5"}]}}"#;
+        let list = validate_data(
+            item,
+            Language::Bson,
+            1,
+            "/d/doc.bson",
+            &resolver(&[("/d/s.json", r#"{"properties": {"o": {"properties": {"k": {"items": {"type": "string"}}}}}}"#)]),
+        );
+        assert_eq!(at(item, &list, 0), r#"{"$numberInt": "5"}"#, "an item is shown at its whole wrapper");
+        let id = r#"{"$schema": "s.json", "name": {"$oid": "507f1f77bcf86cd799439011"}}"#;
+        assert_eq!(check(id, Language::Bson).verdict, Verdict::Valid);
+        // One document to a line.
+        let lines = "{\"$schema\": \"s.json\", \"name\": \"a\"}\n{\"name\": {\"$numberInt\": \"1\"}}\n";
+        let v = check(lines, Language::Bson);
+        assert_eq!(v.verdict, Verdict::Invalid, "{:?}", v.problems);
+        assert_eq!(v.problems.len(), 1);
+        assert!(v.problems[0].diagnostic.span.start > lines.find('\n').unwrap_or(0), "found in the second line");
+        // No schema named: the syntax only.
+        assert_eq!(check(r#"{"a": {"$numberInt": "1"}}"#, Language::Bson).verdict, Verdict::Valid);
+        assert!(names_a_schema(ok, Language::Bson));
     }
 
     #[test]
