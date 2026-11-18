@@ -3,7 +3,6 @@ use std::rc::Rc;
 
 use ahash::HashMap;
 use ahash::HashMapExt;
-use arrayvec::ArrayVec;
 use xot::Xot;
 
 use crate::error;
@@ -11,7 +10,10 @@ use crate::function;
 use crate::sequence;
 use crate::stack;
 
-const FRAMES_MAX: usize = 64;
+// XmlCraft patch: the frames are a `Vec` bounded by `FRAMES_MAX` (an `ArrayVec` of 64 before). XQuery functions recurse, and
+// 64 calls deep was too shallow for them; inline calls run in the interpreter's loop, not on the Rust stack, so the bound is about
+// memory only.
+const FRAMES_MAX: usize = 4096;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Frame {
@@ -39,7 +41,7 @@ struct RegexKey {
 pub struct State<'a> {
     stack: Vec<stack::Value>,
     build_stack: Vec<BuildStackEntry>,
-    frames: ArrayVec<Frame, FRAMES_MAX>,
+    frames: Vec<Frame>,
     regex_cache: RefCell<HashMap<RegexKey, Rc<regexml::Regex>>>,
     pub(crate) xot: &'a mut Xot,
 }
@@ -86,7 +88,7 @@ impl<'a> State<'a> {
         Self {
             stack: vec![],
             build_stack: vec![],
-            frames: ArrayVec::new(),
+            frames: Vec::new(),
             regex_cache: RefCell::new(HashMap::new()),
             xot,
         }
@@ -177,7 +179,7 @@ impl<'a> State<'a> {
         function_id: function::InlineFunctionId,
         arity: usize,
     ) -> error::Result<()> {
-        if self.frames.len() >= self.frames.capacity() {
+        if self.frames.len() >= FRAMES_MAX {
             return Err(error::Error::StackOverflow);
         }
         self.frames.push(Frame {
@@ -186,6 +188,19 @@ impl<'a> State<'a> {
             base: self.stack.len() - arity,
         });
         Ok(())
+    }
+
+    // XmlCraft patch: how deep the stack, the frames and the sequences being built are, so that a caught error (`fn:xmlcraft-try`)
+    // can put them back as they were before the call that failed.
+    pub(crate) fn checkpoint(&self) -> (usize, usize, usize) {
+        (self.stack.len(), self.frames.len(), self.build_stack.len())
+    }
+
+    pub(crate) fn restore(&mut self, checkpoint: (usize, usize, usize)) {
+        let (stack, frames, builds) = checkpoint;
+        self.stack.truncate(stack);
+        self.frames.truncate(frames);
+        self.build_stack.truncate(builds);
     }
 
     // XmlCraft patch: the frames and the sequences being built, for the hook (`hook::At`).

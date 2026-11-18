@@ -28,4 +28,6 @@ pub use iter::AtomizedIter;
 pub(crate) use iter::{one, option};
 pub(crate) use opc::OptionParameterConverter;
 pub use serialization::SerializationParameters;
+// XmlCraft patch: public, so that a caller can choose the output method (`method`) of `SerializationParameters`.
+pub use opc::QNameOrString;
 pub(crate) use variant::Range;

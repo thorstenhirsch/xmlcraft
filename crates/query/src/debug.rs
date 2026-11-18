@@ -526,7 +526,7 @@ impl Stepper<'_> {
     }
 
     fn describe(&self, at: &At<'_, '_>, item: &Item) -> ResultItem {
-        crate::describe(item, at.xot(), self.map, &self.options, self.source, Some(at.dynamic_context()))
+        crate::describe(item, at.xot(), self.map, &self.options, self.source, Some(at.dynamic_context()), crate::Owner::All)
     }
 
     fn value(&self, at: &At<'_, '_>, value: Option<&stack::Value>) -> (Vec<ResultItem>, usize) {

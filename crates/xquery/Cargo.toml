@@ -1,0 +1,32 @@
+[package]
+name = "xmlcraft-xquery"
+description = "XmlCraft's XQuery 3.1: a parser and a compiler to the xee engine's XPath machinery"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xmlcraft-query = { workspace = true }
+xee-xpath = "0.1.5"
+xee-interpreter = "0.2.0"
+xee-ir = "0.1.5"
+xee-xpath-ast = "0.1.4"
+xee-schema-type = "0.1.4"
+xot = "0.31"
+ibig = "0.3"
+rust_decimal = "1"
+ordered-float = "5"
+ahash = "0.8"
+iri-string = "0.7"
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.4", features = ["wasm_js"] }
+getrandom03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }

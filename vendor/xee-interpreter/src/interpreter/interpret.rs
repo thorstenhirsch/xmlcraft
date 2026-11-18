@@ -32,7 +32,13 @@ pub struct Interpreter<'a> {
     pub(crate) state: State<'a>,
     // XmlCraft patch: what is told about each instruction before it runs (the profiler and the debugger); none in a normal run.
     pub(crate) hook: Option<&'a mut dyn Hook>,
+    // XmlCraft patch: how many calls from library functions into inline functions are running inside one another (`fn:for-each`,
+    // `fn:sort` with a key, `fn:xmlcraft-try`). Each runs the interpreter's loop again on the Rust stack, so it is bounded.
+    pub(crate) nested_calls: usize,
 }
+
+/// XmlCraft patch: the most library-to-inline calls running inside one another (see `Interpreter::nested_calls`).
+const NESTED_CALLS_MAX: usize = 192;
 
 pub struct ContextInfo {
     pub item: stack::Value,
@@ -56,6 +62,7 @@ impl<'a> Interpreter<'a> {
             runnable,
             state: State::new(xot),
             hook: None,
+            nested_calls: 0,
         }
     }
 
@@ -748,11 +755,27 @@ impl<'a> Interpreter<'a> {
         }
         self.call_function(function, arity)?;
         if matches!(function, function::Function::Inline(_)) {
+            // XmlCraft patch: bound the nesting of the interpreter loop on the Rust stack.
+            if self.nested_calls >= NESTED_CALLS_MAX {
+                return Err(error::Error::StackOverflow);
+            }
+            self.nested_calls += 1;
             // run interpreter until we return to the base
             // we started in
-            self.run_actual(self.state.frame().base())?;
+            let result = self.run_actual(self.state.frame().base());
+            self.nested_calls -= 1;
+            result?;
         }
         self.state.pop()
+    }
+
+    // XmlCraft patch: the state's depths, for `fn:xmlcraft-try` (see `State::checkpoint`).
+    pub(crate) fn checkpoint(&self) -> (usize, usize, usize) {
+        self.state.checkpoint()
+    }
+
+    pub(crate) fn restore(&mut self, checkpoint: (usize, usize, usize)) {
+        self.state.restore(checkpoint)
     }
 
     fn call_function(&mut self, function: &function::Function, arity: u8) -> error::Result<()> {
@@ -1133,58 +1156,79 @@ impl<'a> Interpreter<'a> {
         parent_node: xot::Node,
         value: sequence::Sequence,
     ) -> error::Result<()> {
+        // XmlCraft patch: the content rules of XQuery 3.1 §3.9.1.3 / §3.9.3.1 (and XSLT 3.0 §5.7.1), without panics. Adjacent atomic
+        // values become one text node with spaces between them; a document node's children are added instead of it; arrays are
+        // flattened; an attribute or namespace node after other content is XQTY0024, an attribute whose name the element already
+        // has is XQDY0025, an attribute or namespace node in a document is XPTY0004; nodes are always copied (a parentless node used
+        // to be moved, so a constructed node bound to a variable changed when it was used as content); a failed append is an error.
         let mut string_values = Vec::new();
-        for item in value.iter() {
+        let mut items: Vec<sequence::Item> = Vec::new();
+        flatten_content(&value, &mut items, 0)?;
+        for item in items {
             match item {
                 sequence::Item::Node(node) => {
-                    // if there were any string values before this node, add them
-                    // to the node, separated by a space character
                     if !string_values.is_empty() {
-                        self.xml_append_string_values(parent_node, &string_values);
+                        self.xml_append_string_values(parent_node, &string_values)?;
                         string_values.clear();
                     }
-                    match self.state.xot.value(node) {
-                        xot::Value::Document => {
-                            // TODO: Handle adding all the children instead
-                            return Err(error::Error::Unsupported);
-                        }
-                        xot::Value::Text(text) => {
-                            // zero length text nodes are skipped
-                            // Can this even exist, or does Xot not have
-                            // them anyway?
-                            if text.get().is_empty() {
-                                continue;
-                            }
-                        }
-                        _ => {}
-                    }
-
-                    // if we have a parent we're already in another document,
-                    // in which case we want to make a clone first
-                    let node = if self.state.xot.parent(node).is_some() {
-                        self.state.xot.clone_node(node)
-                    } else {
-                        node
-                    };
-                    // TODO: error out if namespace or attribute node
-                    // is added once a normal child already exists
-                    self.state.xot.any_append(parent_node, node).unwrap();
+                    self.xml_append_node(parent_node, node)?;
                 }
                 sequence::Item::Atomic(atomic) => string_values.push(atomic.string_value()),
-                sequence::Item::Function(_) => return Err(error::Error::XTDE0450),
+                sequence::Item::Function(_) => return Err(error::Error::XQTY0105),
             }
         }
-        // if there are any string values left in the end
         if !string_values.is_empty() {
-            self.xml_append_string_values(parent_node, &string_values);
+            self.xml_append_string_values(parent_node, &string_values)?;
         }
         Ok(())
     }
 
-    fn xml_append_string_values(&mut self, parent_node: xot::Node, string_values: &[String]) {
+    fn xml_append_node(&mut self, parent_node: xot::Node, node: xot::Node) -> error::Result<()> {
+        let xot = &mut self.state.xot;
+        let parent_is_document = xot.is_document(parent_node);
+        match xot.value(node) {
+            xot::Value::Document => {
+                let children: Vec<xot::Node> = xot.children(node).collect();
+                for child in children {
+                    self.xml_append_node(parent_node, child)?;
+                }
+                return Ok(());
+            }
+            xot::Value::Text(text) if text.get().is_empty() => return Ok(()),
+            xot::Value::Attribute(attribute) => {
+                if parent_is_document {
+                    return Err(error::Error::XPTY0004);
+                }
+                if xot.first_child(parent_node).is_some() {
+                    return Err(error::Error::XQTY0024);
+                }
+                let name = attribute.name();
+                if xot.attributes(parent_node).get(name).is_some() {
+                    return Err(error::Error::XQDY0025);
+                }
+            }
+            xot::Value::Namespace(_) => {
+                if parent_is_document {
+                    return Err(error::Error::XPTY0004);
+                }
+                if xot.first_child(parent_node).is_some() {
+                    return Err(error::Error::XQTY0024);
+                }
+            }
+            _ => {}
+        }
+        let copy = xot.clone_node(node);
+        xot.any_append(parent_node, copy).map_err(|_| error::Error::XPTY0004)?;
+        Ok(())
+    }
+
+    fn xml_append_string_values(&mut self, parent_node: xot::Node, string_values: &[String]) -> error::Result<()> {
         let text = string_values.join(" ");
+        if text.is_empty() {
+            return Ok(());
+        }
         let text_node = self.state.xot.new_text(&text);
-        self.state.xot.append(parent_node, text_node).unwrap();
+        self.state.xot.append(parent_node, text_node).map_err(|_| error::Error::XPTY0004)
     }
 
     fn shallow_copy_node(&mut self, node: xot::Node) -> xot::Node {
@@ -1313,4 +1357,26 @@ impl<'a> Interpreter<'a> {
         let chunk = &function.chunk;
         read_u8(chunk, &mut frame.ip)
     }
+}
+
+/// XmlCraft patch: the items of a content sequence, with arrays flattened (XQuery 3.1 §3.9.1.3, rule 1e), nested arrays to a bound.
+fn flatten_content(
+    value: &sequence::Sequence,
+    out: &mut Vec<sequence::Item>,
+    depth: usize,
+) -> error::Result<()> {
+    if depth > 64 {
+        return Err(error::Error::StackOverflow);
+    }
+    for item in value.iter() {
+        match &item {
+            sequence::Item::Function(function::Function::Array(array)) => {
+                for member in array.0.iter() {
+                    flatten_content(member, out, depth + 1)?;
+                }
+            }
+            _ => out.push(item.clone()),
+        }
+    }
+    Ok(())
 }

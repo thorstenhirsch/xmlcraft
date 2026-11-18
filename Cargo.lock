@@ -7772,6 +7772,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "xmlcraft-xquery"
+version = "0.3.0"
+dependencies = [
+ "ahash",
+ "getrandom 0.3.4",
+ "getrandom 0.4.3",
+ "ibig",
+ "iri-string",
+ "ordered-float",
+ "proptest",
+ "rust_decimal",
+ "xee-interpreter",
+ "xee-ir",
+ "xee-schema-type",
+ "xee-xpath",
+ "xee-xpath-ast",
+ "xmlcraft-query",
+ "xot",
+]
+
+[[package]]
 name = "xmlcraft-xsd"
 version = "0.3.0"
 dependencies = [
