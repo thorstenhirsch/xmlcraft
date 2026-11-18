@@ -6,6 +6,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::{Arc, Mutex, PoisonError};
 
+use xmlcraft_engine::http_auth::Auth;
 use xmlcraft_engine::soap::{Summary, headers_text, parse_headers, summarize};
 use xmlcraft_platform::client::{Request, send};
 
@@ -16,6 +17,35 @@ use crate::kit::{self, Tone};
 
 /// The most bytes of a request the windows send.
 const MAX_BODY_BYTES: usize = 16 * 1024 * 1024;
+
+/// The most requests the history of a window keeps.
+pub(crate) const MAX_HISTORY: usize = 30;
+
+/// A request of this run, for the history: what was asked (without any secret) and how it came out.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct HistoryEntry {
+    serial: u64,
+    method: String,
+    url: String,
+    headers: String,
+    body: String,
+    /// The status line, the error, or nothing while the answer is awaited.
+    outcome: Option<String>,
+}
+
+impl HistoryEntry {
+    /// The line the list shows.
+    pub(crate) fn label(&self) -> String {
+        format!("{} {} — {}", self.method, self.url, self.outcome.as_deref().unwrap_or("…"))
+    }
+}
+
+/// A header that carries a secret: it is not kept in the history.
+fn is_secret_header(name: &str) -> bool {
+    let lower = name.trim().to_ascii_lowercase();
+    matches!(lower.as_str(), "authorization" | "proxy-authorization" | "cookie" | "set-cookie")
+        || ["key", "token", "secret", "password"].iter().any(|word| lower.contains(word))
+}
 
 /// What a send came back with.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -120,6 +150,10 @@ pub(crate) struct Pane {
     pub error: Option<String>,
     pub answer: Option<Answer>,
     pub act: Option<Act>,
+    /// How the request is authorized: set from the window's form when it sends, held in memory only (never in the history).
+    pub auth: Auth,
+    /// The requests of this run, the newest first (at most [`MAX_HISTORY`]).
+    pub history: Vec<HistoryEntry>,
 }
 
 impl Pane {
@@ -133,6 +167,46 @@ impl Pane {
         self.body = made.body;
         self.warnings = made.warnings;
         self.answer = None;
+    }
+
+    /// Remember a request that is being sent. The headers are those the person typed, without the ones that carry a secret; the
+    /// authorization of the window is not part of it.
+    fn remember(&mut self, serial: u64, method: &str, url: &str, headers: &[(String, String)], body: &str) {
+        let kept: Vec<(String, String)> = headers.iter().filter(|(n, _)| !is_secret_header(n)).cloned().collect();
+        self.history.insert(
+            0,
+            HistoryEntry {
+                serial,
+                method: method.to_owned(),
+                url: url.to_owned(),
+                headers: headers_text(&kept),
+                body: body.to_owned(),
+                outcome: None,
+            },
+        );
+        self.history.truncate(MAX_HISTORY);
+    }
+
+    /// Say how the request `serial` came out.
+    fn remembered(&mut self, serial: u64, result: &Result<Answer, String>) {
+        let outcome = match result {
+            Ok(answer) => format!("{} {} in {} ms", answer.status, answer.reason, answer.elapsed_ms),
+            Err(why) => why.chars().take(120).collect(),
+        };
+        if let Some(entry) = self.history.iter_mut().find(|e| e.serial == serial) {
+            entry.outcome = Some(outcome);
+        }
+    }
+
+    /// Put the request of history entry `index` back in the fields (without the authorization, which stays as the form has it).
+    pub(crate) fn restore(&mut self, index: usize) {
+        let Some(entry) = self.history.get(index).cloned() else { return };
+        self.method = entry.method;
+        self.url = entry.url;
+        self.headers = entry.headers;
+        self.body = entry.body;
+        self.answer = None;
+        self.error = None;
     }
 
     /// Whether Send may be pressed.
@@ -220,12 +294,20 @@ impl XmlCraftApp {
             return;
         }
         let serial = self.next_http_serial();
-        let mut request = Request::new(if method.is_empty() { "POST" } else { &method }, &url);
-        request.headers = headers;
+        let sent_method = if method.is_empty() { "POST".to_owned() } else { method.clone() };
+        // The authorization goes into the request that is sent, never into what is remembered or shown.
+        let (mut sent_headers, mut sent_url) = (headers.clone(), url.clone());
+        if let Err(why) = pane.auth.apply(&mut sent_headers, &mut sent_url) {
+            pane.error = Some(why);
+            return;
+        }
+        let auth = pane.auth.clone();
+        let mut request = Request::new(&sent_method, &sent_url);
+        request.headers = sent_headers;
         request.body = pane.body.clone().into_bytes();
         request.allow_private_hosts = pane.allow_private;
         let started = self.spawn_http(move || {
-            let result = send("XmlCraft", &request).map(|response| {
+            let result = send("XmlCraft", &request).map_err(|why| auth.redact(&why)).map(|response| {
                 let decoded = xmlcraft_text::encoding::decode(&response.body, &xmlcraft_text::encoding::sniff(&response.body));
                 Answer {
                     status: response.status,
@@ -240,6 +322,7 @@ impl XmlCraftApp {
         });
         match started {
             Ok(()) => {
+                pane.remember(serial, &sent_method, &url, &headers, &pane.body.clone());
                 pane.sending = Some(serial);
                 pane.error = None;
                 pane.answer = None;
@@ -299,6 +382,7 @@ impl XmlCraftApp {
                 Outcome::Sent { serial, result } if pane.sending == Some(serial) => {
                     pane.sending = None;
                     news = true;
+                    pane.remembered(serial, &result);
                     match result {
                         Ok(answer) => pane.answer = Some(answer),
                         Err(why) => pane.error = Some(why),
@@ -414,11 +498,62 @@ pub(crate) fn pane_ui(ui: &mut egui::Ui, pane: &mut Pane, with_method: bool) {
             pane.act = act;
         }
     }
+    history_ui(ui, pane);
+}
+
+/// The requests of this run: a click puts one back in the fields.
+fn history_ui(ui: &mut egui::Ui, pane: &mut Pane) {
+    if pane.history.is_empty() {
+        return;
+    }
+    let mut restore = None;
+    let mut clear = false;
+    kit::section(ui, tl!("History"), |ui| {
+        for (i, entry) in pane.history.iter().enumerate() {
+            let response =
+                ui.selectable_label(false, entry.label()).on_hover_text(tl!("Put this request back in the fields (without its authorization)"));
+            if response.clicked() {
+                restore = Some(i);
+            }
+        }
+        if ui.small_button(tl!("Clear history")).clicked() {
+            clear = true;
+        }
+        kit::help(ui, tl!("Kept for this run only; the secrets of the Authorization section are never in it."));
+    });
+    if let Some(i) = restore {
+        pane.restore(i);
+    }
+    if clear {
+        pane.history.clear();
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_history_keeps_thirty_requests_without_secret_headers_and_restores_one() {
+        let mut pane = Pane::default();
+        for i in 0..40u64 {
+            let headers = vec![
+                ("Accept".to_owned(), "*/*".to_owned()),
+                ("Authorization".to_owned(), "Bearer s3cret".to_owned()),
+                ("X-Api-Key".to_owned(), "k".to_owned()),
+            ];
+            pane.remember(i, "GET", &format!("https://x.test/{i}"), &headers, "body");
+        }
+        assert_eq!(pane.history.len(), MAX_HISTORY);
+        assert_eq!(pane.history[0].url, "https://x.test/39", "the newest first");
+        assert!(pane.history.iter().all(|e| !e.headers.contains("s3cret") && !e.headers.contains("X-Api-Key") && e.headers.contains("Accept")));
+        pane.remembered(39, &Err("refused".to_owned()));
+        assert_eq!(pane.history[0].label(), "GET https://x.test/39 — refused");
+        pane.restore(2);
+        assert_eq!((pane.method.as_str(), pane.url.as_str(), pane.body.as_str()), ("GET", "https://x.test/37", "body"));
+        assert!(!pane.headers.contains("Authorization"));
+        pane.restore(999);
+    }
 
     #[test]
     fn documents_made_from_a_request_or_an_answer_are_named_after_the_description_and_what_they_look_like() {

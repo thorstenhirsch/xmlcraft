@@ -108,3 +108,96 @@ fn a_call_is_sent_to_a_server_and_the_json_answer_is_read_and_nothing_is_sent_of
         Err(ToolError::InvalidArgs(_))
     ));
 }
+
+const SECURED: &str = r##"{"openapi": "3.0.0", "info": {"title": "S", "version": "1"}, "servers": [{"url": "http://example.test"}],
+  "security": [{"k": []}],
+  "components": {"securitySchemes": {"b": {"type": "http", "scheme": "basic"}, "k": {"type": "apiKey", "in": "header", "name": "X-Key"}, "o": {"type": "oauth2", "flows": {}}}},
+  "paths": {"/p": {"get": {"operationId": "p"}}}}"##;
+
+#[test]
+fn the_security_schemes_of_a_description_are_listed_and_auth_names_what_it_adds_but_never_its_secrets() {
+    let mut a = Automation::new();
+    let r = call(&mut a, "openapi_describe", json!({ "text": SECURED })).expect("runs");
+    assert_eq!(r["default_security_scheme"], json!("k"));
+    assert_eq!(r["security_schemes"][0], json!({ "name": "b", "supported": true, "type": "basic" }));
+    assert_eq!(r["security_schemes"][1], json!({ "name": "k", "supported": true, "type": "api_key", "in": "header", "key_name": "X-Key" }));
+    assert_eq!(r["security_schemes"][2]["supported"], json!(false));
+    let r = call(
+        &mut a,
+        "openapi_request",
+        json!({ "text": SECURED, "operation": "p", "auth": { "type": "basic", "user": "alice", "password": "hunter2-pw" } }),
+    )
+    .expect("runs");
+    assert_eq!(r["auth"]["adds_headers"], json!(["Authorization"]), "{r}");
+    assert!(!r.to_string().contains("hunter2-pw") && !r.to_string().contains("YWxpY2U6aHVudGVyMi1wdw"), "no secret, nor its encoding: {r}");
+    let q = call(
+        &mut a,
+        "openapi_request",
+        json!({ "text": SECURED, "operation": "p", "auth": { "type": "api_key", "name": "key", "value": "s3cr3t-k", "in": "query" } }),
+    )
+    .expect("runs");
+    assert_eq!((q["auth"]["adds_query"].clone(), q["request"]["url"].as_str()), (json!(true), Some("http://example.test/p")), "{q}");
+    assert!(!q.to_string().contains("s3cr3t-k"), "{q}");
+    for bad in [
+        json!({ "type": "digest" }),
+        json!({ "type": "basic", "user": "a:b" }),
+        json!({ "type": "bearer", "token": "" }),
+        json!({ "type": "bearer", "extra": 1 }),
+        json!("basic"),
+    ] {
+        assert!(call(&mut a, "openapi_request", json!({ "text": SECURED, "operation": "p", "auth": bad })).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn a_call_sends_the_authorization_and_never_gives_a_secret_back_not_even_when_the_server_echoes_it_or_the_address_fails() {
+    // The server echoes the request line and the Authorization header in its answer.
+    let listener = TcpListener::bind("127.0.0.1:0").expect("binds");
+    let address = format!("http://{}", listener.local_addr().expect("address"));
+    let handle = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accepts");
+        let mut received = Vec::new();
+        let mut buffer = [0u8; 4096];
+        while !String::from_utf8_lossy(&received).contains("\r\n\r\n") {
+            let n = stream.read(&mut buffer).expect("reads");
+            if n == 0 {
+                break;
+            }
+            received.extend_from_slice(buffer.get(..n).unwrap_or_default());
+        }
+        let text = String::from_utf8_lossy(&received).into_owned();
+        let echo =
+            text.lines().filter(|l| l.starts_with("GET") || l.to_ascii_lowercase().starts_with("authorization")).collect::<Vec<_>>().join(" | ");
+        let body = format!("{{\"echo\": \"{echo}\"}}");
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nX-Echo: {echo}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .expect("writes");
+        text
+    });
+    let mut online = Automation::new().with_network(Network::standard());
+    let r = call(
+        &mut online,
+        "openapi_call",
+        json!({ "text": SECURED, "operation": "p", "server": address, "allow_private_hosts": true, "auth": { "type": "bearer", "token": "tok-9f8e7d" } }),
+    )
+    .expect("runs");
+    let sent = handle.join().expect("server");
+    assert!(sent.contains("Authorization: Bearer tok-9f8e7d") || sent.contains("authorization: Bearer tok-9f8e7d"), "the server got it: {sent}");
+    assert!(!r.to_string().contains("tok-9f8e7d"), "the secret is not returned, though the server echoed it: {r}");
+    assert!(r.to_string().contains("***"), "{r}");
+    assert_eq!(r["auth"]["type"], json!("bearer"));
+    // A failing address with the key in the query does not show the key.
+    let e = call(
+        &mut online,
+        "openapi_call",
+        json!({ "text": SECURED, "operation": "p", "server": "http://127.0.0.1:1", "allow_private_hosts": true, "timeout_seconds": 5, "auth": { "type": "api_key", "name": "key", "value": "q-secret-77", "in": "query" } }),
+    )
+    .expect_err("nobody listens");
+    assert!(!e.to_string().contains("q-secret-77"), "{e}");
+}
