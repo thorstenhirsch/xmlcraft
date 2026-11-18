@@ -9,6 +9,9 @@
 //!   The query language is XPath 3.1 whatever the `queryBinding` says (XSLT 1 and 2 expressions are subsets). For the XSLT query
 //!   bindings, the XSLT functions of the schema (`xsl:function` at the top level) are turned into XPath inline functions (see `xslt.rs`),
 //!   and `current()` in a rule is the node the rule fired on.
+//! - `or` and `and` short-circuit from left to right (`xpath::short_circuit`), as XPath 1.0 defines them and as the publishers'
+//!   XSLT processors evaluate them; the engine alone evaluates both operands, and a right operand that is an error made a check
+//!   that its left operand had decided not evaluated.
 //! - The variables of a pattern (`let` in a `pattern`) are visible to every pattern, as the XSLT implementations make them (global
 //!   variables); those of the pattern itself come first.
 //! - [`Schema::validate`] fires the rules on a document: a node is matched by the first rule of a pattern whose context it is in, an
@@ -29,7 +32,7 @@ use xmlcraft_query::{Options, Phase as QueryPhase, Prepared};
 use xmlcraft_syntax::{decode_references, parse};
 use xmlcraft_xsd::dom::{self, Dom, El};
 
-use crate::xpath::{CURRENT_VAR, Callee, FUNCTIONS_VAR, rewrite_calls, string_literal, variables};
+use crate::xpath::{CURRENT_VAR, Callee, FUNCTIONS_VAR, rewrite_calls, short_circuit, string_literal, variables};
 use crate::xslt::{Function, XSLT_NS};
 
 /// How deep `include`s and abstract patterns may go.
@@ -860,7 +863,8 @@ impl<'s> Program<'s> {
             let key = xslt::key(namespace, local, arity);
             if self.schema.functions.iter().any(|f| f.key == key) { Callee::Function(key) } else { Callee::Other }
         };
-        let rewritten = rewrite_calls(text, &resolve, current, &mut calls);
+        // Logical operators short-circuit from left to right, as the rule sets expect (`xpath::short_circuit`).
+        let rewritten = rewrite_calls(text, &resolve, current, &mut calls).map(|t| short_circuit(&t));
         Piece { vars: variables(text), text: rewritten, calls }
     }
 

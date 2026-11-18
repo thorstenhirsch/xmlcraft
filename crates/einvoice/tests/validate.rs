@@ -47,6 +47,21 @@ fn assert_valid(text: &str) {
     assert_eq!(report.totals.not_evaluated, 0);
 }
 
+/// An XRechnung CII invoice with a document-level allowance without a percentage: PEPPOL-EN16931-R040 of the XRechnung rules was not
+/// evaluated (a type error in the operand that the left one had already decided), where Saxon-HE 12.9 running the publishers'
+/// compiled XSLT passes it (`cargo xtask einvoice-oracle`, 2026-11-18). Logical operators now short-circuit.
+#[test]
+fn an_allowance_without_a_percentage_passes_every_rule_with_nothing_unevaluated() {
+    let en16931 = include_str!("../../invoice-pdf/tests/fixtures/en16931-cii.xml");
+    let xrechnung = en16931.replacen(
+        "<ram:ID>urn:cen.eu:en16931:2017</ram:ID>",
+        "<ram:ID>urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0</ram:ID>",
+        1,
+    );
+    assert!(xrechnung.contains("xrechnung_3.0") && xrechnung.contains("<ram:SpecifiedTradeAllowanceCharge>"));
+    assert_valid(&xrechnung);
+}
+
 #[test]
 fn a_valid_xrechnung_invoice_in_ubl_and_in_cii_passes_every_stage() {
     assert_valid(UBL);
