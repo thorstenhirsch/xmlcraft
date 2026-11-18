@@ -51,3 +51,36 @@ fn what_is_missing_wrong_or_not_implemented_is_an_error_that_says_so() {
     let e = call(&mut a, json!({ "text": "{}", "language": "json", "stylesheet": { "text": XSL } }));
     assert!(e.is_err(), "JSON is not XML");
 }
+
+const PARAMS: &str = r#"<xsl:stylesheet version="3.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"><xsl:param name="who" select="'world'"/><xsl:param name="n" select="2"/><xsl:param name="flag" select="false()"/><xsl:template match="/"><out><xsl:value-of select="concat('hello ', $who)"/><xsl:if test="$flag">!</xsl:if><xsl:value-of select="$n + 1"/></out></xsl:template></xsl:stylesheet>"#;
+
+#[test]
+fn global_parameters_are_declared_given_by_type_defaulted_and_checked() {
+    let mut a = Automation::new();
+    let r = call(&mut a, json!({ "text": DOC, "stylesheet": { "text": PARAMS } })).expect("runs");
+    assert_eq!(r["text"].as_str(), Some("<out>hello world3</out>"), "{r}");
+    assert_eq!(
+        r["declared_params"],
+        json!([{ "name": "who", "select": "'world'" }, { "name": "n", "select": "2" }, { "name": "flag", "select": "false()" }])
+    );
+    let r = call(&mut a, json!({ "text": DOC, "stylesheet": { "text": PARAMS }, "params": { "who": "Rex", "n": 41, "flag": true } })).expect("runs");
+    assert_eq!(r["text"].as_str(), Some("<out>hello Rex!42</out>"), "{r}");
+    let r = call(&mut a, json!({ "text": DOC, "stylesheet": { "text": PARAMS }, "params": [{ "name": "n", "value": "7", "type": "number" }] }))
+        .expect("runs");
+    assert_eq!(r["text"].as_str(), Some("<out>hello world8</out>"), "{r}");
+    // A string where the stylesheet computes with a number is the engine's type error; an unknown name and a wrong type are refused.
+    assert!(call(&mut a, json!({ "text": DOC, "stylesheet": { "text": PARAMS }, "params": { "n": "41" } })).is_err());
+    let e = call(&mut a, json!({ "text": DOC, "stylesheet": { "text": PARAMS }, "params": { "nope": 1 } })).expect_err("unknown");
+    assert!(e.to_string().contains("nope"), "{e}");
+    assert!(matches!(call(&mut a, json!({ "text": DOC, "stylesheet": { "text": PARAMS }, "params": 5 })), Err(ToolError::InvalidArgs(_))));
+    assert!(matches!(
+        call(&mut a, json!({ "text": DOC, "stylesheet": { "text": PARAMS }, "params": [{ "name": "n", "value": "x", "type": "number" }] })),
+        Err(ToolError::InvalidArgs(_))
+    ));
+    // A default that is an expression must be given.
+    let expr = PARAMS.replace("select=\"2\"", "select=\"count(//item)\"");
+    let e = call(&mut a, json!({ "text": DOC, "stylesheet": { "text": expr.clone() } })).expect_err("expression default");
+    assert!(e.to_string().contains("give it a value"), "{e}");
+    let r = call(&mut a, json!({ "text": DOC, "stylesheet": { "text": expr }, "params": { "n": 5 } })).expect("runs");
+    assert_eq!(r["text"].as_str(), Some("<out>hello world6</out>"), "{r}");
+}

@@ -76,8 +76,46 @@ struct NamedSheet {
     href: Option<String>,
 }
 
+/// The type a parameter's value is passed as.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum ParamKind {
+    #[default]
+    Text,
+    Number,
+    Boolean,
+}
+
+impl ParamKind {
+    fn label(self) -> &'static str {
+        match self {
+            ParamKind::Text => tl!("string"),
+            ParamKind::Number => tl!("number"),
+            ParamKind::Boolean => tl!("boolean"),
+        }
+    }
+}
+
+/// One row of the Parameters table of the XSLT tab.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct ParamRow {
+    name: String,
+    value: String,
+    kind: ParamKind,
+    /// Whether it is passed (a parameter whose default is an expression is not, until it is ticked).
+    pass: bool,
+    /// The `select` of the parameter's default, when the stylesheet declares one.
+    default: String,
+    /// Read from the stylesheet (and dropped again when the stylesheet no longer declares it).
+    declared: bool,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Xslt {
+    params: Vec<ParamRow>,
+    /// The stylesheet shown, and its version, that the parameters were last read from.
+    read_for: Option<(u64, u64)>,
+    /// "Read from the stylesheet" was clicked.
+    read_now: bool,
     other: Option<Other>,
     named: Option<NamedSheet>,
     waiting: Option<u64>,
@@ -362,6 +400,25 @@ impl XmlCraftApp {
         }
     }
 
+    /// Read the parameters the stylesheet declares into the table: when the stylesheet shown changed, or when asked.
+    fn refresh_params(&mut self, sheet_shown: bool, shown: u64, version: u64) {
+        let asked = std::mem::take(&mut self.query.xslt.read_now);
+        let changed = sheet_shown && self.query.xslt.read_for != Some((shown, version));
+        if !asked && !changed {
+            return;
+        }
+        let text = if sheet_shown {
+            self.session.active_document().map(|d| d.editor().text())
+        } else {
+            self.query.xslt.other.clone().and_then(|o| self.other_text(&o, shown).ok()).map(|(_, text)| text)
+        };
+        let Some(text) = text else { return };
+        if sheet_shown {
+            self.query.xslt.read_for = Some((shown, version));
+        }
+        self.query.xslt.fill_params(&xmlcraft_query::declared_params(&text));
+    }
+
     /// Ask the worker to apply the stylesheet. `sheet_shown`: the document being shown is the stylesheet.
     fn run_transform(&mut self, sheet_shown: bool) {
         let Some(doc) = self.session.active_document() else { return };
@@ -383,9 +440,16 @@ impl XmlCraftApp {
             self.query.xslt.error = Some(fmt(tl!("A document is larger than {limit} MB."), &[("limit", &limit)]));
             return;
         }
+        let params = match self.query.xslt.to_params() {
+            Ok(params) => params,
+            Err(why) => {
+                self.query.xslt.error = Some(why);
+                return;
+            }
+        };
         self.generate_serial += 1;
         let serial = self.generate_serial;
-        self.xslt.submit(XsltJob { serial, xml, xslt });
+        self.xslt.submit(XsltJob { serial, xml, xslt, params });
         self.query.xslt.waiting = Some(serial);
         self.query.xslt.result_for = source_name;
         self.query.xslt.error = None;
@@ -478,6 +542,12 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     };
     let mut asked = Asked { run: kit::tool_footer(ui, primary, Some(icon), can, why_not), ..Asked::default() };
     let version = app.session.active_document().map_or(0, |d| d.editor().version());
+    if app.query.tab == Tab::Xslt
+        && usable
+        && let Some(b) = &bound
+    {
+        app.refresh_params(sheet_shown, b.id, version);
+    }
     kit::tool_body(ui, false, |ui| {
         kit::segmented(ui, &mut app.query.tab, &[(Tab::XPath, tl!("XPath")), (Tab::Xslt, tl!("XSLT"))]);
         ui.add_space(kit::GAP);
@@ -824,6 +894,7 @@ fn xslt_form(ui: &mut egui::Ui, xslt: &mut Xslt, choices: &[(String, Other)], sh
             },
         );
     }
+    parameters(ui, xslt);
     ui.add_space(4.0);
     kit::help(ui, tl!("The engine implements part of XSLT 3.0; what it does not implement is said, and nothing is changed."));
     if xslt.waiting.is_some() {
@@ -840,9 +911,114 @@ fn xslt_form(ui: &mut egui::Ui, xslt: &mut Xslt, choices: &[(String, Other)], sh
     pick
 }
 
+impl Xslt {
+    /// Take the parameters the stylesheet declares into the table: a row that is there keeps what was typed, a new one starts from the
+    /// default when that is a literal.
+    fn fill_params(&mut self, declared: &[xmlcraft_query::DeclaredParam]) {
+        self.params.retain(|r| !r.declared || declared.iter().any(|d| d.name == r.name));
+        for d in declared {
+            if let Some(row) = self.params.iter_mut().find(|r| r.name == d.name) {
+                row.declared = true;
+                row.default = d.select.clone().unwrap_or_default();
+                continue;
+            }
+            let mut row = ParamRow { name: d.name.clone(), declared: true, default: d.select.clone().unwrap_or_default(), ..ParamRow::default() };
+            match d.select.as_deref().and_then(xmlcraft_query::literal_default) {
+                Some(xmlcraft_query::ParamValue::String(s)) => (row.kind, row.value, row.pass) = (ParamKind::Text, s, true),
+                Some(xmlcraft_query::ParamValue::Number(n)) => (row.kind, row.value, row.pass) = (ParamKind::Number, n, true),
+                Some(xmlcraft_query::ParamValue::Boolean(b)) => (row.kind, row.value, row.pass) = (ParamKind::Boolean, b.to_string(), true),
+                // No default: the empty string, passed. An expression: the stylesheet's own default stays until the row is ticked.
+                None => row.pass = d.select.is_none(),
+            }
+            self.params.push(row);
+        }
+    }
+
+    /// The parameters to pass: the ticked rows with a name.
+    fn to_params(&self) -> Result<Vec<xmlcraft_query::Param>, String> {
+        let mut out = Vec::new();
+        for row in self.params.iter().filter(|r| r.pass && !r.name.trim().is_empty()) {
+            let value = match row.kind {
+                ParamKind::Text => xmlcraft_query::ParamValue::String(row.value.clone()),
+                ParamKind::Number if row.value.trim().parse::<f64>().is_ok() => xmlcraft_query::ParamValue::Number(row.value.trim().to_owned()),
+                ParamKind::Number => {
+                    return Err(fmt(tl!("The parameter {name} is a number: {value} is not one."), &[("name", &row.name), ("value", &row.value)]));
+                }
+                ParamKind::Boolean => match row.value.trim() {
+                    "true" | "1" => xmlcraft_query::ParamValue::Boolean(true),
+                    "false" | "0" => xmlcraft_query::ParamValue::Boolean(false),
+                    other => return Err(fmt(tl!("The parameter {name} is true or false, not {value}."), &[("name", &row.name), ("value", other)])),
+                },
+            };
+            out.push(xmlcraft_query::Param { name: row.name.trim().to_owned(), value });
+        }
+        Ok(out)
+    }
+}
+
+/// The Parameters table: tick, name, type, value, remove.
+fn parameters(ui: &mut egui::Ui, xslt: &mut Xslt) {
+    kit::section(ui, tl!("Parameters"), |ui| {
+        let mut remove = None;
+        for (i, row) in xslt.params.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                ui.add(widgets::checkbox(&mut row.pass, "")).on_hover_text(tl!("Pass this parameter"));
+                let name = ui.add(egui::TextEdit::singleline(&mut row.name).desired_width(80.0).hint_text(tl!("name")));
+                widgets::name_for_assistive_technology(ui, &name, tl!("The parameter's name"));
+                egui::ComboBox::from_id_salt(("xmlcraft-xslt-param-kind", i)).selected_text(row.kind.label()).width(70.0).show_ui(ui, |ui| {
+                    for k in [ParamKind::Text, ParamKind::Number, ParamKind::Boolean] {
+                        ui.selectable_value(&mut row.kind, k, k.label());
+                    }
+                });
+                let hint = if row.default.is_empty() { String::new() } else { fmt(tl!("default: {select}"), &[("select", &row.default)]) };
+                let value = ui.add(egui::TextEdit::singleline(&mut row.value).desired_width(f32::INFINITY).hint_text(hint));
+                widgets::name_for_assistive_technology(ui, &value, tl!("The parameter's value"));
+                if ui.small_button("×").on_hover_text(tl!("Remove")).clicked() {
+                    remove = Some(i);
+                }
+            });
+        }
+        if let Some(i) = remove {
+            xslt.params.remove(i);
+        }
+        ui.horizontal(|ui| {
+            if ui.small_button(tl!("Add parameter")).clicked() && xslt.params.len() < xmlcraft_query::MAX_PARAMS {
+                xslt.params.push(ParamRow { pass: true, ..ParamRow::default() });
+            }
+            if ui.small_button(tl!("Read from the stylesheet")).clicked() {
+                xslt.read_now = true;
+            }
+        });
+        kit::help(ui, tl!("Global xsl:param values. A parameter whose default is an expression keeps it until its box is ticked."));
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn declared_parameters_fill_the_table_keep_what_was_typed_and_pass_the_ticked_ones() {
+        use xmlcraft_query::{DeclaredParam, ParamValue};
+        let d = |name: &str, select: Option<&str>| DeclaredParam { name: name.to_owned(), select: select.map(str::to_owned) };
+        let mut x = Xslt::default();
+        x.fill_params(&[d("who", Some("'world'")), d("n", Some("2")), d("flag", Some("true()")), d("expr", Some("count(//i)")), d("none", None)]);
+        let params = x.to_params().expect("params");
+        let names: Vec<&str> = params.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["who", "n", "flag", "none"], "the expression default is not passed until ticked");
+        assert_eq!(params[0].value, ParamValue::String("world".to_owned()));
+        assert_eq!(params[1].value, ParamValue::Number("2".to_owned()));
+        assert_eq!(params[2].value, ParamValue::Boolean(true));
+        // A typed value survives a re-read; a parameter the stylesheet dropped goes; a hand-made row stays.
+        x.params[0].value = "Rex".to_owned();
+        x.params.push(ParamRow { name: "mine".into(), value: "1".into(), kind: ParamKind::Number, pass: true, ..ParamRow::default() });
+        x.fill_params(&[d("who", Some("'world'"))]);
+        let names: Vec<&str> = x.params.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, ["who", "mine"]);
+        assert_eq!(x.params[0].value, "Rex");
+        x.params[1].value = "x".to_owned();
+        assert!(x.to_params().expect_err("not a number").contains("mine"));
+    }
 
     fn item(kind: &str, name: &str, path: Option<&str>, text: &str) -> ResultItem {
         ResultItem {
