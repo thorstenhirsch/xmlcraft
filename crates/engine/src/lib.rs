@@ -18,6 +18,7 @@ pub mod generate;
 pub mod grid;
 mod html_analysis;
 pub mod html_complete;
+pub mod http_auth;
 mod json_analysis;
 pub mod json_assist;
 pub mod json_definition;
