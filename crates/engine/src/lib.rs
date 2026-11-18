@@ -20,6 +20,7 @@ mod html_analysis;
 pub mod html_complete;
 mod json_analysis;
 pub mod json_assist;
+pub mod json_definition;
 pub mod json_infer;
 mod json_quickfix;
 pub mod json_sample;
