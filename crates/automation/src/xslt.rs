@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use xmlcraft_engine::xslt::stylesheet_of;
-use xmlcraft_query::transform;
+use xmlcraft_query::{Param, ParamValue, declared_params, transform_with};
 
 use crate::documents::{fail, json_result, source, source_properties};
 use crate::tools::ToolDef;
@@ -20,6 +20,16 @@ const MAX_ANSWER_BYTES: usize = 4 * 1024 * 1024;
 pub(crate) fn tools() -> Vec<ToolDef> {
     let mut properties = source_properties();
     if let Some(map) = properties.as_object_mut() {
+        map.insert(
+            "params".into(),
+            json!({
+                "description": "Values for the global `xsl:param`s of the stylesheet: an object of names and values (a JSON string is passed as xs:string, a number as xs:integer or xs:double, true or false as xs:boolean) or a list of {name, value, type} with `type` string, number or boolean. A parameter with a literal default (`'text'`, `12`, `true()`) that is not given keeps it; one whose default is an expression must be given; a name the stylesheet does not declare is an error.",
+                "anyOf": [
+                    { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } },
+                    { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "value": {}, "type": { "type": "string", "enum": ["string", "number", "boolean"] } }, "required": ["name"], "additionalProperties": false } }
+                ]
+            }),
+        );
         map.insert(
             "stylesheet".into(),
             json!({
@@ -35,7 +45,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
         title: "Transform a document with XSLT",
         description: "Apply an XSLT stylesheet to an XML document and return the result as `text` (the length is `bytes`; `truncated` says if the answer was cut). The engine is `xee`, \
                       which implements part of XSLT 3.0 (templates and apply-templates, for-each, value-of, literal result elements, …): what it does not implement \
-                      (xsl:variable and more, as of this version) is an error that says so, never a crash. Nothing is changed.",
+                      (a top-level xsl:variable and more, as of this version) is an error that says so. Global `xsl:param`s are supported (`params`: the engine has no xsl:param, so each value is written into the expressions of a copy of the stylesheet that use it; defaults must be literals, see there), and `declared_params` in the answer lists the top-level `xsl:param`s of the stylesheet with their `select`, never a crash. Nothing is changed.",
         input_schema: json!({ "type": "object", "properties": properties, "additionalProperties": false }),
         read_only: true,
         destructive: false,
@@ -66,7 +76,9 @@ fn xslt_transform(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         return fail("xslt_transform reads XML documents");
     }
     let sheet = stylesheet_text(a, args, &document.text, document.path.as_deref())?;
-    match transform(&document.text, &sheet) {
+    let params = params_arg(args)?;
+    let declared: Vec<Value> = declared_params(&sheet).iter().map(|d| json!({ "name": d.name, "select": d.select })).collect();
+    match transform_with(&document.text, &sheet, &params) {
         Ok(done) => {
             let truncated = done.text.len() > MAX_ANSWER_BYTES;
             let mut end = done.text.len().min(MAX_ANSWER_BYTES);
@@ -74,9 +86,43 @@ fn xslt_transform(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
                 end -= 1;
             }
             json_result(
-                json!({ "text": done.text.get(..end).unwrap_or_default(), "bytes": done.text.len(), "items": done.items, "truncated": truncated }),
+                json!({ "text": done.text.get(..end).unwrap_or_default(), "bytes": done.text.len(), "items": done.items, "truncated": truncated, "declared_params": declared }),
             )
         }
         Err(e) => fail(e.to_string()),
+    }
+}
+
+/// The `params` argument.
+fn params_arg(args: &Value) -> Result<Vec<Param>> {
+    let bad = |what: String| ToolError::InvalidArgs(format!("params: {what}"));
+    let value_of = |name: &str, v: &Value, kind: Option<&str>| -> Result<ParamValue> {
+        match (kind, v) {
+            (Some("string"), Value::String(s)) | (None, Value::String(s)) => Ok(ParamValue::String(s.clone())),
+            (Some("string"), Value::Number(n)) => Ok(ParamValue::String(n.to_string())),
+            (Some("string"), Value::Bool(b)) => Ok(ParamValue::String(b.to_string())),
+            (Some("number"), Value::String(s)) if s.trim().parse::<f64>().is_ok() => Ok(ParamValue::Number(s.trim().to_owned())),
+            (Some("number") | None, Value::Number(n)) => Ok(ParamValue::Number(n.to_string())),
+            (Some("boolean") | None, Value::Bool(b)) => Ok(ParamValue::Boolean(*b)),
+            (Some("boolean"), Value::String(s)) if s == "true" || s == "false" => Ok(ParamValue::Boolean(s == "true")),
+            _ => Err(bad(format!("the value of {name} is not a {}", kind.unwrap_or("string, number or boolean")))),
+        }
+    };
+    match args.get("params") {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Object(map)) => map.iter().map(|(name, v)| Ok(Param { name: name.clone(), value: value_of(name, v, None)? })).collect(),
+        Some(Value::Array(list)) => list
+            .iter()
+            .map(|entry| {
+                let name = entry.get("name").and_then(Value::as_str).ok_or_else(|| bad("each entry has a name".to_owned()))?;
+                let kind = entry.get("type").and_then(Value::as_str);
+                if kind.is_some_and(|k| !["string", "number", "boolean"].contains(&k)) {
+                    return Err(bad("type is string, number or boolean".to_owned()));
+                }
+                let v = entry.get("value").ok_or_else(|| bad(format!("{name} has no value")))?;
+                Ok(Param { name: name.to_owned(), value: value_of(name, v, kind)? })
+            })
+            .collect(),
+        Some(_) => Err(bad("an object of names and values, or a list of {name, value, type}".to_owned())),
     }
 }
