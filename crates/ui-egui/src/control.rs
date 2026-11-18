@@ -653,6 +653,8 @@ impl Host for crate::XmlCraftApp {
             "einvoice": self.einvoice.state(),
             // The Preview tool: how the page is shown, whether the browser view is up.
             "preview": self.preview.state(),
+            // The XBRL tool: its tab, whether it is reading, and what it shows (counts of facts, contexts, units, findings, rows listed).
+            "xbrl": self.xbrl.state(),
             "status": self.status,
         })
     }

@@ -58,6 +58,8 @@ pub enum Panel {
     /// The document as a browser shows it: an HTML page, the HTML an XSLT stylesheet makes of an XML document, an SVG image, or the
     /// tree of other XML (`tools/preview.rs`).
     Preview,
+    /// XBRL instances and Inline XBRL: the facts, contexts and units, and the findings of the instance, its taxonomy and its dimensions.
+    Xbrl,
 }
 
 /// Which part of the rail a tool window belongs to.
@@ -121,7 +123,7 @@ impl Place {
 
 impl Panel {
     /// Every panel, in the order the rail, the default layout and `ui.state` list them.
-    pub const ALL: [Panel; 12] = [
+    pub const ALL: [Panel; 13] = [
         Panel::Editor,
         Panel::Outline,
         Panel::EntryHelpers,
@@ -134,6 +136,7 @@ impl Panel {
         Panel::Soap,
         Panel::EInvoice,
         Panel::Preview,
+        Panel::Xbrl,
     ];
 
     /// The panel table: the one place a panel is described.
@@ -172,6 +175,8 @@ impl Panel {
             Self::Soap => tool("soap", tl!("SOAP"), "cloud", Zone::Workspace, DefaultPlace::Right, false, "view.tool.soap"),
             Self::EInvoice => tool("einvoice", tl!("E-Rechnung"), "receipt-text", Zone::Workspace, DefaultPlace::Right, false, "view.tool.einvoice"),
             Self::Preview => tool("preview", tl!("Preview"), "globe", Zone::Workspace, DefaultPlace::Right, false, "view.tool.preview"),
+            // (A wide table: below the editor.)
+            Self::Xbrl => tool("xbrl", tl!("XBRL"), "rows-3", Zone::Workspace, DefaultPlace::Bottom, false, "view.tool.xbrl"),
         }
     }
 
@@ -222,8 +227,12 @@ impl Panel {
             _ if self == Panel::Soap => bar == Some(BarKind::Wsdl) || proxy_running,
             // An invoice, or the XML of a PDF (a hybrid invoice).
             _ if self == Panel::EInvoice => bar == Some(BarKind::Invoice),
-            // A page, an XML document that names a stylesheet, an SVG image (plain XML can be shown too, as a tree).
-            _ if self == Panel::Preview => matches!(bar, Some(BarKind::Html | BarKind::Rendered)),
+            // A page, an XML document that names a stylesheet, an SVG image (plain XML can be shown too, as a tree), Inline XBRL.
+            _ if self == Panel::Preview => {
+                matches!(bar, Some(BarKind::Html | BarKind::Rendered)) || (kind == Some(DocKind::Html) && bar == Some(BarKind::Xbrl))
+            }
+            // An XBRL 2.1 instance or an Inline XBRL document.
+            _ if self == Panel::Xbrl => bar == Some(BarKind::Xbrl),
             _ => true,
         }
     }
@@ -820,6 +829,7 @@ impl Content<'_> {
             Panel::Soap => crate::tools::soap::body(ui, self.app),
             Panel::EInvoice => crate::tools::einvoice::body(ui, self.app),
             Panel::Preview => crate::tools::preview::body(ui, self.app),
+            Panel::Xbrl => crate::tools::xbrl::body(ui, self.app),
             // The tab strip names the panel: the bodies start a little below it (they drew their own title above them before).
             // (The Outline's toolbar sits right under the tab strip.)
             Panel::Outline => crate::outline::body(ui, self.app),
@@ -1136,6 +1146,7 @@ mod tests {
                 Panel::Soap => 9,
                 Panel::EInvoice => 10,
                 Panel::Preview => 11,
+                Panel::Xbrl => 12,
             }
         }
         assert_eq!(Panel::ALL.iter().map(|p| place(*p)).collect::<Vec<_>>(), (0..Panel::ALL.len()).collect::<Vec<_>>());
@@ -1154,6 +1165,10 @@ mod tests {
         assert!(Panel::Preview.relevant_in(Some(DocKind::Xml), Some(BarKind::Rendered), false), "XML with a stylesheet, or SVG");
         assert!(!Panel::Preview.relevant_in(Some(DocKind::Xml), Some(BarKind::Xml), false), "plain XML: dimmed (it is shown as a tree)");
         assert!(!Panel::Preview.relevant_in(None, None, false));
+        assert!(!Panel::Xbrl.relevant(Some(DocKind::Xml)), "plain XML is no XBRL instance");
+        assert!(Panel::Xbrl.relevant_in(Some(DocKind::Xml), Some(BarKind::Xbrl), false));
+        assert!(Panel::Xbrl.relevant_in(Some(DocKind::Html), Some(BarKind::Xbrl), false), "Inline XBRL");
+        assert!(Panel::Preview.relevant_in(Some(DocKind::Html), Some(BarKind::Xbrl), false), "Inline XBRL is a page");
     }
 
     #[test]

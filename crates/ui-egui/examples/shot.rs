@@ -4,13 +4,13 @@
 //! cargo run -p xmlcraft-ui-egui --example shot -- out.png [--size 1440x900] [--scale 2] [--theme light|dark|system]
 //!     [--tabs a.xml,b.xml] [--active 0] [--width 1200] [--open FILE.xml [--find TEXT] [--goto LINE:COL] [--command ID]]
 //!     [--panes outline,entry_helpers,problems,search] [--right entry_helpers] [--search TEXT [--search-in DIR]]
-//!     [--activate problems] [--also FILE]... [--type LABEL=TEXT]... [--click LABEL]... [--wait TEXT [--wait-secs N]]
+//!     [--activate problems] [--also FILE]... [--type LABEL=TEXT]... [--click LABEL]... [--wait TEXT [--wait-secs N]] [--wait-before TEXT]...
 //! ```
 //! `--activate PANEL` makes that panel the shown tab of its group; `--click LABEL` (repeatable) clicks the widget with that accessible
 //! name once everything else is done (`--click "Collapse book b1"` collapses a row of the Outline). `--until LABEL::TEXT` (repeatable, after
 //! the waits) clicks the first widget whose name contains LABEL until a label contains TEXT (stepping a debugger to a place).
 //! `--also FILE` (repeatable) opens another file before `--open` (which stays in front). `--type LABEL=TEXT` types TEXT into the field with
-//! that accessible name, `--wait TEXT` waits (ten seconds at most, `--wait-secs N` for longer work such as the rules of an invoice) until a label contains TEXT; both run around the clicks.
+//! that accessible name, `--wait TEXT` waits (ten seconds at most, `--wait-secs N` for longer work such as the rules of an invoice) until a label contains TEXT; both run around the clicks. `--wait-before TEXT` waits the same way before the typing and the clicks (for a control that appears once a worker has answered).
 //! `--panes` shows exactly the panels named (the others are hidden), `--right` moves the panels named to a dock on the right edge.
 //! `--search TEXT` runs Find in Files for TEXT in the folder of the `--open` file (or the working directory) and waits for the hits.
 //! `--search-in DIR` searches DIR instead, as typed (`.` keeps the machine's paths out of the picture).
@@ -65,6 +65,7 @@ fn main() -> Result<(), String> {
     let mut also: Vec<std::path::PathBuf> = Vec::new();
     let mut types: Vec<(String, String)> = Vec::new();
     let mut waits: Vec<String> = Vec::new();
+    let mut waits_before: Vec<String> = Vec::new();
     let mut wait_secs: u64 = 10;
     let mut untils: Vec<(String, String)> = Vec::new();
     while let Some(a) = args.next() {
@@ -88,6 +89,7 @@ fn main() -> Result<(), String> {
                 types.push((label.to_owned(), text.to_owned()));
             }
             Some("wait") => waits.push(args.next().ok_or("--wait needs the text of a label")?),
+            Some("wait-before") => waits_before.push(args.next().ok_or("--wait-before needs the text of a label")?),
             Some("wait-secs") => wait_secs = args.next().and_then(|v| v.parse().ok()).ok_or("bad --wait-secs")?,
             Some("until") => {
                 let v = args.next().ok_or("--until needs LABEL::TEXT")?;
@@ -247,6 +249,22 @@ fn main() -> Result<(), String> {
         harness.state_mut().apply_layout(vec![craft_ui::docking::Action::Activate { panel }])?;
         harness.run_steps(2);
     }
+    let wait = |harness: &mut Harness<'_, XmlCraftApp>, text: &str| -> Result<(), String> {
+        use egui_kittest::kittest::Queryable;
+        let deadline = std::time::Instant::now() + Duration::from_secs(wait_secs);
+        while harness.query_all_by_label_contains(text).next().is_none() {
+            if std::time::Instant::now() > deadline {
+                return Err(format!("nothing labelled {text:?} appeared in {wait_secs} seconds"));
+            }
+            std::thread::sleep(Duration::from_millis(20));
+            harness.run_steps(1);
+        }
+        harness.run_steps(3);
+        Ok(())
+    };
+    for text in &waits_before {
+        wait(&mut harness, text)?;
+    }
     for (label, text) in &types {
         use egui_kittest::kittest::Queryable;
         harness.get_by_label(label).focus();
@@ -261,16 +279,7 @@ fn main() -> Result<(), String> {
         harness.run_steps(3);
     }
     for text in &waits {
-        use egui_kittest::kittest::Queryable;
-        let deadline = std::time::Instant::now() + Duration::from_secs(wait_secs);
-        while harness.query_all_by_label_contains(text).next().is_none() {
-            if std::time::Instant::now() > deadline {
-                return Err(format!("nothing labelled {text:?} appeared in {wait_secs} seconds"));
-            }
-            std::thread::sleep(Duration::from_millis(20));
-            harness.run_steps(1);
-        }
-        harness.run_steps(3);
+        wait(&mut harness, text)?;
     }
     // `--until`: click the first widget whose name contains LABEL until a label contains TEXT (each click waits for the app to answer).
     for (label, text) in &untils {
@@ -290,7 +299,7 @@ fn main() -> Result<(), String> {
         }
         harness.run_steps(3);
     }
-    if !clicks.is_empty() || !types.is_empty() || !waits.is_empty() || !untils.is_empty() {
+    if !clicks.is_empty() || !types.is_empty() || !waits.is_empty() || !untils.is_empty() || !waits_before.is_empty() {
         harness.hover_at(egui::pos2(1.0, 1.0));
     }
     std::thread::sleep(Duration::from_millis(250));

@@ -34,7 +34,8 @@ fn an_e_invoice_and_an_xbrl_instance_are_named_in_the_header_and_other_documents
     let dir = tempfile::tempdir().expect("dir");
     let mut h = shell();
     open(&mut h, dir.path(), "plain.xml", "<a><b/></a>");
-    assert!(h.query_by_label_contains("XRechnung").is_none() && h.query_by_label_contains("XBRL").is_none());
+    // (The rail has a button named XBRL, the tool window's: the chip is "XBRL · n facts".)
+    assert!(h.query_by_label_contains("XRechnung").is_none() && h.query_by_label_contains("XBRL · ").is_none());
     open(&mut h, dir.path(), "invoice.xml", INVOICE);
     assert!(h.query_by_label_contains("XRechnung").is_some(), "the invoice is named");
     open(&mut h, dir.path(), "report.xbrl", XBRL);

@@ -265,6 +265,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("xml.soap", "Send SOAP Request…", TOOLS, None, Needs::Document, "cloud"),
     c("xml.soap_debugger", "SOAP Debugger…", TOOLS, None, Needs::Nothing, "cloud"),
     c("xml.einvoice", "E-Rechnung…", TOOLS, None, Needs::Document, "receipt-text").sep(),
+    c("xml.xbrl", "XBRL Facts…", TOOLS, None, Needs::Document, "rows-3"),
     c("edit.find_in_files", "Find in Files…", TOOLS, Some(Shortcut::cmd_shift("F")), Nothing, "search").sep(),
     c("xml.work_offline", "Work Offline", TOOLS, None, Nothing, "external-link").sep().toggle(),
     c("view.palette", "Find tools and commands…", VIEW, Some(Shortcut::cmd("K")), Nothing, "search"),
@@ -290,6 +291,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("view.tool.soap", "SOAP", VIEW, None, Nothing, "cloud").toggle(),
     c("view.tool.einvoice", "E-Rechnung", VIEW, None, Nothing, "receipt-text").toggle(),
     c("view.tool.preview", "Preview", VIEW, None, Nothing, "globe").toggle(),
+    c("view.tool.xbrl", "XBRL", VIEW, None, Nothing, "rows-3").toggle(),
     c("app.about", "About XmlCraft", HELP, None, Nothing, "circle-help"),
 ];
 
@@ -456,6 +458,7 @@ mod tests {
                 "xml.soap",
                 "xml.soap_debugger",
                 "xml.einvoice",
+                "xml.xbrl",
                 "edit.find_in_files",
                 "xml.work_offline"
             ]
