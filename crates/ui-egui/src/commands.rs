@@ -220,6 +220,7 @@ impl XmlCraftApp {
             "xml.soap_debugger" => self.open_proxy(),
             "xml.einvoice" => self.open_einvoice(),
             "xml.preview" => self.open_preview(),
+            "xml.xbrl" => self.open_xbrl(),
             "xml.validate_invoice" => self.validate_invoice(),
             "file.generate_schema" => self.generate_json_schema(),
             "file.generate_sample" => self.generate_json_sample(),

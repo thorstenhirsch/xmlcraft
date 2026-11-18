@@ -7734,6 +7734,7 @@ dependencies = [
  "xmlcraft-sample",
  "xmlcraft-syntax",
  "xmlcraft-text",
+ "xmlcraft-xbrl",
  "xmlcraft-xsd",
  "xmlcraft-yaml-syntax",
 ]

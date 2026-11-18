@@ -192,6 +192,8 @@ pub struct XmlCraftApp {
     einvoice: tools::einvoice::EInvoiceTool,
     /// The Preview tool window: the page, the browser view and the copy for the system browser.
     preview: tools::preview::PreviewTool,
+    /// The XBRL tool window: the facts, contexts, units and findings of an instance.
+    xbrl: tools::xbrl::XbrlTool,
     /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
     generate_serial: u64,
     /// Fetches the schema a document names (Load Schema, Schema Resolution), and the request being waited for.
@@ -412,6 +414,7 @@ impl XmlCraftApp {
             search: tools::search::SearchTool::default(),
             einvoice: tools::einvoice::EInvoiceTool::default(),
             preview: tools::preview::PreviewTool::default(),
+            xbrl: tools::xbrl::XbrlTool::default(),
             generate_serial: 0,
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
             loading_schema: None,

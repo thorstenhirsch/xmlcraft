@@ -86,6 +86,11 @@ pub(crate) enum Outcome {
         serial: u64,
         result: Result<Box<crate::tools::einvoice::Reading>, String>,
     },
+    /// What the XBRL tool read of a document (its facts, contexts, units and findings, with its taxonomy).
+    XbrlReading {
+        serial: u64,
+        result: Result<Box<crate::tools::xbrl::Reading>, String>,
+    },
     /// A hybrid PDF the E-Rechnung tool made.
     InvoicePdf {
         serial: u64,
@@ -358,6 +363,10 @@ impl XmlCraftApp {
             }
             if let Outcome::InvoiceReading { serial, result } = outcome {
                 self.invoice_read(serial, result);
+                continue;
+            }
+            if let Outcome::XbrlReading { serial, result } = outcome {
+                self.xbrl_read(serial, result);
                 continue;
             }
             if let Outcome::InvoicePdf { serial, result } = outcome {

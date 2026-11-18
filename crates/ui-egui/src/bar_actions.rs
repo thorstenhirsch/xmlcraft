@@ -26,6 +26,8 @@ pub(crate) enum BarKind {
     Html,
     /// An electronic invoice (UBL, CII, FatturaPA: XRechnung, Factur-X, Peppol BIS…), or the XML of a PDF document (a hybrid invoice).
     Invoice,
+    /// An XBRL 2.1 instance or an Inline XBRL document.
+    Xbrl,
 }
 
 /// One action of the command bar after the fixed ones.
@@ -60,6 +62,8 @@ pub(crate) fn kind_actions(kind: BarKind) -> &'static [KindAction] {
             KindAction::Command { id: "xml.einvoice", label: "Invoice" },
             KindAction::Command { id: "xml.validate_invoice", label: "Validate invoice" },
         ],
+        // (Inline XBRL is a page, and an instance can be seen as a tree.)
+        BarKind::Xbrl => &[KindAction::Command { id: "xml.xbrl", label: "Facts" }, PREVIEW],
     }
 }
 
@@ -77,12 +81,15 @@ pub(crate) struct Traits {
     pub styled: bool,
     /// The root element is SVG's `svg` (by the analysis's root namespace).
     pub svg: bool,
+    /// An XBRL 2.1 instance or an Inline XBRL document that reads (`xmlcraft_engine::xbrl::recognised`).
+    pub xbrl: bool,
 }
 
 /// What the bar takes a document of `kind` with `traits` for.
 pub(crate) fn bar_kind(kind: DocKind, traits: Traits) -> BarKind {
     match kind {
         DocKind::Xml if traits.invoice || traits.pdf => BarKind::Invoice,
+        DocKind::Xml | DocKind::Html if traits.xbrl => BarKind::Xbrl,
         DocKind::Xml if traits.stylesheet => BarKind::Stylesheet,
         DocKind::Xml if traits.wsdl => BarKind::Wsdl,
         DocKind::Xml if traits.styled || traits.svg => BarKind::Rendered,
@@ -113,9 +120,12 @@ impl XmlCraftApp {
                         stylesheet: xmlcraft_engine::xslt_complete::xslt_prefix(&text).is_some(),
                         invoice: small && xmlcraft_engine::einvoice::detect_einvoice(&text).is_some(),
                         styled: xmlcraft_engine::preview::names_stylesheet(&text),
+                        xbrl: small && xmlcraft_engine::xbrl::recognised(&text),
                         ..Traits::default()
                     }
                 }
+                // (Inline XBRL is XHTML.)
+                DocKind::Html if small => Traits { xbrl: xmlcraft_engine::xbrl::recognised(&doc.editor().text()), ..Traits::default() },
                 DocKind::Json | DocKind::Yaml if small && (language.is_json_like() || language.is_yaml()) => Traits {
                     openapi: xmlcraft_engine::rest::describe(&doc.editor().text(), language.is_yaml()).is_ok_and(|d| !d.operations.is_empty()),
                     ..Traits::default()
@@ -164,6 +174,7 @@ mod tests {
             ["[xml.assign_schema xml.generate_schema xml.load_schema xml.schema_resolution]", "xml.xpath", "xml.preview"]
         );
         assert_eq!(ids(BarKind::Invoice), ["xml.einvoice", "xml.validate_invoice"]);
+        assert_eq!(ids(BarKind::Xbrl), ["xml.xbrl", "xml.preview"]);
     }
 
     #[test]
@@ -178,6 +189,7 @@ mod tests {
             BarKind::OpenApi,
             BarKind::Html,
             BarKind::Invoice,
+            BarKind::Xbrl,
         ] {
             for action in kind_actions(kind) {
                 let ids: &[&str] = match action {
@@ -210,5 +222,8 @@ mod tests {
         assert_eq!(bar_kind(DocKind::Xml, Traits { svg: true, ..none }), BarKind::Rendered, "an SVG image");
         assert_eq!(bar_kind(DocKind::Xml, Traits { styled: true, stylesheet: true, ..none }), BarKind::Stylesheet, "a stylesheet stays one");
         assert_eq!(bar_kind(DocKind::Xml, Traits { styled: true, invoice: true, ..none }), BarKind::Invoice, "an invoice stays one");
+        assert_eq!(bar_kind(DocKind::Xml, Traits { xbrl: true, ..none }), BarKind::Xbrl);
+        assert_eq!(bar_kind(DocKind::Html, Traits { xbrl: true, ..none }), BarKind::Xbrl, "Inline XBRL");
+        assert_eq!(bar_kind(DocKind::Json, Traits { xbrl: true, ..none }), BarKind::Data);
     }
 }

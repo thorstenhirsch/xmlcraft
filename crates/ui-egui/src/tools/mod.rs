@@ -18,6 +18,7 @@ pub(crate) mod search;
 pub(crate) mod side_by_side;
 pub(crate) mod soap;
 pub(crate) mod transform;
+pub(crate) mod xbrl;
 pub(crate) mod xpath_lab;
 
 /// The document a tool follows: the one being shown.
