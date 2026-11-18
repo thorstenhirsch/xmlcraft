@@ -7497,6 +7497,7 @@ dependencies = [
  "xmlcraft-json-syntax",
  "xmlcraft-syntax",
  "xmlcraft-text",
+ "xmlcraft-yaml-syntax",
 ]
 
 [[package]]

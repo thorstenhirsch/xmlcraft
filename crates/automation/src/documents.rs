@@ -12,7 +12,7 @@ use xmlcraft_engine::analysis::{Analysis, Skipped, analyze, analyze_as, analyze_
 use xmlcraft_engine::folding::{FoldAction, FoldRange};
 use xmlcraft_engine::language::Language;
 use xmlcraft_engine::{Document, SaveError};
-use xmlcraft_format::{BlankLines, FormatError, Indent};
+use xmlcraft_format::{BlankLines, FormatError, Indent, IndentSequences};
 use xmlcraft_syntax::{Diagnostic, Severity};
 use xmlcraft_text::encoding::{Encoding, decode, sniff};
 use xmlcraft_text::{Buffer, Edit, Position};
@@ -542,7 +542,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
             name: "xml_format",
             title: "Pretty-print or minify",
             description: "Change only the white space between nodes (XML) or tokens (JSON, JSONC, JSON5): pretty-print (one node or member per line, indented) or minify. XML text with mixed content and elements with \
-                          xml:space=\"preserve\" are left alone, JSON Lines can only be minified, YAML is never reformatted (its white space is its structure: the tool refuses), and a document that is not well-formed is refused. On an open document (`id`) it is one undoable edit; \
+                          xml:space=\"preserve\" are left alone, JSON Lines can only be minified, YAML is re-indented (block mappings and sequences to the indent unit, block scalars as a whole, trailing white space removed; comments, anchors, tags, quoting and flow collections stay as they are, the parsed document is checked to be the same) and cannot be minified, and a document that is not well-formed is refused. On an open document (`id`) it is one undoable edit; \
                           for a file or text the formatted text is returned and nothing is written.",
             input_schema: {
                 let mut properties = language_source_properties();
@@ -553,6 +553,10 @@ pub(crate) fn tools() -> Vec<ToolDef> {
                         json!({ "type": "integer", "minimum": 0, "maximum": 16, "description": "Spaces per level (default: the document's)" }),
                     );
                     map.insert("tabs".into(), json!({ "type": "boolean", "description": "Indent with tabs" }));
+                    map.insert(
+                        "indent_sequences".into(),
+                        json!({ "type": "string", "enum": ["keep", "indent", "flush"], "description": "YAML: a sequence that is the value of a key stays as written (keep, the default), goes one level deeper than the key (indent) or at the key's indentation (flush)" }),
+                    );
                     map.insert("blank_lines".into(), json!({ "type": "string", "enum": ["keep", "remove"], "description": "A run of blank lines between nodes becomes one (keep, the default) or none" }));
                 }
                 object(properties, &[])
@@ -1490,6 +1494,11 @@ fn xml_format(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     options.blank_lines = match text_arg(args, "blank_lines") {
         Some("remove") => BlankLines::Remove,
         _ => BlankLines::Keep,
+    };
+    options.indent_sequences = match text_arg(args, "indent_sequences") {
+        Some("indent") => IndentSequences::Indent,
+        Some("flush") => IndentSequences::Flush,
+        _ => IndentSequences::Keep,
     };
     let edits = source.language.format(&source.text, &options, minify).map_err(|error| match error {
         FormatError::NotWellFormed { message, offset } => {

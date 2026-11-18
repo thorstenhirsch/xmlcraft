@@ -14,8 +14,11 @@
 //!   was meant to be.
 //! - Formatting is idempotent: formatting the result again changes nothing.
 //! - [`json`] does the same for JSON, JSONC and JSON5: only the white space between tokens changes.
+//! - [`yaml`] re-indents YAML: the indentation of block structure and of block scalars and the white space at the ends of lines change,
+//!   as per-line edits, and the result is checked to read as the same events.
 
 pub mod json;
+pub mod yaml;
 
 use xmlcraft_syntax::{Parse, SyntaxElement, SyntaxKind, SyntaxNode, parse};
 pub use xmlcraft_text::Edit;
@@ -41,17 +44,31 @@ pub enum BlankLines {
 /// The most spaces per level.
 pub const MAX_INDENT: usize = 16;
 
+/// Where a YAML sequence that is the value of a key goes (`key:` then `- a`, or `key:` then `  - a`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum IndentSequences {
+    /// Each sequence stays as the document wrote it.
+    #[default]
+    Keep,
+    /// One level deeper than the key.
+    Indent,
+    /// At the indentation of the key.
+    Flush,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FormatOptions {
     pub indent: Indent,
     /// The line ending of every line break it writes.
     pub eol: Eol,
     pub blank_lines: BlankLines,
+    /// YAML only: where a sequence under a key goes.
+    pub indent_sequences: IndentSequences,
 }
 
 impl Default for FormatOptions {
     fn default() -> Self {
-        Self { indent: Indent::Spaces(2), eol: Eol::Lf, blank_lines: BlankLines::Keep }
+        Self { indent: Indent::Spaces(2), eol: Eol::Lf, blank_lines: BlankLines::Keep, indent_sequences: IndentSequences::Keep }
     }
 }
 
@@ -466,9 +483,9 @@ mod tests {
     #[test]
     fn options_change_the_indent_the_line_ending_and_the_blank_lines() {
         let src = "<a>\r\n\r\n<b><c/></b>\r\n\r\n<d/></a>";
-        let tabs = FormatOptions { indent: Indent::Tab, eol: Eol::CrLf, blank_lines: BlankLines::Keep };
+        let tabs = FormatOptions { indent: Indent::Tab, eol: Eol::CrLf, blank_lines: BlankLines::Keep, ..FormatOptions::default() };
         assert_eq!(apply(src, &pretty_print(src, &tabs).expect("ok")), "<a>\r\n\t<b>\r\n\t\t<c/>\r\n\t</b>\r\n\r\n\t<d/>\r\n</a>");
-        let four = FormatOptions { indent: Indent::Spaces(4), eol: Eol::Lf, blank_lines: BlankLines::Remove };
+        let four = FormatOptions { indent: Indent::Spaces(4), eol: Eol::Lf, blank_lines: BlankLines::Remove, ..FormatOptions::default() };
         assert_eq!(apply(src, &pretty_print(src, &four).expect("ok")), "<a>\n    <b>\n        <c/>\n    </b>\n    <d/>\n</a>");
         let huge = FormatOptions { indent: Indent::Spaces(1000), ..FormatOptions::default() };
         assert!(apply("<a><b/></a>", &pretty_print("<a><b/></a>", &huge).expect("ok")).contains(&" ".repeat(MAX_INDENT)));

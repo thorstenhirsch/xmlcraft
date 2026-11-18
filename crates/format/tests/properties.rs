@@ -109,7 +109,7 @@ fn options() -> impl Strategy<Value = FormatOptions> {
         prop_oneof![Just(Eol::Lf), Just(Eol::CrLf)],
         prop_oneof![Just(BlankLines::Keep), Just(BlankLines::Remove)],
     )
-        .prop_map(|(indent, eol, blank_lines)| FormatOptions { indent, eol, blank_lines })
+        .prop_map(|(indent, eol, blank_lines)| FormatOptions { indent, eol, blank_lines, ..FormatOptions::default() })
 }
 
 fn without_space(text: &str) -> String {

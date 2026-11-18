@@ -183,3 +183,25 @@ proptest! {
         }
     }
 }
+
+/// Regression: the YAML reader's stack use grows with the nesting of the text, and `- - - …` 3000 deep overflowed the stack of a
+/// worker thread (a crash of the whole app). Such texts are now refused before they reach it, with the depth problem.
+#[test]
+fn nesting_that_would_overflow_the_reader_is_refused_before_it_is_read() {
+    let chained = "- ".repeat(3000) + "x\n";
+    let flow = "[".repeat(100_000) + &"]".repeat(100_000);
+    let steps: String = (0..1200).map(|i| format!("{}k:\n", " ".repeat(i))).collect();
+    for text in [&chained, &flow, &steps] {
+        let read = parse(text, &Options::default());
+        assert!(read.documents.is_empty(), "nothing is read");
+        assert_eq!(read.diagnostics.len(), 1);
+        assert_eq!(read.diagnostics[0].code, Code::YamlTooDeep);
+        assert!(xmlcraft_yaml_syntax::layout(text).is_err());
+    }
+    // Deep, but within what is read: the usual depth problem, from the reader.
+    let deep = "- ".repeat(300) + "x\n";
+    assert!(parse(&deep, &Options::default()).diagnostics.iter().any(|d| d.code == Code::YamlTooDeep));
+    // Plenty of keys at the same level are not nesting.
+    let wide: String = (0..5000).map(|i| format!("k{i}: [1, 2]\n")).collect();
+    assert!(xmlcraft_yaml_syntax::layout(&wide).is_ok());
+}
