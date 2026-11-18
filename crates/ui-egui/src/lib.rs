@@ -36,6 +36,7 @@ pub use outline::OutlineRowInfo;
 mod palette;
 mod pickers;
 mod preferences;
+mod preview_host;
 mod problems;
 mod quick_fix;
 mod recovery;
@@ -189,6 +190,8 @@ pub struct XmlCraftApp {
     search: tools::search::SearchTool,
     /// The E-Rechnung tool window: its tab, the invoice model, the validation report and the PDF it made.
     einvoice: tools::einvoice::EInvoiceTool,
+    /// The Preview tool window: the page, the browser view and the copy for the system browser.
+    preview: tools::preview::PreviewTool,
     /// Counts the requests the Generate dialogs make, so that an answer says which it is for.
     generate_serial: u64,
     /// Fetches the schema a document names (Load Schema, Schema Resolution), and the request being waited for.
@@ -408,6 +411,7 @@ impl XmlCraftApp {
             soap_tool: tools::soap::SoapTool::default(),
             search: tools::search::SearchTool::default(),
             einvoice: tools::einvoice::EInvoiceTool::default(),
+            preview: tools::preview::PreviewTool::default(),
             generate_serial: 0,
             schema_fetcher: xmlcraft_engine::schema_fetch::SchemaFetcher::new(resolvers()),
             loading_schema: None,
@@ -607,6 +611,7 @@ impl eframe::App for XmlCraftApp {
             if self.quit_confirmed || !self.has_unsaved_changes() {
                 self.recovery_finish();
                 self.release_control_file();
+                self.close_preview();
             } else {
                 // Unsaved work: stop the close and ask, document by document.
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -617,7 +622,7 @@ impl eframe::App for XmlCraftApp {
         craft_quit::on_close_request(ctx);
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let t = theme::Tokens::get(ui.ctx());
         chrome::tab_strip(self, ui);
         chrome::command_bar(self, ui);
@@ -631,6 +636,8 @@ impl eframe::App for XmlCraftApp {
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.panel)).show(ui, |ui| workbench::show(self, ui));
         self.show_dialog(ui.ctx());
         self.show_drop_hint(ui.ctx());
+        // Last: the browser view goes where the Preview panel was drawn, unless something drawn since is over it.
+        self.sync_preview(ui.ctx(), frame);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

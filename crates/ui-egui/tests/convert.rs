@@ -167,7 +167,7 @@ fn the_preview_shows_the_start_of_the_result_and_follows_the_options_and_the_doc
     assert!(h.state_mut().execute("file.convert"));
     h.run_steps(3);
     // JSON goes to YAML first: the preview is the YAML, before anything is opened.
-    wait_for(&mut h, "Preview");
+    wait_for(&mut h, "The preview of the result");
     let started = Instant::now();
     while h.query_by_label("The preview of the result").map(|n| n.accesskit_node().value().unwrap_or_default().to_string()).as_deref()
         != Some("a:\n  - 1\n  - 2\nb: x")

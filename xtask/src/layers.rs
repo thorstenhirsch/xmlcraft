@@ -138,7 +138,8 @@ pub const SIDEWAYS: &[(&str, &str)] = &[
 ];
 
 /// External crates that constitute a UI toolkit / windowing dependency (prefix match with `*`).
-pub const UI_CRATES: &[&str] = &["egui", "eframe", "winit", "egui_kittest", "craft-ui", "egui_extras", "egui_dock", "egui_tiles", "rfd", "wgpu*"];
+pub const UI_CRATES: &[&str] =
+    &["egui", "eframe", "winit", "egui_kittest", "craft-ui", "egui_extras", "egui_dock", "egui_tiles", "rfd", "wgpu*", "wry"];
 pub const UI_MIN_LAYER: u8 = 7;
 
 pub fn short_name(pkg: &str) -> &str {
@@ -375,13 +376,14 @@ mod tests {
 
     #[test]
     fn ui_crates_below_l7_flagged() {
-        for dep in ["egui", "eframe", "winit", "rfd", "wgpu", "wgpu-core", "egui_dock", "craft-ui"] {
+        for dep in ["egui", "eframe", "winit", "rfd", "wgpu", "wgpu-core", "egui_dock", "craft-ui", "wry"] {
             let v = check(&[c("xmlcraft-engine", &[(dep, Normal, false)])]);
             assert!(matches!(v[..], [Violation::UiBelowL7 { layer: 6, .. }]), "{dep}");
         }
         assert!(check(&[c("xmlcraft-platform", &[("winit", Normal, false)])]).is_empty());
         assert!(check(&[c("xmlcraft-code-editor", &[("egui", Normal, false), ("craft-ui", Normal, false)])]).is_empty());
         assert!(check(&[c("xmlcraft-ui-egui", &[("craft-ui", Normal, false)])]).is_empty());
+        assert!(check(&[c("xmlcraft-ui-egui", &[("wry", Normal, false)])]).is_empty(), "the shell hosts the browser view");
     }
 
     #[test]

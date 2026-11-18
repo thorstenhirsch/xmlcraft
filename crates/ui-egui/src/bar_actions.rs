@@ -11,6 +11,8 @@ use crate::XmlCraftApp;
 pub(crate) enum BarKind {
     /// An XML document that is none of the kinds below.
     Xml,
+    /// An XML document a browser shows: one that names an XSLT stylesheet in its prolog, or an SVG image.
+    Rendered,
     /// An XML Schema or a DTD.
     Grammar,
     /// An XSLT stylesheet.
@@ -39,11 +41,13 @@ const XPATH: KindAction = KindAction::Command { id: "xml.xpath", label: "XPath" 
 const XML_SCHEMA_MENU: KindAction = KindAction::SchemaMenu(&["xml.assign_schema", "xml.generate_schema", "xml.load_schema", "xml.schema_resolution"]);
 const DATA_SCHEMA_MENU: KindAction = KindAction::SchemaMenu(&["xml.assign_schema", "file.generate_schema", "file.generate_sample"]);
 const CONVERT: KindAction = KindAction::Command { id: "file.convert", label: "Convert" };
+const PREVIEW: KindAction = KindAction::Command { id: "xml.preview", label: "Preview" };
 
 /// The actions for a kind of document, left to right.
 pub(crate) fn kind_actions(kind: BarKind) -> &'static [KindAction] {
     match kind {
         BarKind::Xml => &[XML_SCHEMA_MENU, XPATH],
+        BarKind::Rendered => &[XML_SCHEMA_MENU, XPATH, PREVIEW],
         BarKind::Grammar => {
             &[KindAction::Command { id: "xml.generate_sample", label: "Sample XML" }, KindAction::Command { id: "xml.check", label: "Check" }]
         }
@@ -51,7 +55,7 @@ pub(crate) fn kind_actions(kind: BarKind) -> &'static [KindAction] {
         BarKind::Wsdl => &[KindAction::Command { id: "xml.soap", label: "SOAP Request" }],
         BarKind::Data => &[DATA_SCHEMA_MENU, CONVERT],
         BarKind::OpenApi => &[KindAction::Command { id: "xml.openapi", label: "Try Operation" }, DATA_SCHEMA_MENU, CONVERT],
-        BarKind::Html => &[],
+        BarKind::Html => &[PREVIEW],
         BarKind::Invoice => &[
             KindAction::Command { id: "xml.einvoice", label: "Invoice" },
             KindAction::Command { id: "xml.validate_invoice", label: "Validate invoice" },
@@ -69,6 +73,10 @@ pub(crate) struct Traits {
     pub invoice: bool,
     /// The document is the XML embedded in a PDF.
     pub pdf: bool,
+    /// The prolog names an XSLT stylesheet (`xmlcraft_engine::preview::names_stylesheet`).
+    pub styled: bool,
+    /// The root element is SVG's `svg` (by the analysis's root namespace).
+    pub svg: bool,
 }
 
 /// What the bar takes a document of `kind` with `traits` for.
@@ -77,6 +85,7 @@ pub(crate) fn bar_kind(kind: DocKind, traits: Traits) -> BarKind {
         DocKind::Xml if traits.invoice || traits.pdf => BarKind::Invoice,
         DocKind::Xml if traits.stylesheet => BarKind::Stylesheet,
         DocKind::Xml if traits.wsdl => BarKind::Wsdl,
+        DocKind::Xml if traits.styled || traits.svg => BarKind::Rendered,
         DocKind::Xml => BarKind::Xml,
         DocKind::Xsd | DocKind::Dtd => BarKind::Grammar,
         DocKind::Json | DocKind::Yaml if traits.openapi => BarKind::OpenApi,
@@ -103,6 +112,7 @@ impl XmlCraftApp {
                     Traits {
                         stylesheet: xmlcraft_engine::xslt_complete::xslt_prefix(&text).is_some(),
                         invoice: small && xmlcraft_engine::einvoice::detect_einvoice(&text).is_some(),
+                        styled: xmlcraft_engine::preview::names_stylesheet(&text),
                         ..Traits::default()
                     }
                 }
@@ -115,7 +125,12 @@ impl XmlCraftApp {
         });
         // The root namespace is the analysis's, which arrives after the text: looked at every time (a comparison), not kept.
         // (Whether it is the XML of a PDF does not change with the text.)
-        let traits = Traits { wsdl: root_namespace.as_deref().is_some_and(xmlcraft_engine::soap::is_wsdl_namespace), pdf, ..traits };
+        let traits = Traits {
+            wsdl: root_namespace.as_deref().is_some_and(xmlcraft_engine::soap::is_wsdl_namespace),
+            svg: root_namespace.as_deref() == Some(xmlcraft_engine::preview::SVG_NAMESPACE),
+            pdf,
+            ..traits
+        };
         Some(bar_kind(kind, traits))
     }
 }
@@ -143,15 +158,27 @@ mod tests {
         assert_eq!(ids(BarKind::Wsdl), ["xml.soap"]);
         assert_eq!(ids(BarKind::Data), ["[xml.assign_schema file.generate_schema file.generate_sample]", "file.convert"]);
         assert_eq!(ids(BarKind::OpenApi), ["xml.openapi", "[xml.assign_schema file.generate_schema file.generate_sample]", "file.convert"]);
-        assert!(ids(BarKind::Html).is_empty());
+        assert_eq!(ids(BarKind::Html), ["xml.preview"]);
+        assert_eq!(
+            ids(BarKind::Rendered),
+            ["[xml.assign_schema xml.generate_schema xml.load_schema xml.schema_resolution]", "xml.xpath", "xml.preview"]
+        );
         assert_eq!(ids(BarKind::Invoice), ["xml.einvoice", "xml.validate_invoice"]);
     }
 
     #[test]
     fn every_action_is_a_registry_command_so_the_palette_has_it_too() {
-        for kind in
-            [BarKind::Xml, BarKind::Grammar, BarKind::Stylesheet, BarKind::Wsdl, BarKind::Data, BarKind::OpenApi, BarKind::Html, BarKind::Invoice]
-        {
+        for kind in [
+            BarKind::Xml,
+            BarKind::Rendered,
+            BarKind::Grammar,
+            BarKind::Stylesheet,
+            BarKind::Wsdl,
+            BarKind::Data,
+            BarKind::OpenApi,
+            BarKind::Html,
+            BarKind::Invoice,
+        ] {
             for action in kind_actions(kind) {
                 let ids: &[&str] = match action {
                     KindAction::Command { id, .. } => std::slice::from_ref(id),
@@ -179,5 +206,9 @@ mod tests {
         assert_eq!(bar_kind(DocKind::Xml, Traits { invoice: true, ..none }), BarKind::Invoice);
         assert_eq!(bar_kind(DocKind::Xml, Traits { pdf: true, ..none }), BarKind::Invoice, "the XML of a PDF is an invoice's");
         assert_eq!(bar_kind(DocKind::Json, Traits { invoice: true, ..none }), BarKind::Data, "an invoice is XML");
+        assert_eq!(bar_kind(DocKind::Xml, Traits { styled: true, ..none }), BarKind::Rendered, "it names a stylesheet");
+        assert_eq!(bar_kind(DocKind::Xml, Traits { svg: true, ..none }), BarKind::Rendered, "an SVG image");
+        assert_eq!(bar_kind(DocKind::Xml, Traits { styled: true, stylesheet: true, ..none }), BarKind::Stylesheet, "a stylesheet stays one");
+        assert_eq!(bar_kind(DocKind::Xml, Traits { styled: true, invoice: true, ..none }), BarKind::Invoice, "an invoice stays one");
     }
 }
