@@ -21,7 +21,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
     vec![ToolDef {
         name: "json_validate",
         title: "Validate against a JSON Schema",
-        description: "Check a JSON document (an open document `id`, a file `path`, or `text` with `language` json, jsonc, json5 or jsonl) against a JSON Schema: drafts 04, 06, 07, \
+        description: "Check a JSON or BSON document (an open document `id`, a file `path`, or `text` with `language` json, jsonc, json5, jsonl or bson; a BSON document is checked as the values its Extended JSON stands for: `{\"$numberInt\": \"5\"}` is 5, an `$oid` or `$date` is a string) against a JSON Schema: drafts 04, 06, 07, \
                       2019-09 and 2020-12, the draft taken from the schema's `$schema` (else `draft`, else 2020-12). The schema is a file (`schema`), text (`schema_text`), or, when \
                       neither is given, the file the document's own `$schema` names (a relative path or a file: URI). Schemas it refers to with `$ref` are read as files, relative \
                       to the schema; nothing is downloaded. Returns whether it is valid and the violations, each with the place in the instance (a JSON Pointer and a position in \
@@ -75,13 +75,15 @@ fn json_validate(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     } else {
         source.language
     };
-    if !language.is_json() {
+    if !language.is_json_like() {
         return fail(
-            "json_validate reads JSON: give language json, jsonc, json5 or jsonl for text, or a document with a JSON name (YAML and BSON documents are not checked against a schema yet)",
+            "json_validate reads JSON and BSON: give language json, jsonc, json5, jsonl or bson for text, or a document with such a name (YAML documents are not checked against a schema by this tool yet)",
         );
     }
     let instance_buffer = Buffer::from_text(&source.text);
-    let lines = language == Language::Json(xmlcraft_engine::language::JsonFlavor::Lines);
+    let bson = language == Language::Bson;
+    let lines = language == Language::Json(xmlcraft_engine::language::JsonFlavor::Lines)
+        || (bson && xmlcraft_bson::layout_of_text(&source.text) == xmlcraft_bson::Layout::Lines);
     let options = Options { dialect: dialect_of(language), ..Options::default() };
     // JSON Lines are a list of values: validate each against the schema, with the line number as the first place.
     let reads: Vec<(std::ops::Range<usize>, xmlcraft_json_syntax::Parse)> =
@@ -142,7 +144,10 @@ fn json_validate(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
     let mut listed: Vec<Value> = Vec::new();
     let (mut count, mut truncated, mut valid) = (0usize, false, syntax_errors.is_empty());
     for (_, read) in &reads {
-        let Some(root) = &read.root else { continue };
+        let Some(parsed) = &read.root else { continue };
+        // (A BSON document is checked as the values its type wrappers stand for, at the places of the wrappers.)
+        let plain = if bson { xmlcraft_bson::bson_to_plain_json(parsed) } else { parsed.clone() };
+        let root = &plain;
         let outcome = set.validate(root);
         truncated |= outcome.truncated;
         valid &= outcome.is_valid();
