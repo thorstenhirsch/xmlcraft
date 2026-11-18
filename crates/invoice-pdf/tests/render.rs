@@ -208,6 +208,43 @@ fn characters_the_face_lacks_are_reported_not_dropped() {
     assert!(out.warnings.iter().any(|w| w.contains("U+6F22")), "{:?}", out.warnings);
 }
 
+/// The glyph strings the content stream shows (the `<…>` operands of `Tj` and `TJ`; the `/ActualText` of a marked span is not one).
+fn shown_glyph_strings(content: &[u8]) -> Vec<String> {
+    let text = String::from_utf8_lossy(content);
+    let mut out = Vec::new();
+    for line in text.lines().filter(|l| !l.starts_with("/Span")) {
+        let mut rest = line;
+        while let Some(open) = rest.find('<') {
+            let Some(close) = rest[open..].find('>') else { break };
+            out.push(rest[open + 1..open + close].to_owned());
+            rest = &rest[open + close + 1..];
+        }
+    }
+    out
+}
+
+/// veraPDF 1.30.4 (PDF/A-3b, rule 6.2.11.8) failed a page that drew a character Inter lacks as `.notdef`: the page now leaves its
+/// room with a `TJ` adjustment, draws an outlined box there, and keeps the text in `/ActualText`.
+#[test]
+fn a_character_the_face_lacks_is_never_shown_as_notdef() {
+    let xml = CII.replace("<ram:Name>Beratung</ram:Name>", "<ram:Name>Beratung 漢字 😀</ram:Name>");
+    let out = render(&xml, xml.as_bytes(), &options(TemplateSource::De)).expect("renders");
+    let pdf = Pdf::open(out.bytes).expect("XmlCraft reads it");
+    let (_, pages) = metadata_and_pages(&pdf);
+    let content = pages.concat();
+    let strings = shown_glyph_strings(&content);
+    assert!(!strings.is_empty());
+    for s in &strings {
+        assert_eq!(s.len() % 4, 0, "two bytes a glyph: {s}");
+        let codes: Vec<&str> = (0..s.len() / 4).map(|i| &s[i * 4..i * 4 + 4]).collect();
+        assert!(!codes.contains(&"0000"), "a text-showing operator shows glyph 0: <{s}>");
+    }
+    let text = String::from_utf8_lossy(&content);
+    // "Beratung 漢字 😀": the text is kept whole (UTF-16BE, the emoji as a surrogate pair) and the gaps are boxed.
+    assert!(text.contains("/ActualText <FEFF004200650072006100740075006E006700206F225B570020D83DDE00>"), "{text}");
+    assert!(text.contains("] TJ ET") && text.contains(" re "), "{text}");
+}
+
 mod properties {
     use super::*;
     use proptest::prelude::*;

@@ -10,8 +10,9 @@
 //!   `factur-x.xml` (`xrechnung.xml` for XRECHNUNG) with the Factur-X XMP; a UBL invoice is attached as a plain associated file
 //!   (Factur-X is CII only).
 //! - PDF/A-3: the file is written to the parts of ISO 19005-3 XmlCraft can meet (embedded fonts, XMP, associated file, no
-//!   encryption, an sRGB output intent from the built-in profile or the caller's) and says it is PDF/A-3b. Neither PDF/A nor
-//!   Factur-X conformance is verified here (no veraPDF, no Mustang): check a file with them before relying on it.
+//!   encryption, an sRGB output intent from the built-in profile or the caller's, no `.notdef` glyph shown) and says it is PDF/A-3b.
+//!   Nothing is validated at run time; the output for the fixture set is checked with veraPDF and Mustang by `cargo xtask pdf-oracle`
+//!   (passed with veraPDF 1.30.4 and Mustang 2.26.0, 2026-11-18; see the README).
 
 pub mod font;
 pub mod format;
@@ -47,7 +48,8 @@ pub struct Options<'a> {
 /// How the invoice XML is embedded and whether that makes a Factur-X hybrid.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FacturX {
-    /// Whether the file is written as a Factur-X / ZUGFeRD hybrid (CII with a known profile, PDF/A-3 identified). Not verified.
+    /// Whether the file is written as a Factur-X / ZUGFeRD hybrid (CII with a known profile, PDF/A-3 identified). No validator
+    /// checks this file at run time.
     pub hybrid: bool,
     /// The Factur-X conformance level (`MINIMUM`, `BASIC WL`, `BASIC`, `EN 16931`, `EXTENDED`, `XRECHNUNG`).
     pub profile: Option<String>,
@@ -65,7 +67,7 @@ pub struct Rendered {
     pub pages: usize,
     pub warnings: Vec<String>,
     pub facturx: FacturX,
-    /// Whether the file identifies itself as PDF/A-3b (it has an output intent). Not verified.
+    /// Whether the file identifies itself as PDF/A-3b (it has an output intent). No validator checks this file at run time.
     pub pdfa: bool,
     /// Why it does not, when it does not.
     pub pdfa_reason: Option<String>,

@@ -12,6 +12,7 @@ mod fuzz;
 mod gates;
 mod jsonschema;
 mod layers;
+mod oracle;
 mod parity;
 mod schemas;
 mod vendor;
@@ -50,6 +51,16 @@ const COMMANDS: &[(&str, &str, Command)] = &[
         "contributors",
         "The credits of the About window from the history: `contributors [--write] [--no-github]` (contributors/contributors.json)",
         contributors::run,
+    ),
+    (
+        "pdf-oracle",
+        "Render the invoice PDF fixtures and check them with veraPDF and Mustang when VERAPDF / MUSTANG_JAR name their jars (skipped otherwise): `pdf-oracle [--out DIR]`",
+        oracle::pdf,
+    ),
+    (
+        "einvoice-oracle",
+        "Compare einvoice_validate with the EN 16931 / XRechnung XSLT run by Saxon-HE when SAXON_JAR and EINVOICE_XSLT_DIR are set (skipped otherwise): `einvoice-oracle [--out DIR]`",
+        oracle::einvoice,
     ),
     ("parity", "Validate parity/features.toml against the registry, tools and tests; report progress (--json, --partial)", parity::run),
 ];

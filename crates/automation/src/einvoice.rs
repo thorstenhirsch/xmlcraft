@@ -84,7 +84,10 @@ pub(crate) fn tools() -> Vec<ToolDef> {
                       built-in sRGB profile as its output intent unless you give `icc_profile` (the path of an RGB, gray or CMYK output or \
                       display profile). Returns `pages`, `bytes`, `warnings` (placeholders that name nothing, characters the \
                       font lacks), `facturx` (`hybrid`, `profile`, `file_name`, `relationship`, `reason`) and `pdfa` (with `pdfa_reason`). \
-                      Neither PDF/A nor Factur-X conformance is verified: check the file with a validator before relying on it.",
+                      No validator runs here (`verified` is false): the files XmlCraft makes from its fixture set (every Factur-X profile, \
+                      UBL, 300 lines; templates `de` and `en`) pass veraPDF 1.30.4 as PDF/A-3b, and its CII hybrids \
+                      pass Mustang 2.26.0 (2026-11-18, `cargo xtask \
+                      pdf-oracle`); check a file that matters with a validator.",
             input_schema: json!({ "type": "object", "properties": render_properties(), "required": ["out"], "additionalProperties": false }),
             read_only: false,
             destructive: false,

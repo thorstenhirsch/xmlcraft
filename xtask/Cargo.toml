@@ -25,6 +25,8 @@ xmlcraft-json-syntax = { workspace = true }
 xmlcraft-resolve = { workspace = true }
 xmlcraft-schemas = { workspace = true }
 xmlcraft-engine = { workspace = true }
+xmlcraft-einvoice = { workspace = true }
+xmlcraft-invoice-pdf = { workspace = true }
 xmlcraft-format = { workspace = true }
 xmlcraft-syntax = { workspace = true }
 xmlcraft-text = { workspace = true }
