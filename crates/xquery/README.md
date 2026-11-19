@@ -6,7 +6,11 @@ expression. The decision and the vendored patches it needs are in `docs/architec
 
 - `parse(query, &Options)` reads a module into the tree of `ast` (a byte span on every expression and clause, names resolved,
   types and node tests as `xee`'s own) or returns the first static error with its W3C code and place (`XPST0003` with the tokens
-  that would have fitted).
+  that would have fitted). Deep nesting is an error, not a crash: the parser and the compiler stop when their recursion has taken 80 KiB and 96 KiB of the
+  stack (measured, so the same on every platform); the tree is at most 40 deep; chains of operators that lean left, paths and FLWORs
+  have at most 128 operators, steps and clauses; `or`/`and`/`||`/`union` chains and paths of axis steps are built balanced; chains
+  and runs of clauses are compiled in loops; and a tree is dropped without recursion. A query too large for `xee`'s code generator
+  is an error (XMLC0004).
 - `evaluate(query, context, &Options)` compiles and runs a query, with an XML document as the context item when there is one.
   The result is described as XPath's is (`xmlcraft_query::ResultItem`): nodes of the document with their path and place, nodes
   the query built with neither (serialized). `Options::serialize` also writes the result with the XML, text, JSON or adaptive

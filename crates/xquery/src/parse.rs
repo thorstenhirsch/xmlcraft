@@ -18,9 +18,18 @@ use crate::ast::*;
 /// The most bytes of query text read.
 pub const MAX_QUERY_BYTES: usize = 4 * 1024 * 1024;
 /// How deeply expressions may nest while parsing (parentheses, constructors, clauses).
-pub const MAX_NESTING: usize = 96;
+pub const MAX_NESTING: usize = 200;
 /// How deep the finished tree may be (operator chains such as `1 + 1 + …` are built in loops but nest in the tree).
-pub const MAX_TREE_DEPTH: usize = 384;
+pub const MAX_TREE_DEPTH: usize = 40;
+/// The most bytes of the thread's stack the parser's recursion may take (measured, so that it holds whatever the frames weigh on
+/// a platform): a query nested deeper is an error. A worker thread has at least a few hundred KiB.
+pub const MAX_PARSE_STACK: usize = 80 * 1024;
+/// The most steps of one path (the code `xee` makes of a path must fit its jumps).
+pub const MAX_PATH_STEPS: usize = 128;
+/// The most operands of a chain of operators that lean left (`a - b - c …`, `a ! b ! c …`).
+pub const MAX_CHAIN: usize = 128;
+/// The most clauses of one FLWOR expression (each nests the code of the ones after it).
+pub const MAX_CLAUSES: usize = 128;
 
 pub const FN_NS: &str = "http://www.w3.org/2005/xpath-functions";
 pub const XS_NS: &str = "http://www.w3.org/2001/XMLSchema";
@@ -109,6 +118,7 @@ pub fn parse(src: &str, namespaces: &[(String, String)]) -> Result<Module, Parse
         expected: Vec::new(),
         declared_prefixes: Vec::new(),
         trail: (0, 0),
+        stack_base: stack_mark(),
     };
     let module = parser.module()?;
     if let Some(body) = &module.body {
@@ -140,8 +150,17 @@ fn check_depth(root: &ExprS) -> R<()> {
                 expected: Vec::new(),
             });
         }
-        for c in e.value.children() {
-            stack.push((c, d.saturating_add(1)));
+        match &e.value {
+            // The left side of a chain is not deeper: a chain is compiled in a loop (its length has its own limit).
+            Expr::Binary { left, right, .. } | Expr::Path { left, right } | Expr::SimpleMap { left, right } => {
+                stack.push((left, d));
+                stack.push((right, d.saturating_add(1)));
+            }
+            _ => {
+                for c in e.value.children() {
+                    stack.push((c, d.saturating_add(1)));
+                }
+            }
         }
     }
     Ok(())
@@ -227,6 +246,8 @@ struct Parser<'a> {
     declared_prefixes: Vec<String>,
     /// The whitespace last skipped: from, to.
     trail: (usize, usize),
+    /// Where the stack was when parsing began ([`stack_mark`]).
+    stack_base: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -268,6 +289,7 @@ impl<'a> Parser<'a> {
     }
 
     /// A syntax error at the furthest place reached, saying what would have fitted there.
+    #[inline(never)]
     fn syntax(&self, what: &str) -> ParseError {
         let at = self.furthest.max(self.pos);
         let found = self.src.get(at..).and_then(|s| s.chars().next());
@@ -404,12 +426,8 @@ impl<'a> Parser<'a> {
 
     fn enter(&mut self) -> R<()> {
         self.depth = self.depth.saturating_add(1);
-        if self.depth > MAX_NESTING {
-            return Err(self.err(
-                "XPST0003",
-                format!("the query is nested more than {MAX_NESTING} levels deep"),
-                self.pos..self.pos.saturating_add(1).min(self.src.len()),
-            ));
+        if self.depth > MAX_NESTING || stack_used(self.stack_base) > MAX_PARSE_STACK {
+            return Err(self.err("XPST0003", "the query is nested too deeply".to_owned(), self.pos..self.pos.saturating_add(1).min(self.src.len())));
         }
         Ok(())
     }
@@ -434,6 +452,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Read an EQName (after whitespace), unresolved.
+    #[inline(never)]
     fn raw_name(&mut self) -> R<Option<RawName>> {
         self.ws()?;
         let start = self.pos;
@@ -502,6 +521,7 @@ impl<'a> Parser<'a> {
 
     // ---- literals ----
 
+    #[inline(never)]
     fn string_literal(&mut self) -> R<Option<String>> {
         self.ws()?;
         let Some(quote) = self.peek().filter(|c| *c == '"' || *c == '\'') else {
@@ -547,6 +567,7 @@ impl<'a> Parser<'a> {
     }
 
     /// After `&`: a predefined entity or a character reference (XQuery 3.1 §3.1.1), as text.
+    #[inline(never)]
     fn reference(&mut self, at: usize) -> R<String> {
         let rest = self.rest();
         let Some(semi) = rest.find(';').filter(|i| *i <= 12) else {
@@ -579,6 +600,7 @@ impl<'a> Parser<'a> {
         Ok(text)
     }
 
+    #[inline(never)]
     fn number(&mut self) -> R<Option<Literal>> {
         self.ws()?;
         let rest = self.rest();
@@ -635,6 +657,7 @@ impl<'a> Parser<'a> {
 
     // ---- modules and the prolog ----
 
+    #[inline(never)]
     fn module(&mut self) -> R<Module> {
         self.ws()?;
         let mut version = None;
@@ -692,6 +715,7 @@ impl<'a> Parser<'a> {
         Ok(Module { version, library, prolog, body })
     }
 
+    #[inline(never)]
     fn prolog(&mut self) -> R<Vec<Spanned<Decl>>> {
         let mut decls = Vec::new();
         loop {
@@ -766,6 +790,7 @@ impl<'a> Parser<'a> {
     }
 
     /// After `declare`: one declaration, or `None` when `declare` is not the start of one.
+    #[inline(never)]
     fn declaration(&mut self, start: usize) -> R<Option<Decl>> {
         if self.eat_kw("default")? {
             if self.eat_kw("element")? {
@@ -947,6 +972,7 @@ impl<'a> Parser<'a> {
         Ok((true, None))
     }
 
+    #[inline(never)]
     fn annotations(&mut self) -> R<Vec<Annotation>> {
         let mut out = Vec::new();
         while self.eat("%")? {
@@ -972,6 +998,7 @@ impl<'a> Parser<'a> {
         Ok(out)
     }
 
+    #[inline(never)]
     fn param_list(&mut self) -> R<Vec<Param>> {
         self.expect("(")?;
         let mut params = Vec::new();
@@ -1003,6 +1030,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Read a sequence type: find where it ends, then let `xee`'s type parser read that text.
+    #[inline(never)]
     fn sequence_type(&mut self) -> R<SequenceType> {
         self.ws()?;
         let start = self.pos;
@@ -1015,6 +1043,7 @@ impl<'a> Parser<'a> {
     }
 
     /// A context item declaration takes an item type (no occurrence indicator).
+    #[inline(never)]
     fn sequence_type_item_only(&mut self) -> R<SequenceType> {
         self.ws()?;
         let start = self.pos;
@@ -1026,6 +1055,7 @@ impl<'a> Parser<'a> {
         self.xee_type(text, start)
     }
 
+    #[inline(never)]
     fn xee_type(&self, text: &str, start: usize) -> R<SequenceType> {
         let namespaces = self.namespaces();
         xee_xpath_ast::parse_sequence_type(text, &namespaces).map_err(|e| {
@@ -1036,6 +1066,7 @@ impl<'a> Parser<'a> {
         })
     }
 
+    #[inline(never)]
     fn scan_sequence_type(&mut self) -> R<()> {
         if self.at_kw_then("empty-sequence", "(")? {
             self.expect_kw("empty-sequence")?;
@@ -1056,6 +1087,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    #[inline(never)]
     fn scan_item_type(&mut self) -> R<()> {
         self.ws()?;
         if self.eat("(")? {
@@ -1087,6 +1119,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Skip `( … )` with nested parentheses (the inside of a kind test or function test).
+    #[inline(never)]
     fn scan_balanced(&mut self) -> R<()> {
         let start = self.pos;
         self.expect("(")?;
@@ -1112,6 +1145,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    #[inline(never)]
     fn single_type(&mut self) -> R<SingleType> {
         let name = self.name(NameKind::Element)?;
         let save = self.pos;
@@ -1199,10 +1233,14 @@ impl<'a> Parser<'a> {
         self.or_expr()
     }
 
+    #[inline(never)]
     fn flwor(&mut self) -> R<ExprS> {
         let start = self.pos;
         let mut clauses: Vec<Spanned<Clause>> = Vec::new();
         loop {
+            if clauses.len() > MAX_CLAUSES {
+                return Err(self.err("XPST0003", format!("a FLWOR expression has more than {MAX_CLAUSES} clauses"), start..self.pos));
+            }
             self.ws()?;
             let cstart = self.pos;
             if self.at_kw_kw("for", "tumbling")? || self.at_kw_kw("for", "sliding")? {
@@ -1211,102 +1249,18 @@ impl<'a> Parser<'a> {
                 clauses.push(Spanned::new(Clause::Window(Box::new(w)), cstart..self.end()));
             } else if self.at_kw_then("for", "$")? {
                 self.expect_kw("for")?;
-                loop {
-                    self.ws()?;
-                    let bstart = self.pos;
-                    let mut var = self.var_name()?;
-                    if self.eat_kw("as")? {
-                        var.type_ = Some(self.sequence_type()?);
-                    }
-                    let allowing_empty = if self.eat_kw("allowing")? {
-                        self.expect_kw("empty")?;
-                        true
-                    } else {
-                        false
-                    };
-                    let position = if self.eat_kw("at")? { Some(self.var_name()?) } else { None };
-                    if position.as_ref().is_some_and(|p| p.name == var.name) {
-                        return Err(self.err("XQST0089", "the positional variable has the name of the variable it counts", bstart..self.end()));
-                    }
-                    self.expect_kw("in")?;
-                    let expr = self.expr_single()?;
-                    clauses.push(Spanned::new(Clause::For { var, allowing_empty, position, expr }, bstart..self.end()));
-                    if !self.eat(",")? {
-                        break;
-                    }
-                }
+                while self.for_binding(&mut clauses)? {}
             } else if self.at_kw_then("let", "$")? {
                 self.expect_kw("let")?;
-                loop {
-                    self.ws()?;
-                    let bstart = self.pos;
-                    let mut var = self.var_name()?;
-                    if self.eat_kw("as")? {
-                        var.type_ = Some(self.sequence_type()?);
-                    }
-                    self.expect(":=")?;
-                    let expr = self.expr_single()?;
-                    clauses.push(Spanned::new(Clause::Let { var, expr }, bstart..self.end()));
-                    if !self.eat(",")? {
-                        break;
-                    }
-                }
+                while self.let_binding(&mut clauses)? {}
             } else if clauses.is_empty() {
                 return Err(self.syntax("expected 'for' or 'let'"));
             } else if self.eat_kw("where")? {
-                let e = self.expr_single()?;
-                clauses.push(Spanned::new(Clause::Where(e), cstart..self.end()));
+                self.where_clause(&mut clauses, cstart)?;
             } else if self.at_kw_kw("group", "by")? {
-                self.expect_kw("group")?;
-                self.expect_kw("by")?;
-                let mut specs = Vec::new();
-                loop {
-                    let mut var = self.var_name()?;
-                    let mut expr = None;
-                    if self.eat_kw("as")? {
-                        var.type_ = Some(self.sequence_type()?);
-                        self.expect(":=")?;
-                        expr = Some(self.expr_single()?);
-                    } else if self.eat(":=")? {
-                        expr = Some(self.expr_single()?);
-                    }
-                    let collation = if self.eat_kw("collation")? { Some(self.uri_literal()?) } else { None };
-                    specs.push(GroupSpec { var, expr, collation });
-                    if !self.eat(",")? {
-                        break;
-                    }
-                }
-                clauses.push(Spanned::new(Clause::GroupBy(specs), cstart..self.end()));
+                self.group_by(&mut clauses, cstart)?;
             } else if self.at_kw_kw("order", "by")? || self.at_kw_kw("stable", "order")? {
-                let stable = self.eat_kw("stable")?;
-                self.expect_kw("order")?;
-                self.expect_kw("by")?;
-                let mut specs = Vec::new();
-                loop {
-                    let expr = self.expr_single()?;
-                    let descending = if self.eat_kw("descending")? {
-                        true
-                    } else {
-                        self.eat_kw("ascending")?;
-                        false
-                    };
-                    let empty_greatest = if self.eat_kw("empty")? {
-                        if self.eat_kw("greatest")? {
-                            Some(true)
-                        } else {
-                            self.expect_kw("least")?;
-                            Some(false)
-                        }
-                    } else {
-                        None
-                    };
-                    let collation = if self.eat_kw("collation")? { Some(self.uri_literal()?) } else { None };
-                    specs.push(OrderSpec { expr, descending, empty_greatest, collation });
-                    if !self.eat(",")? {
-                        break;
-                    }
-                }
-                clauses.push(Spanned::new(Clause::OrderBy { stable, specs }, cstart..self.end()));
+                self.order_by(&mut clauses, cstart)?;
             } else if self.at_kw_then("count", "$")? {
                 self.expect_kw("count")?;
                 let var = self.var_name()?;
@@ -1320,6 +1274,112 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // (The clauses are read by helpers of their own: the frame of `flwor`, which every nested FLWOR goes through, stays small.)
+    #[inline(never)]
+    fn for_binding(&mut self, clauses: &mut Vec<Spanned<Clause>>) -> R<bool> {
+        self.ws()?;
+        let bstart = self.pos;
+        let mut var = self.var_name()?;
+        if self.eat_kw("as")? {
+            var.type_ = Some(self.sequence_type()?);
+        }
+        let allowing_empty = if self.eat_kw("allowing")? {
+            self.expect_kw("empty")?;
+            true
+        } else {
+            false
+        };
+        let position = if self.eat_kw("at")? { Some(self.var_name()?) } else { None };
+        if position.as_ref().is_some_and(|p| p.name == var.name) {
+            return Err(self.err("XQST0089", "the positional variable has the name of the variable it counts", bstart..self.end()));
+        }
+        self.expect_kw("in")?;
+        let expr = self.expr_single()?;
+        clauses.push(Spanned::new(Clause::For { var, allowing_empty, position, expr }, bstart..self.end()));
+        self.eat(",")
+    }
+
+    #[inline(never)]
+    fn let_binding(&mut self, clauses: &mut Vec<Spanned<Clause>>) -> R<bool> {
+        self.ws()?;
+        let bstart = self.pos;
+        let mut var = self.var_name()?;
+        if self.eat_kw("as")? {
+            var.type_ = Some(self.sequence_type()?);
+        }
+        self.expect(":=")?;
+        let expr = self.expr_single()?;
+        clauses.push(Spanned::new(Clause::Let { var, expr }, bstart..self.end()));
+        self.eat(",")
+    }
+
+    #[inline(never)]
+    fn where_clause(&mut self, clauses: &mut Vec<Spanned<Clause>>, cstart: usize) -> R<()> {
+        let e = self.expr_single()?;
+        clauses.push(Spanned::new(Clause::Where(e), cstart..self.end()));
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn group_by(&mut self, clauses: &mut Vec<Spanned<Clause>>, cstart: usize) -> R<()> {
+        self.expect_kw("group")?;
+        self.expect_kw("by")?;
+        let mut specs = Vec::new();
+        loop {
+            let mut var = self.var_name()?;
+            let mut expr = None;
+            if self.eat_kw("as")? {
+                var.type_ = Some(self.sequence_type()?);
+                self.expect(":=")?;
+                expr = Some(self.expr_single()?);
+            } else if self.eat(":=")? {
+                expr = Some(self.expr_single()?);
+            }
+            let collation = if self.eat_kw("collation")? { Some(self.uri_literal()?) } else { None };
+            specs.push(GroupSpec { var, expr, collation });
+            if !self.eat(",")? {
+                break;
+            }
+        }
+        clauses.push(Spanned::new(Clause::GroupBy(specs), cstart..self.end()));
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn order_by(&mut self, clauses: &mut Vec<Spanned<Clause>>, cstart: usize) -> R<()> {
+        let stable = self.eat_kw("stable")?;
+        self.expect_kw("order")?;
+        self.expect_kw("by")?;
+        let mut specs = Vec::new();
+        loop {
+            let expr = self.expr_single()?;
+            let descending = if self.eat_kw("descending")? {
+                true
+            } else {
+                self.eat_kw("ascending")?;
+                false
+            };
+            let empty_greatest = if self.eat_kw("empty")? {
+                if self.eat_kw("greatest")? {
+                    Some(true)
+                } else {
+                    self.expect_kw("least")?;
+                    Some(false)
+                }
+            } else {
+                None
+            };
+            let collation = if self.eat_kw("collation")? { Some(self.uri_literal()?) } else { None };
+            specs.push(OrderSpec { expr, descending, empty_greatest, collation });
+            if !self.eat(",")? {
+                break;
+            }
+        }
+        clauses.push(Spanned::new(Clause::OrderBy { stable, specs }, cstart..self.end()));
+        Ok(())
+    }
+
+    #[inline(never)]
     fn window(&mut self) -> R<Window> {
         let tumbling = if self.eat_kw("tumbling")? {
             true
@@ -1347,6 +1407,7 @@ impl<'a> Parser<'a> {
         Ok(Window { tumbling, var, expr, start, end })
     }
 
+    #[inline(never)]
     fn window_condition(&mut self) -> R<WindowCondition> {
         let current = if self.at("$")? { Some(self.var_name()?) } else { None };
         let position = if self.eat_kw("at")? { Some(self.var_name()?) } else { None };
@@ -1357,6 +1418,7 @@ impl<'a> Parser<'a> {
         Ok(WindowCondition { current, position, previous, next, when })
     }
 
+    #[inline(never)]
     fn quantified(&mut self) -> R<ExprS> {
         let start = self.pos;
         let every = if self.eat_kw("every")? {
@@ -1383,6 +1445,7 @@ impl<'a> Parser<'a> {
         Ok(self.spanned(Expr::Quantified { every, bindings, satisfies: Box::new(satisfies) }, start))
     }
 
+    #[inline(never)]
     fn switch(&mut self) -> R<ExprS> {
         let start = self.pos;
         self.expect_kw("switch")?;
@@ -1408,6 +1471,7 @@ impl<'a> Parser<'a> {
         Ok(self.spanned(Expr::Switch { operand: Box::new(operand), cases, default: Box::new(default) }, start))
     }
 
+    #[inline(never)]
     fn typeswitch(&mut self) -> R<ExprS> {
         let start = self.pos;
         self.expect_kw("typeswitch")?;
@@ -1438,9 +1502,13 @@ impl<'a> Parser<'a> {
         let default_var = if self.at("$")? { Some(self.var_name()?) } else { None };
         self.expect_kw("return")?;
         let default = self.expr_single()?;
-        Ok(self.spanned(Expr::Typeswitch { operand: Box::new(operand), cases, default_var, default: Box::new(default) }, start))
+        Ok(self.spanned(
+            Expr::Typeswitch { operand: Box::new(operand), cases, default_var: default_var.map(Box::new), default: Box::new(default) },
+            start,
+        ))
     }
 
+    #[inline(never)]
     fn if_expr(&mut self) -> R<ExprS> {
         let start = self.pos;
         self.expect_kw("if")?;
@@ -1454,6 +1522,7 @@ impl<'a> Parser<'a> {
         Ok(self.spanned(Expr::If { condition: Box::new(condition), then: Box::new(then), else_: Box::new(else_) }, start))
     }
 
+    #[inline(never)]
     fn try_expr(&mut self) -> R<ExprS> {
         let start = self.pos;
         self.expect_kw("try")?;
@@ -1475,21 +1544,149 @@ impl<'a> Parser<'a> {
         Ok(self.spanned(Expr::Try { body: Box::new(body), catches }, start))
     }
 
-    fn binary_loop(&mut self, next: fn(&mut Self) -> R<ExprS>, ops: &[(&str, BinOp, bool)]) -> R<ExprS> {
+    /// The operators from `or` down to `cast as` (XQuery 3.1 §A.4, lowest first), read by precedence climbing: one function and a
+    /// loop instead of a function per level, so that an operand nested in parentheses costs few frames of the stack.
+    fn or_expr(&mut self) -> R<ExprS> {
+        self.operators(1)
+    }
+
+    /// The next operator, if one of precedence `min` or more is next (it is read). Binary operators give their operator; the type
+    /// operators (`instance of`, `treat as`, `castable as`, `cast as`) give `None` as the operator and their precedence.
+    #[inline(never)]
+    fn next_operator(&mut self, min: u8) -> R<Option<(u8, Option<BinOp>, &'static str)>> {
+        const TABLE: &[(u8, &str, Option<BinOp>, bool)] = &[
+            (1, "or", Some(BinOp::Or), true),
+            (2, "and", Some(BinOp::And), true),
+            (3, "=", Some(BinOp::GenEq), false),
+            (3, "!=", Some(BinOp::GenNe), false),
+            (3, "<=", Some(BinOp::GenLe), false),
+            (3, "<<", Some(BinOp::Precedes), false),
+            (3, "<", Some(BinOp::GenLt), false),
+            (3, ">=", Some(BinOp::GenGe), false),
+            (3, ">>", Some(BinOp::Follows), false),
+            (3, ">", Some(BinOp::GenGt), false),
+            (3, "eq", Some(BinOp::ValueEq), true),
+            (3, "ne", Some(BinOp::ValueNe), true),
+            (3, "lt", Some(BinOp::ValueLt), true),
+            (3, "le", Some(BinOp::ValueLe), true),
+            (3, "gt", Some(BinOp::ValueGt), true),
+            (3, "ge", Some(BinOp::ValueGe), true),
+            (3, "is", Some(BinOp::Is), true),
+            (4, "||", Some(BinOp::Concat), false),
+            (5, "to", Some(BinOp::Range), true),
+            (6, "+", Some(BinOp::Add), false),
+            (6, "-", Some(BinOp::Sub), false),
+            (7, "*", Some(BinOp::Mul), false),
+            (7, "div", Some(BinOp::Div), true),
+            (7, "idiv", Some(BinOp::IntDiv), true),
+            (7, "mod", Some(BinOp::Mod), true),
+            (8, "union", Some(BinOp::Union), true),
+            (8, "|", Some(BinOp::Union), false),
+            (9, "intersect", Some(BinOp::Intersect), true),
+            (9, "except", Some(BinOp::Except), true),
+        ];
+        for (prec, token, op, keyword) in TABLE {
+            if *prec < min {
+                continue;
+            }
+            let hit = if *keyword { self.eat_kw(token)? } else { self.eat_symbol(token)? };
+            if hit {
+                return Ok(Some((*prec, *op, token)));
+            }
+        }
+        for (prec, first, second) in [(10u8, "instance", "of"), (11, "treat", "as"), (12, "castable", "as"), (13, "cast", "as")] {
+            if prec >= min && self.at_kw_kw(first, second)? {
+                self.expect_kw(first)?;
+                self.expect_kw(second)?;
+                return Ok(Some((prec, None, first)));
+            }
+        }
+        Ok(None)
+    }
+
+    fn operators(&mut self, min: u8) -> R<ExprS> {
+        self.enter()?;
+        let r = self.operators_inner(min);
+        self.leave();
+        r
+    }
+
+    fn operators_inner(&mut self, min: u8) -> R<ExprS> {
         self.ws()?;
         let start = self.pos;
-        let mut left = next(self)?;
-        'outer: loop {
-            for (token, op, keyword) in ops {
-                let hit = if *keyword { self.eat_kw(token)? } else { self.eat_symbol(token)? };
-                if hit {
-                    let right = next(self)?;
-                    left = self.spanned(Expr::Binary { op: *op, left: Box::new(left), right: Box::new(right) }, start);
-                    continue 'outer;
+        let mut left = self.arrow_expr()?;
+        // The precedence levels that do not repeat (comparisons, `to`) once used, and the type operators still allowed: one applies to
+        // what is on its left, so after `instance of` (10) only a looser one may follow, never `cast as` (13).
+        let mut used: Vec<u8> = Vec::new();
+        let mut ceiling = u8::MAX;
+        let mut links = 0usize;
+        // A run of one associative operator (`or`, `and`, `||`, `union`), built balanced at its end.
+        let mut run: Option<(BinOp, Vec<ExprS>)> = None;
+        loop {
+            let save = self.pos;
+            let Some((prec, op, _)) = self.next_operator(min)? else { break };
+            let non_repeating = matches!(prec, 3 | 5);
+            if (non_repeating && used.contains(&prec)) || (op.is_none() && prec >= ceiling) {
+                self.pos = save;
+                break;
+            }
+            let associative = matches!(op, Some(BinOp::Or | BinOp::And | BinOp::Concat | BinOp::Union));
+            // (A run of one associative operator is built balanced; the others lean left and are counted.)
+            if !associative {
+                links = links.saturating_add(1);
+                if links > MAX_CHAIN {
+                    return Err(self.err("XPST0003", format!("a chain of operators is longer than {MAX_CHAIN}"), start..self.pos));
                 }
             }
-            return Ok(left);
+            if run.as_ref().is_some_and(|(r, _)| Some(*r) != op)
+                && let Some((r, operands)) = run.take()
+            {
+                left = balanced(r, operands);
+            }
+            if non_repeating {
+                used.push(prec);
+            }
+            match op {
+                None => {
+                    ceiling = prec;
+                    left = match prec {
+                        10 => {
+                            let type_ = self.sequence_type()?;
+                            self.spanned(Expr::InstanceOf { expr: Box::new(left), type_: Box::new(type_) }, start)
+                        }
+                        11 => {
+                            let type_ = self.sequence_type()?;
+                            self.spanned(Expr::Treat { expr: Box::new(left), type_: Box::new(type_) }, start)
+                        }
+                        12 => {
+                            let type_ = self.single_type()?;
+                            self.spanned(Expr::Castable { expr: Box::new(left), type_: Box::new(type_) }, start)
+                        }
+                        _ => {
+                            let type_ = self.single_type()?;
+                            self.spanned(Expr::Cast { expr: Box::new(left), type_: Box::new(type_) }, start)
+                        }
+                    };
+                }
+                Some(op) => {
+                    let right = self.operators(prec.saturating_add(1))?;
+                    if associative {
+                        match &mut run {
+                            Some((_, operands)) => operands.push(right),
+                            None => run = Some((op, vec![left, right])),
+                        }
+                        left = Spanned::new(Expr::Sequence(Vec::new()), start..start);
+                        continue;
+                    }
+                    let span = start..right.span.end;
+                    left = Spanned::new(Expr::Binary { op, left: Box::new(left), right: Box::new(right) }, span);
+                }
+            }
         }
+        if let Some((r, operands)) = run.take() {
+            left = balanced(r, operands);
+        }
+        Ok(left)
     }
 
     /// Read an operator symbol, not when it is the start of a longer one (`|` of `||`, `<` of `<=`, `!` of `!=`).
@@ -1515,131 +1712,6 @@ impl<'a> Parser<'a> {
         }
         self.pos = self.pos.saturating_add(s.len());
         Ok(true)
-    }
-
-    fn or_expr(&mut self) -> R<ExprS> {
-        self.binary_loop(Self::and_expr, &[("or", BinOp::Or, true)])
-    }
-
-    fn and_expr(&mut self) -> R<ExprS> {
-        self.binary_loop(Self::comparison_expr, &[("and", BinOp::And, true)])
-    }
-
-    fn comparison_expr(&mut self) -> R<ExprS> {
-        self.ws()?;
-        let start = self.pos;
-        let left = self.concat_expr()?;
-        const OPS: &[(&str, BinOp, bool)] = &[
-            ("=", BinOp::GenEq, false),
-            ("!=", BinOp::GenNe, false),
-            ("<=", BinOp::GenLe, false),
-            ("<<", BinOp::Precedes, false),
-            ("<", BinOp::GenLt, false),
-            (">=", BinOp::GenGe, false),
-            (">>", BinOp::Follows, false),
-            (">", BinOp::GenGt, false),
-            ("eq", BinOp::ValueEq, true),
-            ("ne", BinOp::ValueNe, true),
-            ("lt", BinOp::ValueLt, true),
-            ("le", BinOp::ValueLe, true),
-            ("gt", BinOp::ValueGt, true),
-            ("ge", BinOp::ValueGe, true),
-            ("is", BinOp::Is, true),
-        ];
-        for (token, op, keyword) in OPS {
-            let hit = if *keyword { self.eat_kw(token)? } else { self.eat_symbol(token)? };
-            if hit {
-                let right = self.concat_expr()?;
-                return Ok(self.spanned(Expr::Binary { op: *op, left: Box::new(left), right: Box::new(right) }, start));
-            }
-        }
-        Ok(left)
-    }
-
-    fn concat_expr(&mut self) -> R<ExprS> {
-        self.binary_loop(Self::range_expr, &[("||", BinOp::Concat, false)])
-    }
-
-    fn range_expr(&mut self) -> R<ExprS> {
-        self.ws()?;
-        let start = self.pos;
-        let left = self.additive_expr()?;
-        if self.eat_kw("to")? {
-            let right = self.additive_expr()?;
-            return Ok(self.spanned(Expr::Binary { op: BinOp::Range, left: Box::new(left), right: Box::new(right) }, start));
-        }
-        Ok(left)
-    }
-
-    fn additive_expr(&mut self) -> R<ExprS> {
-        self.binary_loop(Self::multiplicative_expr, &[("+", BinOp::Add, false), ("-", BinOp::Sub, false)])
-    }
-
-    fn multiplicative_expr(&mut self) -> R<ExprS> {
-        self.binary_loop(
-            Self::union_expr,
-            &[("*", BinOp::Mul, false), ("div", BinOp::Div, true), ("idiv", BinOp::IntDiv, true), ("mod", BinOp::Mod, true)],
-        )
-    }
-
-    fn union_expr(&mut self) -> R<ExprS> {
-        self.binary_loop(Self::intersect_expr, &[("union", BinOp::Union, true), ("|", BinOp::Union, false)])
-    }
-
-    fn intersect_expr(&mut self) -> R<ExprS> {
-        self.binary_loop(Self::instanceof_expr, &[("intersect", BinOp::Intersect, true), ("except", BinOp::Except, true)])
-    }
-
-    fn instanceof_expr(&mut self) -> R<ExprS> {
-        self.ws()?;
-        let start = self.pos;
-        let e = self.treat_expr()?;
-        if self.at_kw_kw("instance", "of")? {
-            self.expect_kw("instance")?;
-            self.expect_kw("of")?;
-            let type_ = self.sequence_type()?;
-            return Ok(self.spanned(Expr::InstanceOf { expr: Box::new(e), type_ }, start));
-        }
-        Ok(e)
-    }
-
-    fn treat_expr(&mut self) -> R<ExprS> {
-        self.ws()?;
-        let start = self.pos;
-        let e = self.castable_expr()?;
-        if self.at_kw_kw("treat", "as")? {
-            self.expect_kw("treat")?;
-            self.expect_kw("as")?;
-            let type_ = self.sequence_type()?;
-            return Ok(self.spanned(Expr::Treat { expr: Box::new(e), type_ }, start));
-        }
-        Ok(e)
-    }
-
-    fn castable_expr(&mut self) -> R<ExprS> {
-        self.ws()?;
-        let start = self.pos;
-        let e = self.cast_expr()?;
-        if self.at_kw_kw("castable", "as")? {
-            self.expect_kw("castable")?;
-            self.expect_kw("as")?;
-            let type_ = self.single_type()?;
-            return Ok(self.spanned(Expr::Castable { expr: Box::new(e), type_ }, start));
-        }
-        Ok(e)
-    }
-
-    fn cast_expr(&mut self) -> R<ExprS> {
-        self.ws()?;
-        let start = self.pos;
-        let e = self.arrow_expr()?;
-        if self.at_kw_kw("cast", "as")? {
-            self.expect_kw("cast")?;
-            self.expect_kw("as")?;
-            let type_ = self.single_type()?;
-            return Ok(self.spanned(Expr::Cast { expr: Box::new(e), type_ }, start));
-        }
-        Ok(e)
     }
 
     fn arrow_expr(&mut self) -> R<ExprS> {
@@ -1691,6 +1763,7 @@ impl<'a> Parser<'a> {
         Ok(e)
     }
 
+    #[inline(never)]
     fn value_expr(&mut self) -> R<ExprS> {
         self.ws()?;
         let start = self.pos;
@@ -1737,15 +1810,23 @@ impl<'a> Parser<'a> {
         let start = self.pos;
         let mut left = self.path_expr()?;
         while self.eat_symbol("!")? {
+            if matches!(left.value, Expr::SimpleMap { .. }) && chain_length(&left) >= MAX_CHAIN {
+                return Err(self.err("XPST0003", format!("a chain of operators is longer than {MAX_CHAIN}"), start..self.pos));
+            }
             let right = self.path_expr()?;
             left = self.spanned(Expr::SimpleMap { left: Box::new(left), right: Box::new(right) }, start);
         }
         Ok(left)
     }
 
+    #[inline(never)]
     fn descendant_or_self(&self, at: usize) -> ExprS {
         Spanned::new(
-            Expr::AxisStep { axis: xast::Axis::DescendantOrSelf, test: xast::NodeTest::KindTest(xast::KindTest::Any), predicates: Vec::new() },
+            Expr::AxisStep {
+                axis: xast::Axis::DescendantOrSelf,
+                test: Box::new(xast::NodeTest::KindTest(xast::KindTest::Any)),
+                predicates: Vec::new(),
+            },
             at..at.saturating_add(2),
         )
     }
@@ -1787,21 +1868,35 @@ impl<'a> Parser<'a> {
         self.relative_rest(first, start)
     }
 
-    fn relative_rest(&mut self, mut left: ExprS, start: usize) -> R<ExprS> {
+    /// The steps after the first. With axis steps `/` is associative (`(a/b)/c` and `a/(b/c)` select the same nodes), so a long
+    /// path of them is built balanced, not as a tree as deep as it is long.
+    fn relative_rest(&mut self, left: ExprS, _start: usize) -> R<ExprS> {
+        let mut steps = vec![left];
         loop {
             self.ws()?;
             if self.rest().starts_with("//") {
                 let at = self.pos;
                 self.pos = self.pos.saturating_add(2);
-                let dos = self.descendant_or_self(at);
-                left = self.spanned(Expr::Path { left: Box::new(left), right: Box::new(dos) }, start);
-                let step = self.step_expr()?;
-                left = self.spanned(Expr::Path { left: Box::new(left), right: Box::new(step) }, start);
+                steps.push(self.descendant_or_self(at));
+                steps.push(self.step_expr()?);
             } else if self.rest().starts_with('/') {
                 self.pos = self.pos.saturating_add(1);
-                let step = self.step_expr()?;
-                left = self.spanned(Expr::Path { left: Box::new(left), right: Box::new(step) }, start);
+                steps.push(self.step_expr()?);
             } else {
+                if steps.len() > MAX_PATH_STEPS {
+                    return Err(self.err("XPST0003", format!("a path has more than {MAX_PATH_STEPS} steps"), _start..self.end()));
+                }
+                // (Only axis steps: a step such as `last()` or `position()` reads the focus of the whole sequence on its left, so
+                // grouping would change it; such a path is built to the left, as it groups.)
+                if steps.iter().skip(1).all(|s| matches!(s.value, Expr::AxisStep { .. })) {
+                    return Ok(balanced_with(steps, &|left, right| Expr::Path { left, right }));
+                }
+                let mut iter = steps.into_iter();
+                let Some(mut left) = iter.next() else { return Err(self.syntax("expected a step")) };
+                for right in iter {
+                    let span = left.span.start..right.span.end;
+                    left = Spanned::new(Expr::Path { left: Box::new(left), right: Box::new(right) }, span);
+                }
                 return Ok(left);
             }
         }
@@ -1852,15 +1947,17 @@ impl<'a> Parser<'a> {
         self.axis_step(axis, test, start)
     }
 
+    #[inline(never)]
     fn axis_step(&mut self, axis: xast::Axis, test: xast::NodeTest, start: usize) -> R<ExprS> {
         let mut predicates = Vec::new();
         while self.eat("[")? {
             predicates.push(self.expr()?);
             self.expect("]")?;
         }
-        Ok(self.spanned(Expr::AxisStep { axis, test, predicates }, start))
+        Ok(self.spanned(Expr::AxisStep { axis, test: Box::new(test), predicates }, start))
     }
 
+    #[inline(never)]
     fn node_test(&mut self, kind: NameKind) -> R<xast::NodeTest> {
         self.ws()?;
         let start = self.pos;
@@ -1880,6 +1977,7 @@ impl<'a> Parser<'a> {
         Ok(xast::NodeTest::NameTest(self.name_test(kind)?))
     }
 
+    #[inline(never)]
     fn name_test(&mut self, kind: NameKind) -> R<xast::NameTest> {
         self.ws()?;
         let start = self.pos;
@@ -1917,6 +2015,7 @@ impl<'a> Parser<'a> {
         Ok(xast::NameTest::Name(xee_xpath_ast::span::Spanned::new(name, (raw.span.start..raw.span.end).into())))
     }
 
+    #[inline(never)]
     fn postfixes(&mut self, mut e: ExprS, start: usize) -> R<ExprS> {
         loop {
             self.ws()?;
@@ -1937,6 +2036,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    #[inline(never)]
     fn key_specifier(&mut self) -> R<Key> {
         self.ws()?;
         if self.eat("*")? {
@@ -1960,6 +2060,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    #[inline(never)]
     fn argument_list(&mut self) -> R<Vec<Arg>> {
         self.expect("(")?;
         let mut args = Vec::new();
@@ -1992,6 +2093,7 @@ impl<'a> Parser<'a> {
         Ok(args)
     }
 
+    #[inline(never)]
     fn parenthesized(&mut self) -> R<ExprS> {
         self.ws()?;
         let start = self.pos;
@@ -2118,7 +2220,7 @@ impl<'a> Parser<'a> {
             self.pos = self.pos.saturating_add(digits.len());
             let arity = digits.parse::<u8>().map_err(|_| self.err("XPST0017", "the arity is more than 255", start..self.pos))?;
             let name = self.resolve(&raw, NameKind::Function)?;
-            return Ok(Some(self.spanned(Expr::NamedFunctionRef { name, arity }, start)));
+            return Ok(Some(self.spanned(Expr::NamedFunctionRef { name: Box::new(name), arity }, start)));
         }
         if self.at("(")? && !self.rest().starts_with("(:") && !self.rest().starts_with("(#") {
             if unprefixed && RESERVED_FUNCTION_NAMES.contains(&raw.local.as_str()) {
@@ -2127,21 +2229,23 @@ impl<'a> Parser<'a> {
             }
             let name = self.resolve(&raw, NameKind::Function)?;
             let args = self.argument_list()?;
-            return Ok(Some(self.spanned(Expr::FunctionCall { name, args }, start)));
+            return Ok(Some(self.spanned(Expr::FunctionCall { name: Box::new(name), args }, start)));
         }
         self.pos = save;
         Ok(None)
     }
 
+    #[inline(never)]
     fn inline_function(&mut self, annotations: Vec<Annotation>, start: usize) -> R<ExprS> {
         let params = self.param_list()?;
         let return_type = if self.eat_kw("as")? { Some(self.sequence_type()?) } else { None };
         let body = self.enclosed_or_empty()?;
-        Ok(self.spanned(Expr::InlineFunction { params, return_type, body: Box::new(body), annotations }, start))
+        Ok(self.spanned(Expr::InlineFunction { params, return_type: return_type.map(Box::new), body: Box::new(body), annotations }, start))
     }
 
     /// `document {…}`, `element n {…}`, `attribute {…} {…}`, `text {…}`, `comment {…}`, `processing-instruction n {…}`,
     /// `namespace p {…}`, or `None`.
+    #[inline(never)]
     fn computed_constructor(&mut self, start: usize) -> R<Option<ExprS>> {
         if self.at_kw_then("document", "{")? {
             self.expect_kw("document")?;
@@ -2176,7 +2280,7 @@ impl<'a> Parser<'a> {
                     0 | 1 => match self.raw_name()? {
                         Some(raw) if self.at("{")? => {
                             let kind = if which == 0 { NameKind::Element } else { NameKind::None };
-                            Some(CompName::Name(self.resolve(&raw, kind)?))
+                            Some(CompName::Name(Box::new(self.resolve(&raw, kind)?)))
                         }
                         _ => None,
                     },
@@ -2207,6 +2311,7 @@ impl<'a> Parser<'a> {
     }
 
     /// ``` ``[ … `{ expr }` … ]`` ```
+    #[inline(never)]
     fn string_constructor(&mut self) -> R<ExprS> {
         let start = self.pos;
         self.pos = self.pos.saturating_add(3);
@@ -2260,6 +2365,7 @@ impl<'a> Parser<'a> {
         r
     }
 
+    #[inline(never)]
     fn direct_constructor_inner(&mut self) -> R<ExprS> {
         let start = self.pos;
         if self.rest().starts_with("<!--") {
@@ -2356,6 +2462,7 @@ impl<'a> Parser<'a> {
         result
     }
 
+    #[inline(never)]
     fn direct_element_rest(
         &mut self,
         start: usize,
@@ -2381,7 +2488,7 @@ impl<'a> Parser<'a> {
         }
         if self.rest().starts_with("/>") {
             self.pos = self.pos.saturating_add(2);
-            return Ok(self.spanned(Expr::DirElement { name, namespaces, attributes, content: Vec::new() }, start));
+            return Ok(self.spanned(Expr::DirElement { name: Box::new(name), namespaces, attributes, content: Vec::new() }, start));
         }
         // `>`
         self.pos = self.pos.saturating_add(1);
@@ -2399,10 +2506,11 @@ impl<'a> Parser<'a> {
             return Err(self.syntax("expected '>'"));
         }
         self.pos = self.pos.saturating_add(1);
-        Ok(self.spanned(Expr::DirElement { name, namespaces, attributes, content }, start))
+        Ok(self.spanned(Expr::DirElement { name: Box::new(name), namespaces, attributes, content }, start))
     }
 
     /// A name right here (no whitespace or comments skipped: inside a tag they are not allowed before the name).
+    #[inline(never)]
     fn raw_name_here(&mut self) -> R<Option<RawName>> {
         let start = self.pos;
         let Some(first) = self.ncname() else {
@@ -2426,6 +2534,7 @@ impl<'a> Parser<'a> {
         any
     }
 
+    #[inline(never)]
     fn attribute_value(&mut self) -> R<Vec<RawAttrPart>> {
         let start = self.pos;
         let Some(quote) = self.peek().filter(|c| *c == '"' || *c == '\'') else {
@@ -2494,6 +2603,7 @@ impl<'a> Parser<'a> {
         Ok(parts)
     }
 
+    #[inline(never)]
     fn element_content(&mut self) -> R<Vec<DirContent>> {
         let mut content = Vec::new();
         let mut text = String::new();
@@ -2602,4 +2712,53 @@ fn normalize_space(s: &str) -> String {
 
 fn resolve_refs_lenient(s: &str) -> String {
     s.to_owned()
+}
+
+/// `a op b op c op …` as a balanced tree (for an associative operator): its depth grows with the logarithm of its length.
+fn balanced(op: BinOp, operands: Vec<ExprS>) -> ExprS {
+    balanced_with(operands, &|left, right| Expr::Binary { op, left, right })
+}
+
+/// Operands joined pairwise, level by level, by `join` (a balanced tree for an associative operator, operands in order).
+fn balanced_with(mut operands: Vec<ExprS>, join: &dyn Fn(Box<ExprS>, Box<ExprS>) -> Expr) -> ExprS {
+    // Pairs are joined level by level, left to right, so the operands keep their order.
+    while operands.len() > 1 {
+        let mut next = Vec::with_capacity(operands.len().div_ceil(2));
+        let mut iter = operands.into_iter();
+        while let Some(left) = iter.next() {
+            match iter.next() {
+                Some(right) => {
+                    let span = left.span.start..right.span.end;
+                    next.push(Spanned::new(join(Box::new(left), Box::new(right)), span));
+                }
+                None => next.push(left),
+            }
+        }
+        operands = next;
+    }
+    operands.pop().unwrap_or_else(|| Spanned::new(Expr::Sequence(Vec::new()), 0..0))
+}
+
+/// The address of a local variable: where the stack is now. Recursion is bounded by how far this moves from where it began, not
+/// only by a count, because frame sizes differ between platforms and builds (no `unsafe`: the address is only compared).
+#[inline(never)]
+pub fn stack_mark() -> usize {
+    let here = 0u8;
+    std::hint::black_box(&here) as *const u8 as usize
+}
+
+/// How many bytes of stack are in use since `base` (the stack grows down on every platform we build for; either way is measured).
+pub fn stack_used(base: usize) -> usize {
+    base.abs_diff(stack_mark())
+}
+
+/// How many `!` links lean left from `e`.
+fn chain_length(e: &ExprS) -> usize {
+    let mut n = 0;
+    let mut cur = e;
+    while let Expr::SimpleMap { left, .. } = &cur.value {
+        n += 1;
+        cur = left;
+    }
+    n
 }

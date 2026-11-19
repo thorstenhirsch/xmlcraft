@@ -249,16 +249,69 @@ fn the_prolog_is_read_in_order() {
 
 #[test]
 fn deep_nesting_is_an_error_not_a_crash() {
-    let deep = format!("{}1{}", "(".repeat(5000), ")".repeat(5000));
-    assert_eq!(code(&deep), "XPST0003");
-    let elements = format!("{}{}", "<a>".repeat(3000), "</a>".repeat(3000));
-    assert_eq!(code(&elements), "XPST0003");
-    let chain = vec!["1"; 20_000].join(" + ");
-    assert_eq!(code(&chain), "XPST0003");
-    let comments = format!("{}1{}", "(:".repeat(5000), ":)".repeat(5000));
-    assert_eq!(code(&comments), "XPST0003");
-    // a long flat sequence is fine
-    ok(&vec!["1"; 20_000].join(", "));
+    on_a_small_stack(|| {
+        let deep = format!("{}1{}", "(".repeat(5000), ")".repeat(5000));
+        assert_eq!(code(&deep), "XPST0003");
+        let elements = format!("{}{}", "<a>".repeat(3000), "</a>".repeat(3000));
+        assert_eq!(code(&elements), "XPST0003");
+        let chain = vec!["1"; 20_000].join(" - ");
+        assert_eq!(code(&chain), "XPST0003");
+        let filters = format!("$a{}", "[1]".repeat(20_000));
+        assert_eq!(code(&filters), "XPST0003");
+        let comments = format!("{}1{}", "(:".repeat(5000), ":)".repeat(5000));
+        assert_eq!(code(&comments), "XPST0003");
+        // a long flat sequence is fine, and so is a long chain of an associative operator (it is built balanced)
+        ok(&vec!["1"; 20_000].join(", "));
+        ok(&vec!["1"; 20_000].join(" or "));
+        ok(&vec!["a"; 128].join("/"));
+        assert_eq!(code(&vec!["a"; 20_000].join("/")), "XPST0003");
+        assert_eq!(code(&vec!["a"; 20_000].join(" ! ")), "XPST0003");
+        assert_eq!(code(&vec!["1"; 20_000].join(" + ")), "XPST0003");
+        ok(&vec!["1"; 128].join(" + "));
+        ok(&vec!["'a'"; 20_000].join(" || "));
+    });
+}
+
+/// The stack every walk over the tree must fit in, with room to spare on any platform (Windows frames are larger).
+const SMALL_STACK: usize = 256 * 1024;
+
+fn on_a_small_stack(f: impl FnOnce() + Send + 'static) {
+    std::thread::Builder::new().stack_size(SMALL_STACK).spawn(f).expect("a thread").join().expect("no stack overflow and no failure");
+}
+
+/// For each shape, the deepest query the parser accepts.
+fn deepest(make: &dyn Fn(usize) -> String) -> String {
+    let mut n = 1;
+    while n < 5000 && parse(&make(n + 1), &[]).is_ok() {
+        n += 1;
+    }
+    make(n)
+}
+
+#[test]
+fn the_deepest_accepted_queries_parse_compile_and_drop_on_a_small_stack() {
+    on_a_small_stack(|| {
+        let shapes: [&dyn Fn(usize) -> String; 11] = [
+            &|n| vec!["."; n].join("/"),
+            &|n| format!("{}1", "let $x := 1 ".repeat(n) + "return "),
+            &|n| vec!["1"; n].join(" ! "),
+            &|n| format!("{}1{}", "(".repeat(n), ")".repeat(n)),
+            &|n| vec!["1"; n].join(" - "),
+            &|n| format!("count({}{})", "<a>".repeat(n), "</a>".repeat(n)),
+            &|n| format!("{}1", "for $x in 1 return ".repeat(n)),
+            &|n| format!("{}1{}", "if (1) then ".repeat(n), " else 0".repeat(n)),
+            &|n| format!("{}1{}", "[".repeat(n), "]".repeat(n)),
+            &|n| format!("{}1{}", "function() {".repeat(n), "}".repeat(n)),
+            &|n| vec!["a"; n].join("/"),
+        ];
+        for make in shapes {
+            let q = deepest(make);
+            let module = parse(&q, &[]).expect("accepted");
+            drop(module);
+            let compiled = xmlcraft_xquery::check(&q, &xmlcraft_xquery::Options::default());
+            assert!(compiled.is_ok(), "{:?}", compiled.err().map(|e| (e.code, e.message)));
+        }
+    });
 }
 
 proptest! {
