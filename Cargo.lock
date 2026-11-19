@@ -7263,7 +7263,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xmlcraft"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "craft-menu",
@@ -7278,7 +7278,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-automation"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "craft-atomic",
  "getrandom 0.4.3",
@@ -7319,7 +7319,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-bson"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "proptest",
@@ -7328,7 +7328,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-catalog"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "xmlcraft-syntax",
@@ -7336,7 +7336,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64 0.23.1",
  "serde_json",
@@ -7348,7 +7348,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-code-editor"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "craft-ui",
  "egui",
@@ -7361,7 +7361,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-complete"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "xmlcraft-datatypes",
@@ -7373,7 +7373,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-convert"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "proptest",
@@ -7387,7 +7387,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-datatypes"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "proptest",
@@ -7396,7 +7396,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-diff"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "rowan",
@@ -7409,7 +7409,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-dtd"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "rowan",
@@ -7421,7 +7421,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-editor"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "regex",
@@ -7436,7 +7436,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-einvoice"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "proptest",
@@ -7451,7 +7451,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-engine"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "log",
  "proptest",
@@ -7491,7 +7491,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-format"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "rowan",
@@ -7504,14 +7504,14 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-grammar"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "xmlcraft-grid"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "xmlcraft-diff",
@@ -7521,7 +7521,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-html"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "xmlcraft-syntax",
@@ -7529,7 +7529,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-infer"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "xmlcraft-datatypes",
@@ -7541,7 +7541,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-invoice-pdf"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "pdfcraft-cos",
@@ -7556,7 +7556,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-json"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "regex",
@@ -7566,7 +7566,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-json-syntax"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "serde_json",
@@ -7575,7 +7575,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-openapi"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "serde_json",
@@ -7584,7 +7584,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-pattern"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "regex-automata 0.4.18",
@@ -7593,7 +7593,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-pdf"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "miniz_oxide 0.9.1",
@@ -7602,7 +7602,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-platform"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "craft-atomic",
  "log",
@@ -7620,7 +7620,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-query"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "getrandom 0.3.4",
  "getrandom 0.4.3",
@@ -7637,7 +7637,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-resolve"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "xmlcraft-catalog",
@@ -7646,7 +7646,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-sample"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "regex-syntax 0.8.11",
@@ -7662,14 +7662,14 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-schemas"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "miniz_oxide 0.9.1",
 ]
 
 [[package]]
 name = "xmlcraft-schematron"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "xmlcraft-query",
@@ -7679,7 +7679,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-syntax"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "rowan",
@@ -7688,7 +7688,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-text"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "crop",
  "encoding_rs",
@@ -7697,7 +7697,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-ui-egui"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64 0.23.1",
  "craft-quit",
@@ -7744,7 +7744,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-validate"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "rowan",
@@ -7758,7 +7758,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-wsdl"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "xmlcraft-sample",
@@ -7768,7 +7768,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-xbrl"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "xmlcraft-syntax",
@@ -7777,7 +7777,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-xquery"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "ahash",
  "getrandom 0.3.4",
@@ -7799,7 +7799,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-xsd"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "rowan",
@@ -7813,7 +7813,7 @@ dependencies = [
 
 [[package]]
 name = "xmlcraft-yaml-syntax"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
  "saphyr-parser",
@@ -7849,7 +7849,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "chrono",
