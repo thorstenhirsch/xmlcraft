@@ -242,9 +242,13 @@ fn the_deepest_queries_the_parser_accepts_compile_and_run_on_a_small_stack() {
     let chain = deepest(&|n| vec!["1"; n].join(" + "));
     let elements = deepest(&|n| format!("count({}{})", "<a>".repeat(n), "</a>".repeat(n)));
     let flwor = deepest(&|n| format!("{}1", "for $x in 1 return ".repeat(n)));
-    assert!(nested.len() > 40 && chain.len() > 300 && flwor.len() > 400, "the limits are not too tight");
+    // The limits leave room for real queries: parentheses 12 deep, constructors 16, FLWORs 8, chains of 120 operators.
+    assert!(nested.matches('(').count() >= 12, "{nested}");
+    assert!(elements.matches("<a>").count() >= 16, "{elements}");
+    assert!(flwor.matches("for").count() >= 8, "{flwor}");
+    assert!(chain.matches('+').count() >= 120, "{chain}");
     let handle = std::thread::Builder::new()
-        .stack_size(2 * 1024 * 1024)
+        .stack_size(512 * 1024)
         .spawn(move || [nested, chain, elements, flwor].map(|q| evaluate(&q, None, &Options::default()).map(|o| o.result.count)))
         .expect("a thread");
     let results = handle.join().expect("no stack overflow");

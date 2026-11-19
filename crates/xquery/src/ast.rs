@@ -287,7 +287,7 @@ pub enum DirContent {
 /// The name of a computed constructor: written, or computed by an expression.
 #[derive(Clone, Debug, PartialEq)]
 pub enum CompName {
-    Name(Name),
+    Name(Box<Name>),
     /// An NCName (processing-instruction target, namespace prefix).
     NcName(String),
     Expr(Box<ExprS>),
@@ -310,16 +310,16 @@ pub enum Expr {
     /// `/` (the root of the context node's tree).
     Root,
     FunctionCall {
-        name: Name,
+        name: Box<Name>,
         args: Vec<Arg>,
     },
     NamedFunctionRef {
-        name: Name,
+        name: Box<Name>,
         arity: u8,
     },
     InlineFunction {
         params: Vec<Param>,
-        return_type: Option<SequenceType>,
+        return_type: Option<Box<SequenceType>>,
         body: Box<ExprS>,
         annotations: Vec<Annotation>,
     },
@@ -343,7 +343,7 @@ pub enum Expr {
     },
     AxisStep {
         axis: Axis,
-        test: NodeTest,
+        test: Box<NodeTest>,
         predicates: Vec<ExprS>,
     },
     Binary {
@@ -367,19 +367,19 @@ pub enum Expr {
     },
     InstanceOf {
         expr: Box<ExprS>,
-        type_: SequenceType,
+        type_: Box<SequenceType>,
     },
     Treat {
         expr: Box<ExprS>,
-        type_: SequenceType,
+        type_: Box<SequenceType>,
     },
     Castable {
         expr: Box<ExprS>,
-        type_: SingleType,
+        type_: Box<SingleType>,
     },
     Cast {
         expr: Box<ExprS>,
-        type_: SingleType,
+        type_: Box<SingleType>,
     },
     If {
         condition: Box<ExprS>,
@@ -394,7 +394,7 @@ pub enum Expr {
     Typeswitch {
         operand: Box<ExprS>,
         cases: Vec<TypeCase>,
-        default_var: Option<VarBinding>,
+        default_var: Option<Box<VarBinding>>,
         default: Box<ExprS>,
     },
     Try {
@@ -419,7 +419,7 @@ pub enum Expr {
     /// `validate { … }`: read so that the error says what it is, refused when compiled (XQST0075).
     Validate(Box<ExprS>),
     DirElement {
-        name: Name,
+        name: Box<Name>,
         namespaces: Vec<(String, String)>,
         attributes: Vec<DirAttribute>,
         content: Vec<DirContent>,
@@ -606,4 +606,172 @@ impl Expr {
 pub fn written(name: &Name) -> String {
     use xot::xmlname::NameStrInfo;
     if name.prefix().is_empty() { name.local_name().to_owned() } else { format!("{}:{}", name.prefix(), name.local_name()) }
+}
+
+fn empty() -> ExprS {
+    Spanned::new(Expr::Sequence(Vec::new()), 0..0)
+}
+
+fn take(e: &mut ExprS) -> ExprS {
+    std::mem::replace(e, empty())
+}
+
+fn take_args(args: &mut [Arg], out: &mut Vec<ExprS>) {
+    for a in args {
+        if let Arg::Expr(e) = a {
+            out.push(take(e));
+        }
+    }
+}
+
+fn take_key(key: &mut Key, out: &mut Vec<ExprS>) {
+    if let Key::Expr(e) = key {
+        out.push(take(e));
+    }
+}
+
+fn take_name(name: &mut CompName, out: &mut Vec<ExprS>) {
+    if let CompName::Expr(e) = name {
+        out.push(take(e));
+    }
+}
+
+impl Expr {
+    /// Move the direct sub-expressions out into `out` (each left as an empty sequence), for the drop below.
+    fn take_children(&mut self, out: &mut Vec<ExprS>) {
+        match self {
+            Expr::Sequence(v) | Expr::SquareArray(v) => out.append(v),
+            Expr::Literal(_) | Expr::VarRef(_) | Expr::ContextItem | Expr::Root | Expr::NamedFunctionRef { .. } => {}
+            Expr::DirComment(_) | Expr::DirPi { .. } => {}
+            Expr::FunctionCall { args, .. } => take_args(args, out),
+            Expr::InlineFunction { body, .. } => out.push(take(body)),
+            Expr::DynamicCall { function, args } => {
+                out.push(take(function));
+                take_args(args, out);
+            }
+            Expr::Filter { base, predicate } => {
+                out.push(take(base));
+                out.push(take(predicate));
+            }
+            Expr::Lookup { base, key } => {
+                out.push(take(base));
+                take_key(key, out);
+            }
+            Expr::UnaryLookup(key) => take_key(key, out),
+            Expr::Path { left, right } | Expr::Binary { left, right, .. } | Expr::SimpleMap { left, right } => {
+                out.push(take(left));
+                out.push(take(right));
+            }
+            Expr::AxisStep { predicates, .. } => out.append(predicates),
+            Expr::Unary { expr, .. }
+            | Expr::InstanceOf { expr, .. }
+            | Expr::Treat { expr, .. }
+            | Expr::Castable { expr, .. }
+            | Expr::Cast { expr, .. }
+            | Expr::Validate(expr)
+            | Expr::CompDocument(expr)
+            | Expr::CompText(expr)
+            | Expr::CompComment(expr) => out.push(take(expr)),
+            Expr::Arrow { base, function, args } => {
+                out.push(take(base));
+                if let ArrowTarget::Expr(e) = function.as_mut() {
+                    out.push(take(e));
+                }
+                take_args(args, out);
+            }
+            Expr::If { condition, then, else_ } => {
+                out.push(take(condition));
+                out.push(take(then));
+                out.push(take(else_));
+            }
+            Expr::Switch { operand, cases, default } => {
+                out.push(take(operand));
+                for (values, ret) in cases.iter_mut() {
+                    out.append(values);
+                    out.push(take(ret));
+                }
+                out.push(take(default));
+            }
+            Expr::Typeswitch { operand, cases, default, .. } => {
+                out.push(take(operand));
+                out.extend(cases.iter_mut().map(|c| take(&mut c.ret)));
+                out.push(take(default));
+            }
+            Expr::Try { body, catches } => {
+                out.push(take(body));
+                out.extend(catches.iter_mut().map(|c| take(&mut c.body)));
+            }
+            Expr::Quantified { bindings, satisfies, .. } => {
+                out.extend(bindings.iter_mut().map(|(_, e)| take(e)));
+                out.push(take(satisfies));
+            }
+            Expr::Flwor { clauses, ret } => {
+                for clause in clauses.iter_mut() {
+                    match &mut clause.value {
+                        Clause::For { expr, .. } | Clause::Let { expr, .. } | Clause::Where(expr) => out.push(take(expr)),
+                        Clause::Window(w) => {
+                            out.push(take(&mut w.expr));
+                            out.push(take(&mut w.start.when));
+                            if let Some((_, end)) = &mut w.end {
+                                out.push(take(&mut end.when));
+                            }
+                        }
+                        Clause::GroupBy(specs) => out.extend(specs.iter_mut().filter_map(|s| s.expr.as_mut().map(take))),
+                        Clause::OrderBy { specs, .. } => out.extend(specs.iter_mut().map(|s| take(&mut s.expr))),
+                        Clause::Count(_) => {}
+                    }
+                }
+                out.push(take(ret));
+            }
+            Expr::MapConstructor(entries) => {
+                for (k, v) in entries.iter_mut() {
+                    out.push(take(k));
+                    out.push(take(v));
+                }
+            }
+            Expr::CurlyArray(e) => out.extend(e.as_deref_mut().map(take)),
+            Expr::StringConstructor(parts) => {
+                for p in parts.iter_mut() {
+                    if let StringPart::Expr(Some(e)) = p {
+                        out.push(take(e));
+                    }
+                }
+            }
+            Expr::DirElement { attributes, content, .. } => {
+                for a in attributes.iter_mut() {
+                    for p in a.value.iter_mut() {
+                        if let AttrPart::Expr(e) = p {
+                            out.push(take(e));
+                        }
+                    }
+                }
+                for c in content.iter_mut() {
+                    match c {
+                        DirContent::Enclosed(Some(e)) | DirContent::Node(e) => out.push(take(e)),
+                        _ => {}
+                    }
+                }
+            }
+            Expr::CompElement { name, content } | Expr::CompAttribute { name, content } | Expr::CompPi { target: name, content } => {
+                take_name(name, out);
+                out.extend(content.as_deref_mut().map(take));
+            }
+            Expr::CompNamespace { prefix, uri } => {
+                take_name(prefix, out);
+                out.extend(uri.as_deref_mut().map(take));
+            }
+        }
+    }
+}
+
+/// A tree is dropped with a stack on the heap, not by recursion: dropping a deep tree (a long chain of operators) must not exhaust
+/// the thread's stack.
+impl Drop for Expr {
+    fn drop(&mut self) {
+        let mut pending = Vec::new();
+        self.take_children(&mut pending);
+        while let Some(mut e) = pending.pop() {
+            e.value.take_children(&mut pending);
+        }
+    }
 }

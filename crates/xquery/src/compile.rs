@@ -94,7 +94,12 @@ pub(crate) struct Compiler<'a> {
     prefixes: HashMap<String, String>,
     ns_stack: Vec<Vec<(String, String)>>,
     default_element: String,
+    /// Where the stack was when compiling began: the recursion over the tree is bounded by the bytes it takes (`MAX_COMPILE_STACK`).
+    stack_base: usize,
 }
+
+/// The most bytes of the thread's stack the compiler's recursion over the tree may take.
+pub const MAX_COMPILE_STACK: usize = 96 * 1024;
 
 impl<'a> Compiler<'a> {
     pub(crate) fn new(sc: &'a StaticContext) -> Self {
@@ -112,6 +117,7 @@ impl<'a> Compiler<'a> {
             prefixes: HashMap::new(),
             ns_stack: Vec::new(),
             default_element: String::new(),
+            stack_base: crate::parse::stack_mark(),
         }
     }
 
@@ -488,12 +494,113 @@ impl<'a> Compiler<'a> {
     // ---- expressions ----
 
     pub(crate) fn expr(&mut self, e: &ExprS) -> C<Bindings> {
+        if crate::parse::stack_used(self.stack_base) > MAX_COMPILE_STACK {
+            return Err(cerr("XMLC0003", "the query is nested too deeply to compile", &e.span));
+        }
         let b = self.expr_inner(e)?;
         Ok(self.seal(b))
     }
 
     fn expr_inner(&mut self, e: &ExprS) -> C<Bindings> {
         let span = self.sp(&e.span);
+        match &e.value {
+            Expr::Sequence(_) => self.expr_g0(e, span),
+            Expr::Literal(_) => self.expr_g0(e, span),
+            Expr::VarRef(_) => self.expr_g0(e, span),
+            Expr::ContextItem => self.expr_g0(e, span),
+            Expr::Root => self.expr_g0(e, span),
+            Expr::FunctionCall { .. } => self.expr_g0(e, span),
+            Expr::NamedFunctionRef { .. } => self.expr_g0(e, span),
+            Expr::InlineFunction { .. } => self.expr_g0(e, span),
+            Expr::DynamicCall { .. } => self.expr_g1(e, span),
+            Expr::Filter { .. } => self.expr_g1(e, span),
+            Expr::Lookup { .. } => self.expr_g1(e, span),
+            Expr::UnaryLookup(_) => self.expr_g1(e, span),
+            Expr::Path { .. } => self.spine(e),
+            Expr::AxisStep { .. } => self.expr_g2(e, span),
+            Expr::Binary { .. } => self.spine(e),
+            Expr::Unary { .. } => self.expr_g3(e, span),
+            Expr::SimpleMap { .. } => self.spine(e),
+            Expr::Arrow { .. } => self.expr_g3(e, span),
+            Expr::InstanceOf { .. } => self.expr_g4(e, span),
+            Expr::Treat { .. } => self.expr_g4(e, span),
+            Expr::Cast { .. } | Expr::Castable { .. } => self.expr_g4(e, span),
+            Expr::If { .. } => self.expr_g4(e, span),
+            Expr::Switch { operand, cases, default } => self.switch(operand, cases, default, span),
+            Expr::Typeswitch { operand, cases, default_var, default } => {
+                self.typeswitch(operand, cases, &default_var.as_deref().cloned(), default, span)
+            }
+            Expr::Try { body, catches } => self.try_catch(body, catches, span),
+            Expr::Quantified { every, bindings, satisfies } => self.quantified(*every, bindings, satisfies, span),
+            Expr::Flwor { clauses, ret } => self.flwor(clauses, ret),
+            Expr::MapConstructor(_) => self.expr_g5(e, span),
+            Expr::SquareArray(_) => self.expr_g5(e, span),
+            Expr::CurlyArray(_) => self.expr_g5(e, span),
+            Expr::StringConstructor(_) => self.expr_g5(e, span),
+            Expr::Validate(_) => self.expr_g5(e, span),
+            Expr::DirElement { name, namespaces, attributes, content } => self.direct_element(name, namespaces, attributes, content, span),
+            Expr::DirComment(_) => self.expr_g6(e, span),
+            Expr::DirPi { .. } => self.expr_g6(e, span),
+            Expr::CompDocument(_) => self.expr_g6(e, span),
+            Expr::CompElement { .. } => self.expr_g6(e, span),
+            Expr::CompAttribute { .. } => self.expr_g6(e, span),
+            Expr::CompNamespace { .. } => self.expr_g6(e, span),
+            Expr::CompText(_) => self.expr_g6(e, span),
+            Expr::CompComment(_) => self.expr_g6(e, span),
+            Expr::CompPi { .. } => self.expr_g6(e, span),
+        }
+    }
+
+    /// A chain that leans left (`a - b - c`, a path whose steps are not all axis steps, `a ! b ! c`) is compiled in a loop down its
+    /// left side, not by recursion: such a chain may be long (the parser lets 128 operators through).
+    #[inline(never)]
+    fn spine(&mut self, e: &ExprS) -> C<Bindings> {
+        let mut nodes: Vec<&ExprS> = Vec::new();
+        let mut cur = e;
+        while let Expr::Binary { left, .. } | Expr::Path { left, .. } | Expr::SimpleMap { left, .. } = &cur.value {
+            nodes.push(cur);
+            cur = left;
+        }
+        let mut b = self.expr(cur)?;
+        for node in nodes.into_iter().rev() {
+            b = self.chain_step(b, node)?;
+        }
+        Ok(b)
+    }
+
+    /// One link of a chain: the right side of `node`, applied to what is on its left (`lb`).
+    #[inline(never)]
+    fn chain_step(&mut self, lb: Bindings, node: &ExprS) -> C<Bindings> {
+        let span = self.sp(&node.span);
+        let mut lb = lb;
+        match &node.value {
+            Expr::Binary { op, right, .. } => {
+                let rb = self.expr(right)?;
+                Ok(self.binary(lb, binop(*op), rb, span))
+            }
+            Expr::Path { right, .. } => {
+                let la = lb.atom();
+                let names = self.v.push_context();
+                let rb = self.expr(right);
+                self.v.pop_context();
+                let m = XSpanned::new(ir::Expr::Map(ir::Map { context_names: names, var_atom: la, return_expr: Box::new(rb?.expr()) }), span);
+                let d = self.v.new_binding(ir::Expr::Deduplicate(Box::new(m)), span);
+                Ok(lb.bind(d))
+            }
+            Expr::SimpleMap { right, .. } => {
+                let la = lb.atom();
+                let names = self.v.push_context();
+                let rb = self.expr(right);
+                self.v.pop_context();
+                let m = self.v.new_binding(ir::Expr::Map(ir::Map { context_names: names, var_atom: la, return_expr: Box::new(rb?.expr()) }), span);
+                Ok(lb.bind(m))
+            }
+            _ => Err(cerr("XPST0003", "an expression was compiled by the wrong part of the compiler", &node.span)),
+        }
+    }
+
+    #[inline(never)]
+    fn expr_g0(&mut self, e: &ExprS, span: XSpan) -> C<Bindings> {
         match &e.value {
             Expr::Sequence(items) => self.sequence(items, span),
             Expr::Literal(l) => {
@@ -520,9 +627,17 @@ impl<'a> Compiler<'a> {
             Expr::FunctionCall { name, args } => self.function_call(name, args, &e.span),
             Expr::NamedFunctionRef { name, arity } => self.named_function_ref(name, usize::from(*arity), &e.span),
             Expr::InlineFunction { params, return_type, body, .. } => {
-                let def = self.function_definition(params, return_type, body, false)?;
+                let return_type = return_type.as_deref().cloned();
+                let def = self.function_definition(params, &return_type, body, false)?;
                 Ok(self.bind(ir::Expr::FunctionDefinition(def), span))
             }
+            _ => Err(cerr("XPST0003", "an expression was compiled by the wrong part of the compiler", &e.span)),
+        }
+    }
+
+    #[inline(never)]
+    fn expr_g1(&mut self, e: &ExprS, span: XSpan) -> C<Bindings> {
+        match &e.value {
             Expr::DynamicCall { function, args } => {
                 let mut fb = self.expr(function)?;
                 let fa = fb.atom();
@@ -554,23 +669,20 @@ impl<'a> Compiler<'a> {
                 let l = self.lookup(ca, key, span)?;
                 Ok(c.concat(l))
             }
-            Expr::Path { left, right } => {
-                let mut lb = self.expr(left)?;
-                let la = lb.atom();
-                let names = self.v.push_context();
-                let rb = self.expr(right);
-                self.v.pop_context();
-                let m = XSpanned::new(ir::Expr::Map(ir::Map { context_names: names, var_atom: la, return_expr: Box::new(rb?.expr()) }), span);
-                let d = self.v.new_binding(ir::Expr::Deduplicate(Box::new(m)), span);
-                Ok(lb.bind(d))
-            }
+            _ => Err(cerr("XPST0003", "an expression was compiled by the wrong part of the compiler", &e.span)),
+        }
+    }
+
+    #[inline(never)]
+    fn expr_g2(&mut self, e: &ExprS, span: XSpan) -> C<Bindings> {
+        match &e.value {
             Expr::AxisStep { axis, test, predicates } => {
                 if matches!(axis, xast::Axis::Namespace) {
                     return Err(cerr("XQST0134", "the namespace axis is not supported", &e.span));
                 }
                 let mut c = self.v.context_item(span).map_err(from_xee)?;
                 let ca = c.atom();
-                let step = xee_interpreter::xml::Step { axis: axis.clone(), node_test: test.clone() };
+                let step = xee_interpreter::xml::Step { axis: axis.clone(), node_test: (**test).clone() };
                 let s = self.v.new_binding(ir::Expr::Step(ir::Step { step, context: ca }), span);
                 let mut b = Bindings::new(s);
                 for p in predicates {
@@ -586,26 +698,19 @@ impl<'a> Compiler<'a> {
                 }
                 Ok(c.concat(b))
             }
-            Expr::Binary { op, left, right } => {
-                let lb = self.expr(left)?;
-                let rb = self.expr(right)?;
-                Ok(self.binary(lb, binop(*op), rb, span))
-            }
+            _ => Err(cerr("XPST0003", "an expression was compiled by the wrong part of the compiler", &e.span)),
+        }
+    }
+
+    #[inline(never)]
+    fn expr_g3(&mut self, e: &ExprS, span: XSpan) -> C<Bindings> {
+        match &e.value {
             Expr::Unary { minus, expr } => {
                 let mut b = self.expr(expr)?;
                 let a = b.atom();
                 let op = if *minus { xast::UnaryOperator::Minus } else { xast::UnaryOperator::Plus };
                 let u = self.v.new_binding(ir::Expr::Unary(ir::Unary { op, atom: a }), span);
                 Ok(b.bind(u))
-            }
-            Expr::SimpleMap { left, right } => {
-                let mut lb = self.expr(left)?;
-                let la = lb.atom();
-                let names = self.v.push_context();
-                let rb = self.expr(right);
-                self.v.pop_context();
-                let m = self.v.new_binding(ir::Expr::Map(ir::Map { context_names: names, var_atom: la, return_expr: Box::new(rb?.expr()) }), span);
-                Ok(lb.bind(m))
             }
             Expr::Arrow { base, function, args } => {
                 let mut all = vec![Arg::Expr((**base).clone())];
@@ -618,16 +723,23 @@ impl<'a> Compiler<'a> {
                     }
                 }
             }
+            _ => Err(cerr("XPST0003", "an expression was compiled by the wrong part of the compiler", &e.span)),
+        }
+    }
+
+    #[inline(never)]
+    fn expr_g4(&mut self, e: &ExprS, span: XSpan) -> C<Bindings> {
+        match &e.value {
             Expr::InstanceOf { expr, type_ } => {
                 let mut b = self.expr(expr)?;
                 let a = b.atom();
-                let i = self.v.new_binding(ir::Expr::InstanceOf(ir::InstanceOf { atom: a, sequence_type: type_.clone() }), span);
+                let i = self.v.new_binding(ir::Expr::InstanceOf(ir::InstanceOf { atom: a, sequence_type: (**type_).clone() }), span);
                 Ok(b.bind(i))
             }
             Expr::Treat { expr, type_ } => {
                 let mut b = self.expr(expr)?;
                 let a = b.atom();
-                let t = self.v.new_binding(ir::Expr::Treat(ir::Treat { atom: a, sequence_type: type_.clone() }), span);
+                let t = self.v.new_binding(ir::Expr::Treat(ir::Treat { atom: a, sequence_type: (**type_).clone() }), span);
                 Ok(b.bind(t))
             }
             Expr::Cast { expr, type_ } | Expr::Castable { expr, type_ } => {
@@ -650,11 +762,13 @@ impl<'a> Compiler<'a> {
                 let i = self.v.new_binding(ir::Expr::If(ir::If { condition: ca, then: Box::new(tb.expr()), else_: Box::new(eb.expr()) }), span);
                 Ok(cb.bind(i))
             }
-            Expr::Switch { operand, cases, default } => self.switch(operand, cases, default, span),
-            Expr::Typeswitch { operand, cases, default_var, default } => self.typeswitch(operand, cases, default_var, default, span),
-            Expr::Try { body, catches } => self.try_catch(body, catches, span),
-            Expr::Quantified { every, bindings, satisfies } => self.quantified(*every, bindings, satisfies, span),
-            Expr::Flwor { clauses, ret } => self.flwor(clauses, ret),
+            _ => Err(cerr("XPST0003", "an expression was compiled by the wrong part of the compiler", &e.span)),
+        }
+    }
+
+    #[inline(never)]
+    fn expr_g5(&mut self, e: &ExprS, span: XSpan) -> C<Bindings> {
+        match &e.value {
             Expr::MapConstructor(entries) => {
                 let mut b = Bindings::empty();
                 let mut members = Vec::new();
@@ -707,7 +821,13 @@ impl<'a> Compiler<'a> {
                 Ok(b.concat(s))
             }
             Expr::Validate(_) => Err(cerr("XQST0075", "validate is not supported: the engine is not schema-aware", &e.span)),
-            Expr::DirElement { name, namespaces, attributes, content } => self.direct_element(name, namespaces, attributes, content, span),
+            _ => Err(cerr("XPST0003", "an expression was compiled by the wrong part of the compiler", &e.span)),
+        }
+    }
+
+    #[inline(never)]
+    fn expr_g6(&mut self, e: &ExprS, span: XSpan) -> C<Bindings> {
+        match &e.value {
             Expr::DirComment(text) => {
                 let a = self.string(text, span);
                 Ok(self.bind(ir::Expr::XmlComment(ir::XmlComment { value: a }), span))
@@ -853,10 +973,12 @@ impl<'a> Compiler<'a> {
                 let pi = self.v.new_binding(ir::Expr::XmlProcessingInstruction(ir::XmlProcessingInstruction { target: ta, content: ka }), span);
                 Ok(tb.concat(cb).concat(checked).bind(pi))
             }
+            _ => Err(cerr("XPST0003", "an expression was compiled by the wrong part of the compiler", &e.span)),
         }
     }
 
     /// A comma sequence, split in halves so that a long one does not nest deeply.
+    #[inline(never)]
     fn sequence(&mut self, items: &[ExprS], span: XSpan) -> C<Bindings> {
         match items {
             [] => Ok(self.empty(span)),
@@ -874,6 +996,7 @@ impl<'a> Compiler<'a> {
     }
 
     /// `string-join(data(e), sep)`
+    #[inline(never)]
     fn joined(&mut self, e: &ExprS, sep: &str) -> C<Bindings> {
         let span = self.sp(&e.span);
         let mut b = self.expr(e)?;
@@ -893,6 +1016,7 @@ impl<'a> Compiler<'a> {
         Ok(seq.concat(j))
     }
 
+    #[inline(never)]
     fn var_ref(&mut self, name: &Name, span: &Span) -> C<Bindings> {
         let xspan = self.sp(span);
         if self.locals.iter().rev().any(|l| l == name) {
@@ -910,6 +1034,7 @@ impl<'a> Compiler<'a> {
 
     /// Compile arguments; with `?` placeholders, the call becomes a function of the missing arguments (a partial application),
     /// the other arguments evaluated now.
+    #[inline(never)]
     fn with_args(&mut self, args: &[Arg], span: XSpan, call: &mut dyn FnMut(&mut Self, Vec<ir::AtomS>) -> C<Bindings>) -> C<Bindings> {
         let mut b = Bindings::empty();
         let mut atoms: Vec<Option<ir::AtomS>> = Vec::new();
@@ -945,6 +1070,7 @@ impl<'a> Compiler<'a> {
         Ok(b.bind(d))
     }
 
+    #[inline(never)]
     fn function_call(&mut self, name: &Name, args: &[Arg], span: &Span) -> C<Bindings> {
         let xspan = self.sp(span);
         let arity = args.len();
@@ -973,6 +1099,7 @@ impl<'a> Compiler<'a> {
         })
     }
 
+    #[inline(never)]
     fn named_function_ref(&mut self, name: &Name, arity: usize, span: &Span) -> C<Bindings> {
         let xspan = self.sp(span);
         if self.functions.iter().any(|(n, a)| n == name && *a == arity) {
@@ -987,6 +1114,7 @@ impl<'a> Compiler<'a> {
         Ok(self.atom_b(XSpanned::new(fref, xspan)))
     }
 
+    #[inline(never)]
     fn lookup(&mut self, atom: ir::AtomS, key: &Key, span: XSpan) -> C<Bindings> {
         let arg = match key {
             Key::Star => return Ok(self.bind(ir::Expr::WildcardLookup(ir::WildcardLookup { atom }), span)),
@@ -1000,6 +1128,7 @@ impl<'a> Compiler<'a> {
         Ok(arg.bind(l))
     }
 
+    #[inline(never)]
     fn quantified(&mut self, every: bool, bindings: &[(VarBinding, ExprS)], satisfies: &ExprS, span: XSpan) -> C<Bindings> {
         let Some(((var, e), rest)) = bindings.split_first() else { return self.expr(satisfies) };
         let mut sb = self.expr(e)?;
@@ -1017,6 +1146,7 @@ impl<'a> Compiler<'a> {
         Ok(sb.bind(q))
     }
 
+    #[inline(never)]
     fn switch(&mut self, operand: &ExprS, cases: &[(Vec<ExprS>, ExprS)], default: &ExprS, span: XSpan) -> C<Bindings> {
         let mut ob = self.expr(operand)?;
         let oa = ob.atom();
@@ -1044,6 +1174,7 @@ impl<'a> Compiler<'a> {
         Ok(ob.concat(key).concat(otherwise))
     }
 
+    #[inline(never)]
     fn typeswitch(&mut self, operand: &ExprS, cases: &[TypeCase], default_var: &Option<VarBinding>, default: &ExprS, span: XSpan) -> C<Bindings> {
         let mut ob = self.expr(operand)?;
         let oa = ob.atom();
@@ -1083,6 +1214,7 @@ impl<'a> Compiler<'a> {
         Ok(ob.concat(otherwise))
     }
 
+    #[inline(never)]
     fn try_catch(&mut self, body: &ExprS, catches: &[Catch], span: XSpan) -> C<Bindings> {
         // the body: a function of no arguments that keeps the context of the `try`
         let bb = self.expr(body)?;
@@ -1180,6 +1312,7 @@ impl<'a> Compiler<'a> {
 
     // ---- FLWOR ----
 
+    #[inline(never)]
     fn flwor(&mut self, clauses: &[Spanned<Clause>], ret: &ExprS) -> C<Bindings> {
         let Some(k) = clauses.iter().position(is_materializing) else {
             return self.clauses(clauses, &mut |s| s.expr(ret));
@@ -1223,6 +1356,7 @@ impl<'a> Compiler<'a> {
 
     /// Apply a materializing clause to the tuple stream (arrays `[vars…, keys…]`), then run the clauses after it over the
     /// result: up to the next materializing clause they make the next stream, and the last ones end in `return`.
+    #[inline(never)]
     fn materialized(&mut self, tuples: Bindings, vars: Vec<Name>, clause: &Spanned<Clause>, after: &[Spanned<Clause>], ret: &ExprS) -> C<Bindings> {
         let span = self.sp(&clause.span);
         let n = vars.len();
@@ -1357,7 +1491,94 @@ impl<'a> Compiler<'a> {
         self.type_check(first, &mut |s| s.checks(others, rest))
     }
 
+    #[inline(never)]
+    /// The clauses before `tail`. A run of `let`, `where` and `for` (without `allowing empty`) is compiled in a loop, each clause
+    /// then wrapped around what follows it, so a FLWOR of many clauses does not recurse once per clause; a window or a `for …
+    /// allowing empty` is compiled by [`Self::clause_one`].
     fn clauses(&mut self, clauses: &[Spanned<Clause>], tail: &mut dyn FnMut(&mut Self) -> C<Bindings>) -> C<Bindings> {
+        let saved = self.locals.len();
+        let r = self.clause_run(clauses, tail);
+        self.locals.truncate(saved);
+        r
+    }
+
+    #[inline(never)]
+    fn clause_run(&mut self, clauses: &[Spanned<Clause>], tail: &mut dyn FnMut(&mut Self) -> C<Bindings>) -> C<Bindings> {
+        enum Wrap<'c> {
+            Let { name: ir::Name, value: Bindings, var: &'c VarBinding, span: XSpan },
+            Where { cond: Bindings, span: XSpan },
+            For { seq: Bindings, names: ir::ContextNames, var: &'c VarBinding, span: XSpan },
+        }
+        let mut wraps: Vec<Wrap<'_>> = Vec::new();
+        let mut i = 0;
+        while let Some(c) = clauses.get(i) {
+            let span = self.sp(&c.span);
+            match &c.value {
+                Clause::Let { var, expr } => {
+                    let value = self.expr(expr)?;
+                    let name = self.v.new_var_name(&var.name);
+                    self.locals.push(var.name.clone());
+                    wraps.push(Wrap::Let { name, value, var, span });
+                }
+                Clause::Where(cond) => {
+                    let cond = self.expr(cond)?;
+                    wraps.push(Wrap::Where { cond, span });
+                }
+                Clause::For { var, allowing_empty: false, position, expr } => {
+                    let seq = self.expr(expr)?;
+                    let name = self.v.new_var_name(&var.name);
+                    let pos = match position {
+                        Some(p) => self.v.new_var_name(&p.name),
+                        None => self.v.new_name(),
+                    };
+                    let names = ir::ContextNames { item: name, position: pos, last: self.v.new_name() };
+                    self.locals.push(var.name.clone());
+                    if let Some(p) = position {
+                        self.locals.push(p.name.clone());
+                    }
+                    wraps.push(Wrap::For { seq, names, var, span });
+                }
+                _ => break,
+            }
+            i += 1;
+        }
+        let rest = clauses.get(i..).unwrap_or_default();
+        let mut body = if rest.is_empty() { tail(self)? } else { self.clause_one(rest, tail)? };
+        for wrap in wraps.into_iter().rev() {
+            body = match wrap {
+                Wrap::Let { name, value, var, span } => {
+                    let mut inner = Some(body);
+                    let checked =
+                        self.type_check(var, &mut |_| inner.take().ok_or_else(|| cerr("XPST0003", "a clause was compiled twice", &var.span)))?;
+                    let l = ir::Expr::Let(ir::Let { name, var_expr: Box::new(value.expr()), return_expr: Box::new(checked.expr()) });
+                    self.bind(l, span)
+                }
+                Wrap::Where { mut cond, span } => {
+                    let ca = cond.atom();
+                    let i = self.v.new_binding(
+                        ir::Expr::If(ir::If { condition: ca, then: Box::new(body.expr()), else_: Box::new(self.empty_expr(span)) }),
+                        span,
+                    );
+                    cond.bind(i)
+                }
+                Wrap::For { mut seq, names, var, span } => {
+                    let sa = seq.atom();
+                    let mut inner = Some(body);
+                    let checked =
+                        self.type_check(var, &mut |_| inner.take().ok_or_else(|| cerr("XPST0003", "a clause was compiled twice", &var.span)))?;
+                    let m = self
+                        .v
+                        .new_binding(ir::Expr::Map(ir::Map { context_names: names, var_atom: sa, return_expr: Box::new(checked.expr()) }), span);
+                    seq.bind(m)
+                }
+            };
+        }
+        Ok(body)
+    }
+
+    /// The first clause, then the rest (recursively): for a window and a `for … allowing empty`.
+    #[inline(never)]
+    fn clause_one(&mut self, clauses: &[Spanned<Clause>], tail: &mut dyn FnMut(&mut Self) -> C<Bindings>) -> C<Bindings> {
         let Some((first, rest)) = clauses.split_first() else { return tail(self) };
         let span = self.sp(&first.span);
         match &first.value {
@@ -1411,31 +1632,17 @@ impl<'a> Compiler<'a> {
                     }
                 }
             }
-            Clause::Let { var, expr } => {
-                let vb = self.expr(expr)?;
-                let name = self.v.new_var_name(&var.name);
-                self.locals.push(var.name.clone());
-                let body = self.type_check(var, &mut |s| s.clauses(rest, tail));
-                self.locals.pop();
-                let l = ir::Expr::Let(ir::Let { name, var_expr: Box::new(vb.expr()), return_expr: Box::new(body?.expr()) });
-                Ok(self.bind(l, span))
-            }
-            Clause::Where(cond) => {
-                let mut cb = self.expr(cond)?;
-                let ca = cb.atom();
-                let body = self.clauses(rest, tail)?;
-                let i = self
-                    .v
-                    .new_binding(ir::Expr::If(ir::If { condition: ca, then: Box::new(body.expr()), else_: Box::new(self.empty_expr(span)) }), span);
-                Ok(cb.bind(i))
-            }
             Clause::Window(w) => self.window(w, span, &mut |s| s.clauses(rest, tail)),
-            Clause::OrderBy { .. } | Clause::GroupBy(_) | Clause::Count(_) => Err(cerr("XPST0003", "a clause is out of place", &first.span)),
+            // (`let` and `where` are compiled by [`Self::clause_run`].)
+            Clause::Let { .. } | Clause::Where(_) | Clause::OrderBy { .. } | Clause::GroupBy(_) | Clause::Count(_) => {
+                Err(cerr("XPST0003", "a clause is out of place", &first.span))
+            }
         }
     }
 
     // ---- windows ----
 
+    #[inline(never)]
     fn window(&mut self, w: &Window, span: XSpan, rest: &mut dyn FnMut(&mut Self) -> C<Bindings>) -> C<Bindings> {
         let seq_b = self.expr(&w.expr)?;
         let seq = self.v.new_name();
@@ -1522,6 +1729,7 @@ impl<'a> Compiler<'a> {
     }
 
     /// Bind the variables of a window condition (`$s`, `at $p`, `previous $q`, `next $n`) around `body`.
+    #[inline(never)]
     fn condition_vars(
         &mut self,
         cond: &WindowCondition,
@@ -1592,6 +1800,7 @@ impl<'a> Compiler<'a> {
         b.concat(nsb).bind(append)
     }
 
+    #[inline(never)]
     fn direct_element(
         &mut self,
         name: &Name,
@@ -1623,6 +1832,7 @@ impl<'a> Compiler<'a> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[inline(never)]
     fn direct_element_parts(
         &mut self,
         mut b: Bindings,
@@ -1703,6 +1913,7 @@ impl<'a> Compiler<'a> {
 
     /// The name of a computed element or attribute: written (a constant), or computed (`xqi:qname` resolves a string against
     /// the prefixes in scope).
+    #[inline(never)]
     fn comp_name(&mut self, name: &CompName, element: bool, span: XSpan) -> C<Bindings> {
         match name {
             CompName::Name(n) => Ok(self.xml_name(n, span)),

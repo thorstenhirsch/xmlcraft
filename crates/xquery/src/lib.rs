@@ -219,7 +219,12 @@ fn compile_query(query: &str, has_context: bool, options: &Options) -> Result<Co
     let ordered: Vec<ast::Name> = sc.variable_names().iter().cloned().collect();
     let setup = compile::Setup { supplied: &ordered, has_context, namespaces: &namespaces };
     let ir = compile::Compiler::new(&sc).module(&module, prelude, &setup).map_err(from_compile)?;
-    let program = xee_ir::compile_xpath(ir, sc).map_err(|e| {
+    // `xee`'s code generator panics on a loop whose body is too long to jump over (a very large query): that is an error of the
+    // query here, not a crash (where panics unwind; on the web they abort).
+    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| xee_ir::compile_xpath(ir, sc))).map_err(|_| {
+        compile_error("XMLC0004", "the query is too large to compile (a loop of it makes more code than the engine can jump over)".into(), None)
+    })?;
+    let program = compiled.map_err(|e| {
         let mut q = run_error(&e);
         q.phase = Phase::Compile;
         q
