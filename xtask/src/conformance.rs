@@ -37,8 +37,9 @@ pub fn run(args: &[String]) -> Result<()> {
         Some("xmlconf") => xmlconf(fetch, write, verbose),
         Some("xsdtests") => crate::xsdtests::run(fetch, write, verbose),
         Some("jsonschema") => crate::jsonschema::run(fetch, write, verbose),
-        Some(other) => bail!("unknown suite `{other}` (available: xmlconf, xsdtests, jsonschema)"),
-        None => bail!("usage: cargo xtask conformance <xmlconf|xsdtests|jsonschema> [--fetch] [--write] [--verbose]"),
+        Some("xquery") => crate::qt3::run(fetch, write, verbose),
+        Some(other) => bail!("unknown suite `{other}` (available: xmlconf, xsdtests, jsonschema, xquery)"),
+        None => bail!("usage: cargo xtask conformance <xmlconf|xsdtests|jsonschema|xquery> [--fetch] [--write] [--verbose]"),
     }
 }
 
