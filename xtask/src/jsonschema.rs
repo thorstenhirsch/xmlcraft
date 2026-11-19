@@ -149,10 +149,10 @@ pub fn run(fetch: bool, write: bool, verbose: bool) -> Result<()> {
 /// Panics are silent while this lives and the hook is back when it ends, however the run ends.
 type Hook = Box<dyn Fn(&std::panic::PanicHookInfo<'_>) + Sync + Send + 'static>;
 
-struct QuietPanics(Option<Hook>);
+pub(crate) struct QuietPanics(Option<Hook>);
 
 impl QuietPanics {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(|_| {}));
         Self(Some(previous))

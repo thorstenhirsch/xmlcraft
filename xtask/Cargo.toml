@@ -20,6 +20,8 @@ xmlcraft-editor = { workspace = true }
 xmlcraft-dtd = { workspace = true }
 xmlcraft-validate = { workspace = true }
 xmlcraft-xsd = { workspace = true }
+xmlcraft-xquery = { workspace = true }
+xot = "0.31"
 xmlcraft-json = { workspace = true }
 xmlcraft-json-syntax = { workspace = true }
 xmlcraft-resolve = { workspace = true }

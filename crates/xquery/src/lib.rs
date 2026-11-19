@@ -267,29 +267,7 @@ fn param_sequence(value: &ParamValue) -> xee_interpreter::sequence::Sequence {
 /// Evaluate `query`, with the document `context` (XML text) as the context item when there is one.
 pub fn evaluate(query: &str, context: Option<&str>, options: &Options) -> Result<Outcome, QueryError> {
     let compiled = compile_query(query, context.is_some(), options)?;
-    let mut documents = Documents::new();
-    let mut context_root = None;
-    if let Some(xml) = context {
-        let readable = xmlcraft_query::readable_document(xml);
-        let handle = documents.add_string_without_uri(&readable).map_err(|e| QueryError {
-            phase: Phase::Document,
-            code: String::new(),
-            message: format!("the document cannot be read: {e}"),
-            span: None,
-        })?;
-        context_root = documents.document_node(handle);
-    }
-    for (uri, xml) in &options.documents {
-        let Ok(iri) = <&iri_string::types::IriStr>::try_from(uri.as_str()) else {
-            return Err(QueryError { phase: Phase::Document, code: "FODC0005".into(), message: format!("'{uri}' is not a URI"), span: None });
-        };
-        documents.add_string(iri, &xmlcraft_query::readable_document(xml)).map_err(|e| QueryError {
-            phase: Phase::Document,
-            code: "FODC0002".into(),
-            message: format!("the document {uri} cannot be read: {e}"),
-            span: None,
-        })?;
-    }
+    let (mut documents, context_root) = documents_of(context, options)?;
     let mut builder = compiled.program.dynamic_context_builder();
     builder.documents(documents.documents().clone());
     if let Some(root) = context_root {
@@ -413,4 +391,132 @@ fn cut_bytes(mut s: String, max: usize) -> String {
     }
     s.truncate(end);
     s
+}
+
+/// The documents of a run: the context document (and its document node) and the documents `fn:doc` may open.
+fn documents_of(context: Option<&str>, options: &Options) -> Result<(Documents, Option<xot::Node>), QueryError> {
+    let mut documents = Documents::new();
+    let mut context_root = None;
+    if let Some(xml) = context {
+        let readable = xmlcraft_query::readable_document(xml);
+        let handle = documents.add_string_without_uri(&readable).map_err(|e| QueryError {
+            phase: Phase::Document,
+            code: String::new(),
+            message: format!("the document cannot be read: {e}"),
+            span: None,
+        })?;
+        context_root = documents.document_node(handle);
+    }
+    for (uri, xml) in &options.documents {
+        let Ok(iri) = <&iri_string::types::IriStr>::try_from(uri.as_str()) else {
+            return Err(QueryError { phase: Phase::Document, code: "FODC0005".into(), message: format!("'{uri}' is not a URI"), span: None });
+        };
+        documents.add_string(iri, &xmlcraft_query::readable_document(xml)).map_err(|e| QueryError {
+            phase: Phase::Document,
+            code: "FODC0002".into(),
+            message: format!("the document {uri} cannot be read: {e}"),
+            span: None,
+        })?;
+    }
+    Ok((documents, context_root))
+}
+
+/// Run a compiled query over `documents`; `result` gives the value of one of its external variables as a sequence (a check of
+/// another query's result).
+fn run_compiled(
+    compiled: &Compiled,
+    documents: &mut Documents,
+    root: Option<xot::Node>,
+    result: Option<(&ast::Name, &xee_interpreter::sequence::Sequence)>,
+    max_steps: u64,
+) -> Result<xee_interpreter::sequence::Sequence, QueryError> {
+    let mut builder = compiled.program.dynamic_context_builder();
+    builder.documents(documents.documents().clone());
+    if let Some(root) = root {
+        builder.context_node(root);
+    }
+    let mut variables = xee_interpreter::context::Variables::default();
+    for (name, value) in &compiled.supplied {
+        let value = match result {
+            Some((n, s)) if n == name => s.clone(),
+            _ => param_sequence(value),
+        };
+        variables.insert(name.clone(), value);
+    }
+    builder.variables(variables);
+    let dynamic = builder.build();
+    let runnable = compiled.program.runnable(&dynamic);
+    let mut budget = Budget { left: max_steps };
+    runnable.many_with_hook(documents.xot_mut(), &mut budget).map_err(|e| run_error(&e))
+}
+
+/// How a result is checked (for test suites such as the W3C's QT3).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Check {
+    /// An expression over `$result` (the result of the query), true when it holds.
+    Holds(String),
+    /// The result serialized as XML is this XML (both read and written again, so that quoting and empty-element tags agree).
+    SerializesAs(String),
+}
+
+/// XML read and written again by the same writer, for comparing (`None` when it does not read).
+fn canonical_xml(xot: &mut xot::Xot, xml: &str) -> Option<String> {
+    let wrapped = format!("<xmlcraft-check>{xml}</xmlcraft-check>");
+    let doc = xot.parse(&wrapped).ok()?;
+    let text = xot.to_string(doc).ok();
+    let _ = xot.remove(doc);
+    text
+}
+
+/// Run `query`, then judge its result by each of `checks`. The outer error is the query's own; each check answers whether it
+/// holds, or the error checking it raised.
+pub fn evaluate_and_check(
+    query: &str,
+    context: Option<&str>,
+    options: &Options,
+    checks: &[Check],
+) -> Result<Vec<Result<bool, QueryError>>, QueryError> {
+    let compiled = compile_query(query, context.is_some(), options)?;
+    let (mut documents, root) = documents_of(context, options)?;
+    let sequence = run_compiled(&compiled, &mut documents, root, None, options.max_steps)?;
+    {
+        let xot = documents.xot_mut();
+        for item in sequence.iter() {
+            if let xee_interpreter::sequence::Item::Node(node) = item
+                && Some(xot.root(node)) != root
+            {
+                fix_prefixes(xot, node);
+            }
+        }
+    }
+    let result_name = ast::Name::new("result".to_owned(), String::new(), String::new());
+    let check_options = Options {
+        variables: vec![Variable { name: "result".to_owned(), value: ParamValue::String(String::new()) }],
+        documents: Vec::new(),
+        ..options.clone()
+    };
+    let mut answers = Vec::new();
+    for check in checks {
+        let answer = match check {
+            Check::Holds(expression) => {
+                let q = format!("declare variable $result external;\nboolean(({expression}\n))");
+                compile_query(&q, false, &check_options).and_then(|c| {
+                    let s = run_compiled(&c, &mut documents, None, Some((&result_name, &sequence)), options.max_steps)?;
+                    let xot = documents.xot();
+                    Ok(s.iter().next().is_some_and(|i| i.string_value(xot).is_ok_and(|v| v == "true")))
+                })
+            }
+            Check::SerializesAs(expected) => {
+                let mut params = SerializationParameters::new();
+                params.omit_xml_declaration = true;
+                let xot = documents.xot_mut();
+                match sequence.serialize(params, xot) {
+                    Ok(text) => Ok(canonical_xml(xot, &text).is_some_and(|a| Some(a) == canonical_xml(xot, expected))),
+                    Err(e) => Err(QueryError { phase: Phase::Run, code: e.code(), message: e.message().to_owned(), span: None }),
+                }
+            }
+        };
+        answers.push(answer);
+    }
+    Ok(answers)
 }
