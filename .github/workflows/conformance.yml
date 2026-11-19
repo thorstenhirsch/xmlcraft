@@ -118,3 +118,30 @@ jobs:
       # Prints the pass rate per draft and fails on any difference from xtask/baselines/jsonschema.txt.
       - name: JSON Schema Test Suite
         run: cargo xtask conformance jsonschema --fetch --verbose
+
+  xquery:
+    name: xquery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          prefix-key: v1-rust-conformance
+          key: ${{ hashFiles('Cargo.toml') }}
+          save-if: false
+
+      # The W3C QT3 test suite (a pinned commit, checked by SHA-256), the prod/ and fn/ sets in scope: prints the pass rate per test
+      # set and fails on any difference from xtask/baselines/xquery.txt.
+      - name: QT3 XQuery tests
+        run: cargo xtask conformance xquery --fetch --verbose
+
