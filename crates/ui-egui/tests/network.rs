@@ -1,4 +1,4 @@
-//! Schemas that are not files, and Tools ▸ Work Offline, in the real shell. The network is a mock: nothing here goes to the web.
+//! Schemas that are not files, downloaded in the real shell. The network is a mock: nothing here goes to the web.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -80,34 +80,8 @@ fn a_schema_that_is_not_a_file_is_downloaded_and_the_document_validated_against_
     wait(&mut h, "the validation", |app| app.validity().is_some());
     assert_eq!(h.state().validity(), Some((1, 0)), "`seven` is not an int, as the schema on the web says");
     assert!(h.query_all_by_label_contains("seven").next().is_some(), "the problem is listed");
-    assert!(h.query_all_by_label_contains("offline").next().is_none());
+    assert!(h.query_all_by_label_contains("not in the cache").next().is_none());
     assert_eq!(web.questions(), asked, "the copy that was downloaded is kept, not asked for again");
-}
-
-#[test]
-fn working_offline_downloads_nothing_and_going_online_again_does_with_no_further_ado() {
-    let dir = tempfile::tempdir().expect("dir");
-    let web = Arc::new(Web::default());
-    let mut h = shell(&web);
-    // A document that names a schema is validated when it has been left alone for a moment.
-    h.state_mut().set_validate_delay(Duration::from_millis(150));
-    assert_eq!(h.state().command_checked("xml.work_offline"), Some(false), "online unless the person says otherwise");
-    assert!(h.state_mut().execute("xml.work_offline"));
-    assert_eq!(h.state().command_checked("xml.work_offline"), Some(true));
-    open(&mut h, &file(dir.path(), "n.xml", DOCUMENT));
-    wait(&mut h, "the validation offline", |app| app.validations_requested() == 1 && app.validity().is_some());
-    assert_eq!(web.questions(), 0, "offline asks nobody");
-    assert!(h.query_all_by_label_contains("offline").next().is_some(), "the problem says why the schema was not read");
-    assert!(h.query_all_by_label_contains("seven").next().is_none(), "the document was not checked against a schema that was not read");
-    let helpers_asked = h.state().schema_requests();
-    // Online again: the schema is asked for again, for Entry Helpers and for the validation, and nobody has to do a thing.
-    assert!(h.state_mut().execute("xml.work_offline"));
-    assert_eq!(h.state().command_checked("xml.work_offline"), Some(false));
-    wait(&mut h, "the download", |_| web.questions() >= 1);
-    wait(&mut h, "the validation online", |app| app.validations_requested() == 2 && app.validity() == Some((1, 0)));
-    assert!(h.state().schema_requests() > helpers_asked, "Entry Helpers asked again");
-    assert!(h.query_all_by_label_contains("seven").next().is_some(), "the problem is listed");
-    assert!(h.query_all_by_label_contains("offline").next().is_none());
 }
 
 #[test]

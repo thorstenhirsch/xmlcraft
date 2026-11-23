@@ -313,17 +313,6 @@ impl XmlCraftApp {
         }
     }
 
-    /// Work offline, or stop doing so (Tools ▸ Work Offline). What was asked for before is asked for again: a schema that could not be
-    /// found while offline may be downloaded now, and one that was downloaded is no longer needed to be.
-    pub(crate) fn set_work_offline(&mut self, offline: bool) {
-        self.work_offline = offline;
-        self.network.set_offline(offline);
-        self.forget_schema_requests();
-        if !offline && self.network.offline_by_environment() {
-            self.status = tl!("XMLCRAFT_OFFLINE is set, so nothing is downloaded.").to_owned();
-        }
-    }
-
     /// Ask for the XML Schema the document being shown names (when it has no DOCTYPE) when what it is made of is not what the schema
     /// was asked for with: the schemas named, the place the document is at, or the other documents that are open (a schema may be one
     /// of them, as it is being edited). Looked at every frame, since an edit of another document changes the answer.
@@ -680,8 +669,8 @@ impl XmlCraftApp {
     }
 
     /// Expand every `xi:include` of the shown document (Document ▸ Expand XIncludes). The resources are found on a worker thread as a schema's
-    /// are (the open documents as they are being edited, the catalogs, the schemas that ship with the app, files, and the network unless
-    /// the app works offline); the result is one minimal edit for each include, applied as one undoable step.
+    /// are (the open documents as they are being edited, the catalogs, the schemas that ship with the app, files, and the web through the
+    /// download cache); the result is one minimal edit for each include, applied as one undoable step.
     pub(crate) fn expand_xincludes(&mut self) {
         let Some(doc) = self.session.active_document() else { return };
         if doc.language() != xmlcraft_engine::language::Language::Xml {

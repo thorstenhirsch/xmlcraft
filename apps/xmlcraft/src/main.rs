@@ -190,7 +190,7 @@ fn app_creator<'a>(started: Rc<Cell<bool>>, control: Option<PathBuf>, files: Vec
         if let Err(e) = craft_menu::mac::install_app_menu(&cc.egui_ctx, APP_NAME) {
             log::warn!("couldn't install the app menu, so ⌘Q quits without asking to save: {e}");
         }
-        // The one place the app is given the web: schemas and DTDs that documents name are downloaded and kept (XML ▸ Work Offline).
+        // The one place the app is given the web: schemas and DTDs that documents name are downloaded and kept.
         let mut app = XmlCraftApp::with_network(cc, Network::standard());
         app.open_paths(files.iter().map(Path::new));
         // Unsaved text is kept next to the app's other stored state, and what a session that crashed left there is offered.

@@ -131,10 +131,10 @@ fn a_call_sends_the_envelope_with_the_headers_of_its_version_and_reads_a_fault_f
 }
 
 #[test]
-fn nothing_is_sent_offline_or_to_this_computer_unless_allowed_and_a_given_envelope_is_what_is_sent() {
-    let mut offline = Automation::new();
-    let e = call(&mut offline, "soap_call", json!({ "text": WSDL, "operation": "Add", "url": "http://127.0.0.1:1/x" })).expect_err("offline");
-    assert!(e.to_string().contains("offline"), "{e}");
+fn nothing_is_sent_without_a_client_or_to_this_computer_unless_allowed_and_a_given_envelope_is_what_is_sent() {
+    let mut without = Automation::new();
+    let e = call(&mut without, "soap_call", json!({ "text": WSDL, "operation": "Add", "url": "http://127.0.0.1:1/x" })).expect_err("no client");
+    assert!(e.to_string().contains("no network client"), "{e}");
     let mut online = Automation::new().with_network(Network::standard());
     let e = call(&mut online, "soap_call", json!({ "text": WSDL, "operation": "Add", "url": "http://127.0.0.1:1/x" })).expect_err("private");
     assert!(e.to_string().contains("allow private hosts"), "{e}");

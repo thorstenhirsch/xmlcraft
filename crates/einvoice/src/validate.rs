@@ -10,7 +10,7 @@
 //!
 //! A stage runs when the stages before it did not fail fatally: problems of the XML Schema do not stop the rules, a document that cannot
 //! be read stops everything. Nothing is fetched: the schemas and rules are the bundled ones, read through the resolver the caller gives
-//! (which should be offline). Every check of a rule set comes out as passed, failed, not fired, or **not evaluated** with the reason
+//! (which should not download). Every check of a rule set comes out as passed, failed, not fired, or **not evaluated** with the reason
 //! (`xmlcraft_schematron::CheckState`); a check that was not evaluated is counted on its own and never as passed or failed.
 
 use std::ops::Range;
@@ -266,7 +266,7 @@ impl Collector<'_> {
 }
 
 /// Validate the e-invoice `text` (at `location`, which relative references are taken from; empty when it has none). `resolver` finds
-/// the documents of the bundled XML Schema; give an offline one that knows the bundle.
+/// the documents of the bundled XML Schema; give one that downloads nothing and knows the bundle.
 pub fn validate(text: &str, location: &str, resolver: &Resolver, options: &Options<'_>) -> Report {
     let wanted = |stage: Stage| options.stages.as_ref().is_none_or(|s| s.contains(&stage));
     let mut c = Collector {

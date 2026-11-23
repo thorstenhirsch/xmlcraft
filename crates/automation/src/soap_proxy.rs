@@ -173,10 +173,8 @@ fn soap_proxy_start(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
             .ok_or_else(|| ToolError::InvalidArgs("timeout_seconds is a whole number from 1 to 300".into()))?,
     };
     let breaks = breaks_from(args, &Breaks::default())?;
-    if !a.network().can_download() || a.network().is_offline() {
-        return fail(
-            "the session is offline, so nothing is forwarded: a person has to allow the network (the program gives the session a network that sends)",
-        );
+    if !a.network().can_download() {
+        return fail("this session has no network client, so nothing is forwarded; the program gives a real session one");
     }
     let debugger = Debugger::start(Config { port, target: target.to_owned(), allow_private_hosts: allow, timeout: Duration::from_secs(timeout) })
         .map_err(ToolError::Failed)?;

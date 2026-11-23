@@ -1,5 +1,5 @@
 //! The validation of an electronic invoice against what ships with XmlCraft (`xmlcraft_einvoice::validate`), for the tool and the
-//! window: offline by construction (the resolver knows the bundle and nothing else), within a time budget, behind the last-resort guard.
+//! window: it downloads nothing by construction (the resolver knows the bundle and nothing else), within a time budget, behind the last-resort guard.
 
 use std::sync::Arc;
 
@@ -37,7 +37,7 @@ pub fn detect_einvoice(text: &str) -> Option<xmlcraft_einvoice::Detection> {
 /// A resolver that finds the bundled schemas and nothing else: no files, no open documents, no network.
 pub fn bundled_only_resolver() -> Resolver {
     let env = Environment { buffers: Arc::new(NoBuffers), files: Arc::new(NoFiles), fetcher: None, cache: None, clock: Arc::new(FixedClock(0)) };
-    Resolver::new(env, Policy { offline: true, auto_download: false, use_bundled: true, ..Policy::default() }, &[])
+    Resolver::new(env, Policy { auto_download: false, use_bundled: true, ..Policy::default() }, &[])
 }
 
 /// Validate the e-invoice `text` (at `location`; empty when it has none) with the `stages` asked for (all when `None`), listing at most
@@ -79,7 +79,7 @@ mod tests {
     use xmlcraft_einvoice::validate::Status;
 
     #[test]
-    fn a_ubl_invoice_is_validated_offline_stage_by_stage() {
+    fn a_ubl_invoice_is_validated_without_downloading_stage_by_stage() {
         let invoice = include_str!("../../einvoice/tests/fixtures/xrechnung-ubl.xml");
         let report = einvoice_validate(invoice, "", None, 100).expect("no panic");
         let statuses: Vec<(Stage, &Status)> = report.stages.iter().map(|s| (s.stage, &s.status)).collect();

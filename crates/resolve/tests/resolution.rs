@@ -458,7 +458,7 @@ fn when_the_server_cannot_be_asked_the_old_copy_is_served_as_stale() {
 }
 
 #[test]
-fn offline_nothing_is_downloaded_and_an_old_copy_is_still_served() {
+fn with_downloading_off_nothing_is_downloaded_and_an_old_copy_is_still_served() {
     let mut w = World::new();
     w.cache.put(CacheEntry {
         url: "https://example.org/a.xsd".into(),
@@ -468,13 +468,13 @@ fn offline_nothing_is_downloaded_and_an_old_copy_is_still_served() {
         last_modified: None,
         fetched_at: -40 * DAY,
     });
-    w.policy.offline = true;
+    w.policy.auto_download = false;
     let r = w.resolver();
     let found = r.resolve(&Request::uri("https://example.org/a.xsd", ""), &mut Budget::new()).expect("found");
     assert_eq!((found.origin, text(&found.bytes)), (Origin::Cache { stale: true }, "old"));
-    assert!(found.trail.of(Stage::Network).any(|s| s.outcome == Outcome::Skipped("offline".into())), "{}", found.trail);
+    assert!(found.trail.of(Stage::Network).any(|s| s.outcome == Outcome::Skipped("downloading is not done here".into())), "{}", found.trail);
     let missing = r.resolve(&Request::uri("https://example.org/b.xsd", ""), &mut Budget::new()).expect_err("not there");
-    assert!(missing.message.contains("offline"), "{missing}");
+    assert!(missing.message.contains("downloading is not done here"), "{missing}");
     assert!(w.net.urls().is_empty());
 }
 
@@ -483,7 +483,7 @@ fn with_downloading_off_the_cache_is_all_there_is() {
     let mut w = World::new();
     w.policy.auto_download = false;
     let err = w.resolver().resolve(&Request::uri("https://example.org/a.xsd", ""), &mut Budget::new()).expect_err("not downloaded");
-    assert!(err.message.contains("downloading is off"), "{err}");
+    assert!(err.message.contains("downloading is not done here"), "{err}");
     assert!(err.trail.of(Stage::Network).any(|s| matches!(s.outcome, Outcome::Skipped(_))));
     assert!(w.net.urls().is_empty());
     // A build that cannot download says so as well.

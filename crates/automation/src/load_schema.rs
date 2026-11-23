@@ -1,8 +1,8 @@
 //! `xml_load_schema`: the schema or DTD an XML document names, found the way the app finds it (Load Schema).
 //!
 //! The document is an open document, a file (read through the root confinement) or text. The grammar is found among the open documents,
-//! the catalogs, the schemas that ship with the app, files and, when the program gave the session a network that downloads and it is not
-//! offline, the web through the cache. Nothing is written; with `open` the text is added as a document.
+//! the catalogs, the schemas that ship with the app, files and, when the program gave the session a network that downloads, the web
+//! through the cache. Nothing is written; with `open` the text is added as a document.
 
 use serde_json::{Value, json};
 use xmlcraft_engine::schema_fetch::fetch;
@@ -25,7 +25,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
                       xsi:schemaLocation or xsi:noNamespaceSchemaLocation (a namespace alone, or an internal subset alone, names nothing). The document is \
                       an open document `id`, a file `path` or `text`. Returns `link` (what the document says), `location` and `origin` (open document, \
                       bundle, file, cache or network) of what was found, and its `text`. With `open`, the text is also added as a document and its \
-                      `document` returned. Fails, saying why, when the document names nothing or the grammar cannot be found (offline and not cached, \
+                      `document` returned. Fails, saying why, when the document names nothing or the grammar cannot be found (not cached and the session cannot download, \
                       a missing file, an error from the server).",
         input_schema: json!({ "type": "object", "properties": properties, "additionalProperties": false }),
         read_only: false,

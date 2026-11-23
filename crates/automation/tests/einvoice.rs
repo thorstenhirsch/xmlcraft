@@ -104,7 +104,7 @@ fn validate(a: &mut Automation, text: &str) -> Value {
 }
 
 #[test]
-fn xml_validate_checks_a_cii_invoice_against_the_bundled_d16b_schema_offline() {
+fn xml_validate_checks_a_cii_invoice_against_the_bundled_d16b_schema_without_downloading() {
     let mut a = Automation::new();
     let ok = validate(&mut a, CII_INVOICE);
     assert_eq!((ok["valid"].clone(), ok["validated"].clone()), (json!(true), json!(true)), "{ok}");

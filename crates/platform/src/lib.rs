@@ -7,8 +7,7 @@
 //!   `DiskChange::Missing`. Callers say "not available" instead of failing to build.
 //! - [`file_uri`]: the path a `file:` URI names.
 //! - [`schema_files`]: the files the resolver reads (the external parts of DTDs and the documents of schemas).
-//! - [`network`]: what the resolvers download with ([`network::Network`]: the client, the cache, the clock and the switch to work
-//!   offline). [`http`] (the client, `ureq` over rustls) and [`disk_cache`] (the downloaded copies, kept between runs) are native only;
+//! - [`network`]: what the resolvers download with ([`network::Network`]: the client, the cache and the clock). [`http`] (the client, `ureq` over rustls) and [`disk_cache`] (the downloaded copies, kept between runs) are native only;
 //!   on the web `Network::standard()` is a network that downloads nothing.
 //! - [`client`]: sending a request a person asked for (any method, headers and body) and reading the whole answer: what the SOAP client
 //!   and the request builders use (on the web `send` says it is not available).

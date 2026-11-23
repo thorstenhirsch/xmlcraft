@@ -255,10 +255,8 @@ fn openapi_call(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
             .filter(|n| (1..=300).contains(n))
             .ok_or_else(|| ToolError::InvalidArgs("timeout_seconds is a whole number from 1 to 300".into()))?,
     };
-    if !a.network().can_download() || a.network().is_offline() {
-        return fail(
-            "the session is offline, so nothing is sent: a person has to allow the network (the program gives the session a network that sends)",
-        );
+    if !a.network().can_download() {
+        return fail("this session has no network client, so nothing is sent; the program gives a real session one");
     }
     let (_, operation, built) = build(a, args)?;
     let auth = auth_arg(args)?;

@@ -133,7 +133,7 @@ pub fn render_attribution(m: &Manifest) -> String {
             quote(&source_of(f)),
             quote(&set.licence),
             quote(&set.licence_file),
-            quote("Bundled standard schema so that documents validate offline: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"),
+            quote("Bundled standard schema so that documents validate without downloading: XML schemas and DTDs are found through the bundled catalog (schemas/catalog.xml), JSON Schema and OpenAPI schemas by their $id or version in the JSON validator"),
             quote(&f.sha256)
         ));
     }

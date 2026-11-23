@@ -370,7 +370,7 @@ const XHTML_11: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE ht
     <ul><li>One</li></ul><table><tr><td>Cell</td></tr></table><form action=\"f\"><fieldset><input type=\"text\" name=\"n\"/></fieldset></form></body></html>\n";
 
 #[test]
-fn an_xhtml_1_1_document_is_validated_offline_against_the_modular_dtd_that_ships_with_the_app() {
+fn an_xhtml_1_1_document_is_validated_without_downloading_against_the_modular_dtd_that_ships_with_the_app() {
     let mut a = Automation::new();
     let ok = call(&mut a, json!({ "text": XHTML_11 })).expect("runs");
     assert_eq!((ok["well_formed"].clone(), ok["valid"].clone(), ok["errors"].clone()), (json!(true), json!(true), json!(0)), "{ok}");
@@ -390,7 +390,7 @@ const SVG_11: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE svg 
     <path d=\"M10 10 L90 90\" stroke=\"black\"/><text x=\"5\" y=\"95\">Hi</text><a xlink:href=\"x.svg\"><use xlink:href=\"#g\"/></a></g></svg>\n";
 
 #[test]
-fn an_svg_1_1_document_is_validated_offline_against_the_dtd_that_ships_with_the_app() {
+fn an_svg_1_1_document_is_validated_without_downloading_against_the_dtd_that_ships_with_the_app() {
     let mut a = Automation::new();
     let ok = call(&mut a, json!({ "text": SVG_11 })).expect("runs");
     assert_eq!((ok["well_formed"].clone(), ok["valid"].clone(), ok["errors"].clone()), (json!(true), json!(true), json!(0)), "{ok}");

@@ -29,10 +29,10 @@ impl FileAccess for LocalFiles {
 
 /// The resolver the schema documents of a validation are found with: the documents that are open (`buffers`) first, then the user's
 /// catalogs (none yet) and the schemas that ship with the app, then files. Nothing is downloaded: there is no fetcher, and the
-/// policy is offline. (Without a cache the clock is not read.)
+/// policy does not download. (Without a cache the clock is not read.)
 pub fn local_resolver(buffers: Arc<dyn Buffers>) -> Resolver {
     let env = Environment { buffers, files: Arc::new(LocalFiles), fetcher: None, cache: None, clock: Arc::new(FixedClock(0)) };
-    Resolver::new(env, Policy { auto_download: false, offline: true, ..Policy::default() }, &[])
+    Resolver::new(env, Policy { auto_download: false, ..Policy::default() }, &[])
 }
 
 #[cfg(test)]

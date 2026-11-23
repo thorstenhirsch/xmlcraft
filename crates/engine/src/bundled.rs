@@ -3,7 +3,7 @@
 //! The files themselves are packed into the binary by `xmlcraft-schemas`. This is the view of them a person or an agent chooses from:
 //! the paths, the target namespace of an XML Schema, and the public location to write into a document. A document names its schema
 //! by the location its publisher gives it (the W3C or OASIS address), never by the app's private `bundled:/` URI: the bundled catalog
-//! maps that address back to the file that ships, so the document validates offline here and anywhere else as it would online. A file
+//! maps that address back to the file that ships, so the document validates here without downloading and anywhere else against the publisher's copy. A file
 //! the catalog knows only by a namespace (UBL) has no such address and is not offered for assigning.
 
 use std::sync::OnceLock;

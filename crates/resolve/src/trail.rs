@@ -43,7 +43,7 @@ pub enum Outcome {
     Found,
     /// It has nothing about this.
     Missed,
-    /// It was not asked, and why (offline, downloading is off).
+    /// It was not asked, and why (downloading is not done here, or the build cannot download).
     Skipped(String),
     /// It was asked and could not answer.
     Failed(String),

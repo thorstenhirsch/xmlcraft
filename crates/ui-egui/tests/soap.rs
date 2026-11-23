@@ -1,5 +1,5 @@
 //! The Request tab of the SOAP tool window in the real shell: the request made for an operation, sent to a server on this computer (which the person allows
-//! for the request), and refused while the app works offline. The server is a local socket; nothing goes to the web.
+//! for the request), and refused when the app has no network client. The server is a local socket; nothing goes to the web.
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -73,11 +73,11 @@ fn serve() -> (String, std::sync::mpsc::Receiver<String>) {
     (address, rx)
 }
 
-fn shell(online: bool) -> Harness<'static, XmlCraftApp> {
-    let network = if online {
+fn shell(with_client: bool) -> Harness<'static, XmlCraftApp> {
+    let network = if with_client {
         Network::new(Some(Arc::new(NoWeb)), Some(Arc::new(MemoryCache::new())), Arc::new(FixedClock(1_000)))
     } else {
-        Network::offline()
+        Network::none()
     };
     let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |cc| XmlCraftApp::with_network(cc, network.clone()));
     h.run_steps(4);
@@ -143,7 +143,7 @@ fn the_request_made_for_an_operation_is_sent_where_the_person_allows_and_the_ans
 }
 
 #[test]
-fn nothing_is_sent_while_the_app_works_offline() {
+fn nothing_is_sent_when_the_app_has_no_network_client() {
     let dir = tempfile::tempdir().expect("dir");
     let (address, received) = serve();
     let mut h = shell(false);
@@ -154,7 +154,7 @@ fn nothing_is_sent_while_the_app_works_offline() {
     h.run_steps(5);
     let (_, answer, error) = h.state().soap_window().expect("window");
     assert_eq!(answer, None);
-    assert!(error.is_some_and(|e| e.contains("offline")));
+    assert!(error.is_some_and(|e| e.contains("no network client")));
     assert!(received.recv_timeout(Duration::from_millis(300)).is_err(), "the server was not asked");
 }
 

@@ -34,7 +34,7 @@ fn shell(saved: Option<String>) -> (Harness<'static, XmlCraftApp>, ControlClient
     let slot: Arc<Mutex<Option<ControlClient>>> = Arc::new(Mutex::new(None));
     let put = slot.clone();
     let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |cc| {
-        let mut app = XmlCraftApp::with_saved_preferences(cc, Network::offline(), saved.as_deref());
+        let mut app = XmlCraftApp::with_saved_preferences(cc, Network::none(), saved.as_deref());
         *put.lock().expect("lock") = Some(app.attach_control(&cc.egui_ctx));
         app
     });
