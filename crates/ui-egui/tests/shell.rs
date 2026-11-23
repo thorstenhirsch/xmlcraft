@@ -54,6 +54,26 @@ fn a_document_has_its_panes_a_rail_to_toggle_them_and_the_actions_that_matter() 
 }
 
 #[test]
+fn the_rail_names_its_icons_until_the_person_collapses_it_and_remembers_that() {
+    let mut h = shell_with_document();
+    // Out of the box the names are beside the icons: nothing is guessed from a symbol.
+    assert_eq!(h.state().command_checked("view.rail_labels"), Some(true));
+    h.get_by_label("Hide Rail Labels").click();
+    h.run_steps(3);
+    assert_eq!(h.state().command_checked("view.rail_labels"), Some(false));
+    // The buttons are still there, with the same names for assistive technology.
+    for label in ["Toggle Outline", "Toggle Search", "Open Preferences"] {
+        assert!(h.query_by_label(label).is_some(), "{label:?} is still on the narrow rail");
+    }
+    h.get_by_label("Show Rail Labels").click();
+    h.run_steps(3);
+    assert_eq!(h.state().command_checked("view.rail_labels"), Some(true));
+    // The menu command does the same.
+    assert!(h.state_mut().execute("view.rail_labels"));
+    assert_eq!(h.state().command_checked("view.rail_labels"), Some(false));
+}
+
+#[test]
 fn the_theme_button_cycles_system_light_dark() {
     let mut h = shell();
     assert_eq!(h.state().theme_preference, ThemePreference::System);

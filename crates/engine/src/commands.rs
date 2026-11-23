@@ -284,6 +284,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("view.theme.dark", "Dark theme", VIEW, None, Nothing, "moon").choice(),
     c("view.search", "Search", VIEW, None, Nothing, "file-search").toggle().sep(),
     c("view.reset_layout", "Reset Layout", VIEW, None, Nothing, "panel-left"),
+    c("view.rail_labels", "Rail Labels", VIEW, None, Nothing, "panel-left").toggle(),
     c("view.tool.query", "Query", VIEW, None, Nothing, "square-terminal").toggle().sep(),
     c("view.tool.compare", "Compare", VIEW, None, Nothing, "git-compare").toggle(),
     c("view.tool.transform", "Transform", VIEW, None, Nothing, "arrow-left-right").toggle(),

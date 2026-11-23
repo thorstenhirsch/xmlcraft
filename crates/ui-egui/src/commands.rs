@@ -68,6 +68,7 @@ impl XmlCraftApp {
             "view.entry_helpers" => Some(self.panel_visible(Panel::EntryHelpers)),
             "view.messages" => Some(self.panel_visible(Panel::Problems)),
             "view.search" => Some(self.panel_visible(Panel::Search)),
+            "view.rail_labels" => Some(self.rail_labels),
             _ if Panel::of_command(id).is_some() => Panel::of_command(id).map(|panel| self.panel_visible(panel)),
             "xml.validate_typing" => Some(self.validate_typing),
             "xml.work_offline" => Some(self.work_offline),
@@ -266,6 +267,7 @@ impl XmlCraftApp {
             "view.entry_helpers" => self.set_panel_visible(Panel::EntryHelpers, !self.panel_visible(Panel::EntryHelpers)),
             "view.messages" => self.set_panel_visible(Panel::Problems, !self.panel_visible(Panel::Problems)),
             "view.search" => self.set_panel_visible(Panel::Search, !self.panel_visible(Panel::Search)),
+            "view.rail_labels" => self.rail_labels = !self.rail_labels,
             "view.reset_layout" => {
                 self.workbench.reset();
                 self.status = tl!("The panels are back in their default places").to_owned();
