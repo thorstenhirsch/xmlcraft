@@ -1392,18 +1392,6 @@ evidence = ["crates/platform/tests/download.rs::a_download_gives_the_body_where_
 notes = "M2.4: what no open document, catalog, bundled file or file has is downloaded: DTD parts and schema documents (`xs:include`, `xs:import`, `schemaLocation`), in the app (Entry Helpers, F8, validating while typing, Generate Sample), in `xml_validate` / `xml_sample` / `xml_entry_helpers` and so in `xmlcraft-cli`. The client (`xmlcraft_platform::http::HttpFetcher`, `ureq` over rustls, trusting the operating system's roots; none are bundled) tries https first and then the address as written, and asks only for http(s) addresses with no user name; 30 s for a request, 5 redirects (each checked again, and never from https to http), 10 MiB for a body, and a server that could not be reached is left alone for a minute (a document with a hundred references to a dead server waits once). It sends no cookies, credentials or referrer. A document cannot make it call this computer or the local network: loopback, private, link-local (the metadata service of cloud hosts), shared and reserved addresses are refused, and so is a name that leads to one (looked up first; behind a proxy only the written address is checked); `XMLCRAFT_ALLOW_PRIVATE_HOSTS=1` allows them for an intranet's schema server. A namespace is a name, never an address: it is looked up in the catalogs and the bundle and is not fetched, so opening a document asks nobody anything (only what the document gives as a location). Tested over loopback (redirects, ETag, timeouts, size caps, a server that does not speak TLS, the refusal of local addresses), with a mock web through the app and the tools, and once by hand against w3.org. Missing: Preferences ▸ Schemas (M2.12: the intranet switch is an environment variable), the proxy settings of the operating system (the proxy variables of the environment are used), no progress or cancel in the window, a limit on the time of a whole load (each request and each resource is limited), external general entities in content (never fetched), and the update check."
 
 [[feature]]
-id = "catalog.offline-mode"
-title = "Offline mode"
-area = "G"
-tier = "N/A"
-milestone = "none"
-status = "na"
-commands = []
-tools = []
-evidence = []
-notes = "Out of scope by the owner's decision (2026-11-23): XmlCraft has no switch that stops downloading. What a document names is found among the open documents, the catalogs, the bundle and files first, and only what none of them has is downloaded (`catalog.auto-download`); a copy kept on disk is served, past its time too, when the server cannot be asked (`catalog.disk-cache`). Removed in 0.4.x: Tools ▸ Work Offline, its preference, the header chip, `XMLCRAFT_OFFLINE` and `xmlcraft-cli --offline`."
-
-[[feature]]
 id = "catalog.user-catalogs"
 title = "User catalogs"
 area = "G"
