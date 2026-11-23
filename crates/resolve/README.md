@@ -14,7 +14,7 @@ It looks, in this order, and stops at the first place that has the text:
 
 A location a catalog maps to is read the same way as one a document names, and a catalog entry that leads to something unreadable does not end the search. Relative references are joined against a URI or a path base (`join`); a Windows drive is not a scheme.
 
-Downloading follows the `Policy`: `auto_download` (on by default), `offline` (nothing is downloaded and a copy past its time is still served), `use_bundled`, and the 30 days a copy is current without asking. An `http` URL is tried as `https` first, then as written; the cache is keyed by the URL that was asked for, and the text's location is the one after redirects. A copy past its time is asked about with its validators (`Conditions`: ETag, Last-Modified): *not modified* renews it, a new body replaces it, and a server that cannot be reached leaves the old copy to be served, marked `Cache { stale: true }`. A copy from the future (the clock was set back) is not current.
+Downloading follows the `Policy`: `auto_download` (on by default; a resolver that must only use bundled and local files turns it off, and a copy past its time is then still served), `use_bundled`, and the 30 days a copy is current without asking. An `http` URL is tried as `https` first, then as written; the cache is keyed by the URL that was asked for, and the text's location is the one after redirects. A copy past its time is asked about with its validators (`Conditions`: ETag, Last-Modified): *not modified* renews it, a new body replaces it, and a server that cannot be reached leaves the old copy to be served, marked `Cache { stale: true }`. A copy from the future (the clock was set back) is not current.
 
 One load has a `Budget`: 256 resources and 64 MiB in all (a download may have 10 MiB). What does not fit is not read and is not counted.
 
@@ -22,6 +22,6 @@ A `Request` can be `lookup_only`: the open documents and the catalogs are asked,
 
 `Resolved::trail` / `Failure::trail` list every place that was looked in and what it said (found, nothing, not asked and why, failed and why).
 
-The world is traits the caller implements: `Buffers`, `FileAccess` (the implementation confines and caps), `Fetcher` (http), `ResourceCache`, `Clock` (the crate reads no clock). `MemoryCache` and `FixedClock` are there for tests and for the web. The HTTP client (`HttpFetcher`), the disk cache (`DiskCache`) and the `Network` that bundles them with the person's offline switch are `xmlcraft-platform`'s (M2.4).
+The world is traits the caller implements: `Buffers`, `FileAccess` (the implementation confines and caps), `Fetcher` (http), `ResourceCache`, `Clock` (the crate reads no clock). `MemoryCache` and `FixedClock` are there for tests and for the web. The HTTP client (`HttpFetcher`), the disk cache (`DiskCache`) and the `Network` that bundles them are `xmlcraft-platform`'s (M2.4).
 
 Tests: `tests/resolution.rs` (the chain, with a world made of maps), `tests/location.rs` (schemes, joining, `file:` URIs; with property tests), `tests/budget.rs`.
