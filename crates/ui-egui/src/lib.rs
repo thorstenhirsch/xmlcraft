@@ -112,6 +112,8 @@ struct Prefs {
     user_catalogs: Vec<String>,
     /// The Compare tool shows the two documents side by side (else it lists the differences).
     compare_side_by_side: bool,
+    /// The activity rail shows the name of each tool window beside its icon (View ▸ Rail Labels).
+    rail_labels: bool,
 }
 
 impl Default for Prefs {
@@ -126,6 +128,7 @@ impl Default for Prefs {
             editor_zoom: 1.0,
             user_catalogs: Vec::new(),
             compare_side_by_side: true,
+            rail_labels: true,
         }
     }
 }
@@ -143,6 +146,8 @@ impl Prefs {
 
 pub struct XmlCraftApp {
     pub theme_preference: ThemePreference,
+    /// The activity rail shows the name beside each icon (a saved preference).
+    rail_labels: bool,
     pub mode: Mode,
     /// The editor and the panels around it: where each is, and which are shown.
     workbench: Workbench,
@@ -415,6 +420,7 @@ impl XmlCraftApp {
             xquery: xmlcraft_engine::xquery::XQueryRunner::new(),
             query: tools::query::QueryTool::default(),
             compare: tools::compare::CompareTool::new(prefs.compare_side_by_side),
+            rail_labels: prefs.rail_labels,
             transform: tools::transform::TransformTool::default(),
             http_tool: tools::http::HttpTool::default(),
             soap_tool: tools::soap::SoapTool::default(),
@@ -483,6 +489,7 @@ impl XmlCraftApp {
             editor_zoom: self.editor_zoom,
             user_catalogs: self.user_catalogs.clone(),
             compare_side_by_side: self.compare.side_by_side(),
+            rail_labels: self.rail_labels,
         }
     }
 
@@ -853,5 +860,18 @@ mod tests {
         assert!(!app.has_unsaved_changes());
         app.session.document_mut(1).expect("there").editor_mut().type_text("x");
         assert!(app.has_unsaved_changes());
+    }
+    #[test]
+    fn the_rail_labels_are_on_unless_the_person_turned_them_off_and_that_is_saved() {
+        assert!(Prefs::default().rail_labels);
+        assert!(Prefs::load(Some(r#"{"left_open": false}"#)).rail_labels, "an old file that does not say shows the names");
+        assert!(Prefs::load(Some("not json")).rail_labels);
+        let off = Prefs { rail_labels: false, ..Prefs::default() };
+        let again = Prefs::load(serde_json::to_string(&off).ok().as_deref());
+        assert!(!again.rail_labels);
+        let app = XmlCraftApp::with_prefs(again);
+        assert_eq!(app.command_checked("view.rail_labels"), Some(false));
+        assert!(!app.prefs().rail_labels, "it is what the app saves, too");
+        assert!(chrome::rail_width(true) > chrome::rail_width(false) + 100.0, "the labelled rail has room for the names");
     }
 }

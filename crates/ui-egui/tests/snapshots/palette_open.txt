@@ -19,6 +19,7 @@ Button "Toggle E-Rechnung" [toggled=false]
 Button "Toggle Preview" [toggled=false]
 Button "Toggle XBRL" [toggled=false]
 Button "Open Preferences" [toggled=false]
+Button "Hide Rail Labels" [toggled=false]
 Image
 Label value="XmlCraft"
 Label value="Edit and validate XML against DTDs and XML Schemas, and generate schemas and samples."

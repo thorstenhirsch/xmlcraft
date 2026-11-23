@@ -462,9 +462,14 @@ pub(crate) fn problem_counts(app: &XmlCraftApp) -> (usize, usize) {
     (errors, warnings)
 }
 
-/// The rail on the left: its width, its buttons (and the icons in them), the gap between them and the room above the first.
+/// The rail on the left: its width (icons only, and with a label beside each icon), its buttons (and the icons in them), the gap between
+/// them and the room above the first.
 const RAIL_WIDTH: f32 = 44.0;
+const RAIL_WIDTH_LABELLED: f32 = 188.0;
 const RAIL_BUTTON: f32 = 32.0;
+/// The space left and right of a button's highlight, and the height of a caption in the labelled rail.
+const RAIL_SIDE: f32 = 6.0;
+const RAIL_CAPTION: f32 = 22.0;
 const RAIL_ICON: f32 = 18.0;
 const RAIL_GAP: f32 = 4.0;
 const RAIL_TOP: f32 = 6.0;
@@ -487,11 +492,19 @@ struct RailState {
     attention: bool,
 }
 
-/// The activity rail, always on the left: a toggle for each tool window from the panel table, the document's first, a hairline, then
-/// the workspace's; Preferences at the foot. On the home view the document's tool windows are disabled.
+/// The width of the rail: the icons alone, or each with its name beside it (View ▸ Rail Labels; on by default, so that nothing has to be
+/// guessed from a symbol).
+pub(crate) fn rail_width(labels: bool) -> f32 {
+    if labels { RAIL_WIDTH_LABELLED } else { RAIL_WIDTH }
+}
+
+/// The activity rail, always on the left: a toggle for each tool window from the panel table, the document's first, a hairline (a caption
+/// when the labels are shown), then the workspace's; at the foot Preferences and the switch between the two widths. On the home view the
+/// document's tool windows are disabled.
 pub fn activity_rail(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
     use crate::workbench::Zone;
     let t = Tokens::get(ui.ctx());
+    let labels = app.rail_labels;
     let home = app.session.active().is_none();
     let (errors, warnings) = if home { (0, 0) } else { problem_counts(app) };
     let kind = app.active_doc_kind();
@@ -500,7 +513,7 @@ pub fn activity_rail(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
     let proxy_running = app.soap_running();
     let mut clicked: Option<&'static str> = None;
     egui::Panel::left("activity_rail")
-        .exact_size(RAIL_WIDTH)
+        .exact_size(rail_width(labels))
         .resizable(false)
         .frame(
             egui::Frame::NONE
@@ -511,9 +524,12 @@ pub fn activity_rail(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
         .show(ui, |ui| {
             let rail = ui.max_rect();
             ui.spacing_mut().item_spacing.y = RAIL_GAP;
-            ui.vertical_centered(|ui| {
+            ui.vertical(|ui| {
                 for (n, zone) in [Zone::Document, Zone::Workspace].into_iter().enumerate() {
-                    if n > 0 {
+                    if labels {
+                        let caption = if zone == Zone::Document { tl!("Document") } else { tl!("Tools") };
+                        rail_caption(ui, rail, caption);
+                    } else if n > 0 {
                         // The hairline between the zones.
                         ui.add_space(6.0 - RAIL_GAP);
                         let y = ui.cursor().top();
@@ -537,23 +553,46 @@ pub fn activity_rail(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                             name = fmt(tl!("{name}, {count} problems"), &[("name", &name), ("count", &count.to_string())]);
                         }
                         let tip = tip(ui.ctx(), panel.title(), panel.spec().command);
-                        let response = rail_button(ui, rail, panel.icon(), &name, &tip, state);
-                        if response.clicked() && state.enabled {
+                        let allocated = ui.available_rect_before_wrap().top();
+                        let cell = Rect::from_min_size(egui::pos2(rail.left(), allocated), vec2(rail.width(), RAIL_BUTTON));
+                        let response = ui.scope_builder(egui::UiBuilder::new().max_rect(cell), |ui| {
+                            rail_button(ui, rail, panel.icon(), &name, &tip, labels.then_some(panel.title()), state)
+                        });
+                        if response.inner.clicked() && state.enabled {
                             clicked = panel.spec().command;
                         }
                     }
                 }
             });
-            // The foot, pinned to the bottom.
-            let foot =
-                Rect::from_min_size(egui::pos2(rail.center().x - RAIL_BUTTON / 2.0, rail.bottom() - RAIL_BUTTON), vec2(RAIL_BUTTON, RAIL_BUTTON));
+            // The foot, pinned to the bottom: Preferences, and above it the switch between the icons alone and the icons with their names.
+            let foot = |row: f32| {
+                Rect::from_min_size(
+                    egui::pos2(rail.left(), rail.bottom() - RAIL_BUTTON * row - RAIL_GAP * (row - 1.0)),
+                    vec2(rail.width(), RAIL_BUTTON),
+                )
+            };
             let state = RailState { open: false, enabled: true, relevant: true, errors: 0, warnings: 0, attention: false };
-            let tip = tip(ui.ctx(), tl!("Preferences"), Some("app.preferences"));
+            let tip_prefs = tip(ui.ctx(), tl!("Preferences"), Some("app.preferences"));
             let response = ui
-                .scope_builder(egui::UiBuilder::new().max_rect(foot), |ui| rail_button(ui, rail, "settings", tl!("Open Preferences"), &tip, state))
+                .scope_builder(egui::UiBuilder::new().max_rect(foot(1.0)), |ui| {
+                    rail_button(ui, rail, "settings", tl!("Open Preferences"), &tip_prefs, labels.then_some(tl!("Preferences")), state)
+                })
                 .inner;
             if response.clicked() {
                 clicked = Some("app.preferences");
+            }
+            let (icon, name, tip_labels) = if labels {
+                ("chevron-left", tl!("Hide Rail Labels"), tl!("Show the icons alone"))
+            } else {
+                ("chevron-right", tl!("Show Rail Labels"), tl!("Show the name beside each icon"))
+            };
+            let response = ui
+                .scope_builder(egui::UiBuilder::new().max_rect(foot(2.0)), |ui| {
+                    rail_button(ui, rail, icon, name, tip_labels, labels.then_some(tl!("Collapse")), state)
+                })
+                .inner;
+            if response.clicked() {
+                clicked = Some("view.rail_labels");
             }
         });
     if let Some(command) = clicked {
@@ -561,14 +600,31 @@ pub fn activity_rail(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
     }
 }
 
+/// The small heading above a group of the labelled rail.
+fn rail_caption(ui: &mut egui::Ui, rail: Rect, text: &str) {
+    let t = Tokens::get(ui.ctx());
+    let (rect, _) = ui.allocate_exact_size(vec2(rail.width(), RAIL_CAPTION), Sense::hover());
+    ui.painter().text(
+        egui::pos2(rect.left() + RAIL_SIDE + 8.0, rect.bottom() - 5.0),
+        Align2::LEFT_BOTTOM,
+        text.to_uppercase(),
+        theme::semibold(9.5),
+        t.text_faint,
+    );
+}
+
 /// A toggle on the rail. Shown: a 2 pt accent bar on the rail's left edge, the accent tint behind the icon and the icon in the accent;
-/// hovered: the hover fill. Problems carries the count of problems as a pill at the top right, a tool window with news a dot at the
-/// bottom right. `name` is for assistive technology (a panel's says it toggles the panel, so that it is not mistaken for the panel's
-/// own tab), `tip` the tooltip.
-fn rail_button(ui: &mut egui::Ui, rail: Rect, icon: &str, name: &str, tip: &str, state: RailState) -> egui::Response {
+/// hovered: the hover fill. Problems carries the count of problems as a pill at the top right (beside the name when it is shown), a tool
+/// window with news a dot at the bottom right (also beside the name). `name` is for assistive technology (a panel's says it toggles the
+/// panel, so that it is not mistaken for the panel's own tab), `tip` the tooltip, `label` the name drawn beside the icon when the rail is
+/// wide. The cell spans the rail; the highlight and the icon sit where they do on the narrow rail, so that nothing moves when the labels
+/// come and go.
+fn rail_button(ui: &mut egui::Ui, rail: Rect, icon: &str, name: &str, tip: &str, label: Option<&str>, state: RailState) -> egui::Response {
     let t = Tokens::get(ui.ctx());
     let sense = if state.enabled { Sense::click() } else { Sense::hover() };
-    let (rect, resp) = ui.allocate_exact_size(vec2(RAIL_BUTTON, RAIL_BUTTON), sense);
+    let (cell, resp) = ui.allocate_exact_size(vec2(rail.width(), RAIL_BUTTON), sense);
+    let rect = cell.shrink2(vec2(RAIL_SIDE, 0.0));
+    let icon_rect = Rect::from_min_size(rect.min, vec2(RAIL_BUTTON, RAIL_BUTTON));
     let count = state.errors + state.warnings;
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, state.enabled, state.open, name));
     let press = theme::Press::track(ui, &resp);
@@ -580,18 +636,41 @@ fn rail_button(ui: &mut egui::Ui, rail: Rect, icon: &str, name: &str, tip: &str,
     } else if state.enabled {
         ui.painter().rect_filled(rect, radius, press.fill(Color32::TRANSPARENT, t.hover, t.pressed));
     }
-    icons::paint(ui, rect.translate(press.offset()), icon, RAIL_ICON, rail_tint(&t, state));
+    let tint = rail_tint(&t, state);
+    icons::paint(ui, icon_rect.translate(press.offset()), icon, RAIL_ICON, tint);
+    // Where the badge and the dot go: on the corner of the icon, or at the right end of the row when the name is beside it.
+    let (badge_right, dot_at) = if label.is_some() {
+        (rect.right() - 8.0, egui::pos2(rect.right() - 12.0, rect.center().y))
+    } else {
+        (rect.right() + 3.0, rect.right_bottom() - vec2(5.0, 5.0))
+    };
+    let mut text_right = rect.right() - 8.0;
     if let Some(tone) = badge_tone(state) {
         let (fg, _) = kit::tone_colors(&t, tone);
         let text = if count > 99 { "99+".to_owned() } else { count.to_string() };
         let galley = ui.painter().layout_no_wrap(text, theme::semibold(9.0), Color32::WHITE);
         let size = vec2((galley.size().x + 7.0).max(14.0), 14.0);
-        let pill = Rect::from_min_size(egui::pos2(rect.right() - size.x + 3.0, rect.top() - 3.0), size);
+        let top = if label.is_some() { rect.center().y - size.y / 2.0 } else { rect.top() - 3.0 };
+        let pill = Rect::from_min_size(egui::pos2(badge_right - size.x, top), size);
         ui.painter().rect_filled(pill, CornerRadius::same(7), fg);
         ui.painter().galley(pill.center() - galley.size() / 2.0, galley, Color32::WHITE);
+        text_right = pill.left() - 6.0;
     }
     if state.attention {
-        ui.painter().circle_filled(rect.right_bottom() - vec2(5.0, 5.0), 3.0, t.accent);
+        ui.painter().circle_filled(dot_at, 3.0, t.accent);
+        if label.is_some() {
+            text_right = text_right.min(dot_at.x - 9.0);
+        }
+    }
+    if let Some(label) = label {
+        let font = if state.open { theme::semibold(12.5) } else { theme::regular(12.5) };
+        let mut job = egui::text::LayoutJob::simple_singleline(label.to_owned(), font, tint);
+        job.wrap.max_width = (text_right - (rect.left() + RAIL_BUTTON + 2.0)).max(0.0);
+        job.wrap.max_rows = 1;
+        job.wrap.break_anywhere = true;
+        let galley = ui.painter().layout_job(job);
+        let at = egui::pos2(rect.left() + RAIL_BUTTON + 2.0, rect.center().y - galley.size().y / 2.0);
+        ui.painter().galley(at, galley, tint);
     }
     if state.enabled { theme::hand(resp).on_hover_text(tip) } else { resp.on_hover_text(tip) }
 }
