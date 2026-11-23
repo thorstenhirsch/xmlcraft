@@ -321,7 +321,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
     let why_not = if cfg!(target_arch = "wasm32") { tl!("The web build writes no files.") } else { tl!("There is no page yet.") };
     let browse = kit::tool_footer(ui, tl!("Open in Browser"), Some("external-link"), can_browse, why_not);
     let embedded = Host::EMBEDDED && app.preview.host.failure().is_none();
-    let offline = app.network_is_offline();
+    let can_download = app.network.can_download();
     let mut allow = app.preview.allow(bound.id);
     let mut asked = Asked::default();
     kit::tool_body(ui, false, |ui| {
@@ -340,8 +340,8 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut XmlCraftApp) {
             }
         });
         ui.horizontal_wrapped(|ui| {
-            let images = ui.add_enabled(!offline || allow.remote_images, widgets::checkbox(&mut allow.remote_images, tl!("Images from the web")));
-            let images = if offline { images.on_disabled_hover_text(tl!("Work Offline is on: nothing is downloaded.")) } else { images };
+            let images = ui.add_enabled(can_download || allow.remote_images, widgets::checkbox(&mut allow.remote_images, tl!("Images from the web")));
+            let images = if can_download { images } else { images.on_disabled_hover_text(tl!("This build has no network access.")) };
             images.on_hover_text(tl!("Load the images this document names at https: addresses (the network). Off by default."));
             ui.add(widgets::checkbox(&mut allow.scripts, tl!("Scripts of the page")))
                 .on_hover_text(tl!("Run the page's own inline scripts, never scripts from elsewhere and never a connection. Off by default."));

@@ -1,6 +1,6 @@
 //! XBRL, the tool window of XBRL 2.1 instances and Inline XBRL documents. It follows the document being shown and reads it on a thread
 //! a moment after the text stood still, with the taxonomy its `schemaRef`s name, through the resolver F8 uses
-//! (`xmlcraft_engine::xbrl::report`: the open documents, the catalogs, the files, the web unless the person works offline). Four tabs:
+//! (`xmlcraft_engine::xbrl::report`: the open documents, the catalogs, the files, the web through the download cache). Four tabs:
 //!
 //! - **Facts**: a table of every fact (concept, value, context and its period, unit, decimals, dimensions), filtered by a text, sorted by
 //!   any column, optionally only the facts that have findings. A click selects the fact (for Inline XBRL its tag) in the text.

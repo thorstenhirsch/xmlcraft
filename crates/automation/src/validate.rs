@@ -247,8 +247,8 @@ fn describe_problem(kind: &str, diagnostic: &Diagnostic, file: Option<String>, b
 }
 
 /// The resolver the schema documents of a call are found with: the documents that are open (as they are being edited, not as saved), the
-/// schemas that ship with the app, files through the root confinement and, if the program gave the session a network that downloads and
-/// it is not offline, the web through the cache (the root confines files, not that).
+/// schemas that ship with the app, files through the root confinement and, if the program gave the session a network that downloads, the
+/// web through the cache (the root confines files, not that).
 pub(crate) fn schema_resolver(a: &Automation) -> Resolver {
     let open: Vec<(String, Arc<str>)> = a
         .session()

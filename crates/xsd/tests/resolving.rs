@@ -31,7 +31,7 @@ fn resolver(open: &[(&str, &str)], files: &[(&str, &[u8])]) -> Resolver {
         cache: None,
         clock: Arc::new(FixedClock(0)),
     };
-    Resolver::new(env, Policy { offline: true, ..Policy::default() }, &[])
+    Resolver::new(env, Policy { auto_download: false, ..Policy::default() }, &[])
 }
 
 fn schema(body: &str) -> String {

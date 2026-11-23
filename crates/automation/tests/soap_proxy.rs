@@ -1,5 +1,5 @@
 //! The debugging proxy tools, driven through `Automation::call` with a target and a client on local sockets: forwarding and recording,
-//! holding a request and releasing it edited, dropping, and the refusals (offline, started twice, nothing held).
+//! holding a request and releasing it edited, dropping, and the refusals (no network client, started twice, nothing held).
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -120,11 +120,11 @@ fn a_dropped_request_never_reaches_the_target_and_the_refusals_are_said() {
     let e = a.call("soap_proxy_release", &json!({ "id": held["id"] })).expect_err("not held any more").to_string();
     assert!(e.contains("not held"), "{e}");
     call(&mut a, "soap_proxy_stop", json!({}));
-    // Offline sessions start nothing; tools that need the proxy say it is not started.
-    let mut offline = Automation::new();
-    let e = offline.call("soap_proxy_start", &json!({ "target": "http://example.com" })).expect_err("offline").to_string();
-    assert!(e.contains("offline"), "{e}");
-    let e = offline.call("soap_proxy_breaks", &json!({ "requests": true })).expect_err("not started").to_string();
+    // A session without a network client starts nothing; tools that need the proxy say it is not started.
+    let mut without = Automation::new();
+    let e = without.call("soap_proxy_start", &json!({ "target": "http://example.com" })).expect_err("no client").to_string();
+    assert!(e.contains("no network client"), "{e}");
+    let e = without.call("soap_proxy_breaks", &json!({ "requests": true })).expect_err("not started").to_string();
     assert!(e.contains("not started"), "{e}");
     assert!(a.call("soap_proxy_start", &json!({ "target": "ftp://x" })).is_err());
 }

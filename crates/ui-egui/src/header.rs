@@ -216,14 +216,14 @@ pub fn show(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
     }
     let t = Tokens::get(ui.ctx());
     let business = app.business_chip(ui.ctx());
-    let (path, grammar, standing_now, offline) = {
+    let (path, grammar, standing_now) = {
         let caret = app.session.active_document().map_or(0, |d| d.editor().primary().head());
         let path: Vec<(String, Option<String>, Range<usize>)> = app
             .active_analysis()
             .map(|a| element_path(&a.outline, caret).into_iter().map(|i| (i.name.clone(), i.label.clone(), i.name_range.clone())).collect())
             .unwrap_or_default();
         let validation = app.active_validation().map(|v| (v.error_count(), v.is_valid()));
-        (path, grammar_chip(app), standing(app.active_analysis(), validation), app.network_is_offline())
+        (path, grammar_chip(app), standing(app.active_analysis(), validation))
     };
     let mut jump = None;
     let mut command: Option<&'static str> = None;
@@ -235,14 +235,6 @@ pub fn show(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
             // The chips first, from the right: a long path gives way to them, and not the other way round.
             let chips = ui.scope_builder(egui::UiBuilder::new().max_rect(full).layout(Layout::right_to_left(Align::Center)), |ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                let (icon, label, tip) = if offline {
-                    ("cloud-off", tl!("Offline"), tl!("Nothing is downloaded. Click to allow downloading schemas."))
-                } else {
-                    ("cloud", tl!("Online"), tl!("Schemas are downloaded when a document names one that nothing here has. Click to work offline."))
-                };
-                if kit::chip(ui, if offline { Tone::Warn } else { Tone::Neutral }, Some(icon), label, true).on_hover_text(tip).clicked() {
-                    command = Some("xml.work_offline");
-                }
                 if kit::chip(ui, standing_now.tone, Some(standing_now.icon), &standing_now.text, true)
                     .on_hover_text(tl!("Show the problems"))
                     .clicked()

@@ -19,8 +19,8 @@ pub(crate) fn tools() -> Vec<ToolDef> {
                       catalogs, the schemas that ship with the app, files, the cache and the network) and what each said. The document is an open document \
                       `id`, a file `path` or `text`; `link` is what it names. `found` is false with a `message` when no place had it, and the trail says why \
                       each one did not. The steps have a `stage`, what was asked (`what`), an `outcome` (found, missed, skipped or failed) and the `detail` of \
-                      a skip or failure. Looking the grammar up reads it, as validation would: when the session works online that may download it \
-                      (and keep it in the cache); offline, only the local places are tried. This is the top-level link; the documents a schema \
+                      a skip or failure. Looking the grammar up reads it, as validation would: when the session has a network client that may download it \
+                      (and keep it in the cache); without one, only the local places are tried. This is the top-level link; the documents a schema \
                       includes or imports are not in the trail.",
         input_schema: json!({ "type": "object", "properties": source_properties(), "additionalProperties": false }),
         read_only: true,

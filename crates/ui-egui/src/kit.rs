@@ -151,7 +151,7 @@ pub fn tone_colors(t: &Tokens, tone: Tone) -> (Color32, Color32) {
     }
 }
 
-/// A small status capsule with an optional icon: what a document is (valid, three problems, offline), at a glance. Clickable when it
+/// A small status capsule with an optional icon: what a document is (valid, three problems, a DTD), at a glance. Clickable when it
 /// has something to open.
 pub fn chip(ui: &mut egui::Ui, tone: Tone, icon: Option<&str>, label: &str, clickable: bool) -> Response {
     let t = Tokens::get(ui.ctx());

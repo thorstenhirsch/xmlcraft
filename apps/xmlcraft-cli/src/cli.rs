@@ -20,15 +20,14 @@
 //! - `mcp [--root DIR]`: serve the tools over MCP on standard input and output (opt-in; nothing starts it on its own).
 //! - `ui --control FILE <method> [key=value …] [--out FILE.png]`: drive a running app that was started with `--control FILE`.
 //!
-//! Every command that reads documents downloads the schemas and DTDs they name that are not found anywhere else (and keeps them on disk)
-//! unless `--offline` (anywhere after the command name) or `XMLCRAFT_OFFLINE=1` says not to; `--root` confines files, not that.
+//! Every command that reads documents downloads the schemas and DTDs they name that are not found anywhere else (and keeps them on disk);
+//! `--root` confines files, not that.
 //!
 //! Results are JSON on standard output; messages for a person go to standard error. The exit code is 0 for success, 1 when a tool or
 //! request failed (`check`: a problem was found; `format --check`: the file would change), and 2 for a command line that could not be understood.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde_json::{Map, Value, json};
 use xmlcraft_automation::control::ControlClient;
@@ -55,7 +54,7 @@ check-one holds the engine to its promises on one file (the fuzzer runs it); --e
 A key=value value is read as JSON when it is valid JSON (3, true, [\"a\"]), and as text otherwise.
 --root DIR confines every path a tool reads or writes to DIR.
 A schema or DTD that a document names and that is not found in the open documents, the catalogs, the schemas that ship with the app or
-a file is downloaded and kept on disk. --offline (after the command name) or XMLCRAFT_OFFLINE=1 downloads nothing and uses the copies kept.";
+a file is downloaded and kept on disk.";
 
 #[derive(Debug, PartialEq)]
 pub enum Command {
@@ -181,15 +180,9 @@ fn no_extra(rest: &[String]) -> Result<(), String> {
     }
 }
 
-/// `--offline` was given: nothing is downloaded. Set once while the command line is read.
-static OFFLINE: AtomicBool = AtomicBool::new(false);
-
 pub fn parse(args: &[String]) -> Result<Command, String> {
     let Some((first, rest)) = args.split_first() else { return Err("no command given".into()) };
     let mut rest: Vec<String> = rest.to_vec();
-    if take_flag(&mut rest, "--offline") {
-        OFFLINE.store(true, Ordering::Relaxed);
-    }
     match first.as_str() {
         "--version" | "-V" | "version" => Ok(Command::Version),
         "--help" | "-h" | "help" => Ok(Command::Help),
@@ -839,15 +832,12 @@ fn automation(root: Option<PathBuf>) -> Result<Automation, String> {
     Ok(automation.with_network(network()))
 }
 
-/// What the tools download with: the web through the cache on disk, unless `--offline` or `XMLCRAFT_OFFLINE` says not to. (A test
-/// never goes to the web.)
+/// What the tools download with: the web through the cache on disk. (A test never goes to the web.)
 fn network() -> Network {
     if cfg!(test) {
-        return Network::offline();
+        return Network::none();
     }
-    let network = Network::standard();
-    network.set_offline(OFFLINE.load(Ordering::Relaxed));
-    network
+    Network::standard()
 }
 
 fn fail(err: &mut impl Write, message: &str) -> u8 {

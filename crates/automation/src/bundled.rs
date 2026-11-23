@@ -12,7 +12,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
         name: "bundled_schemas",
         title: "List the XML Schemas and DTDs that ship with XmlCraft",
         description: "The XML Schemas and DTDs in the bundle, each with the path it is in, its set (`w3c`, `ubl`), its `bundled:/…` uri, the public `location` a document names it \
-                      by (the publisher's address, which the bundled catalog maps to the file, so the document validates offline; null for a file known only by its namespace, \
+                      by (the publisher's address, which the bundled catalog maps to the file, so the document validates without downloading; null for a file known only by its namespace, \
                       which cannot be assigned), for a DTD its `public_id`, and for an XML Schema its target namespace. `query` filters by path, file name or set (without case); \
                       `format` keeps only `xsd` or `dtd`. Nothing is assigned: pass the location (or the uri, which is written as the location) to xml_assign_schema.",
         input_schema: json!({

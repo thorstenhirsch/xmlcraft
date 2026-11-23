@@ -67,12 +67,6 @@ fn a_session_without_one_downloads_nothing_and_says_why() {
     let mut a = Automation::new();
     let result = validate(&mut a, DOCUMENT);
     assert_eq!(result["validated"], json!(false), "{result}");
-    assert!(result["note"].to_string().contains("offline"), "{result}");
-    assert!(web.asked.lock().expect("lock").is_empty());
-    // And one that has a network but works offline.
-    let mut offline = session(&web);
-    offline.network().set_offline(true);
-    let result = validate(&mut offline, DOCUMENT);
-    assert_eq!(result["validated"], json!(false), "{result}");
+    assert!(result["note"].to_string().contains("cannot download"), "{result}");
     assert!(web.asked.lock().expect("lock").is_empty());
 }

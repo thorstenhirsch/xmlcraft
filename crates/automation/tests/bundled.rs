@@ -79,7 +79,7 @@ fn a_bundled_file_known_only_by_its_namespace_is_not_written_into_a_document() {
 }
 
 #[test]
-fn a_bundled_dtd_is_assigned_and_then_validates_the_document_offline() {
+fn a_bundled_dtd_is_assigned_and_then_validates_the_document_without_downloading() {
     let dir = tempfile::tempdir().expect("dir");
     let mut a = Automation::with_root(dir.path()).expect("root");
     let text = "<html><head><title>x</title></head><body><p>x</p></body></html>";

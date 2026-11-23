@@ -442,7 +442,7 @@ mod tests {
     fn resolver(files: HashMap<String, Vec<u8>>) -> Resolver {
         let env =
             Environment { buffers: Arc::new(NoBuffers), files: Arc::new(Files(files)), fetcher: None, cache: None, clock: Arc::new(FixedClock(0)) };
-        Resolver::new(env, Policy { offline: true, ..Policy::default() }, &[])
+        Resolver::new(env, Policy { auto_download: false, ..Policy::default() }, &[])
     }
 
     struct NoBuffers;

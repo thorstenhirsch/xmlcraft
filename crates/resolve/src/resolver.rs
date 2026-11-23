@@ -81,7 +81,7 @@ pub enum Origin {
     Bundle,
     /// A file.
     File,
-    /// The cache; `stale` when it was past its time and could not be refreshed (offline, downloading off, or the server not answering).
+    /// The cache; `stale` when it was past its time and could not be refreshed (downloading is not done here, or the server did not answer).
     Cache { stale: bool },
     /// Just downloaded.
     Network,
@@ -115,10 +115,9 @@ impl std::error::Error for Failure {}
 /// What the user has allowed.
 #[derive(Clone, Debug)]
 pub struct Policy {
-    /// Download what is referenced and not found anywhere else (Preferences ▸ Schemas; on by default).
+    /// Download what is referenced and not found anywhere else (on by default). A resolver that must only use the bundled schemas and
+    /// local files turns it off; a copy already in the cache is then still served, even past its time.
     pub auto_download: bool,
-    /// Work offline: nothing is downloaded, whatever `auto_download` says, and a copy past its time is still served.
-    pub offline: bool,
     /// Use the schemas that ship with the app.
     pub use_bundled: bool,
     /// How long a downloaded copy is current without asking the server, in seconds (30 days).
@@ -127,7 +126,7 @@ pub struct Policy {
 
 impl Default for Policy {
     fn default() -> Self {
-        Self { auto_download: true, offline: false, use_bundled: true, fresh_for_secs: 30 * 24 * 60 * 60 }
+        Self { auto_download: true, use_bundled: true, fresh_for_secs: 30 * 24 * 60 * 60 }
     }
 }
 
@@ -354,10 +353,8 @@ impl Resolver {
             trail.push(Stage::Cache, url, Outcome::Found);
             return Ok(from_cache(entry, false));
         }
-        let refusal = if self.policy.offline {
-            Some("offline")
-        } else if !self.policy.auto_download {
-            Some("downloading is off")
+        let refusal = if !self.policy.auto_download {
+            Some("downloading is not done here")
         } else if self.env.fetcher.is_none() {
             Some("this build cannot download")
         } else {

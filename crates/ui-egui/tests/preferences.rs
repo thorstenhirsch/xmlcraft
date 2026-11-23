@@ -77,10 +77,7 @@ fn the_theme_the_size_and_the_switches_change_at_once() {
     h.get_by_label("Validate while typing").click();
     h.run_steps(2);
     assert_eq!(h.state().command_checked("xml.validate_typing"), Some(false));
-    assert_eq!(h.state().command_checked("xml.work_offline"), Some(false));
-    h.get_by_label("Work offline").click();
-    h.run_steps(2);
-    assert_eq!(h.state().command_checked("xml.work_offline"), Some(true), "the same switch as Tools ▸ Work Offline");
+    assert!(h.query_by_label("Downloads").is_none(), "there is no switch for downloading");
 }
 
 #[test]

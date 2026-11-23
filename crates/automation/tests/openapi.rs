@@ -88,7 +88,7 @@ fn serve(answer: String) -> (String, std::thread::JoinHandle<String>) {
 }
 
 #[test]
-fn a_call_is_sent_to_a_server_and_the_json_answer_is_read_and_nothing_is_sent_offline_or_to_this_computer_unless_allowed() {
+fn a_call_is_sent_to_a_server_and_the_json_answer_is_read_and_nothing_is_sent_without_a_client_or_to_this_computer_unless_allowed() {
     let body = "{\"id\": 3, \"name\": \"Rex\"}";
     let (server, handle) =
         serve(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()));
@@ -100,9 +100,9 @@ fn a_call_is_sent_to_a_server_and_the_json_answer_is_read_and_nothing_is_sent_of
     assert!(received.starts_with("GET /pets/3 HTTP/1.1"), "{received}");
     let e = call(&mut online, "openapi_call", json!({ "text": API, "operation": "getPet", "server": "http://127.0.0.1:1" })).expect_err("private");
     assert!(e.to_string().contains("allow private hosts"), "{e}");
-    let mut offline = Automation::new();
-    let e = call(&mut offline, "openapi_call", json!({ "text": API, "operation": "getPet" })).expect_err("offline");
-    assert!(e.to_string().contains("offline"), "{e}");
+    let mut without = Automation::new();
+    let e = call(&mut without, "openapi_call", json!({ "text": API, "operation": "getPet" })).expect_err("no client");
+    assert!(e.to_string().contains("no network client"), "{e}");
     assert!(matches!(
         call(&mut online, "openapi_call", json!({ "text": API, "operation": "getPet", "timeout_seconds": 0 })),
         Err(ToolError::InvalidArgs(_))
