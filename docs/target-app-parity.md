@@ -117,7 +117,7 @@ The baseline is empty. How the 359 not-well-formed tests that needed the DTD clo
 
 ## Revision history
 
-- 2026-11-23: no offline mode (owner's decision): `catalog.offline-mode` partial → `na` (out of scope; Tools ▸ Work Offline, `XMLCRAFT_OFFLINE` and `--offline` removed), its command gone from `catalog.auto-download`; the notes that named the switch reworded; 22 shipped and 131 partial of 191 counted features (63 P0), 45.8% weighted.
+- 2026-11-23: no offline mode (owner's decision): the entry for the switch is deleted (Tools ▸ Work Offline, `XMLCRAFT_OFFLINE` and `--offline` removed), its command gone from `catalog.auto-download`; the notes that named the switch reworded; 22 shipped and 131 partial of 191 counted features (63 P0), 45.8% weighted.
 - 2026-11-19: the QT3 conformance numbers (XQuery 3.1, 90.63% of the cases in scope) and the headline after `query.xquery` became partial (22 shipped, 131 partial, 45.6% weighted); one status line.
 - 2026-10-27: M1.12: documents in the app; 8 shipped, 13 partial (7 shipped and 14 partial once its review had moved the clipboard back to partial).
 - 2026-10-27: M1.13: well-formedness on a worker thread, the Messages and Outline panes, F7 and Go to Line. Go to Line went from planned to shipped; the outline, the messages, the well-formedness check and namespace well-formedness went from planned to partial: 8 shipped and 18 partial, from 7 shipped and 14 partial after M1.12 (the clipboard had gone back to partial in its review).
