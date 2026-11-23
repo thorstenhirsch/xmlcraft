@@ -779,10 +779,11 @@ fn wide_body(
         let width = (right - top.x - pill_width - kit::GAP).max(100.0);
         // The combo boxes give way first when the row is short (two share it on the Merge tab).
         let combo_max = ((width - TOOLBAR_REST) / if app.compare.tab == Tab::Merge { 2.0 } else { 1.0 }).clamp(140.0, COMBO_MAX);
-        // One row: the options are in a popup, so the differences get the height.
+        // One row while it fits (the options are in a popup, so the differences get the height), two when the panel is short of room:
+        // each control moves whole, so nothing is clipped or drawn over another.
         ui.allocate_ui(egui::vec2(width, kit::TOOL_CONTROL), |ui| {
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 kit::segmented(ui, &mut app.compare.tab, &[(Tab::Compare, tl!("Compare")), (Tab::Merge, tl!("Merge"))]);
                 ui.label(egui::RichText::new(format!("→ {}", bound.name)).font(crate::theme::medium(12.0)).color(t.text_muted));
                 match app.compare.tab {
