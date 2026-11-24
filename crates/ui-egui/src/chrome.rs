@@ -498,13 +498,23 @@ pub(crate) fn rail_width(labels: bool) -> f32 {
     if labels { RAIL_WIDTH_LABELLED } else { RAIL_WIDTH }
 }
 
+/// The narrowest window (in points) that has room for the names beside the icons: the panes take the rest, and the editor must keep a
+/// useful width. In a narrower window the rail is the narrow one, whatever the preference says (the preference is kept).
+const LABELS_NEED_WINDOW: f32 = 1200.0;
+
+/// Whether the names are shown now: asked for, and the window has room for them.
+fn rail_labels_shown(ctx: &egui::Context, wanted: bool) -> bool {
+    wanted && ctx.content_rect().width() >= LABELS_NEED_WINDOW
+}
+
 /// The activity rail, always on the left: a toggle for each tool window from the panel table, the document's first, a hairline (a caption
 /// when the labels are shown), then the workspace's; at the foot Preferences and the switch between the two widths. On the home view the
 /// document's tool windows are disabled.
 pub fn activity_rail(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
     use crate::workbench::Zone;
     let t = Tokens::get(ui.ctx());
-    let labels = app.rail_labels;
+    let roomy = rail_labels_shown(ui.ctx(), true);
+    let labels = rail_labels_shown(ui.ctx(), app.rail_labels);
     let home = app.session.active().is_none();
     let (errors, warnings) = if home { (0, 0) } else { problem_counts(app) };
     let kind = app.active_doc_kind();
@@ -580,6 +590,10 @@ pub fn activity_rail(app: &mut XmlCraftApp, ui: &mut egui::Ui) {
                 .inner;
             if response.clicked() {
                 clicked = Some("app.preferences");
+            }
+            // (Not offered in a window too narrow for the names: the switch would change nothing.)
+            if !roomy {
+                return;
             }
             let (icon, name, tip_labels) = if labels {
                 ("chevron-left", tl!("Hide Rail Labels"), tl!("Show the icons alone"))

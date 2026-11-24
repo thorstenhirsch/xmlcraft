@@ -74,6 +74,17 @@ fn the_rail_names_its_icons_until_the_person_collapses_it_and_remembers_that() {
 }
 
 #[test]
+fn a_narrow_window_has_the_narrow_rail_and_no_switch_that_would_change_nothing() {
+    let mut h = Harness::builder().with_size(egui::vec2(1100.0, 800.0)).build_eframe(|cc| XmlCraftApp::new(cc));
+    h.state_mut().session.open(Some("/x/library.xml".into()), b"<library><book/></library>", None).expect("opens");
+    h.run_steps(6);
+    // The names are asked for (the default) but there is no room: the icons are there, the switch is not.
+    assert_eq!(h.state().command_checked("view.rail_labels"), Some(true), "the preference is kept");
+    assert!(h.query_by_label("Toggle Outline").is_some() && h.query_by_label("Open Preferences").is_some());
+    assert!(h.query_by_label("Hide Rail Labels").is_none() && h.query_by_label("Show Rail Labels").is_none());
+}
+
+#[test]
 fn the_theme_button_cycles_system_light_dark() {
     let mut h = shell();
     assert_eq!(h.state().theme_preference, ThemePreference::System);
