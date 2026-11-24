@@ -529,7 +529,7 @@ mod tests {
     fn no_resolvers() -> ResolverFactory {
         Arc::new(|buffers| {
             let env = Environment { buffers, files: Arc::new(NoFiles), fetcher: None, cache: None, clock: Arc::new(FixedClock(0)) };
-            Resolver::new(env, xmlcraft_resolve::Policy { offline: true, ..Policy::default() }, &[])
+            Resolver::new(env, xmlcraft_resolve::Policy { auto_download: false, ..Policy::default() }, &[])
         })
     }
 
@@ -973,7 +973,7 @@ mod tests {
         let validator = Validator::new(Arc::new(|buffers| {
             let files = HashMap::from([("r.dtd".to_owned(), b"<!ELEMENT r EMPTY>".to_vec())]);
             let env = Environment { buffers, files: Arc::new(MapFiles(files)), fetcher: None, cache: None, clock: Arc::new(FixedClock(0)) };
-            Resolver::new(env, xmlcraft_resolve::Policy { offline: true, ..Policy::default() }, &[])
+            Resolver::new(env, xmlcraft_resolve::Policy { auto_download: false, ..Policy::default() }, &[])
         }));
         let (tx, rx) = std::sync::mpsc::channel();
         validator.on_done(move || {

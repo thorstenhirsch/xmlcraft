@@ -103,9 +103,6 @@ struct Prefs {
     entry_mandatory: bool,
     /// A document that names a grammar is validated in the background when it has been left alone for a moment.
     validate_typing: bool,
-    /// Nothing is downloaded (Tools ▸ Work Offline): the schemas and DTDs a document names are taken from what is open, the catalogs, the
-    /// bundle, files and the copies downloaded before.
-    work_offline: bool,
     /// How much larger or smaller than normal the editor's text is (View ▸ Zoom In, Zoom Out, Actual Size).
     editor_zoom: f32,
     /// OASIS catalogs the person named (paths), consulted before the schemas that ship with the app.
@@ -124,7 +121,6 @@ impl Default for Prefs {
             recent: Vec::new(),
             entry_mandatory: true,
             validate_typing: true,
-            work_offline: false,
             editor_zoom: 1.0,
             user_catalogs: Vec::new(),
             compare_side_by_side: true,
@@ -234,8 +230,6 @@ pub struct XmlCraftApp {
     entry_focus: bool,
     /// Validate a document that names a grammar when it has been left alone for a moment (View: Schema ▸ Validate While Typing).
     validate_typing: bool,
-    /// The person's switch for downloading (Tools ▸ Work Offline); the network says whether anything is downloaded at all.
-    work_offline: bool,
     /// The editor's text size relative to normal (View ▸ Zoom In, Zoom Out, Actual Size; see [`zoom`]).
     editor_zoom: f32,
     /// The catalogs the person named, as paths (Preferences ▸ Schemas).
@@ -295,10 +289,10 @@ pub struct XmlCraftApp {
 impl XmlCraftApp {
     /// An app that downloads nothing: what tests make. The program makes it with [`XmlCraftApp::with_network`].
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        Self::with_network(cc, Network::offline())
+        Self::with_network(cc, Network::none())
     }
 
-    /// An app whose schemas and DTDs are downloaded with `network` (unless the person works offline).
+    /// An app whose schemas and DTDs are downloaded with `network`.
     pub fn with_network(cc: &eframe::CreationContext<'_>, network: Network) -> Self {
         let saved = cc.storage.and_then(|s| s.get_string(STORAGE_KEY));
         Self::with_saved_preferences(cc, network, saved.as_deref())
@@ -378,13 +372,12 @@ impl XmlCraftApp {
 
     #[cfg(test)]
     fn with_prefs(prefs: Prefs) -> Self {
-        Self::with_prefs_and_network(prefs, Network::offline())
+        Self::with_prefs_and_network(prefs, Network::none())
     }
 
     fn with_prefs_and_network(prefs: Prefs, network: Network) -> Self {
-        network.set_offline(prefs.work_offline);
         network.set_user_catalogs(prefs.user_catalogs.clone());
-        // The resolvers of the background workers are made when a request is: they see the switch as it is then.
+        // The resolvers of the background workers are made when a request is: they see the catalogs as they are then.
         let resolvers = || -> ResolverFactory {
             let network = network.clone();
             std::sync::Arc::new(move |buffers| network.resolver(buffers))
@@ -402,8 +395,8 @@ impl XmlCraftApp {
             session,
             analyzer: Analyzer::new(),
             // The external parts of a DTD, and the documents of a schema, are open documents, the DTDs and schemas that ship with the app
-            // (found by their public identifiers and namespaces), files the person can read and, unless they work offline, what the
-            // web has (kept on disk).
+            // (found by their public identifiers and namespaces), files the person can read and what the web has (kept on
+            // disk).
             validator: Validator::new(resolvers()),
             definition: DefinitionFinder::new(resolvers()),
             definition_versions: Vec::new(),
@@ -454,7 +447,6 @@ impl XmlCraftApp {
             entry_selected: 0,
             entry_focus: false,
             validate_typing: prefs.validate_typing,
-            work_offline: prefs.work_offline,
             editor_zoom: zoom::sanitized(prefs.editor_zoom),
             user_catalogs: prefs.user_catalogs.clone(),
             network,
@@ -485,7 +477,6 @@ impl XmlCraftApp {
             recent: self.session.recent().paths().iter().filter_map(|path| path.to_str().map(str::to_owned)).collect(),
             entry_mandatory: self.entry_mandatory,
             validate_typing: self.validate_typing,
-            work_offline: self.work_offline,
             editor_zoom: self.editor_zoom,
             user_catalogs: self.user_catalogs.clone(),
             compare_side_by_side: self.compare.side_by_side(),
@@ -545,11 +536,6 @@ impl XmlCraftApp {
     /// Change the arrangement of the panels, all or none, as a drag or a menu would.
     pub fn apply_layout(&mut self, actions: Vec<craft_ui::docking::Action<Panel>>) -> Result<(), String> {
         self.workbench.apply(actions).map(drop).map_err(|e| e.to_string())
-    }
-
-    /// Whether nothing is downloaded now: the person works offline, `XMLCRAFT_OFFLINE` is on, or this build has no client.
-    pub(crate) fn network_is_offline(&self) -> bool {
-        self.work_offline || self.network.is_offline()
     }
 
     /// Attach the opt-in control channel (`--control`): the returned client sends requests that the app answers at the start of
@@ -760,17 +746,35 @@ mod tests {
     }
 
     #[test]
-    fn working_offline_is_saved_with_the_preferences_and_is_off_unless_it_was_turned_on() {
-        assert!(!Prefs::default().work_offline);
-        assert!(!Prefs::load(Some(r#"{"left_open": false}"#)).work_offline, "an old file that does not say is online");
-        assert!(!Prefs::load(Some("not json")).work_offline);
-        let on = Prefs { work_offline: true, ..Prefs::default() };
-        let again = Prefs::load(Some(&serde_json::to_string(&on).expect("serializes")));
-        assert!(again.work_offline);
-        let app = XmlCraftApp::with_prefs(again);
-        assert_eq!(app.command_checked("xml.work_offline"), Some(true));
-        assert!(app.prefs().work_offline, "it is what the app saves, too");
-        assert_eq!(XmlCraftApp::with_prefs(Prefs::default()).command_checked("xml.work_offline"), Some(false));
+    fn a_legacy_settings_file_with_the_old_work_offline_key_loads_and_downloading_is_unaffected() {
+        // Settings saved by 0.4.0 and earlier have a `work_offline` key (the switch is gone): it is ignored, and the rest is read as it
+        // was written.
+        let legacy = r#"{"validate_typing": false, "work_offline": true, "editor_zoom": 1.5, "user_catalogs": ["a/catalog.xml"]}"#;
+        let prefs = Prefs::load(Some(legacy));
+        let expected = Prefs { validate_typing: false, editor_zoom: 1.5, user_catalogs: vec!["a/catalog.xml".to_owned()], ..Prefs::default() };
+        assert_eq!(prefs, expected);
+        // An app given a network that can download still downloads.
+        let fetcher: std::sync::Arc<dyn xmlcraft_resolve::Fetcher> = std::sync::Arc::new(NeverAsked);
+        let network = Network::new(Some(fetcher), None, std::sync::Arc::new(xmlcraft_resolve::FixedClock(0)));
+        let app = XmlCraftApp::with_prefs_and_network(prefs, network);
+        assert!(app.network.can_download());
+        assert_eq!(app.command_checked("xml.work_offline"), None, "there is no such command");
+        let saved = serde_json::to_string(&app.prefs()).expect("serializes");
+        assert!(!saved.contains("work_offline"), "the old key is not written back: {saved}");
+    }
+
+    /// A client that is never asked (the test downloads nothing).
+    struct NeverAsked;
+
+    impl xmlcraft_resolve::Fetcher for NeverAsked {
+        fn fetch(
+            &self,
+            url: &str,
+            _: &xmlcraft_resolve::Conditions,
+            _: &xmlcraft_resolve::FetchLimits,
+        ) -> Result<xmlcraft_resolve::FetchOutcome, xmlcraft_resolve::FetchError> {
+            Err(xmlcraft_resolve::FetchError::Network(format!("{url} was not to be asked")))
+        }
     }
 
     #[test]

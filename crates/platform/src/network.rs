@@ -1,18 +1,13 @@
-//! What the resolvers of the app and the tools download with: the client, the cache on disk, the clock and the person's choice to work
-//! offline, in one value that is cloned freely and shared by the background workers.
+//! What the resolvers of the app and the tools download with: the client, the cache on disk and the clock, in one value that is cloned
+//! freely and shared by the background workers.
 //!
-//! - [`Network::standard`] is the real thing: [`HttpFetcher`], [`DiskCache`] and the system clock. `XMLCRAFT_OFFLINE=1` starts it
-//!   offline, and `XMLCRAFT_ALLOW_PRIVATE_HOSTS=1` lets it download from addresses on the local network (an intranet's schema server).
-//! - [`Network::offline`] downloads nothing and keeps nothing: what tests and a build with no network use.
+//! - [`Network::standard`] is the real thing: [`HttpFetcher`], [`DiskCache`] and the system clock. `XMLCRAFT_ALLOW_PRIVATE_HOSTS=1` lets
+//!   it download from addresses on the local network (an intranet's schema server).
+//! - [`Network::none`] downloads nothing and keeps nothing: what tests and a build with no network use.
 //! - [`Network::new`] takes any fetcher and cache, for tests with a mock.
-//!
-//! Offline is a switch the person can turn at any time ([`Network::set_offline`], Tools ▸ Work Offline): downloading stops, and the
-//! copies already in the cache are used even when they are older than they should be. `XMLCRAFT_OFFLINE` keeps it off whatever the
-//! switch says ([`Network::offline_by_environment`]), and is not something the app remembers.
 
 #[cfg(any(test, not(target_arch = "wasm32")))]
 use std::ffi::OsString;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use xmlcraft_resolve::{Buffers, Clock, Environment, Fetcher, FileAccess, Policy, Resolver, ResourceCache};
@@ -43,58 +38,40 @@ struct Inner {
     fetcher: Option<Arc<dyn Fetcher>>,
     cache: Option<Arc<dyn ResourceCache>>,
     clock: Arc<dyn Clock>,
-    /// The switch.
-    offline: AtomicBool,
-    /// `XMLCRAFT_OFFLINE` was on when the network was made.
-    forced: bool,
     /// The catalogs the person named (locations), consulted before the ones that ship with the app.
     user_catalogs: Mutex<Vec<(String, String)>>,
 }
 
-/// How a download is made, how long a copy is kept, and whether it is allowed now. Clones share the offline switch.
+/// How a download is made and how long a copy is kept. Clones share the catalogs the person named.
 #[derive(Clone)]
 pub struct Network {
     inner: Arc<Inner>,
 }
 
 impl Network {
-    /// The real client and the cache on disk (none if there is no place for it), online unless `XMLCRAFT_OFFLINE` is on. (On the web
-    /// there is no client: it is [`Network::offline`].)
+    /// The real client and the cache on disk (none if there is no place for it). (On the web there is no client: it is
+    /// [`Network::none`].)
     #[cfg(not(target_arch = "wasm32"))]
     pub fn standard() -> Self {
         let agent = format!("XmlCraft/{} (+https://github.com/thorstenhirsch/xmlcraft)", env!("CARGO_PKG_VERSION"));
         let fetcher = HttpFetcher::new(&agent).allow_private_hosts(is_on(std::env::var_os("XMLCRAFT_ALLOW_PRIVATE_HOSTS")));
         let cache = default_cache_dir().map(|dir| Arc::new(DiskCache::new(dir)) as Arc<dyn ResourceCache>);
-        Self::build(Some(Arc::new(fetcher)), cache, Arc::new(SystemClock), is_on(std::env::var_os("XMLCRAFT_OFFLINE")))
+        Self::new(Some(Arc::new(fetcher)), cache, Arc::new(SystemClock))
     }
 
     #[cfg(target_arch = "wasm32")]
     pub fn standard() -> Self {
-        Self::offline()
+        Self::none()
     }
 
-    /// Nothing is downloaded and nothing is kept.
-    pub fn offline() -> Self {
+    /// No client and no cache: nothing is downloaded and nothing is kept.
+    pub fn none() -> Self {
         Self::new(None, None, Arc::new(SystemClock))
     }
 
-    /// A network made of the parts given, online.
+    /// A network made of the parts given.
     pub fn new(fetcher: Option<Arc<dyn Fetcher>>, cache: Option<Arc<dyn ResourceCache>>, clock: Arc<dyn Clock>) -> Self {
-        Self::build(fetcher, cache, clock, false)
-    }
-
-    fn build(fetcher: Option<Arc<dyn Fetcher>>, cache: Option<Arc<dyn ResourceCache>>, clock: Arc<dyn Clock>, forced: bool) -> Self {
-        Self { inner: Arc::new(Inner { fetcher, cache, clock, offline: AtomicBool::new(false), forced, user_catalogs: Mutex::new(Vec::new()) }) }
-    }
-
-    /// Work offline (or stop doing so): seen by every clone, and by the resolvers made from now on.
-    pub fn set_offline(&self, offline: bool) {
-        self.inner.offline.store(offline, Ordering::Relaxed);
-    }
-
-    /// Whether nothing is downloaded now: the switch is on, `XMLCRAFT_OFFLINE` is, or there is no client.
-    pub fn is_offline(&self) -> bool {
-        self.inner.forced || !self.can_download() || self.inner.offline.load(Ordering::Relaxed)
+        Self { inner: Arc::new(Inner { fetcher, cache, clock, user_catalogs: Mutex::new(Vec::new()) }) }
     }
 
     /// Use these catalogs (paths of OASIS catalog files) from now on, before the bundled ones: seen by the resolvers made after this. What
@@ -136,35 +113,29 @@ impl Network {
         self.inner.cache.as_ref().map_or(0, |c| c.clear())
     }
 
-    /// Whether `XMLCRAFT_OFFLINE` was on when this network was made (the switch cannot turn downloading on then).
-    pub fn offline_by_environment(&self) -> bool {
-        self.inner.forced
-    }
-
-    /// Whether this network can download at all (a build with no client cannot; offline is a switch, not this).
+    /// Whether this network can download at all (a build or a test with no client cannot).
     pub fn can_download(&self) -> bool {
         self.inner.fetcher.is_some()
     }
 
     /// A resolver that finds what documents name among the open documents (`buffers`, as they are being edited), the schemas that ship
-    /// with the app, files and, unless offline, the web through the cache.
+    /// with the app, files and, when there is a client, the web through the cache.
     pub fn resolver(&self, buffers: Arc<dyn Buffers>) -> Resolver {
         self.resolver_with_files(buffers, Arc::new(LocalFiles))
     }
 
     /// [`Network::resolver`] reading files with `files` (a tool confined to a folder reads only inside it; the web is a different
-    /// matter, which the person's switch and `XMLCRAFT_OFFLINE` decide).
+    /// matter: it is asked through the client, when there is one).
     pub fn resolver_with_files(&self, buffers: Arc<dyn Buffers>, files: Arc<dyn FileAccess>) -> Resolver {
         let env =
             Environment { buffers, files, fetcher: self.inner.fetcher.clone(), cache: self.inner.cache.clone(), clock: self.inner.clock.clone() };
-        let offline = self.is_offline();
-        Resolver::new(env, Policy { offline, ..Policy::default() }, &self.user_catalog_uris())
+        Resolver::new(env, Policy::default(), &self.user_catalog_uris())
     }
 }
 
 impl std::fmt::Debug for Network {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Network").field("can_download", &self.can_download()).field("offline", &self.is_offline()).finish()
+        f.debug_struct("Network").field("can_download", &self.can_download()).finish()
     }
 }
 
@@ -195,24 +166,17 @@ mod tests {
     }
 
     #[test]
-    fn the_switch_is_shared_and_decides_whether_the_web_is_asked() {
+    fn a_network_with_a_client_downloads_once_and_then_uses_the_cache() {
         let mock = Arc::new(Mock { asked: Mutex::new(Vec::new()) });
         let network = Network::new(Some(mock.clone()), Some(Arc::new(MemoryCache::new())), Arc::new(FixedClock(1000)));
         let clone = network.clone();
-        assert!(!network.is_offline() && network.can_download());
+        assert!(network.can_download() && clone.can_download());
         assert_eq!(resolve(&network, "http://example.com/a.xsd"), Ok(Origin::Network));
-        // It is in the cache now: no question is asked again.
-        assert_eq!(resolve(&network, "http://example.com/a.xsd"), Ok(Origin::Cache { stale: false }));
+        // It is in the cache now (shared by the clone): no question is asked again.
         let before = mock.asked.lock().expect("lock").len();
-        // Offline (set through a clone): a copy that is not in the cache is not downloaded.
-        clone.set_offline(true);
-        assert!(network.is_offline());
-        let why = resolve(&network, "http://example.com/b.xsd").expect_err("not in the cache");
-        assert!(why.contains("offline"), "{why}");
+        assert_eq!(resolve(&clone, "http://example.com/a.xsd"), Ok(Origin::Cache { stale: false }));
         assert_eq!(mock.asked.lock().expect("lock").len(), before, "nothing was asked");
-        // Online again.
-        network.set_offline(false);
-        assert_eq!(resolve(&network, "http://example.com/b.xsd"), Ok(Origin::Network));
+        assert_eq!(resolve(&clone, "http://example.com/b.xsd"), Ok(Origin::Network));
     }
 
     #[test]
@@ -230,7 +194,7 @@ mod tests {
         // Asked for again, it is downloaded again.
         assert_eq!(resolve(&network, "http://example.com/a.xsd"), Ok(Origin::Network));
         // A network with no cache has nothing to say and nothing to clear.
-        let none = Network::offline();
+        let none = Network::none();
         assert_eq!((none.cache_stats().entries, none.clear_cache()), (0, 0));
     }
 
@@ -245,7 +209,7 @@ mod tests {
             "<catalog xmlns=\"urn:oasis:names:tc:entity:xmlns:xml:catalog\"><uri name=\"urn:mine:schema\" uri=\"mine.xsd\"/></catalog>",
         )
         .expect("writes");
-        let network = Network::offline();
+        let network = Network::none();
         assert!(resolve(&network, "urn:mine:schema").is_err(), "nothing knows the name yet");
         network.set_user_catalogs(vec![catalog.to_string_lossy().into_owned()]);
         assert_eq!(network.user_catalogs(), [catalog.to_string_lossy().into_owned()], "as they were given");
@@ -264,30 +228,12 @@ mod tests {
     }
 
     #[test]
-    fn the_environment_can_keep_a_network_offline_whatever_the_switch_says() {
-        let mock = Arc::new(Mock { asked: Mutex::new(Vec::new()) });
-        let network = Network::build(Some(mock.clone()), None, Arc::new(FixedClock(1)), true);
-        assert!(network.offline_by_environment() && network.is_offline());
-        network.set_offline(false);
-        assert!(network.is_offline(), "the switch cannot turn it on");
-        let why = resolve(&network, "http://example.com/a.xsd").expect_err("offline");
-        assert!(why.contains("offline"), "{why}");
-        assert!(mock.asked.lock().expect("lock").is_empty());
-        // Without it, the switch decides.
-        let free = Network::new(Some(mock), None, Arc::new(FixedClock(1)));
-        assert!(!free.offline_by_environment() && !free.is_offline());
-        free.set_offline(true);
-        assert!(free.is_offline());
-    }
-
-    #[test]
-    fn a_network_with_no_client_downloads_nothing_whatever_the_switch_says() {
-        let network = Network::offline();
-        network.set_offline(false);
-        assert!(network.is_offline() && !network.can_download());
-        assert!(!network.offline_by_environment());
+    fn a_network_with_no_client_downloads_nothing_and_says_why_without_a_mode() {
+        let network = Network::none();
+        assert!(!network.can_download());
         let why = resolve(&network, "http://example.com/a.xsd").expect_err("cannot");
-        assert!(why.contains("not in the cache"), "{why}");
+        assert!(why.contains("not in the cache") && why.contains("this build cannot download"), "{why}");
+        assert!(!why.to_ascii_lowercase().contains("offline"), "no offline mode is named: {why}");
     }
 
     #[test]

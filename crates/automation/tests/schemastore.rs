@@ -33,13 +33,13 @@ fn the_schemas_for_a_file_come_from_a_catalog_that_is_given_best_fit_first() {
 }
 
 #[test]
-fn what_cannot_be_asked_is_refused_and_an_offline_session_downloads_nothing() {
+fn what_cannot_be_asked_is_refused_and_a_session_without_a_network_client_downloads_nothing() {
     let mut a = Automation::new();
     assert!(matches!(call(&mut a, json!({ "catalog_text": CATALOG })), Err(ToolError::InvalidArgs(_))));
     assert!(matches!(call(&mut a, json!({ "name": "x.json", "catalog_text": CATALOG, "max": 0 })), Err(ToolError::InvalidArgs(_))));
     assert!(call(&mut a, json!({ "name": "x.json", "catalog_text": "{}" })).is_err(), "not a catalog");
-    let e = call(&mut a, json!({ "name": "x.json" })).expect_err("offline").to_string();
-    assert!(e.contains("offline"), "{e}");
+    let e = call(&mut a, json!({ "name": "x.json" })).expect_err("no client").to_string();
+    assert!(e.contains("no network client"), "{e}");
     let outside = tempfile::tempdir().expect("dir");
     let root = tempfile::tempdir().expect("root");
     std::fs::write(outside.path().join("c.json"), CATALOG).expect("writes");

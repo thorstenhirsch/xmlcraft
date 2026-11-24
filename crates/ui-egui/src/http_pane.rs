@@ -1,6 +1,7 @@
 //! What the SOAP and OpenAPI windows have in common: an HTTP request a person can edit (method, address, headers, body), the thread that
-//! sends it, and the answer. Sending is a person's act (the Send button) and goes through the network the person allowed: it is refused
-//! while the app works offline, a host on this computer or the local network needs the box ticked, and redirects are not followed.
+//! sends it, and the answer. Sending is a person's act (the Send button) and goes through the app's network: it is refused when the app
+//! has no network client (the web build, a test), a host on this computer or the local network needs the box ticked, and redirects are
+//! not followed.
 
 use std::sync::mpsc::{Receiver, Sender, channel};
 #[cfg(not(target_arch = "wasm32"))]
@@ -294,8 +295,8 @@ impl XmlCraftApp {
             pane.error = Some(fmt(tl!("The request is larger than {limit} MB."), &[("limit", &(MAX_BODY_BYTES / (1024 * 1024)).to_string())]));
             return;
         }
-        if self.network.is_offline() || !self.network.can_download() {
-            pane.error = Some(tl!("XmlCraft works offline, so nothing is sent. Turn Work Offline off (Tools menu) to send.").to_owned());
+        if !self.network.can_download() {
+            pane.error = Some(tl!("This build or session has no network client, so nothing is sent.").to_owned());
             return;
         }
         let serial = self.next_http_serial();

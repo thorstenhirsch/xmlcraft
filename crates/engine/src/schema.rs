@@ -151,7 +151,7 @@ mod tests {
                 cache: None,
                 clock: Arc::new(xmlcraft_resolve::FixedClock(0)),
             };
-            xmlcraft_resolve::Resolver::new(env, xmlcraft_resolve::Policy { offline: true, ..Default::default() }, &[])
+            xmlcraft_resolve::Resolver::new(env, xmlcraft_resolve::Policy { auto_download: false, ..Default::default() }, &[])
         })
     }
 

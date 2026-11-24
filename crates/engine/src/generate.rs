@@ -292,7 +292,7 @@ mod tests {
     fn resolvers() -> ResolverFactory {
         Arc::new(|buffers| {
             let env = Environment { buffers, files: Arc::new(NoFiles), fetcher: None, cache: None, clock: Arc::new(FixedClock(0)) };
-            Resolver::new(env, Policy { offline: true, ..Policy::default() }, &[])
+            Resolver::new(env, Policy { auto_download: false, ..Policy::default() }, &[])
         })
     }
 

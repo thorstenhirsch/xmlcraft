@@ -142,7 +142,6 @@ mod tests {
             "chevron-right",
             "chevron-down",
             "triangle-alert",
-            "cloud-off",
             "circle-check",
             "circle-x",
             "info",

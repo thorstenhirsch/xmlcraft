@@ -2,7 +2,7 @@
 //! against the schemas and rules that ship with the app.
 //!
 //! The document is an open document (`id`), a file (`path`, through the root confinement) or `text`. Nothing is changed, and nothing is
-//! fetched: the validation is offline by construction.
+//! fetched: the validation needs no network by construction.
 
 use serde_json::{Value, json};
 use xmlcraft_einvoice::{Detection, Standard, Syntax, detect};
@@ -34,7 +34,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
         ToolDef {
             name: "einvoice_validate",
             title: "Validate an electronic invoice",
-            description: "Validate an electronic invoice stage by stage against the schemas and rules that ship with XmlCraft, offline: `well-formedness`, \
+            description: "Validate an electronic invoice stage by stage against the schemas and rules that ship with XmlCraft, downloading nothing: `well-formedness`, \
                       `detection` (syntax and the specification it claims), `schema` (the UBL 2.1 or UN/CEFACT CII D16B XML Schema), `en16931` (the CEN \
                       EN 16931 business rules for the syntax, Schematron 1.3.17) and `cius` (the XRechnung 3.0 rules when the document claims XRechnung; \
                       the Peppol BIS Billing 3 rules are not bundled, FatturaPA has an XML Schema only, which is not bundled either). A stage runs when \

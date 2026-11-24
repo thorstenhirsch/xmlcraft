@@ -35,7 +35,7 @@ fn resolver(files: &[(&str, &[u8])], open: &[(&str, &str)], catalogs: &[&str]) -
         clock: Arc::new(FixedClock(0)),
     };
     let catalogs: Vec<String> = catalogs.iter().map(|c| (*c).to_owned()).collect();
-    Resolver::new(env, Policy { auto_download: false, offline: true, ..Policy::default() }, &catalogs)
+    Resolver::new(env, Policy { auto_download: false, ..Policy::default() }, &catalogs)
 }
 
 fn request<'a>(public: Option<&'a str>, system: &'a str, base: &'a str) -> LoadRequest<'a> {

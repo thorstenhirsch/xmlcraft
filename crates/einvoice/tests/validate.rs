@@ -13,7 +13,7 @@ const CII: &str = include_str!("fixtures/xrechnung-cii.xml");
 
 fn resolver() -> Resolver {
     let env = Environment { buffers: Arc::new(NoBuffers), files: Arc::new(NoFiles), fetcher: None, cache: None, clock: Arc::new(FixedClock(0)) };
-    Resolver::new(env, Policy { offline: true, auto_download: false, ..Policy::default() }, &[])
+    Resolver::new(env, Policy { auto_download: false, ..Policy::default() }, &[])
 }
 
 fn check(text: &str) -> Report {

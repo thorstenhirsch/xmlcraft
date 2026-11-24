@@ -267,7 +267,6 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("xml.einvoice", "E-Rechnung…", TOOLS, None, Needs::Document, "receipt-text").sep(),
     c("xml.xbrl", "XBRL Facts…", TOOLS, None, Needs::Document, "rows-3"),
     c("edit.find_in_files", "Find in Files…", TOOLS, Some(Shortcut::cmd_shift("F")), Nothing, "search").sep(),
-    c("xml.work_offline", "Work Offline", TOOLS, None, Nothing, "external-link").sep().toggle(),
     c("view.palette", "Find tools and commands…", VIEW, Some(Shortcut::cmd("K")), Nothing, "search"),
     c("view.move_tab_left", "Move Tab Left", VIEW, Some(Shortcut::ctrl_shift("PageUp")), Needs::Document, "chevron-left"),
     c("view.move_tab_right", "Move Tab Right", VIEW, Some(Shortcut::ctrl_shift("PageDown")), Needs::Document, "chevron-right"),
@@ -460,15 +459,14 @@ mod tests {
                 "xml.soap_debugger",
                 "xml.einvoice",
                 "xml.xbrl",
-                "edit.find_in_files",
-                "xml.work_offline"
+                "edit.find_in_files"
             ]
         );
         // The separators group each menu by topic.
         let separated = |menu: &str| in_menu(menu).filter(|c| c.separator_before).map(|c| c.id).collect::<Vec<_>>();
         assert_eq!(separated("Document"), ["xml.rename_element", "file.convert"]);
         assert_eq!(separated("Schema"), ["xml.next_problem", "xml.assign_schema", "xml.generate_schema"]);
-        assert_eq!(separated("Tools"), ["file.compare", "xml.openapi", "xml.einvoice", "edit.find_in_files", "xml.work_offline"]);
+        assert_eq!(separated("Tools"), ["file.compare", "xml.openapi", "xml.einvoice", "edit.find_in_files"]);
         assert_eq!(in_menu("XML").count(), 0, "there is no XML menu any more");
         assert_eq!(MENUS, ["File", "Edit", "Document", "Schema", "Tools", "View", "Help"]);
         assert_eq!(in_menu("Nope").count(), 0);

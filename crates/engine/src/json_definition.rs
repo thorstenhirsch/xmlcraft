@@ -208,7 +208,7 @@ mod tests {
     fn resolver(files: &[(&str, &str)]) -> Resolver {
         let files = Files(files.iter().map(|(p, t)| ((*p).to_owned(), t.as_bytes().to_vec())).collect());
         let env = Environment { buffers: Arc::new(NoBuffers), files: Arc::new(files), fetcher: None, cache: None, clock: Arc::new(FixedClock(0)) };
-        Resolver::new(env, Policy { offline: true, ..Policy::default() }, &[])
+        Resolver::new(env, Policy { auto_download: false, ..Policy::default() }, &[])
     }
 
     const JSON: Language = Language::Json(JsonFlavor::Json);

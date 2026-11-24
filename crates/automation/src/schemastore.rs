@@ -1,6 +1,6 @@
 //! `schemastore_find`: the JSON Schemas SchemaStore has for a file, by its name. The catalog is given (`catalog_text`, or a file through
-//! the root confinement) or, when neither is, fetched from schemastore.org through the session's resolver (which is offline unless the
-//! program gave the session a network that downloads, and which keeps what it downloaded).
+//! the root confinement) or, when neither is, fetched from schemastore.org through the session's resolver (which downloads when the
+//! program gave the session a network client, and keeps what it downloaded).
 
 use serde_json::{Value, json};
 use xmlcraft_engine::schemastore::{CATALOG_URL, matching, parse_catalog};
@@ -18,7 +18,7 @@ pub(crate) fn tools() -> Vec<ToolDef> {
         title: "Find the JSON Schema for a file in SchemaStore",
         description: "The schemas of SchemaStore (schemastore.org) that are for a file, by its `name` (a file name or a path: `package.json`, `.github/workflows/ci.yml`), the better fits first, each \
                       with its name, description, url and the patterns of file names it is for. The catalog is `catalog_text`, or the file `catalog` (inside the root), or, when neither is given, \
-                      downloaded from schemastore.org through the session's network (refused while the session is offline). Nothing is assigned: pass the url to xml_assign_schema.",
+                      downloaded from schemastore.org through the session's network (refused when the session has no network client). Nothing is assigned: pass the url to xml_assign_schema.",
         input_schema: json!({
             "type": "object",
             "properties": {
@@ -53,9 +53,9 @@ fn schemastore_find(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         let loaded = xmlcraft_platform::files::read_file(&real).map_err(|e| ToolError::Failed(format!("{}: {e}", real.display())))?;
         String::from_utf8_lossy(&loaded.bytes).into_owned()
     } else {
-        if !a.network().can_download() || a.network().is_offline() {
+        if !a.network().can_download() {
             return fail(
-                "no catalog was given and the session is offline, so SchemaStore is not asked: pass `catalog_text` or `catalog`, or let a person allow the network",
+                "no catalog was given and this session has no network client, so SchemaStore is not asked (the program gives a real session one): pass `catalog_text` or `catalog`",
             );
         }
         let resolver = schema_resolver(a);

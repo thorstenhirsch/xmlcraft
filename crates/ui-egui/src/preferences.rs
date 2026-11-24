@@ -1,5 +1,5 @@
 //! Preferences: the settings the app keeps between runs, in one window. Theme, the size of the editor's text, validating while typing,
-//! what Entry Helpers insert, working offline, the cache of downloaded schemas, and the catalogs the person named. Everything here takes
+//! what Entry Helpers insert, the cache of downloaded schemas, and the catalogs the person named. Everything here takes
 //! effect at once; there is nothing to apply or cancel.
 
 use crate::XmlCraftApp;
@@ -95,17 +95,6 @@ impl XmlCraftApp {
             });
         });
         kit::section(ui, tl!("Schemas"), |ui| {
-            kit::row(
-                ui,
-                tl!("Downloads"),
-                tl!("Offline, a schema or a DTD that is not on this computer is taken from the copies downloaded before."),
-                |ui| {
-                    let mut offline = self.work_offline;
-                    if ui.add(widgets::checkbox(&mut offline, tl!("Work offline"))).changed() {
-                        self.set_work_offline(offline);
-                    }
-                },
-            );
             let stats = self.network.cache_stats();
             kit::row(ui, tl!("Downloaded files"), tl!("Schemas and DTDs kept so that they are not downloaded again."), |ui| {
                 ui.horizontal(|ui| {

@@ -85,8 +85,8 @@ impl XmlCraftApp {
         })));
     }
 
-    /// Ask SchemaStore (its catalog, fetched through the app's network as any schema is, so the offline switch and the download cache
-    /// apply) which schemas are for the file of the document; the answer comes through `pump_http`.
+    /// Ask SchemaStore (its catalog, fetched through the app's network as any schema is, so the download cache
+    /// applies) which schemas are for the file of the document; the answer comes through `pump_http`.
     fn ask_schemastore(&mut self, form: &mut AssignForm) {
         let file = form.document.as_ref().map_or_else(|| form.name.clone(), |p| p.to_string_lossy().into_owned());
         let serial = self.next_http_serial();
@@ -357,12 +357,7 @@ fn form_ui(ui: &mut egui::Ui, form: &mut AssignForm) -> Option<Action> {
             if let Some(note) = &form.store.note {
                 kit::help(ui, note);
             } else if form.store.found.is_empty() && form.store.asking.is_none() {
-                kit::help(
-                    ui,
-                    tl!(
-                        "Asks schemastore.org for the schemas that are for this file name (it downloads its catalog, which the Work Offline switch stops)."
-                    ),
-                );
+                kit::help(ui, tl!("Asks schemastore.org for the schemas that are for this file name (it downloads its catalog)."));
             }
         });
     }

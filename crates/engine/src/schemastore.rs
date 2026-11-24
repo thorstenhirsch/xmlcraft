@@ -1,6 +1,6 @@
 //! SchemaStore: finding the JSON Schema for a file by its name. The catalog (`catalog.json` of schemastore.org, a list of schemas each
 //! with the file name patterns it is for) is fetched when a person asks (it is a document like any the resolver fetches, so the
-//! switch to work offline and the download cache apply), and nothing of it is bundled; this module reads it and says which entries a
+//! download cache applies), and nothing of it is bundled; this module reads it and says which entries a
 //! file belongs to.
 
 use xmlcraft_json_syntax::{Data, Dialect, Options, parse};

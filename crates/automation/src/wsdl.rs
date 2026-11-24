@@ -193,10 +193,8 @@ fn soap_call(a: &mut Automation, args: &Value) -> Result<Vec<Content>> {
         }
         Some(_) => return Err(ToolError::InvalidArgs("headers is an object of names and values".into())),
     }
-    if !a.network().can_download() || a.network().is_offline() {
-        return fail(
-            "the session is offline, so nothing is sent: a person has to allow the network (the program gives the session a network that sends)",
-        );
+    if !a.network().can_download() {
+        return fail("this session has no network client, so nothing is sent; the program gives a real session one");
     }
     let (wsdl, location) = read(a, args)?;
     let Some(op) = wsdl.operation(operation, binding) else {

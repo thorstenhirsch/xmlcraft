@@ -123,7 +123,7 @@ impl Automation {
         Self {
             session: Session::new(),
             confinement: Confinement::none(),
-            network: Network::offline(),
+            network: Network::none(),
             proxy: None,
             debug: xpath_debug::Sessions::default(),
         }
@@ -134,7 +134,7 @@ impl Automation {
         Ok(Self {
             session: Session::new(),
             confinement: Confinement::new(root)?,
-            network: Network::offline(),
+            network: Network::none(),
             proxy: None,
             debug: xpath_debug::Sessions::default(),
         })

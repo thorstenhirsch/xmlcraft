@@ -365,16 +365,6 @@ fn the_resolver_downloads_once_keeps_the_copy_on_disk_and_asks_the_server_whethe
     let fourth = resolve(&network()).expect("from the cache");
     assert_eq!(fourth.origin, Origin::Cache { stale: false });
     assert_eq!(server.requests().len(), 2);
-    // Offline, whatever the age: the copy that is there is used, and one that is not there is not asked for.
-    clock.0.store(1_000_000 + 10 * 365 * 24 * 3600, Ordering::Relaxed);
-    let offline = network();
-    offline.set_offline(true);
-    let stale = resolve(&offline).expect("served stale");
-    assert_eq!(stale.origin, Origin::Cache { stale: true });
-    let other = server.url("/other.xsd");
-    let missing = offline.resolver(Arc::new(NoBuffers)).resolve(&Request::uri(&other, ""), &mut Budget::new());
-    assert!(missing.is_err());
-    assert_eq!(server.requests().len(), 2, "offline asks nobody");
 }
 
 #[test]
